@@ -1,0 +1,9 @@
+{
+	"image": "mcr.microsoft.com/devcontainers/universal:2",
+	"portsAttributes": {
+		"3000": {
+			"label": "Webhook",
+			"visibility": "public"
+		}
+	}
+}
