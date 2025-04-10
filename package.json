@@ -4,6 +4,10 @@
   "description": "A Telegram bot integrated with Unthread API",
   "main": "src/index.js",
   "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js"
