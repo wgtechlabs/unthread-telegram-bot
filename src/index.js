@@ -10,14 +10,16 @@
  * - Add graceful shutdown hooks
  * - Add configuration validation
  */
-import { createBot, configureCommands, onText, startPolling } from './bot.js';
-import { startCommand, helpCommand, versionCommand } from './commands/index.js';
-import packageJSON from '../package.json' with { type: 'json' };
-import * as logger from './utils/logger.js';
 import dotenv from 'dotenv';
 
 // Load environment variables from .env file
 dotenv.config();
+
+import { createBot, configureCommands, startPolling } from './bot.js';
+import { startCommand, helpCommand, versionCommand, supportCommand } from './commands/index.js';
+import { handleMessage, registerTextPattern } from './events/message.js';
+import packageJSON from '../package.json' with { type: 'json' };
+import * as logger from './utils/logger.js';
 
 /**
  * Initialize the bot with the token from environment variables
@@ -46,7 +48,11 @@ const bot = createBot(process.env.TELEGRAM_BOT_TOKEN);
  * - Add user tracking/analytics
  */
 bot.use(async (ctx, next) => {
-    logger.info(`Received a message: ${ctx.message.text}`);
+    if (ctx.message && ctx.message.text) {
+        logger.info(`Received a message: ${ctx.message.text}`);
+    } else {
+        logger.info('Received a message (non-text)');
+    }
     await next();
 });
 
@@ -66,18 +72,21 @@ bot.use(async (ctx, next) => {
 bot.start(startCommand);
 bot.help(helpCommand);
 bot.command('version', versionCommand);
+bot.command('support', supportCommand);
 
-// Text pattern handlers section
 /**
- * Add any text handlers if needed
- * Example: onText(bot, /some pattern/, (ctx) => { "handler" });
+ * Register pattern-based message handlers
  * 
- * Enhancement Opportunities:
- * - Add natural language processing capabilities
- * - Implement conversation flows
- * - Add AI-powered responses
+ * Use the registerTextPattern function from events/message.js to register
+ * handlers for specific message patterns.
+ * 
+ * Example:
+ * registerTextPattern(/hello/i, (ctx) => ctx.reply('Hello there!'));
  */
-// onText(bot, /some pattern/, (ctx) => { /* handler */ });
+// Add your pattern-based message handlers here
+
+// Register message handlers
+bot.on('message', handleMessage);
 
 /**
  * Bot initialization and startup

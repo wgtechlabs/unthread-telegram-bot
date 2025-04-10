@@ -3,7 +3,7 @@
  * 
  * This module provides utility functions for creating and configuring a Telegram bot
  * using the Telegraf framework. It includes functions for bot initialization, command
- * configuration, message handling, and bot startup.
+ * configuration, and bot startup.
  * 
  * Potential Improvements:
  * - Add error handling for bot operations
@@ -52,31 +52,6 @@ export function createBot(token) {
 export function configureCommands(bot, commands) {
     commands.forEach(command => {
         bot.command(command.name, command.handler);
-    });
-}
-
-/**
- * Adds a text message handler with pattern matching
- * 
- * @param {Telegraf} bot - The Telegraf bot instance
- * @param {RegExp} pattern - Regular expression pattern to match against message text
- * @param {Function} handler - Handler function to execute when pattern matches
- * 
- * Possible Bugs:
- * - If multiple patterns are registered, all matching patterns will execute their handlers
- * - No error handling if pattern is invalid or if handler throws an exception
- * 
- * Enhancement Opportunities:
- * - Add priority mechanism for overlapping patterns
- * - Support for more sophisticated pattern matching beyond RegExp
- * - Add context data to handlers
- * - Add middleware for text handlers
- */
-export function onText(bot, pattern, handler) {
-    bot.on('text', (ctx) => {
-        if (ctx.message.text.match(pattern)) {
-            handler(ctx);
-        }
     });
 }
 
