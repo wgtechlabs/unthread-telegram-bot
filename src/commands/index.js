@@ -11,13 +11,7 @@
  * - Implement interactive commands with inline keyboards
  */
 
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
-
-// Get directory path for importing package.json
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import packageJSON from '../../package.json' with { type: 'json' };
 
 /**
  * Handler for the /start command
@@ -79,10 +73,7 @@ const helpCommand = (ctx) => {
  */
 const versionCommand = (ctx) => {
     try {
-        // Read package.json from project root (2 levels up from commands folder)
-        const packagePath = resolve(__dirname, '../../package.json');
-        const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
-        ctx.reply(`Bot version: ${packageJson.version}`);
+        ctx.reply(`Bot version: ${packageJSON.version}`);
     } catch (error) {
         ctx.reply('Error retrieving version information.');
         console.error('Error in versionCommand:', error);
