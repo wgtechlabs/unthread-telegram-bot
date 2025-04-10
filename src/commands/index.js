@@ -11,6 +11,14 @@
  * - Implement interactive commands with inline keyboards
  */
 
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+
+// Get directory path for importing package.json
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 /**
  * Handler for the /start command
  * 
@@ -51,10 +59,38 @@ const startCommand = (ctx) => {
  * - Add pagination for large command lists
  */
 const helpCommand = (ctx) => {
-    ctx.reply('Available commands:\n/start - Start the bot\n/help - Show this help message');
+    ctx.reply('Available commands:\n/start - Start the bot\n/help - Show this help message\n/version - Show the bot version');
+};
+
+/**
+ * Handler for the /version command
+ * 
+ * This command shows the current version of the bot from package.json.
+ * 
+ * @param {object} ctx - The Telegraf context object
+ * 
+ * Possible Bugs:
+ * - Error handling if package.json doesn't exist or has no version
+ * 
+ * Enhancement Opportunities:
+ * - Add more version-related information such as release date or changelog
+ * - Include git commit information if available
+ * - Add link to GitHub repository
+ */
+const versionCommand = (ctx) => {
+    try {
+        // Read package.json from project root (2 levels up from commands folder)
+        const packagePath = resolve(__dirname, '../../package.json');
+        const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
+        ctx.reply(`Bot version: ${packageJson.version}`);
+    } catch (error) {
+        ctx.reply('Error retrieving version information.');
+        console.error('Error in versionCommand:', error);
+    }
 };
 
 export {
     startCommand,
     helpCommand,
+    versionCommand,
 };

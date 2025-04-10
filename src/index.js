@@ -11,7 +11,7 @@
  * - Add configuration validation
  */
 import { createBot, configureCommands, onText, startPolling } from './bot.js';
-import { startCommand, helpCommand } from './commands/index.js';
+import { startCommand, helpCommand, versionCommand } from './commands/index.js';
 import packageJSON from '../package.json' with { type: 'json' };
 import * as logger from './utils/logger.js';
 import dotenv from 'dotenv';
@@ -65,6 +65,7 @@ bot.use(async (ctx, next) => {
  */
 bot.start(startCommand);
 bot.help(helpCommand);
+bot.command('version', versionCommand);
 
 // Text pattern handlers section
 /**
