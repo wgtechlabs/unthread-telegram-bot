@@ -16,7 +16,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { createBot, configureCommands, startPolling } from './bot.js';
-import { startCommand, helpCommand, versionCommand, supportCommand } from './commands/index.js';
+import { startCommand, helpCommand, versionCommand, supportCommand, processSupportConversation } from './commands/index.js';
 import { handleMessage, registerTextPattern } from './events/message.js';
 import packageJSON from '../package.json' with { type: 'json' };
 import * as logger from './utils/logger.js';
@@ -87,6 +87,16 @@ bot.command('support', supportCommand);
 
 // Register message handlers
 bot.on('message', handleMessage);
+
+// Register callback query handler for buttons
+bot.on('callback_query', async (ctx) => {
+    try {
+        // Route callback queries through the processSupportConversation function
+        await processSupportConversation(ctx);
+    } catch (error) {
+        logger.error(`Error handling callback query: ${error.message}`);
+    }
+});
 
 /**
  * Bot initialization and startup

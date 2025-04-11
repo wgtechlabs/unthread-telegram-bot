@@ -3,24 +3,18 @@
  * 
  * This module defines command handlers for the Telegram bot.
  * Each command is exported as a function that can be attached to the bot instance.
- * 
- * Potential Improvements:
- * - Add more useful commands
- * - Organize commands by category
- * - Add command argument validation
- * - Implement interactive commands with inline keyboards
  */
 
 import packageJSON from '../../package.json' with { type: 'json' };
 import * as logger from '../utils/logger.js';
+import { Markup } from 'telegraf';
 
 // Store user conversation states
 const userStates = new Map();
 
 // Support form field enum
 const SupportField = {
-  TITLE: 'title',
-  DETAILS: 'details',
+  SUMMARY: 'summary',
   EMAIL: 'email',
   COMPLETE: 'complete'
 };
@@ -102,22 +96,17 @@ const supportCommand = async (ctx) => {
         // Initialize state for this user
         const userId = ctx.from.id;
         userStates.set(userId, {
-            currentField: SupportField.TITLE,
+            currentField: SupportField.SUMMARY,
             ticket: {
-                title: '',
-                details: '',
+                summary: '',
                 email: '',
                 name: ctx.from.username || `${ctx.from.first_name} ${ctx.from.last_name || ''}`.trim(),
                 company: ctx.chat && ctx.chat.type !== 'private' ? ctx.chat.title : 'Individual Support'
             }
         });
-
-        // Log the support ticket creation
-        logger.info(`User ${ctx.from.username || ctx.from.id} started a support ticket in ${userStates.get(userId).ticket.company}`);
         
         // Ask for the first field
-        await ctx.reply("Let's create a support ticket. Please provide the following information:");
-        await ctx.reply("Title:");
+        await ctx.reply("Let's create a support ticket. Please provide your issue summary:");
     } catch (error) {
         logger.error(`Error in supportCommand: ${error.message}`);
         await ctx.reply("Sorry, there was an error starting the support ticket process. Please try again later.");
@@ -134,7 +123,28 @@ export const processSupportConversation = async (ctx) => {
     try {
         // Check if this user has an active support ticket conversation
         const userId = ctx.from?.id;
-        if (!userId || !userStates.has(userId) || !ctx.message?.text) {
+        if (!userId || !userStates.has(userId)) {
+            return false;
+        }
+
+        // Handle callback queries (button clicks)
+        if (ctx.callbackQuery) {
+            if (ctx.callbackQuery.data === 'skip_email') {
+                const userState = userStates.get(userId);
+                if (userState.currentField === SupportField.EMAIL) {
+                    // Process as if user typed "skip"
+                    await handleEmailField(ctx, userState, 'skip');
+                    // Answer the callback query to remove the "loading" state of the button
+                    await ctx.answerCbQuery();
+                    return true;
+                }
+            }
+            // Important: We need to return true here to indicate we handled the callback
+            return true;
+        }
+
+        // Require text message for normal processing
+        if (!ctx.message?.text) {
             return false;
         }
 
@@ -155,48 +165,21 @@ export const processSupportConversation = async (ctx) => {
 
         // Update the current field and move to the next one
         switch (userState.currentField) {
-            case SupportField.TITLE:
-                userState.ticket.title = messageText;
-                userState.currentField = SupportField.DETAILS;
-                await ctx.reply("Details:");
-                break;
-                
-            case SupportField.DETAILS:
-                userState.ticket.details = messageText;
+            case SupportField.SUMMARY:
+                userState.ticket.summary = messageText;
                 userState.currentField = SupportField.EMAIL;
-                await ctx.reply("Email (optional, type 'skip' to leave blank):");
+                
+                // Ask for email with skip button
+                await ctx.reply(
+                    "Please provide your email address or skip this step:",
+                    Markup.inlineKeyboard([
+                        Markup.button.callback('Skip', 'skip_email')
+                    ])
+                );
                 break;
                 
             case SupportField.EMAIL:
-                if (messageText.toLowerCase() !== 'skip') {
-                    userState.ticket.email = messageText;
-                }
-                userState.currentField = SupportField.COMPLETE;
-                
-                // Generate and show the preview
-                const ticket = userState.ticket;
-                const previewMessage = `📩 Support Ticket Preview\n\n` +
-                    `📋 Title: ${ticket.title}\n\n` +
-                    `📝 Details: ${ticket.details}\n\n` +
-                    `👤 Name: ${ticket.name}\n` +
-                    `🏢 Company: ${ticket.company}\n` +
-                    `${ticket.email ? `📧 Email: ${ticket.email}\n` : ''}` +
-                    `\nReady to submit? Type 'yes' to confirm or 'no' to cancel.`;
-                
-                await ctx.reply(previewMessage);
-                break;
-                
-            case SupportField.COMPLETE:
-                if (messageText.toLowerCase() === 'yes') {
-                    // Submit the ticket (this would connect to the Unthread API)
-                    await ctx.reply("Thank you! Your support ticket has been submitted.");
-                    logger.info(`Support ticket submitted by ${userState.ticket.name}: ${userState.ticket.title}`);
-                    // Here you would add code to actually submit to Unthread
-                } else {
-                    await ctx.reply("Support ticket creation cancelled.");
-                }
-                // Clear the state regardless of the answer
-                userStates.delete(userId);
+                await handleEmailField(ctx, userState, messageText);
                 break;
         }
         
@@ -208,6 +191,54 @@ export const processSupportConversation = async (ctx) => {
         return false;
     }
 };
+
+/**
+ * Handles the email field input and completes the ticket process
+ * 
+ * @param {object} ctx - The Telegraf context object
+ * @param {object} userState - The user's conversation state
+ * @param {string} messageText - The text message from the user
+ */
+async function handleEmailField(ctx, userState, messageText) {
+    const userId = ctx.from?.id;
+    
+    // Check if user wants to skip
+    if (messageText.toLowerCase() === 'skip') {
+        // Generate email in format {username_id@telegram.user}
+        const username = ctx.from.username || 'user';
+        userState.ticket.email = `${username}_${userId}@telegram.user`;
+    } else {
+        userState.ticket.email = messageText;
+    }
+    
+    // Complete the ticket process
+    userState.currentField = SupportField.COMPLETE;
+    
+    // Get the chat name
+    const chatName = ctx.chat.type !== 'private' ? ctx.chat.title : 'Individual Support';
+    
+    // Generate ticket title in format [Telegram Ticket] {group chat name}
+    const ticketTitle = `[Telegram Ticket] ${chatName}`;
+    
+    // Generate customer name in format [Telegram] {group chat name}
+    const customerName = `[Telegram] ${chatName}`;
+    
+    // Generate the ticket information
+    const ticket = userState.ticket;
+    const ticketMessage = `📩 Support Ticket Created\n\n` +
+        `🎫 Title: ${ticketTitle}\n\n` +
+        `📝 Summary: ${ticket.summary}\n\n` +
+        `👤 From: ${ticket.name}\n` +
+        `👥 Customer: ${customerName}\n` +
+        `📧 Email: ${ticket.email}`;
+    
+    await ctx.reply(ticketMessage);
+    
+    // Clear the user's state
+    if (userId) {
+        userStates.delete(userId);
+    }
+}
 
 export {
     startCommand,

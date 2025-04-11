@@ -12,7 +12,7 @@
  * - Add graceful shutdown mechanism
  * - Add webhook support as an alternative to polling
  */
-import { Telegraf } from 'telegraf';
+import { Telegraf, Markup } from 'telegraf';
 
 /**
  * Creates a new Telegram bot instance
