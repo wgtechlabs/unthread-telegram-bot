@@ -8,6 +8,7 @@
 import packageJSON from '../../package.json' with { type: 'json' };
 import * as logger from '../utils/logger.js';
 import { Markup } from 'telegraf';
+import * as unthreadService from '../services/unthread.js';
 
 // Store user conversation states
 const userStates = new Map();
@@ -18,6 +19,9 @@ const SupportField = {
   EMAIL: 'email',
   COMPLETE: 'complete'
 };
+
+// Customer ID cache to avoid creating duplicates
+const customerCache = new Map();
 
 /**
  * Handler for the /start command
@@ -93,6 +97,12 @@ const versionCommand = (ctx) => {
  */
 const supportCommand = async (ctx) => {
     try {
+        // Only allow support tickets in group chats
+        if (ctx.chat.type === 'private') {
+            await ctx.reply("Support tickets can only be created in group chats.");
+            return;
+        }
+        
         // Initialize state for this user
         const userId = ctx.from.id;
         userStates.set(userId, {
@@ -101,7 +111,8 @@ const supportCommand = async (ctx) => {
                 summary: '',
                 email: '',
                 name: ctx.from.username || `${ctx.from.first_name} ${ctx.from.last_name || ''}`.trim(),
-                company: ctx.chat && ctx.chat.type !== 'private' ? ctx.chat.title : 'Individual Support'
+                company: ctx.chat && ctx.chat.type !== 'private' ? ctx.chat.title : 'Individual Support',
+                chatId: ctx.chat.id
             }
         });
         
@@ -200,43 +211,110 @@ export const processSupportConversation = async (ctx) => {
  * @param {string} messageText - The text message from the user
  */
 async function handleEmailField(ctx, userState, messageText) {
-    const userId = ctx.from?.id;
-    
-    // Check if user wants to skip
-    if (messageText.toLowerCase() === 'skip') {
-        // Generate email in format {username_id@telegram.user}
-        const username = ctx.from.username || 'user';
-        userState.ticket.email = `${username}_${userId}@telegram.user`;
-    } else {
-        userState.ticket.email = messageText;
-    }
-    
-    // Complete the ticket process
-    userState.currentField = SupportField.COMPLETE;
-    
-    // Get the chat name
-    const chatName = ctx.chat.type !== 'private' ? ctx.chat.title : 'Individual Support';
-    
-    // Generate ticket title in format [Telegram Ticket] {group chat name}
-    const ticketTitle = `[Telegram Ticket] ${chatName}`;
-    
-    // Generate customer name in format [Telegram] {group chat name}
-    const customerName = `[Telegram] ${chatName}`;
-    
-    // Generate the ticket information
-    const ticket = userState.ticket;
-    const ticketMessage = `📩 Support Ticket Created\n\n` +
-        `🎫 Title: ${ticketTitle}\n\n` +
-        `📝 Summary: ${ticket.summary}\n\n` +
-        `👤 From: ${ticket.name}\n` +
-        `👥 Customer: ${customerName}\n` +
-        `📧 Email: ${ticket.email}`;
-    
-    await ctx.reply(ticketMessage);
-    
-    // Clear the user's state
-    if (userId) {
-        userStates.delete(userId);
+    try {
+        const userId = ctx.from?.id;
+        
+        // Check if user wants to skip
+        if (messageText.toLowerCase() === 'skip') {
+            // Generate email in format {username_id@telegram.user}
+            const username = ctx.from.username || 'user';
+            userState.ticket.email = `${username}_${userId}@telegram.user`;
+        } else {
+            userState.ticket.email = messageText;
+        }
+        
+        // Mark the ticket as complete
+        userState.currentField = SupportField.COMPLETE;
+        
+        // Get necessary information for ticket creation
+        const groupChatName = ctx.chat.title;
+        const username = ctx.from.username;
+        const summary = userState.ticket.summary;
+        
+        // Send a waiting message
+        const waitingMsg = await ctx.reply("Creating your support ticket... Please wait.");
+        
+        try {
+            // Step 1: Get or create a customer for this group chat
+            let customerId;
+            
+            // Check if we already have a customer ID for this chat
+            if (customerCache.has(ctx.chat.id)) {
+                customerId = customerCache.get(ctx.chat.id);
+                logger.info(`Using cached customer ID ${customerId} for chat ${groupChatName}`);
+            } else {
+                // Create a new customer in Unthread
+                const customerResponse = await unthreadService.createCustomer(groupChatName);
+                customerId = customerResponse.id;
+                
+                // Cache the customer ID for future use
+                customerCache.set(ctx.chat.id, customerId);
+                logger.info(`Created new customer with ID ${customerId} for chat ${groupChatName}`);
+            }
+            
+            // Step 2: Create a ticket with the customer ID
+            const ticketResponse = await unthreadService.createTicket({
+                groupChatName,
+                customerId,
+                summary,
+                username,
+                userId
+            });
+            
+            // Step 3: Generate success message with ticket ID
+            const ticketNumber = ticketResponse.friendlyId;
+            const ticketId = ticketResponse.id;
+            
+            // Create success message
+            const successMessage = `🎫 Support Ticket Created Successfully!\n\n` +
+                `Ticket #${ticketNumber}\n\n` +
+                `Your issue has been submitted and our team will be in touch soon. ` +
+                `Reply to this message to add more information to your ticket.`;
+            
+            // Send the success message
+            const confirmationMsg = await ctx.telegram.editMessageText(
+                ctx.chat.id, 
+                waitingMsg.message_id, 
+                null, 
+                successMessage
+            );
+            
+            // Register this confirmation message so we can track replies to it
+            unthreadService.registerTicketConfirmation({
+                messageId: confirmationMsg.message_id,
+                ticketId: ticketId,
+                friendlyId: ticketNumber,
+                customerId: customerId,
+                chatId: ctx.chat.id,
+                userId: userId
+            });
+            
+            // Log successful ticket creation
+            logger.info(`Created ticket #${ticketNumber} (ID: ${ticketId}) for user ${username || userId} in chat ${groupChatName}`);
+            
+        } catch (error) {
+            // Handle API errors
+            logger.error(`Error creating support ticket: ${error.message}`);
+            
+            // Update the waiting message with an error
+            await ctx.telegram.editMessageText(
+                ctx.chat.id,
+                waitingMsg.message_id,
+                null,
+                `⚠️ Error creating support ticket: ${error.message}. Please try again later.`
+            );
+        }
+        
+        // Clear the user's state
+        if (userId) {
+            userStates.delete(userId);
+        }
+    } catch (error) {
+        logger.error(`Error in handleEmailField: ${error.message}`);
+        await ctx.reply("Sorry, there was an error processing your support ticket. Please try again later.");
+        
+        // Clean up user state
+        userStates.delete(ctx.from?.id);
     }
 }
 

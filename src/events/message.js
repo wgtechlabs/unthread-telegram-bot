@@ -15,6 +15,7 @@
 
 import * as logger from '../utils/logger.js';
 import { processSupportConversation } from '../commands/index.js';
+import * as unthreadService from '../services/unthread.js';
 
 // Store for pattern-based message handlers
 const patternHandlers = [];
@@ -114,6 +115,15 @@ export async function handleMessage(ctx, next) {
             // Skip other handlers if this was a support conversation message
             return next();
         }
+        
+        // Check if this is a reply to a ticket confirmation
+        if (ctx.message.reply_to_message && ctx.message.text) {
+            const handled = await handleTicketReply(ctx);
+            if (handled) {
+                // Skip other handlers if this was a ticket reply
+                return next();
+            }
+        }
 
         // Process against pattern handlers
         const patternHandled = processPatterns(ctx);
@@ -133,6 +143,74 @@ export async function handleMessage(ctx, next) {
     } catch (error) {
         logger.error(`Error handling message: ${error.message}`);
         return next();
+    }
+}
+
+/**
+ * Handles replies to ticket confirmation messages
+ * 
+ * @param {object} ctx - The Telegraf context object
+ * @returns {boolean} - True if the message was processed as a ticket reply
+ */
+async function handleTicketReply(ctx) {
+    try {
+        // Get the ID of the message being replied to
+        const replyToMessageId = ctx.message.reply_to_message.message_id;
+        
+        // Check if this is a reply to a ticket confirmation
+        const ticketInfo = unthreadService.getTicketFromReply(replyToMessageId);
+        if (!ticketInfo) {
+            return false;
+        }
+        
+        // This is a reply to a ticket confirmation, send it to Unthread
+        const userId = ctx.from.id;
+        const username = ctx.from.username;
+        const message = ctx.message.text;
+        
+        // Send a waiting message
+        const waitingMsg = await ctx.reply("Adding your message to the ticket...", {
+            reply_to_message_id: ctx.message.message_id
+        });
+        
+        try {
+            // Send the message to the ticket
+            await unthreadService.sendMessage({
+                conversationId: ticketInfo.ticketId,
+                message,
+                username,
+                userId
+            });
+            
+            // Update the waiting message with success
+            await ctx.telegram.editMessageText(
+                ctx.chat.id,
+                waitingMsg.message_id,
+                null,
+                `✅ Your message has been added to Ticket #${ticketInfo.friendlyId}`
+            );
+            
+            logger.info(`Added message from user ${username || userId} to ticket #${ticketInfo.friendlyId}`);
+            return true;
+            
+        } catch (error) {
+            // Handle API errors
+            logger.error(`Error adding message to ticket: ${error.message}`);
+            
+            // Update the waiting message with error
+            await ctx.telegram.editMessageText(
+                ctx.chat.id,
+                waitingMsg.message_id,
+                null,
+                `⚠️ Error adding message to ticket: ${error.message}`
+            );
+            
+            return true;
+        }
+        
+    } catch (error) {
+        logger.error(`Error in handleTicketReply: ${error.message}`);
+        return false;
     }
 }
 
