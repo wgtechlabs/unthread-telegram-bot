@@ -14,9 +14,8 @@ dotenv.config();
 
 // API URLs and Auth Keys
 const API_BASE_URL = 'https://api.unthread.io/api';
-const CUSTOMER_API_KEY = process.env.CUSTOMER_API_KEY;
 const UNTHREAD_API_KEY = process.env.UNTHREAD_API_KEY;
-const CHANNEL_ID = 'C08DWG00P25';
+const CHANNEL_ID = process.env.UNTHREAD_CHANNEL_ID;
 
 // Store ticket confirmations by message ID
 // Format: { messageId: { ticketId, friendlyId, customerId, chatId, userId } }
