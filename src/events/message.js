@@ -103,7 +103,7 @@ export async function handleMessage(ctx, next) {
     try {
         // Skip if there's no message or chat
         if (!ctx.message || !ctx.chat) {
-            return next();
+            return await next();
         }
 
         // Log basic information about the message
@@ -121,7 +121,7 @@ export async function handleMessage(ctx, next) {
         const isSupportMessage = await processSupportConversation(ctx);
         if (isSupportMessage) {
             // Skip other handlers if this was a support conversation message
-            return next();
+            return await next();
         }
         
         // Check if this is a reply to a ticket confirmation
@@ -129,7 +129,7 @@ export async function handleMessage(ctx, next) {
             const handled = await handleTicketReply(ctx);
             if (handled) {
                 // Skip other handlers if this was a ticket reply
-                return next();
+                return await next();
             }
         }
 
@@ -147,10 +147,10 @@ export async function handleMessage(ctx, next) {
         }
 
         // Continue processing with other handlers
-        return next();
+        return await next();
     } catch (error) {
         logger.error(`Error handling message: ${error.message}`);
-        return next();
+        return await next();
     }
 }
 

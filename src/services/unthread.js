@@ -17,6 +17,17 @@ const API_BASE_URL = 'https://api.unthread.io/api';
 const UNTHREAD_API_KEY = process.env.UNTHREAD_API_KEY;
 const CHANNEL_ID = process.env.UNTHREAD_CHANNEL_ID;
 
+// Validate required environment variables
+if (!UNTHREAD_API_KEY) {
+    console.error('ERROR: UNTHREAD_API_KEY environment variable is required but not defined');
+    process.exit(1);
+}
+
+if (!CHANNEL_ID) {
+    console.error('ERROR: UNTHREAD_CHANNEL_ID environment variable is required but not defined');
+    process.exit(1);
+}
+
 // Store ticket confirmations by message ID
 // Format: { messageId: { ticketId, friendlyId, customerId, chatId, userId } }
 const ticketConfirmations = new Map();

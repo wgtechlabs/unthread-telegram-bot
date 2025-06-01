@@ -152,11 +152,10 @@ export const processSupportConversation = async (ctx) => {
                 if (userState.currentField === SupportField.EMAIL) {
                     // Process as if user typed "skip"
                     await handleEmailField(ctx, userState, 'skip');
-                    // Answer the callback query to remove the "loading" state of the button
-                    await ctx.answerCbQuery();
-                    return true;
                 }
             }
+            // Answer the callback query to remove the "loading" state of the button
+            await ctx.answerCbQuery();
             // Important: We need to return true here to indicate we handled the callback
             return true;
         }
