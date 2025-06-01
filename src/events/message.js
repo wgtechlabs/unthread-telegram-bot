@@ -107,7 +107,15 @@ export async function handleMessage(ctx, next) {
         }
 
         // Log basic information about the message
-        logger.info(`Received message from chat type: ${ctx.chat.type}`);
+        logger.debug('Processing message', {
+            chatType: ctx.chat.type,
+            chatId: ctx.chat.id,
+            messageId: ctx.message.message_id,
+            userId: ctx.from?.id,
+            username: ctx.from?.username,
+            hasText: !!ctx.message.text,
+            hasReply: !!ctx.message.reply_to_message
+        });
         
         // Check if this is part of a support conversation
         const isSupportMessage = await processSupportConversation(ctx);
@@ -190,12 +198,28 @@ async function handleTicketReply(ctx) {
                 `✅ Your message has been added to Ticket #${ticketInfo.friendlyId}`
             );
             
-            logger.info(`Added message from user ${username || userId} to ticket #${ticketInfo.friendlyId}`);
+            logger.success('Added message to ticket', {
+                ticketNumber: ticketInfo.friendlyId,
+                ticketId: ticketInfo.ticketId,
+                userId,
+                username,
+                messageLength: message?.length,
+                chatId: ctx.chat.id
+            });
             return true;
             
         } catch (error) {
             // Handle API errors
-            logger.error(`Error adding message to ticket: ${error.message}`);
+            logger.error('Error adding message to ticket', {
+                error: error.message,
+                stack: error.stack,
+                ticketNumber: ticketInfo.friendlyId,
+                ticketId: ticketInfo.ticketId,
+                userId,
+                username,
+                messageLength: message?.length,
+                chatId: ctx.chat.id
+            });
             
             // Update the waiting message with error
             await ctx.telegram.editMessageText(
@@ -209,7 +233,15 @@ async function handleTicketReply(ctx) {
         }
         
     } catch (error) {
-        logger.error(`Error in handleTicketReply: ${error.message}`);
+        logger.error('Error in handleTicketReply', {
+            error: error.message,
+            stack: error.stack,
+            replyToMessageId: ctx.message?.reply_to_message?.message_id,
+            userId: ctx.from?.id,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id,
+            hasTicketInfo: !!unthreadService.getTicketFromReply(ctx.message?.reply_to_message?.message_id)
+        });
         return false;
     }
 }
@@ -222,13 +254,24 @@ async function handleTicketReply(ctx) {
 export async function handlePrivateMessage(ctx) {
     try {
         // Log information about the private message
-        logger.info(`Processing private message from user: ${ctx.from?.first_name} ${ctx.from?.last_name || ''} (ID: ${ctx.from?.id})`);
+        logger.info('Processing private message', {
+            userId: ctx.from?.id,
+            username: ctx.from?.username,
+            firstName: ctx.from?.first_name,
+            lastName: ctx.from?.last_name,
+            messageId: ctx.message?.message_id
+        });
         
         // Inform the user that the bot doesn't support private conversations
         await ctx.reply("Sorry, this bot does not have feature to assist you via Telegram DM");
         
     } catch (error) {
-        logger.error(`Error in handlePrivateMessage: ${error.message}`);
+        logger.error('Error in handlePrivateMessage', {
+            error: error.message,
+            stack: error.stack,
+            userId: ctx.from?.id,
+            username: ctx.from?.username
+        });
     }
 }
 

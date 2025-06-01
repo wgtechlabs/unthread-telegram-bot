@@ -7,6 +7,11 @@
   resolved "https://registry.npmjs.org/@telegraf/types/-/types-7.1.0.tgz"
   integrity sha512-kGevOIbpMcIlCDeorKGpwZmdH7kHbqlk/Yj6dEpJMKEQw5lk0KVQY0OLXaCswy8GqlIVLd5625OB+rAntP9xVw==
 
+"@wgtechlabs/log-engine@^1.2.0":
+  version "1.2.0"
+  resolved "https://registry.npmjs.org/@wgtechlabs/log-engine/-/log-engine-1.2.0.tgz"
+  integrity sha512-1O8MEATwXM5BVHQg+Mr8PeRaJw6OTEuScRUWXKevBLVHe9AdC+eYuibpp6n0+VhZRu4LZe4tzjoZx2K3ae7sbg==
+
 abort-controller@^3.0.0:
   version "3.0.0"
   resolved "https://registry.npmjs.org/abort-controller/-/abort-controller-3.0.0.tgz"
@@ -206,7 +211,7 @@ node-fetch@^2.7.0:
 
 node-fetch@^3.3.2:
   version "3.3.2"
-  resolved "https://registry.yarnpkg.com/node-fetch/-/node-fetch-3.3.2.tgz#d1e889bacdf733b4ff3b2b243eb7a12866a0b78b"
+  resolved "https://registry.npmjs.org/node-fetch/-/node-fetch-3.3.2.tgz"
   integrity sha512-dRB78srN/l6gqWulah9SrxeYnxeddIG30+GOqK/9OlLVyLg3HPnr6SqOWTWOXKRwC2eGYCkZ59NNuSgvSrpgOA==
   dependencies:
     data-uri-to-buffer "^4.0.0"

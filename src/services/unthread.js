@@ -49,7 +49,12 @@ export async function createCustomer(groupChatName) {
 
         return await response.json();
     } catch (error) {
-        logger.error(`Error creating customer: ${error.message}`);
+        logger.error('Error creating customer', {
+            error: error.message,
+            stack: error.stack,
+            groupChatName,
+            apiUrl: `${API_BASE_URL}/customers`
+        });
         throw error;
     }
 }
@@ -105,7 +110,15 @@ export async function createTicket({ groupChatName, customerId, summary, usernam
 
         return await response.json();
     } catch (error) {
-        logger.error(`Error creating ticket: ${error.message}`);
+        logger.error('Error creating ticket', {
+            error: error.message,
+            stack: error.stack,
+            groupChatName,
+            customerId,
+            username,
+            userId,
+            apiUrl: `${API_BASE_URL}/conversations`
+        });
         throw error;
     }
 }
@@ -154,7 +167,15 @@ export async function sendMessage({ conversationId, message, username, userId })
 
         return await response.json();
     } catch (error) {
-        logger.error(`Error sending message: ${error.message}`);
+        logger.error('Error sending message', {
+            error: error.message,
+            stack: error.stack,
+            conversationId,
+            username,
+            userId,
+            messageLength: message?.length,
+            apiUrl: `${API_BASE_URL}/conversations/${conversationId}/messages`
+        });
         throw error;
     }
 }
@@ -180,7 +201,15 @@ export function registerTicketConfirmation({ messageId, ticketId, friendlyId, cu
         createdAt: Date.now() // Add timestamp for potential cleanup later
     });
     
-    logger.info(`Registered ticket confirmation with message ID ${messageId} for ticket #${friendlyId}`);
+    logger.info('Registered ticket confirmation', {
+        messageId,
+        ticketId,
+        friendlyId,
+        customerId,
+        chatId,
+        userId,
+        confirmationsCount: ticketConfirmations.size
+    });
 }
 
 /**

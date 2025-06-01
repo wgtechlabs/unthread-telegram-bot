@@ -1,18 +1,20 @@
 {
   "name": "telegram-bot",
   "version": "0.1.0-alpha",
-  "description": "A Telegram bot integrated with Unthread API",
+  "description": "A Telegram bot integrated with Unthread API featuring enhanced logging with @wgtechlabs/log-engine",
   "main": "src/index.js",
   "type": "module",
   "private": true,
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.0.0",
+    "yarn": ">=1.22.0"
   },
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js"
   },
   "dependencies": {
+    "@wgtechlabs/log-engine": "^1.2.0",
     "dotenv": "^16.4.7",
     "node-fetch": "^3.3.2",
     "telegraf": "^4.0.0"
@@ -25,5 +27,6 @@
     "bot"
   ],
   "author": "Waren Gonzaga <opensource@warengonzaga.com> (https://warengonzaga.com)",
-  "license": "AGPL-3.0-only"
+  "license": "AGPL-3.0-only",
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

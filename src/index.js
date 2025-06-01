@@ -49,9 +49,30 @@ const bot = createBot(process.env.TELEGRAM_BOT_TOKEN);
  */
 bot.use(async (ctx, next) => {
     if (ctx.message && ctx.message.text) {
-        logger.info(`Received a message: ${ctx.message.text}`);
-    } else {
-        logger.info('Received a message (non-text)');
+        logger.debug('Received text message', {
+            messageId: ctx.message.message_id,
+            chatId: ctx.chat.id,
+            chatType: ctx.chat.type,
+            chatTitle: ctx.chat.title,
+            userId: ctx.from?.id,
+            username: ctx.from?.username,
+            firstName: ctx.from?.first_name,
+            messageLength: ctx.message.text.length,
+            isCommand: ctx.message.text.startsWith('/'),
+            isReply: !!ctx.message.reply_to_message
+        });
+    } else if (ctx.message) {
+        logger.debug('Received non-text message', {
+            messageId: ctx.message.message_id,
+            chatId: ctx.chat.id,
+            chatType: ctx.chat.type,
+            chatTitle: ctx.chat.title,
+            userId: ctx.from?.id,
+            username: ctx.from?.username,
+            messageType: Object.keys(ctx.message).find(key => 
+                ['photo', 'document', 'sticker', 'video', 'audio', 'voice', 'animation'].includes(key)
+            ) || 'unknown'
+        });
     }
     await next();
 });
@@ -94,7 +115,14 @@ bot.on('callback_query', async (ctx) => {
         // Route callback queries through the processSupportConversation function
         await processSupportConversation(ctx);
     } catch (error) {
-        logger.error(`Error handling callback query: ${error.message}`);
+        logger.error('Error handling callback query', {
+            error: error.message,
+            stack: error.stack,
+            callbackData: ctx.callbackQuery?.data,
+            userId: ctx.from?.id,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id
+        });
     }
 });
 
@@ -112,10 +140,14 @@ bot.on('callback_query', async (ctx) => {
  * - Consider webhook mode for production
  */
 bot.botInfo = await bot.telegram.getMe();
-logger.info(`Bot started with username: @${bot.botInfo.username}`);
-logger.info(`Bot version: ${packageJSON.version}`);
-logger.info(`Bot ID: ${bot.botInfo.id}`);
-logger.info('Bot is running...');
+logger.success('Bot initialized successfully', {
+    username: bot.botInfo.username,
+    botId: bot.botInfo.id,
+    version: packageJSON.version,
+    nodeVersion: process.version,
+    platform: process.platform
+});
+logger.info('Bot is running and listening for messages...');
 /**
  * Start polling for updates
  * 

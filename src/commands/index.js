@@ -119,7 +119,14 @@ const supportCommand = async (ctx) => {
         // Ask for the first field
         await ctx.reply("Let's create a support ticket. Please provide your issue summary:");
     } catch (error) {
-        logger.error(`Error in supportCommand: ${error.message}`);
+        logger.error('Error in supportCommand', {
+            error: error.message,
+            stack: error.stack,
+            userId: ctx.from?.id,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id,
+            chatType: ctx.chat?.type
+        });
         await ctx.reply("Sorry, there was an error starting the support ticket process. Please try again later.");
     }
 };
@@ -198,7 +205,15 @@ export const processSupportConversation = async (ctx) => {
         return true;
         
     } catch (error) {
-        logger.error(`Error in processSupportConversation: ${error.message}`);
+        logger.error('Error in processSupportConversation', {
+            error: error.message,
+            stack: error.stack,
+            userId: ctx.from?.id,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id,
+            hasMessage: !!ctx.message,
+            isCallbackQuery: !!ctx.callbackQuery
+        });
         return false;
     }
 };
@@ -241,7 +256,11 @@ async function handleEmailField(ctx, userState, messageText) {
             // Check if we already have a customer ID for this chat
             if (customerCache.has(ctx.chat.id)) {
                 customerId = customerCache.get(ctx.chat.id);
-                logger.info(`Using cached customer ID ${customerId} for chat ${groupChatName}`);
+                logger.debug('Using cached customer', {
+                    customerId,
+                    chatId: ctx.chat.id,
+                    groupChatName
+                });
             } else {
                 // Create a new customer in Unthread
                 const customerResponse = await unthreadService.createCustomer(groupChatName);
@@ -249,7 +268,12 @@ async function handleEmailField(ctx, userState, messageText) {
                 
                 // Cache the customer ID for future use
                 customerCache.set(ctx.chat.id, customerId);
-                logger.info(`Created new customer with ID ${customerId} for chat ${groupChatName}`);
+                logger.success('Created new customer', {
+                    customerId,
+                    chatId: ctx.chat.id,
+                    groupChatName,
+                    cacheSize: customerCache.size
+                });
             }
             
             // Step 2: Create a ticket with the customer ID
@@ -290,11 +314,27 @@ async function handleEmailField(ctx, userState, messageText) {
             });
             
             // Log successful ticket creation
-            logger.info(`Created ticket #${ticketNumber} (ID: ${ticketId}) for user ${username || userId} in chat ${groupChatName}`);
+            logger.success('Support ticket created successfully', {
+                ticketNumber,
+                ticketId,
+                customerId,
+                userId,
+                username,
+                groupChatName,
+                email: userState.ticket.email,
+                summaryLength: summary?.length
+            });
             
         } catch (error) {
             // Handle API errors
-            logger.error(`Error creating support ticket: ${error.message}`);
+            logger.error('Error creating support ticket', {
+                error: error.message,
+                stack: error.stack,
+                groupChatName,
+                userId,
+                username,
+                summaryLength: summary?.length
+            });
             
             // Update the waiting message with an error
             await ctx.telegram.editMessageText(
@@ -310,7 +350,14 @@ async function handleEmailField(ctx, userState, messageText) {
             userStates.delete(userId);
         }
     } catch (error) {
-        logger.error(`Error in handleEmailField: ${error.message}`);
+        logger.error('Error in handleEmailField', {
+            error: error.message,
+            stack: error.stack,
+            userId: ctx.from?.id,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id,
+            messageText: messageText?.substring(0, 100) // Log first 100 chars for context
+        });
         await ctx.reply("Sorry, there was an error processing your support ticket. Please try again later.");
         
         // Clean up user state
