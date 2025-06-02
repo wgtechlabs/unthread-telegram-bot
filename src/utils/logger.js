@@ -116,5 +116,14 @@ export function success(message, meta = {}) {
 // Export the LogEngine instance and LogMode for advanced usage
 export { LogEngine, LogMode };
 
+// Create a logger object with all the logging methods
+export const logger = {
+    info,
+    error,
+    warn,
+    debug,
+    success
+};
+
 // Log the logger initialization
 LogEngine.log(`Logger initialized with @wgtechlabs/log-engine (Mode: ${currentMode})`);

@@ -166,10 +166,41 @@ async function handleTicketReply(ctx) {
         const replyToMessageId = ctx.message.reply_to_message.message_id;
         
         // Check if this is a reply to a ticket confirmation
-        const ticketInfo = unthreadService.getTicketFromReply(replyToMessageId);
-        if (!ticketInfo) {
-            return false;
+        const ticketInfo = await unthreadService.getTicketFromReply(replyToMessageId);
+        if (ticketInfo) {
+            return await handleTicketConfirmationReply(ctx, ticketInfo);
         }
+        
+        // Check if this is a reply to an agent message
+        const agentMessageInfo = await unthreadService.getAgentMessageFromReply(replyToMessageId);
+        if (agentMessageInfo) {
+            return await handleAgentMessageReply(ctx, agentMessageInfo);
+        }
+        
+        return false;
+    } catch (error) {
+        logger.error('Error in handleTicketReply', {
+            error: error.message,
+            stack: error.stack,
+            replyToMessageId: ctx.message?.reply_to_message?.message_id,
+            userId: ctx.from?.id,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id,
+            messageText: ctx.message?.text?.substring(0, 100)
+        });
+        return false;
+    }
+}
+
+/**
+ * Handles replies to ticket confirmation messages
+ * 
+ * @param {object} ctx - The Telegraf context object
+ * @param {object} ticketInfo - The ticket information
+ * @returns {boolean} - True if the message was processed
+ */
+async function handleTicketConfirmationReply(ctx, ticketInfo) {
+    try {
         
         // This is a reply to a ticket confirmation, send it to Unthread
         const userId = ctx.from.id;
@@ -247,6 +278,90 @@ async function handleTicketReply(ctx) {
 }
 
 /**
+ * Handles replies to agent messages
+ * 
+ * @param {object} ctx - The Telegraf context object
+ * @param {object} agentMessageInfo - The agent message information
+ * @returns {boolean} - True if the message was processed
+ */
+async function handleAgentMessageReply(ctx, agentMessageInfo) {
+    try {
+        // This is a reply to an agent message, send it back to Unthread
+        const userId = ctx.from.id;
+        const username = ctx.from.username;
+        const message = ctx.message.text;
+        
+        // Send a waiting message
+        const waitingMsg = await ctx.reply("Sending your reply to the agent...", {
+            reply_to_message_id: ctx.message.message_id
+        });
+        
+        try {
+            // Send the message to the conversation
+            await unthreadService.sendMessage({
+                conversationId: agentMessageInfo.conversationId,
+                message,
+                username,
+                userId
+            });
+            
+            // Update the waiting message with success
+            await ctx.telegram.editMessageText(
+                ctx.chat.id,
+                waitingMsg.message_id,
+                null,
+                `✅ Your reply has been sent to the agent for Ticket #${agentMessageInfo.friendlyId}`
+            );
+            
+            logger.success('Sent reply to agent', {
+                ticketNumber: agentMessageInfo.friendlyId,
+                conversationId: agentMessageInfo.conversationId,
+                userId,
+                username,
+                messageLength: message?.length,
+                chatId: ctx.chat.id
+            });
+            return true;
+            
+        } catch (error) {
+            // Handle API errors
+            logger.error('Error sending reply to agent', {
+                error: error.message,
+                stack: error.stack,
+                ticketNumber: agentMessageInfo.friendlyId,
+                conversationId: agentMessageInfo.conversationId,
+                userId,
+                username,
+                messageLength: message?.length,
+                chatId: ctx.chat.id
+            });
+            
+            // Update the waiting message with error
+            await ctx.telegram.editMessageText(
+                ctx.chat.id,
+                waitingMsg.message_id,
+                null,
+                `⚠️ Error sending reply to agent: ${error.message}`
+            );
+            
+            return true;
+        }
+        
+    } catch (error) {
+        logger.error('Error in handleAgentMessageReply', {
+            error: error.message,
+            stack: error.stack,
+            agentMessageId: agentMessageInfo?.messageId,
+            conversationId: agentMessageInfo?.conversationId,
+            userId: ctx.from?.id,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id
+        });
+        return false;
+    }
+}
+
+/**
  * Handles messages from private chats (direct messages to the bot)
  * 
  * @param {object} ctx - The Telegraf context object
@@ -290,9 +405,12 @@ export async function handleGroupMessage(ctx) {
             logger.info(`Message sent by: ${ctx.from.first_name} ${ctx.from.last_name || ''} (ID: ${ctx.from.id})`);
         }
         
-        // Reply directly to the original message using reply_to_message_id
-        await ctx.reply("This is working", {
-            reply_to_message_id: ctx.message.message_id
+        // Messages that reach here are general group messages that don't require special handling
+        // Ticket replies and agent message replies are handled by handleTicketReply function
+        logger.debug('General group message - no special action needed', {
+            messageId: ctx.message?.message_id,
+            hasReply: !!ctx.message?.reply_to_message,
+            replyToId: ctx.message?.reply_to_message?.message_id
         });
         
     } catch (error) {

@@ -8,10 +8,8 @@
 import packageJSON from '../../package.json' with { type: 'json' };
 import * as logger from '../utils/logger.js';
 import { Markup } from 'telegraf';
+import { BotsStore } from '../sdk/bots-brain/index.js';
 import * as unthreadService from '../services/unthread.js';
-
-// Store user conversation states
-const userStates = new Map();
 
 // Support form field enum
 const SupportField = {
@@ -103,9 +101,9 @@ const supportCommand = async (ctx) => {
             return;
         }
         
-        // Initialize state for this user
+        // Initialize state for this user using BotsStore
         const userId = ctx.from.id;
-        userStates.set(userId, {
+        const userStateData = {
             currentField: SupportField.SUMMARY,
             ticket: {
                 summary: '',
@@ -114,7 +112,10 @@ const supportCommand = async (ctx) => {
                 company: ctx.chat && ctx.chat.type !== 'private' ? ctx.chat.title : 'Individual Support',
                 chatId: ctx.chat.id
             }
-        });
+        };
+        
+        // Store user state using BotsStore
+        await BotsStore.setUserState(userId, userStateData);
         
         // Ask for the first field
         await ctx.reply("Let's create a support ticket. Please provide your issue summary:");
@@ -141,14 +142,18 @@ export const processSupportConversation = async (ctx) => {
     try {
         // Check if this user has an active support ticket conversation
         const userId = ctx.from?.id;
-        if (!userId || !userStates.has(userId)) {
+        if (!userId) {
+            return false;
+        }
+        
+        const userState = await BotsStore.getUserState(userId);
+        if (!userState) {
             return false;
         }
 
         // Handle callback queries (button clicks)
         if (ctx.callbackQuery) {
             if (ctx.callbackQuery.data === 'skip_email') {
-                const userState = userStates.get(userId);
                 if (userState.currentField === SupportField.EMAIL) {
                     // Process as if user typed "skip"
                     await handleEmailField(ctx, userState, 'skip');
@@ -165,14 +170,13 @@ export const processSupportConversation = async (ctx) => {
             return false;
         }
 
-        const userState = userStates.get(userId);
         const messageText = ctx.message.text.trim();
 
         // Handle commands in the middle of a conversation
         if (messageText.startsWith('/')) {
             // Allow /cancel to abort the process
             if (messageText === '/cancel') {
-                userStates.delete(userId);
+                await BotsStore.clearUserState(userId);
                 await ctx.reply("Support ticket creation cancelled.");
                 return true;
             }
@@ -185,6 +189,9 @@ export const processSupportConversation = async (ctx) => {
             case SupportField.SUMMARY:
                 userState.ticket.summary = messageText;
                 userState.currentField = SupportField.EMAIL;
+                
+                // Update user state in BotsStore
+                await BotsStore.setUserState(userId, userState);
                 
                 // Ask for email with skip button
                 await ctx.reply(
@@ -303,7 +310,7 @@ async function handleEmailField(ctx, userState, messageText) {
             );
             
             // Register this confirmation message so we can track replies to it
-            unthreadService.registerTicketConfirmation({
+            await unthreadService.registerTicketConfirmation({
                 messageId: confirmationMsg.message_id,
                 ticketId: ticketId,
                 friendlyId: ticketNumber,
@@ -344,9 +351,9 @@ async function handleEmailField(ctx, userState, messageText) {
             );
         }
         
-        // Clear the user's state
+        // Clear the user's state using BotsStore
         if (userId) {
-            userStates.delete(userId);
+            await BotsStore.clearUserState(userId);
         }
     } catch (error) {
         logger.error('Error in handleEmailField', {
@@ -359,8 +366,8 @@ async function handleEmailField(ctx, userState, messageText) {
         });
         await ctx.reply("Sorry, there was an error processing your support ticket. Please try again later.");
         
-        // Clean up user state
-        userStates.delete(ctx.from?.id);
+        // Clean up user state using BotsStore
+        await BotsStore.clearUserState(ctx.from?.id);
     }
 }
 

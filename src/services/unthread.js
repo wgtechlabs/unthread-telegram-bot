@@ -7,6 +7,7 @@
 
 import fetch from 'node-fetch';
 import * as logger from '../utils/logger.js';
+import { BotsStore } from '../sdk/bots-brain/index.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -28,9 +29,8 @@ if (!CHANNEL_ID) {
     process.exit(1);
 }
 
-// Store ticket confirmations by message ID
-// Format: { messageId: { ticketId, friendlyId, customerId, chatId, userId } }
-const ticketConfirmations = new Map();
+// Customer ID cache to avoid creating duplicates
+const customerCache = new Map();
 
 /**
  * Creates a new customer in Unthread
@@ -192,7 +192,7 @@ export async function sendMessage({ conversationId, message, username, userId })
 }
 
 /**
- * Registers a ticket confirmation message
+ * Registers a ticket confirmation message using BotsStore
  * 
  * @param {object} ticketInfo - The ticket information to store
  * @param {number} ticketInfo.messageId - The Telegram message ID of the confirmation
@@ -202,57 +202,109 @@ export async function sendMessage({ conversationId, message, username, userId })
  * @param {number} ticketInfo.chatId - The Telegram chat ID
  * @param {number} ticketInfo.userId - The Telegram user ID of the ticket creator
  */
-export function registerTicketConfirmation({ messageId, ticketId, friendlyId, customerId, chatId, userId }) {
-    ticketConfirmations.set(messageId, {
-        ticketId,
-        friendlyId,
-        customerId,
-        chatId,
-        userId,
-        createdAt: Date.now() // Add timestamp for potential cleanup later
-    });
-    
-    logger.info('Registered ticket confirmation', {
-        messageId,
-        ticketId,
-        friendlyId,
-        customerId,
-        chatId,
-        userId,
-        confirmationsCount: ticketConfirmations.size
-    });
+export async function registerTicketConfirmation({ messageId, ticketId, friendlyId, customerId, chatId, userId }) {
+    try {
+        const ticketData = {
+            ticketId,
+            friendlyId,
+            customerId,
+            chatId,
+            userId,
+            createdAt: Date.now()
+        };
+        
+        // Store ticket mapping using BotsStore
+        await BotsStore.storeTicket({
+            messageId: messageId,
+            conversationId: ticketId,
+            friendlyId: friendlyId,
+            chatId: chatId,
+            userId: userId,
+            ticketId: ticketId,
+            createdAt: Date.now()
+        });
+        
+        logger.info('Registered ticket confirmation', {
+            messageId,
+            ticketId,
+            friendlyId,
+            customerId,
+            chatId,
+            userId
+        });
+    } catch (error) {
+        logger.error('Error registering ticket confirmation', {
+            error: error.message,
+            stack: error.stack,
+            messageId,
+            ticketId,
+            friendlyId
+        });
+        throw error;
+    }
 }
 
 /**
- * Checks if a message is a reply to a ticket confirmation
+ * Checks if a message is a reply to a ticket confirmation using BotsStore
  * 
  * @param {number} replyToMessageId - The message ID this message is replying to
  * @returns {object|null} - The ticket information or null if not a ticket reply
  */
-export function getTicketFromReply(replyToMessageId) {
-    return ticketConfirmations.get(replyToMessageId) || null;
+export async function getTicketFromReply(replyToMessageId) {
+    try {
+        const ticketData = await BotsStore.getTicketByTelegramMessageId(replyToMessageId);
+        return ticketData ? ticketData.metadata : null;
+    } catch (error) {
+        logger.error('Error getting ticket from reply', {
+            error: error.message,
+            stack: error.stack,
+            replyToMessageId
+        });
+        return null;
+    }
 }
 
 /**
- * Gets all active ticket confirmations for a specific chat
+ * Checks if a message is a reply to an agent message using BotsStore
+ * 
+ * @param {number} replyToMessageId - The message ID this message is replying to
+ * @returns {object|null} - The agent message information or null if not an agent message reply
+ */
+export async function getAgentMessageFromReply(replyToMessageId) {
+    try {
+        const agentMessageData = await BotsStore.getAgentMessageByTelegramId(replyToMessageId);
+        return agentMessageData || null;
+    } catch (error) {
+        logger.error('Error getting agent message from reply', {
+            error: error.message,
+            stack: error.stack,
+            replyToMessageId
+        });
+        return null;
+    }
+}
+
+/**
+ * Gets all active ticket confirmations for a specific chat using BotsStore
  * 
  * @param {number} chatId - The Telegram chat ID
  * @returns {Array<object>} - Array of ticket confirmation info for this chat
  */
-export function getTicketsForChat(chatId) {
-    const chatTickets = [];
-    
-    for (const [messageId, ticketInfo] of ticketConfirmations.entries()) {
-        if (ticketInfo.chatId === chatId) {
-            chatTickets.push({
-                messageId,
-                ...ticketInfo
-            });
-        }
+export async function getTicketsForChat(chatId) {
+    try {
+        // Note: This would require a new method in BotsStore to search by chatId
+        // For now, we'll return an empty array and implement this if needed
+        logger.debug('getTicketsForChat called but not yet implemented with BotsStore', { chatId });
+        return [];
+    } catch (error) {
+        logger.error('Error getting tickets for chat', {
+            error: error.message,
+            stack: error.stack,
+            chatId
+        });
+        return [];
     }
-    
-    return chatTickets;
 }
 
-// Export the ticket confirmations map for potential use in other modules
-export { ticketConfirmations };
+// Export the customer cache for potential use in other modules
+export { customerCache };

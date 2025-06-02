@@ -18,6 +18,10 @@ dotenv.config();
 import { createBot, configureCommands, startPolling } from './bot.js';
 import { startCommand, helpCommand, versionCommand, supportCommand, processSupportConversation } from './commands/index.js';
 import { handleMessage, registerTextPattern } from './events/message.js';
+import { db } from './database/connection.js';
+import { BotsStore } from './sdk/bots-brain/index.js';
+import { WebhookConsumer } from './sdk/unthread-webhook/index.js';
+import { TelegramWebhookHandler } from './handlers/webhookMessage.js';
 import packageJSON from '../package.json' with { type: 'json' };
 import * as logger from './utils/logger.js';
 
@@ -127,6 +131,71 @@ bot.on('callback_query', async (ctx) => {
 });
 
 /**
+ * Database and Storage initialization
+ * 
+ * Initialize database connection and storage layers before starting the bot
+ */
+try {
+    await db.connect();
+    logger.success('Database initialized successfully');
+    
+    // Initialize the BotsStore with database connection and platform Redis URL
+    await BotsStore.initialize(db, process.env.PLATFORM_REDIS_URL);
+    logger.success('BotsStore initialized successfully');
+} catch (error) {
+    logger.error('Failed to initialize database or storage', {
+        error: error.message,
+        stack: error.stack
+    });
+    process.exit(1);
+}
+
+/**
+ * Webhook Consumer and Handler initialization
+ * 
+ * Initialize the webhook consumer to listen for Unthread events
+ * and the handler to process agent messages
+ */
+let webhookConsumer;
+let webhookHandler;
+
+try {
+    // Check if webhook Redis URL is available before initializing webhook consumer
+    if (process.env.WEBHOOK_REDIS_URL) {
+        // Initialize webhook consumer with dedicated webhook Redis URL
+        webhookConsumer = new WebhookConsumer({
+            redisUrl: process.env.WEBHOOK_REDIS_URL,
+            queueName: process.env.WEBHOOK_QUEUE_NAME || 'unthread-events',
+            pollInterval: parseInt(process.env.WEBHOOK_POLL_INTERVAL) || 1000
+        });
+
+        // Initialize webhook handler
+        const botsStore = BotsStore.getInstance();
+        webhookHandler = new TelegramWebhookHandler(bot, botsStore);
+
+        // Subscribe to agent message events from dashboard
+        webhookConsumer.subscribe('message_created', 'dashboard', 
+            webhookHandler.handleMessageCreated.bind(webhookHandler)
+        );
+
+        // Start the webhook consumer
+        await webhookConsumer.start();
+        logger.success('Webhook consumer started successfully');
+    } else {
+        logger.warn('Webhook Redis URL not configured - webhook processing disabled');
+        logger.info('Bot will run in basic mode (ticket creation only)');
+    }
+
+} catch (error) {
+    logger.error('Failed to initialize webhook consumer', {
+        error: error.message,
+        stack: error.stack
+    });
+    // Don't exit - bot can still work for ticket creation without webhook processing
+    logger.warn('Bot will continue without webhook processing capabilities');
+}
+
+/**
  * Bot initialization and startup
  * 
  * Possible Bugs:
@@ -160,3 +229,44 @@ logger.info('Bot is running and listening for messages...');
  * - Add graceful shutdown on SIGINT/SIGTERM
  */
 startPolling(bot);
+
+/**
+ * Graceful shutdown handler
+ * 
+ * Properly close database connections, stop webhook consumer, and stop the bot on shutdown
+ */
+process.on('SIGINT', async () => {
+    logger.info('Received SIGINT, shutting down gracefully...');
+    try {
+        if (webhookConsumer) {
+            await webhookConsumer.stop();
+            logger.info('Webhook consumer stopped');
+        }
+        await BotsStore.shutdown();
+        logger.info('BotsStore shutdown complete');
+        await db.close();
+        logger.info('Database connections closed');
+        process.exit(0);
+    } catch (error) {
+        logger.error('Error during shutdown', { error: error.message });
+        process.exit(1);
+    }
+});
+
+process.on('SIGTERM', async () => {
+    logger.info('Received SIGTERM, shutting down gracefully...');
+    try {
+        if (webhookConsumer) {
+            await webhookConsumer.stop();
+            logger.info('Webhook consumer stopped');
+        }
+        await BotsStore.shutdown();
+        logger.info('BotsStore shutdown complete');
+        await db.close();
+        logger.info('Database connections closed');
+        process.exit(0);
+    } catch (error) {
+        logger.error('Error during shutdown', { error: error.message });
+        process.exit(1);
+    }
+});
