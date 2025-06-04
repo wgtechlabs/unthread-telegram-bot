@@ -18,9 +18,6 @@ const SupportField = {
   COMPLETE: 'complete'
 };
 
-// Customer ID cache to avoid creating duplicates
-const customerCache = new Map();
-
 /**
  * Handler for the /start command
  * 
@@ -256,31 +253,21 @@ async function handleEmailField(ctx, userState, messageText) {
         const waitingMsg = await ctx.reply("Creating your support ticket... Please wait.");
         
         try {
-            // Step 1: Get or create a customer for this group chat
-            let customerId;
+            // Step 1: Get or create customer using bots-brain SDK (handles cache hierarchy internally)
+            const customer = await BotsStore.getOrCreateCustomer(
+                ctx.chat.id,
+                groupChatName,
+                (chatTitle) => unthreadService.createCustomer(chatTitle)
+            );
             
-            // Check if we already have a customer ID for this chat
-            if (customerCache.has(ctx.chat.id)) {
-                customerId = customerCache.get(ctx.chat.id);
-                logger.debug('Using cached customer', {
-                    customerId,
-                    chatId: ctx.chat.id,
-                    groupChatName
-                });
-            } else {
-                // Create a new customer in Unthread
-                const customerResponse = await unthreadService.createCustomer(groupChatName);
-                customerId = customerResponse.id;
-                
-                // Cache the customer ID for future use
-                customerCache.set(ctx.chat.id, customerId);
-                logger.success('Created new customer', {
-                    customerId,
-                    chatId: ctx.chat.id,
-                    groupChatName,
-                    cacheSize: customerCache.size
-                });
-            }
+            const customerId = customer.unthreadCustomerId;
+            
+            logger.debug('Customer resolved via bots-brain SDK', {
+                customerId,
+                chatId: ctx.chat.id,
+                groupChatName,
+                fromCache: !!customer.storedAt
+            });
             
             // Step 2: Create a ticket with the customer ID
             const ticketResponse = await unthreadService.createTicket({

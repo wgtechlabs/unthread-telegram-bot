@@ -228,12 +228,100 @@ export class BotsStore {
   async getCustomerByChatId(chatId) {
     return await this.storage.get(`customer:telegram:${chatId}`);
   }
-  
+
   /**
    * Get customer by Unthread customer ID
    */
   async getCustomerByUnthreadId(unthreadCustomerId) {
     return await this.storage.get(`customer:unthread:${unthreadCustomerId}`);
+  }
+
+  /**
+   * Get or create customer for chat ID with proper cache hierarchy
+   * This method encapsulates the complete cache-first logic
+   * 
+   * @param {number} chatId - Telegram chat ID
+   * @param {string} chatTitle - Chat title for new customer creation
+   * @param {function} createCustomerFn - Function to create new customer if not found
+   * @returns {object} - Customer data with unthreadCustomerId
+   */
+  async getOrCreateCustomer(chatId, chatTitle, createCustomerFn) {
+    try {
+      // Step 1: Try to get existing customer (uses cache hierarchy automatically)
+      const existingCustomer = await this.getCustomerByChatId(chatId);
+      
+      if (existingCustomer) {
+        console.log(`✅ Found existing customer for chat ${chatId}: ${existingCustomer.unthreadCustomerId}`);
+        return existingCustomer;
+      }
+      
+      // Step 2: Customer not found, create new one
+      console.log(`🆕 Creating new customer for chat ${chatId}: ${chatTitle}`);
+      const newCustomerResponse = await createCustomerFn(chatTitle);
+      const unthreadCustomerId = newCustomerResponse.id;
+      
+      // Step 3: Store new customer (populates all cache layers)
+      const customerData = {
+        chatId,
+        unthreadCustomerId,
+        chatTitle
+      };
+      
+      await this.storeCustomer(customerData);
+      
+      console.log(`✅ Created and cached new customer: ${unthreadCustomerId}`);
+      return {
+        ...customerData,
+        storedAt: new Date().toISOString(),
+        platform: 'telegram'
+      };
+      
+    } catch (error) {
+      console.error(`❌ Error in getOrCreateCustomer for chat ${chatId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if customer exists in cache (fast check without creating)
+   * 
+   * @param {number} chatId - Telegram chat ID
+   * @returns {boolean} - True if customer exists in cache
+   */
+  async hasCustomer(chatId) {
+    try {
+      const customer = await this.getCustomerByChatId(chatId);
+      return !!customer;
+    } catch (error) {
+      console.error(`❌ Error checking customer existence for chat ${chatId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Get cache statistics for customers
+   * 
+   * @returns {object} - Cache statistics
+   */
+  async getCustomerCacheStats() {
+    const storageStats = this.storage.getStats();
+    
+    // Count customer keys in memory cache
+    let customerKeysInMemory = 0;
+    if (this.storage.memoryCache) {
+      for (const key of this.storage.memoryCache.keys()) {
+        if (key.startsWith('customer:')) {
+          customerKeysInMemory++;
+        }
+      }
+    }
+    
+    return {
+      ...storageStats,
+      customerKeysInMemory,
+      cacheHierarchy: 'Memory → Redis → PostgreSQL',
+      sdkVersion: 'bots-brain-1.0.0'
+    };
   }
   
   /**
@@ -360,5 +448,26 @@ export class BotsStore {
   
   static async getAgentMessageByTelegramId(messageId) {
     return BotsStore.getInstance().getAgentMessageByTelegramId(messageId);
+  }
+
+  // Static methods for cache-aware customer management
+  static async getOrCreateCustomer(chatId, chatTitle, createCustomerFn) {
+    return BotsStore.getInstance().getOrCreateCustomer(chatId, chatTitle, createCustomerFn);
+  }
+
+  static async getCustomerByChatId(chatId) {
+    return BotsStore.getInstance().getCustomerByChatId(chatId);
+  }
+
+  static async storeCustomer(customerData) {
+    return BotsStore.getInstance().storeCustomer(customerData);
+  }
+
+  static async hasCustomer(chatId) {
+    return BotsStore.getInstance().hasCustomer(chatId);
+  }
+
+  static async getCustomerCacheStats() {
+    return BotsStore.getInstance().getCustomerCacheStats();
   }
 }
