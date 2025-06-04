@@ -4,6 +4,7 @@
  * Uses UnifiedStorage for multi-layer caching
  */
 import { UnifiedStorage } from './UnifiedStorage.js';
+import { LogEngine } from '../../utils/logengine.js';
 
 export class BotsStore {
   static instance = null;
@@ -117,10 +118,13 @@ export class BotsStore {
       ];
       
       await Promise.all(promises);
-      console.log(`✅ Ticket stored: ${friendlyId} (${conversationId})`);
+      LogEngine.info(`Ticket stored: ${friendlyId} (${conversationId})`);
       return true;
     } catch (error) {
-      console.error('❌ Failed to store ticket:', error);
+      LogEngine.error('Failed to store ticket', {
+        error: error.message,
+        stack: error.stack
+      });
       return false;
     }
   }
@@ -214,10 +218,13 @@ export class BotsStore {
         this.storage.set(`customer:unthread:${unthreadCustomerId}`, enrichedCustomerData)
       ]);
       
-      console.log(`✅ Customer stored: ${chatTitle} (${unthreadCustomerId})`);
+      LogEngine.info(`Customer stored: ${chatTitle} (${unthreadCustomerId})`);
       return true;
     } catch (error) {
-      console.error('❌ Failed to store customer:', error);
+      LogEngine.error('Failed to store customer', {
+        error: error.message,
+        stack: error.stack
+      });
       return false;
     }
   }
@@ -251,12 +258,12 @@ export class BotsStore {
       const existingCustomer = await this.getCustomerByChatId(chatId);
       
       if (existingCustomer) {
-        console.log(`✅ Found existing customer for chat ${chatId}: ${existingCustomer.unthreadCustomerId}`);
+        LogEngine.info(`Found existing customer for chat ${chatId}: ${existingCustomer.unthreadCustomerId}`);
         return existingCustomer;
       }
       
       // Step 2: Customer not found, create new one
-      console.log(`🆕 Creating new customer for chat ${chatId}: ${chatTitle}`);
+      LogEngine.info(`Creating new customer for chat ${chatId}: ${chatTitle}`);
       const newCustomerResponse = await createCustomerFn(chatTitle);
       const unthreadCustomerId = newCustomerResponse.id;
       
@@ -269,7 +276,7 @@ export class BotsStore {
       
       await this.storeCustomer(customerData);
       
-      console.log(`✅ Created and cached new customer: ${unthreadCustomerId}`);
+      LogEngine.info(`Created and cached new customer: ${unthreadCustomerId}`);
       return {
         ...customerData,
         storedAt: new Date().toISOString(),
@@ -277,7 +284,10 @@ export class BotsStore {
       };
       
     } catch (error) {
-      console.error(`❌ Error in getOrCreateCustomer for chat ${chatId}:`, error);
+      LogEngine.error(`Error in getOrCreateCustomer for chat ${chatId}`, {
+        error: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }
@@ -293,7 +303,10 @@ export class BotsStore {
       const customer = await this.getCustomerByChatId(chatId);
       return !!customer;
     } catch (error) {
-      console.error(`❌ Error checking customer existence for chat ${chatId}:`, error);
+      LogEngine.error(`Error checking customer existence for chat ${chatId}`, {
+        error: error.message,
+        stack: error.stack
+      });
       return false;
     }
   }
@@ -368,10 +381,13 @@ export class BotsStore {
       // Remove from chat tickets list
       await this.removeFromChatTickets(ticket.chatId, conversationId);
       
-      console.log(`✅ Ticket deleted: ${ticket.friendlyId}`);
+      LogEngine.info(`Ticket deleted: ${ticket.friendlyId}`);
       return true;
     } catch (error) {
-      console.error('❌ Failed to delete ticket:', error);
+      LogEngine.error('Failed to delete ticket', {
+        error: error.message,
+        stack: error.stack
+      });
       return false;
     }
   }
@@ -424,10 +440,15 @@ export class BotsStore {
       // Store agent message for reply lookup
       await this.storage.set(`agent_message:telegram:${messageId}`, enrichedData);
       
-      console.log(`✅ Agent message stored: ${messageId} for conversation ${conversationId}`);
+      LogEngine.info(`Agent message stored: ${messageId} for conversation ${conversationId}`);
       return true;
     } catch (error) {
-      console.error('❌ Failed to store agent message:', error);
+      LogEngine.error('Failed to store agent message', {
+        error: error.message,
+        stack: error.stack,
+        messageId,
+        conversationId
+      });
       return false;
     }
   }

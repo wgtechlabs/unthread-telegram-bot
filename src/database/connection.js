@@ -7,7 +7,7 @@
 
 import pkg from 'pg';
 const { Pool } = pkg;
-import * as logger from '../utils/logger.js';
+import { LogEngine } from '../utils/logengine.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -23,7 +23,7 @@ export class DatabaseConnection {
         // Validate required environment variable
         if (!process.env.POSTGRES_URL) {
             const error = 'POSTGRES_URL environment variable is required but not defined';
-            logger.error(error);
+            LogEngine.error(error);
             throw new Error(error);
         }
 
@@ -40,13 +40,13 @@ export class DatabaseConnection {
 
         // Handle pool errors
         this.pool.on('error', (err) => {
-            logger.error('Unexpected error on idle client', {
+            LogEngine.error('Unexpected error on idle client', {
                 error: err.message,
                 stack: err.stack
             });
         });
 
-        logger.info('Database connection pool initialized', {
+        LogEngine.info('Database connection pool initialized', {
             maxConnections: 10,
             sslEnabled: true,
             provider: 'Railway'
@@ -67,7 +67,7 @@ export class DatabaseConnection {
             const result = await client.query(text, params);
             const duration = Date.now() - start;
             
-            logger.debug('Database query executed', {
+            LogEngine.debug('Database query executed', {
                 query: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
                 paramCount: params.length,
                 rowCount: result.rowCount,
@@ -76,7 +76,7 @@ export class DatabaseConnection {
             
             return result;
         } catch (error) {
-            logger.error('Database query error', {
+            LogEngine.error('Database query error', {
                 error: error.message,
                 query: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
                 paramCount: params.length,
@@ -97,7 +97,7 @@ export class DatabaseConnection {
         try {
             // Test connection
             const result = await this.query('SELECT NOW() as current_time');
-            logger.success('Database connection established', {
+            LogEngine.info('Database connection established', {
                 currentTime: result.rows[0].current_time,
                 ssl: 'enabled'
             });
@@ -106,7 +106,7 @@ export class DatabaseConnection {
             await this.ensureSchema();
             
         } catch (error) {
-            logger.error('Failed to connect to database', {
+            LogEngine.error('Failed to connect to database', {
                 error: error.message,
                 stack: error.stack,
                 postgresUrl: process.env.POSTGRES_URL ? 'configured' : 'missing'
@@ -131,15 +131,15 @@ export class DatabaseConnection {
             `);
 
             if (tableCheck.rows.length === 0) {
-                logger.info('Database tables not found. Schema setup may be needed.');
-                logger.info('Run the schema.sql file to create the required tables.');
+                LogEngine.info('Database tables not found. Schema setup may be needed.');
+                LogEngine.info('Run the schema.sql file to create the required tables.');
             } else {
-                logger.success('Database schema verified', {
+                LogEngine.info('Database schema verified', {
                     tablesFound: tableCheck.rows.map(row => row.table_name)
                 });
             }
         } catch (error) {
-            logger.error('Error checking database schema', {
+            LogEngine.error('Error checking database schema', {
                 error: error.message,
                 stack: error.stack
             });
@@ -162,7 +162,7 @@ export class DatabaseConnection {
             return result;
         } catch (error) {
             await client.query('ROLLBACK');
-            logger.error('Transaction failed and rolled back', {
+            LogEngine.error('Transaction failed and rolled back', {
                 error: error.message,
                 stack: error.stack
             });
@@ -180,9 +180,9 @@ export class DatabaseConnection {
     async close() {
         try {
             await this.pool.end();
-            logger.info('Database connection pool closed');
+            LogEngine.info('Database connection pool closed');
         } catch (error) {
-            logger.error('Error closing database pool', {
+            LogEngine.error('Error closing database pool', {
                 error: error.message,
                 stack: error.stack
             });

@@ -1,5 +1,6 @@
 import { createClient } from 'redis';
 import { EventValidator } from './EventValidator.js';
+import { LogEngine } from '../../utils/logengine.js';
 
 /**
  * WebhookConsumer - Polls Redis queue for Unthread webhook events
@@ -32,10 +33,10 @@ export class WebhookConsumer {
       
       this.redisClient = createClient({ url: this.redisUrl });
       await this.redisClient.connect();
-      console.log('✅ Webhook consumer connected to Redis');
+      LogEngine.info('✅ Webhook consumer connected to Redis');
       return true;
     } catch (error) {
-      console.error('❌ Webhook consumer Redis connection failed:', error);
+      LogEngine.error('❌ Webhook consumer Redis connection failed:', error);
       throw error;
     }
   }
@@ -56,7 +57,7 @@ export class WebhookConsumer {
       this.redisClient = null;
     }
     
-    console.log('🔌 Webhook consumer disconnected');
+    LogEngine.info('🔌 Webhook consumer disconnected');
   }
   
   /**
@@ -68,7 +69,7 @@ export class WebhookConsumer {
   subscribe(eventType, sourcePlatform, handler) {
     const key = `${eventType}:${sourcePlatform}`;
     this.eventHandlers.set(key, handler);
-    console.log(`📋 Subscribed to ${eventType} events from ${sourcePlatform}`);
+    LogEngine.info(`📋 Subscribed to ${eventType} events from ${sourcePlatform}`);
   }
   
   /**
@@ -78,7 +79,7 @@ export class WebhookConsumer {
     const key = `${eventType}:${sourcePlatform}`;
     const removed = this.eventHandlers.delete(key);
     if (removed) {
-      console.log(`🗑️ Unsubscribed from ${eventType} events from ${sourcePlatform}`);
+      LogEngine.info(`🗑️ Unsubscribed from ${eventType} events from ${sourcePlatform}`);
     }
     return removed;
   }
@@ -92,18 +93,18 @@ export class WebhookConsumer {
     }
     
     if (this.isRunning) {
-      console.log('⚠️ Webhook consumer is already running');
+      LogEngine.warn('⚠️ Webhook consumer is already running');
       return;
     }
     
     this.isRunning = true;
-    console.log(`🚀 Webhook consumer started (polling every ${this.pollInterval}ms)`);
-    console.log(`📋 Subscribed handlers: ${Array.from(this.eventHandlers.keys()).join(', ')}`);
+    LogEngine.log(`🚀 Webhook consumer started (polling every ${this.pollInterval}ms)`);
+    LogEngine.info(`📋 Subscribed handlers: ${Array.from(this.eventHandlers.keys()).join(', ')}`);
     
     // Start polling loop
     this.pollTimer = setInterval(() => {
       this.pollEvents().catch(error => {
-        console.error('❌ Error during event polling:', error);
+        LogEngine.error('❌ Error during event polling:', error);
       });
     }, this.pollInterval);
   }
@@ -118,7 +119,7 @@ export class WebhookConsumer {
     }
     
     this.isRunning = false;
-    console.log('⏹️ Webhook consumer stopped');
+    LogEngine.info('⏹️ Webhook consumer stopped');
   }
   
   /**
@@ -146,7 +147,7 @@ export class WebhookConsumer {
       try {
         event = JSON.parse(result.element);
       } catch (parseError) {
-        console.error('❌ Failed to parse webhook event:', parseError, result.element);
+        LogEngine.error('❌ Failed to parse webhook event:', parseError, result.element);
         return;
       }
       
@@ -155,7 +156,7 @@ export class WebhookConsumer {
       
     } catch (error) {
       // Log error but don't stop polling
-      console.error('❌ Error polling events:', error);
+      LogEngine.error('❌ Error polling events:', error);
     }
   }
   
@@ -166,7 +167,7 @@ export class WebhookConsumer {
     try {
       // Validate the event structure
       if (!EventValidator.validate(event)) {
-        console.log('⚠️ Invalid event structure, skipping:', JSON.stringify(event, null, 2));
+        LogEngine.warn('⚠️ Invalid event structure, skipping:', JSON.stringify(event, null, 2));
         return;
       }
       
@@ -176,20 +177,20 @@ export class WebhookConsumer {
       
       if (!handler) {
         // No handler registered for this event type/platform
-        console.log(`📋 No handler for ${handlerKey}, skipping event`);
+        LogEngine.debug(`📋 No handler for ${handlerKey}, skipping event`);
         return;
       }
       
-      console.log(`🔄 Processing ${event.type} event from ${event.sourcePlatform}`);
+      LogEngine.info(`🔄 Processing ${event.type} event from ${event.sourcePlatform}`);
       
       // Call the handler
       await handler(event);
       
-      console.log(`✅ Event processed successfully: ${event.type} from ${event.sourcePlatform}`);
+      LogEngine.info(`✅ Event processed successfully: ${event.type} from ${event.sourcePlatform}`);
       
     } catch (error) {
-      console.error('❌ Error processing event:', error);
-      console.error('Event data:', JSON.stringify(event, null, 2));
+      LogEngine.error('❌ Error processing event:', error);
+      LogEngine.error('Event data:', JSON.stringify(event, null, 2));
     }
   }
   
@@ -202,7 +203,7 @@ export class WebhookConsumer {
     }
     
     await this.redisClient.rPush(this.queueName, JSON.stringify(event));
-    console.log(`📨 Event added to queue: ${event.type} from ${event.sourcePlatform}`);
+    LogEngine.info(`📨 Event added to queue: ${event.type} from ${event.sourcePlatform}`);
   }
   
   /**
@@ -241,7 +242,7 @@ export class WebhookConsumer {
     }
     
     const cleared = await this.redisClient.del(this.queueName);
-    console.log(`🗑️ Queue cleared, removed ${cleared} items`);
+    LogEngine.info(`🗑️ Queue cleared, removed ${cleared} items`);
     return cleared;
   }
 }

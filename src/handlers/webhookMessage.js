@@ -1,4 +1,4 @@
-import { logger } from '../utils/logger.js';
+import { LogEngine } from '../utils/logengine.js';
 
 /**
  * Handles incoming webhook messages from Unthread agents
@@ -8,7 +8,6 @@ export class TelegramWebhookHandler {
   constructor(bot, botsStore) {
     this.bot = bot;
     this.botsStore = botsStore;
-    this.logger = logger;
   }
 
   /**
@@ -21,7 +20,7 @@ export class TelegramWebhookHandler {
    */
   async handleMessageCreated(event) {
     try {
-      this.logger.info('Processing agent message webhook', {
+      LogEngine.info('Processing agent message webhook', {
         conversationId: event.data.conversationId,
         textLength: event.data.text?.length || 0,
         sentBy: event.data.sentByUserId,
@@ -31,21 +30,21 @@ export class TelegramWebhookHandler {
       // 1. Get conversation ID from webhook event
       const conversationId = event.data.conversationId;
       if (!conversationId) {
-        this.logger.warn('No conversation ID in webhook event', { event });
+        LogEngine.warn('No conversation ID in webhook event', { event });
         return;
       }
 
       // 2. Look up original ticket message using bots-brain
       const ticketData = await this.botsStore.getTicketByConversationId(conversationId);
       if (!ticketData) {
-        this.logger.warn(`No ticket found for conversation: ${conversationId}`);
+        LogEngine.warn(`No ticket found for conversation: ${conversationId}`);
         return;
       }
 
       // 3. Validate message content
       const messageText = event.data.text;
       if (!messageText || messageText.trim().length === 0) {
-        this.logger.warn('Empty message text in webhook event', { conversationId });
+        LogEngine.warn('Empty message text in webhook event', { conversationId });
         return;
       }
 
@@ -74,7 +73,7 @@ export class TelegramWebhookHandler {
           sentAt: new Date().toISOString()
         });
 
-        this.logger.info('✅ Agent message delivered to Telegram', {
+        this.LogEngine.info('✅ Agent message delivered to Telegram', {
           conversationId,
           chatId: ticketData.chatId,
           replyToMessageId: ticketData.messageId,
@@ -83,7 +82,7 @@ export class TelegramWebhookHandler {
         });
 
       } catch (telegramError) {
-        this.logger.error('Failed to send message to Telegram', {
+        this.LogEngine.error('Failed to send message to Telegram', {
           error: telegramError.message,
           chatId: ticketData.chatId,
           messageId: ticketData.messageId,
@@ -101,13 +100,13 @@ export class TelegramWebhookHandler {
             }
           );
 
-          this.logger.info('Agent message sent as new message (fallback)', {
+          this.LogEngine.info('Agent message sent as new message (fallback)', {
             conversationId,
             chatId: ticketData.chatId
           });
 
         } catch (fallbackError) {
-          this.logger.error('Failed to send fallback message to Telegram', {
+          this.LogEngine.error('Failed to send fallback message to Telegram', {
             error: fallbackError.message,
             chatId: ticketData.chatId,
             conversationId
@@ -117,7 +116,7 @@ export class TelegramWebhookHandler {
       }
 
     } catch (error) {
-      this.logger.error('Error handling webhook message', {
+      this.LogEngine.error('Error handling webhook message', {
         error: error.message,
         stack: error.stack,
         event: event
@@ -173,7 +172,7 @@ export class TelegramWebhookHandler {
    * @param {Object} event - The webhook event data
    */
   async handleOtherEvent(eventType, event) {
-    this.logger.info(`Received ${eventType} event (not processed)`, {
+    this.LogEngine.info(`Received ${eventType} event (not processed)`, {
       eventType,
       conversationId: event.data?.conversationId,
       timestamp: event.timestamp

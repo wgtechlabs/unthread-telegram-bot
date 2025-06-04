@@ -6,7 +6,7 @@
  */
 
 import fetch from 'node-fetch';
-import * as logger from '../utils/logger.js';
+import { LogEngine } from '../utils/logengine.js';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import dotenv from 'dotenv';
 
@@ -20,12 +20,12 @@ const CHANNEL_ID = process.env.UNTHREAD_CHANNEL_ID;
 
 // Validate required environment variables
 if (!UNTHREAD_API_KEY) {
-    console.error('ERROR: UNTHREAD_API_KEY environment variable is required but not defined');
+    LogEngine.error('UNTHREAD_API_KEY environment variable is required but not defined');
     process.exit(1);
 }
 
 if (!CHANNEL_ID) {
-    console.error('ERROR: UNTHREAD_CHANNEL_ID environment variable is required but not defined');
+    LogEngine.error('UNTHREAD_CHANNEL_ID environment variable is required but not defined');
     process.exit(1);
 }
 
@@ -60,7 +60,7 @@ export async function createCustomer(groupChatName) {
 
         return await response.json();
     } catch (error) {
-        logger.error('Error creating customer', {
+        LogEngine.error('Error creating customer', {
             error: error.message,
             stack: error.stack,
             groupChatName,
@@ -121,7 +121,7 @@ export async function createTicket({ groupChatName, customerId, summary, usernam
 
         return await response.json();
     } catch (error) {
-        logger.error('Error creating ticket', {
+        LogEngine.error('Error creating ticket', {
             error: error.message,
             stack: error.stack,
             groupChatName,
@@ -178,7 +178,7 @@ export async function sendMessage({ conversationId, message, username, userId })
 
         return await response.json();
     } catch (error) {
-        logger.error('Error sending message', {
+        LogEngine.error('Error sending message', {
             error: error.message,
             stack: error.stack,
             conversationId,
@@ -224,7 +224,7 @@ export async function registerTicketConfirmation({ messageId, ticketId, friendly
             createdAt: Date.now()
         });
         
-        logger.info('Registered ticket confirmation', {
+        LogEngine.info('Registered ticket confirmation', {
             messageId,
             ticketId,
             friendlyId,
@@ -233,7 +233,7 @@ export async function registerTicketConfirmation({ messageId, ticketId, friendly
             userId
         });
     } catch (error) {
-        logger.error('Error registering ticket confirmation', {
+        LogEngine.error('Error registering ticket confirmation', {
             error: error.message,
             stack: error.stack,
             messageId,
@@ -255,7 +255,7 @@ export async function getTicketFromReply(replyToMessageId) {
         const ticketData = await BotsStore.getTicketByTelegramMessageId(replyToMessageId);
         return ticketData ? ticketData.metadata : null;
     } catch (error) {
-        logger.error('Error getting ticket from reply', {
+        LogEngine.error('Error getting ticket from reply', {
             error: error.message,
             stack: error.stack,
             replyToMessageId
@@ -275,7 +275,7 @@ export async function getAgentMessageFromReply(replyToMessageId) {
         const agentMessageData = await BotsStore.getAgentMessageByTelegramId(replyToMessageId);
         return agentMessageData || null;
     } catch (error) {
-        logger.error('Error getting agent message from reply', {
+        LogEngine.error('Error getting agent message from reply', {
             error: error.message,
             stack: error.stack,
             replyToMessageId
@@ -294,10 +294,10 @@ export async function getTicketsForChat(chatId) {
     try {
         // Note: This would require a new method in BotsStore to search by chatId
         // For now, we'll return an empty array and implement this if needed
-        logger.debug('getTicketsForChat called but not yet implemented with BotsStore', { chatId });
+        LogEngine.debug('getTicketsForChat called but not yet implemented with BotsStore', { chatId });
         return [];
     } catch (error) {
-        logger.error('Error getting tickets for chat', {
+        LogEngine.error('Error getting tickets for chat', {
             error: error.message,
             stack: error.stack,
             chatId
