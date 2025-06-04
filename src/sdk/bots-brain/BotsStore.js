@@ -372,7 +372,7 @@ export class BotsStore {
         this.storage.delete(`ticket:friendly:${ticket.friendlyId}`)
       ];
       
-      if (ticket.ticketId !== conversationId) {
+      if (ticket.ticketId && ticket.ticketId !== conversationId) {
         promises.push(this.storage.delete(`ticket:unthread:${ticket.ticketId}`));
       }
       

@@ -61,13 +61,21 @@ export class EventValidator {
     }
     
     // Validate conversationId is not empty
-    if (!event.data.conversationId || event.data.conversationId.trim() === '') {
+    if (!event.data.conversationId || typeof event.data.conversationId !== 'string') {
+      LogEngine.warn('conversationId must be a non-empty string');
+      return false;
+    }
+    if (event.data.conversationId.trim() === '') {
       LogEngine.warn('conversationId cannot be empty');
       return false;
     }
     
     // Validate text is not empty
-    if (!event.data.text || event.data.text.trim() === '') {
+    if (!event.data.text || typeof event.data.text !== 'string') {
+      LogEngine.warn('Message text must be a non-empty string');
+      return false;
+    }
+    if (event.data.text.trim() === '') {
       LogEngine.warn('Message text cannot be empty');
       return false;
     }
