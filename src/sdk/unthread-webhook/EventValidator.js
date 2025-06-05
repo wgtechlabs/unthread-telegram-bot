@@ -2,6 +2,8 @@
  * EventValidator - Validates webhook events from Unthread
  * Ensures events have the required structure and filters by platform
  */
+import { LogEngine } from '../../utils/logengine.js';
+
 export class EventValidator {
   /**
    * Validate webhook event structure
@@ -18,34 +20,34 @@ export class EventValidator {
     const requiredFields = ['type', 'sourcePlatform', 'data'];
     for (const field of requiredFields) {
       if (!(field in event)) {
-        console.log(`⚠️ Missing required field: ${field}`);
+        LogEngine.warn(`Missing required field: ${field}`);
         return false;
       }
     }
     
     // Validate event type (only message_created for now)
     if (event.type !== 'message_created') {
-      console.log(`⚠️ Unsupported event type: ${event.type}`);
+      LogEngine.warn(`Unsupported event type: ${event.type}`);
       return false;
     }
     
     // For this Telegram bot, we want messages from dashboard/agents that should go to Telegram
     // We only process messages that originate from the dashboard (agent responses)
     if (event.type === 'message_created' && event.sourcePlatform !== 'dashboard') {
-      console.log(`📋 Message not from dashboard (agent): ${event.sourcePlatform}`);
+      LogEngine.debug(`Message not from dashboard (agent): ${event.sourcePlatform}`);
       return false;
     }
     
     // Optional: Check if targetPlatform is telegram (if this field exists)
     // Some webhook events might not have targetPlatform, so we make it optional
     if (event.targetPlatform && event.targetPlatform !== 'telegram') {
-      console.log(`📋 Event not targeted for telegram platform: ${event.targetPlatform}`);
+      LogEngine.debug(`Event not targeted for telegram platform: ${event.targetPlatform}`);
       return false;
     }
     
     // Validate data object
     if (!event.data || typeof event.data !== 'object') {
-      console.log('⚠️ Invalid or missing data object');
+      LogEngine.warn('Invalid or missing data object');
       return false;
     }
     
@@ -53,20 +55,28 @@ export class EventValidator {
     const requiredDataFields = ['conversationId', 'text'];
     for (const field of requiredDataFields) {
       if (!(field in event.data)) {
-        console.log(`⚠️ Missing required data field: ${field}`);
+        LogEngine.warn(`Missing required data field: ${field}`);
         return false;
       }
     }
     
     // Validate conversationId is not empty
-    if (!event.data.conversationId || event.data.conversationId.trim() === '') {
-      console.log('⚠️ conversationId cannot be empty');
+    if (!event.data.conversationId || typeof event.data.conversationId !== 'string') {
+      LogEngine.warn('conversationId must be a non-empty string');
+      return false;
+    }
+    if (event.data.conversationId.trim() === '') {
+      LogEngine.warn('conversationId cannot be empty');
       return false;
     }
     
     // Validate text is not empty
-    if (!event.data.text || event.data.text.trim() === '') {
-      console.log('⚠️ Message text cannot be empty');
+    if (!event.data.text || typeof event.data.text !== 'string') {
+      LogEngine.warn('Message text must be a non-empty string');
+      return false;
+    }
+    if (event.data.text.trim() === '') {
+      LogEngine.warn('Message text cannot be empty');
       return false;
     }
     

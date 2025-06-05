@@ -34,10 +34,10 @@
   resolved "https://registry.yarnpkg.com/@telegraf/types/-/types-7.1.0.tgz#d8bd9b2f5070b4de46971416e890338cd89fc23d"
   integrity sha512-kGevOIbpMcIlCDeorKGpwZmdH7kHbqlk/Yj6dEpJMKEQw5lk0KVQY0OLXaCswy8GqlIVLd5625OB+rAntP9xVw==
 
-"@wgtechlabs/log-engine@^1.2.0":
-  version "1.2.0"
-  resolved "https://registry.yarnpkg.com/@wgtechlabs/log-engine/-/log-engine-1.2.0.tgz#d51be462230062c09708d650704336027c8cb1d8"
-  integrity sha512-1O8MEATwXM5BVHQg+Mr8PeRaJw6OTEuScRUWXKevBLVHe9AdC+eYuibpp6n0+VhZRu4LZe4tzjoZx2K3ae7sbg==
+"@wgtechlabs/log-engine@^1.2.1":
+  version "1.2.1"
+  resolved "https://registry.yarnpkg.com/@wgtechlabs/log-engine/-/log-engine-1.2.1.tgz#9b339d7d39e19e8a8ef550734b2d852ecd4dd9b3"
+  integrity sha512-BHu8SMZztrIsRzX3KNYARMUpMAgzRqf27i/5wbSe7eQjnfm5WhHModgQfMSXte6V9m1ZHmfadjDGfNJtM2tTJg==
 
 abort-controller@^3.0.0:
   version "3.0.0"

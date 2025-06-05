@@ -13,7 +13,7 @@
  * - Add priority mechanism for overlapping patterns
  */
 
-import * as logger from '../utils/logger.js';
+import { LogEngine } from '../utils/logengine.js';
 import { processSupportConversation } from '../commands/index.js';
 import * as unthreadService from '../services/unthread.js';
 
@@ -82,7 +82,7 @@ export function processPatterns(ctx) {
                 // Note: We don't return immediately to allow multiple handlers
                 // to process the same message if multiple patterns match
             } catch (error) {
-                logger.error(`Error in pattern handler: ${error.message}`);
+                LogEngine.error(`Error in pattern handler: ${error.message}`);
             }
         }
     }
@@ -107,7 +107,7 @@ export async function handleMessage(ctx, next) {
         }
 
         // Log basic information about the message
-        logger.debug('Processing message', {
+        LogEngine.debug('Processing message', {
             chatType: ctx.chat.type,
             chatId: ctx.chat.id,
             messageId: ctx.message.message_id,
@@ -149,7 +149,7 @@ export async function handleMessage(ctx, next) {
         // Continue processing with other handlers
         return await next();
     } catch (error) {
-        logger.error(`Error handling message: ${error.message}`);
+        LogEngine.error(`Error handling message: ${error.message}`);
         return await next();
     }
 }
@@ -179,7 +179,7 @@ async function handleTicketReply(ctx) {
         
         return false;
     } catch (error) {
-        logger.error('Error in handleTicketReply', {
+        LogEngine.error('Error in handleTicketReply', {
             error: error.message,
             stack: error.stack,
             replyToMessageId: ctx.message?.reply_to_message?.message_id,
@@ -231,7 +231,7 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
                 `✅ Your message has been added to Ticket #${ticketInfo.friendlyId}`
             );
             
-            logger.success('Added message to ticket', {
+            LogEngine.info('Added message to ticket', {
                 ticketNumber: ticketInfo.friendlyId,
                 ticketId: ticketInfo.ticketId,
                 telegramUserId,
@@ -243,7 +243,7 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
             
         } catch (error) {
             // Handle API errors
-            logger.error('Error adding message to ticket', {
+            LogEngine.error('Error adding message to ticket', {
                 error: error.message,
                 stack: error.stack,
                 ticketNumber: ticketInfo.friendlyId,
@@ -266,7 +266,7 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
         }
         
     } catch (error) {
-        logger.error('Error in handleTicketReply', {
+        LogEngine.error('Error in handleTicketReply', {
             error: error.message,
             stack: error.stack,
             replyToMessageId: ctx.message?.reply_to_message?.message_id,
@@ -315,7 +315,7 @@ async function handleAgentMessageReply(ctx, agentMessageInfo) {
                 `✅ Your reply has been sent to the agent for Ticket #${agentMessageInfo.friendlyId}`
             );
             
-            logger.success('Sent reply to agent', {
+            LogEngine.info('Sent reply to agent', {
                 ticketNumber: agentMessageInfo.friendlyId,
                 conversationId: agentMessageInfo.conversationId,
                 telegramUserId,
@@ -327,7 +327,7 @@ async function handleAgentMessageReply(ctx, agentMessageInfo) {
             
         } catch (error) {
             // Handle API errors
-            logger.error('Error sending reply to agent', {
+            LogEngine.error('Error sending reply to agent', {
                 error: error.message,
                 stack: error.stack,
                 ticketNumber: agentMessageInfo.friendlyId,
@@ -350,7 +350,7 @@ async function handleAgentMessageReply(ctx, agentMessageInfo) {
         }
         
     } catch (error) {
-        logger.error('Error in handleAgentMessageReply', {
+        LogEngine.error('Error in handleAgentMessageReply', {
             error: error.message,
             stack: error.stack,
             agentMessageId: agentMessageInfo?.messageId,
@@ -383,7 +383,7 @@ export async function handlePrivateMessage(ctx) {
         await ctx.reply("Sorry, this bot does not have feature to assist you via Telegram DM");
         
     } catch (error) {
-        logger.error('Error in handlePrivateMessage', {
+        LogEngine.error('Error in handlePrivateMessage', {
             error: error.message,
             stack: error.stack,
             telegramUserId: ctx.from?.id,
@@ -400,22 +400,22 @@ export async function handlePrivateMessage(ctx) {
 export async function handleGroupMessage(ctx) {
     try {
         // Log more detailed information about the group message
-        logger.info(`Processing message from group: ${ctx.chat.title} (ID: ${ctx.chat.id})`);
+        LogEngine.info(`Processing message from group: ${ctx.chat.title} (ID: ${ctx.chat.id})`);
         
         // Additional information about the sender if available
         if (ctx.from) {
-            logger.info(`Message sent by: ${ctx.from.first_name} ${ctx.from.last_name || ''} (ID: ${ctx.from.id})`);
+            LogEngine.info(`Message sent by: ${ctx.from.first_name} ${ctx.from.last_name || ''} (ID: ${ctx.from.id})`);
         }
         
         // Messages that reach here are general group messages that don't require special handling
         // Ticket replies and agent message replies are handled by handleTicketReply function
-        logger.debug('General group message - no special action needed', {
+        LogEngine.debug('General group message - no special action needed', {
             messageId: ctx.message?.message_id,
             hasReply: !!ctx.message?.reply_to_message,
             replyToId: ctx.message?.reply_to_message?.message_id
         });
         
     } catch (error) {
-        logger.error(`Error in handleGroupMessage: ${error.message}`);
+        LogEngine.error(`Error in handleGroupMessage: ${error.message}`);
     }
 }

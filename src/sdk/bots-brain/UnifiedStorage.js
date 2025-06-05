@@ -1,6 +1,7 @@
 import { createClient } from 'redis';
 import pkg from 'pg';
 const { Pool } = pkg;
+import { LogEngine } from '../../utils/logengine.js';
 
 /**
  * UnifiedStorage - Multi-layer storage architecture
@@ -40,13 +41,13 @@ export class UnifiedStorage {
         try {
           this.redisClient = createClient({ url: this.redisConfig.url });
           await this.redisClient.connect();
-          console.log('✅ Redis connected for bots-brain');
+          LogEngine.info('Redis connected for bots-brain');
         } catch (error) {
-          console.log('⚠️ Redis not available, using Memory + PostgreSQL only');
+          LogEngine.warn('Redis not available, using Memory + PostgreSQL only');
           this.redisClient = null;
         }
       } else {
-        console.log('ℹ️ Redis URL not provided, using Memory + PostgreSQL only');
+        LogEngine.info('Redis URL not provided, using Memory + PostgreSQL only');
       }
       
       // Connect to PostgreSQL
@@ -59,13 +60,16 @@ export class UnifiedStorage {
           this.db = new Pool(this.dbConfig);
         }
         await this.db.query('SELECT 1'); // Test connection
-        console.log('✅ PostgreSQL connected for bots-brain');
+        LogEngine.info('PostgreSQL connected for bots-brain');
       }
       
       this.connected = true;
-      console.log('✅ UnifiedStorage initialized with multi-layer architecture');
+      LogEngine.info('UnifiedStorage initialized with multi-layer architecture');
     } catch (error) {
-      console.error('❌ UnifiedStorage connection failed:', error);
+      LogEngine.error('UnifiedStorage connection failed', {
+        error: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }
@@ -80,7 +84,7 @@ export class UnifiedStorage {
       await this.db.end();
     }
     this.connected = false;
-    console.log('🔌 UnifiedStorage disconnected');
+    LogEngine.info('UnifiedStorage disconnected');
   }
   
   /**
@@ -120,7 +124,10 @@ export class UnifiedStorage {
       
       return null;
     } catch (error) {
-      console.error(`Error getting ${key}:`, error);
+      LogEngine.error(`Error getting ${key}`, {
+        error: error.message,
+        stack: error.stack
+      });
       return null;
     }
   }
@@ -143,7 +150,10 @@ export class UnifiedStorage {
       
       return true;
     } catch (error) {
-      console.error(`Error setting ${key}:`, error);
+      LogEngine.error(`Error setting ${key}`, {
+        error: error.message,
+        stack: error.stack
+      });
       return false;
     }
   }
@@ -167,7 +177,10 @@ export class UnifiedStorage {
       
       return true;
     } catch (error) {
-      console.error(`Error deleting ${key}:`, error);
+      LogEngine.error(`Error deleting ${key}`, {
+        error: error.message,
+        stack: error.stack
+      });
       return false;
     }
   }
@@ -214,7 +227,7 @@ export class UnifiedStorage {
       `, [key, JSON.stringify(value), expiresAt]);
     } catch (error) {
       // Table might not exist, that's okay for now
-      console.log('Note: storage_cache table not found, using Redis + Memory only');
+      LogEngine.debug('storage_cache table not found, using Redis + Memory only');
     }
   }
   

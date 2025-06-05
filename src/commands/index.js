@@ -6,7 +6,7 @@
  */
 
 import packageJSON from '../../package.json' with { type: 'json' };
-import * as logger from '../utils/logger.js';
+import { LogEngine } from '../utils/logengine.js';
 import { Markup } from 'telegraf';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import * as unthreadService from '../services/unthread.js';
@@ -81,7 +81,10 @@ const versionCommand = (ctx) => {
         ctx.reply(`Bot version: ${packageJSON.version}`);
     } catch (error) {
         ctx.reply('Error retrieving version information.');
-        console.error('Error in versionCommand:', error);
+        LogEngine.error('Error in versionCommand', {
+            error: error.message,
+            stack: error.stack
+        });
     }
 };
 
@@ -117,7 +120,7 @@ const supportCommand = async (ctx) => {
         // Ask for the first field
         await ctx.reply("Let's create a support ticket. Please provide your issue summary:");
     } catch (error) {
-        logger.error('Error in supportCommand', {
+        LogEngine.error('Error in supportCommand', {
             error: error.message,
             stack: error.stack,
             telegramUserId: ctx.from?.id,
@@ -208,7 +211,7 @@ export const processSupportConversation = async (ctx) => {
         return true;
         
     } catch (error) {
-        logger.error('Error in processSupportConversation', {
+        LogEngine.error('Error in processSupportConversation', {
             error: error.message,
             stack: error.stack,
             telegramUserId: ctx.from?.id,
@@ -297,7 +300,7 @@ async function handleEmailField(ctx, userState, messageText) {
             });
             
             // Log successful ticket creation
-            logger.success('Support ticket created successfully', {
+            LogEngine.info('Support ticket created successfully', {
                 ticketNumber,
                 ticketId,
                 customerId,
@@ -310,7 +313,7 @@ async function handleEmailField(ctx, userState, messageText) {
             
         } catch (error) {
             // Handle API errors
-            logger.error('Error creating support ticket', {
+            LogEngine.error('Error creating support ticket', {
                 error: error.message,
                 stack: error.stack,
                 groupChatName,
@@ -333,7 +336,7 @@ async function handleEmailField(ctx, userState, messageText) {
             await BotsStore.clearUserState(telegramUserId);
         }
     } catch (error) {
-        logger.error('Error in handleEmailField', {
+        LogEngine.error('Error in handleEmailField', {
             error: error.message,
             stack: error.stack,
             telegramUserId: ctx.from?.id,

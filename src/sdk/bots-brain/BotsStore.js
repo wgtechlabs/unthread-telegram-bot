@@ -4,6 +4,7 @@
  * Uses UnifiedStorage for multi-layer caching
  */
 import { UnifiedStorage } from './UnifiedStorage.js';
+import { LogEngine } from '../../utils/logengine.js';
 
 export class BotsStore {
   static instance = null;
@@ -139,10 +140,13 @@ export class BotsStore {
       ];
       
       await Promise.all(promises);
-      console.log(`✅ Ticket stored: ${friendlyId} (${conversationId})`);
+      LogEngine.info(`Ticket stored: ${friendlyId} (${conversationId})`);
       return true;
     } catch (error) {
-      console.error('❌ Failed to store ticket:', error);
+      LogEngine.error('Failed to store ticket', {
+        error: error.message,
+        stack: error.stack
+      });
       return false;
     }
   }
@@ -239,7 +243,10 @@ export class BotsStore {
       console.log(`✅ Customer stored: ${customerName || chatTitle} (${unthreadCustomerId})`);
       return true;
     } catch (error) {
-      console.error('❌ Failed to store customer:', error);
+      LogEngine.error('Failed to store customer', {
+        error: error.message,
+        stack: error.stack
+      });
       return false;
     }
   }
@@ -299,6 +306,100 @@ export class BotsStore {
     
     return await this.storage.get(`customer:unthread:${unthreadCustomerId}`);
   }
+
+  /**
+   * Get or create customer for chat ID with proper cache hierarchy
+   * This method encapsulates the complete cache-first logic
+   * 
+   * @param {number} chatId - Telegram chat ID
+   * @param {string} chatTitle - Chat title for new customer creation
+   * @param {function} createCustomerFn - Function to create new customer if not found
+   * @returns {object} - Customer data with unthreadCustomerId
+   */
+  async getOrCreateCustomer(chatId, chatTitle, createCustomerFn) {
+    try {
+      // Step 1: Try to get existing customer (uses cache hierarchy automatically)
+      const existingCustomer = await this.getCustomerByChatId(chatId);
+      
+      if (existingCustomer) {
+        LogEngine.info(`Found existing customer for chat ${chatId}: ${existingCustomer.unthreadCustomerId}`);
+        return existingCustomer;
+      }
+      
+      // Step 2: Customer not found, create new one
+      LogEngine.info(`Creating new customer for chat ${chatId}: ${chatTitle}`);
+      const newCustomerResponse = await createCustomerFn(chatTitle);
+      const unthreadCustomerId = newCustomerResponse.id;
+      
+      // Step 3: Store new customer (populates all cache layers)
+      const customerData = {
+        chatId,
+        unthreadCustomerId,
+        chatTitle
+      };
+      
+      await this.storeCustomer(customerData);
+      
+      LogEngine.info(`Created and cached new customer: ${unthreadCustomerId}`);
+      return {
+        ...customerData,
+        storedAt: new Date().toISOString(),
+        platform: 'telegram'
+      };
+      
+    } catch (error) {
+      LogEngine.error(`Error in getOrCreateCustomer for chat ${chatId}`, {
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Check if customer exists in cache (fast check without creating)
+   * 
+   * @param {number} chatId - Telegram chat ID
+   * @returns {boolean} - True if customer exists in cache
+   */
+  async hasCustomer(chatId) {
+    try {
+      const customer = await this.getCustomerByChatId(chatId);
+      return !!customer;
+    } catch (error) {
+      LogEngine.error(`Error checking customer existence for chat ${chatId}`, {
+        error: error.message,
+        stack: error.stack
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Get cache statistics for customers
+   * 
+   * @returns {object} - Cache statistics
+   */
+  async getCustomerCacheStats() {
+    const storageStats = this.storage.getStats();
+    
+    // Count customer keys in memory cache
+    let customerKeysInMemory = 0;
+    if (this.storage.memoryCache) {
+      for (const key of this.storage.memoryCache.keys()) {
+        if (key.startsWith('customer:')) {
+          customerKeysInMemory++;
+        }
+      }
+    }
+    
+    return {
+      ...storageStats,
+      customerKeysInMemory,
+      cacheHierarchy: 'Memory → Redis → PostgreSQL',
+      sdkVersion: 'bots-brain-1.0.0'
+    };
+  }
   
   /**
    * Helper: Add ticket to chat's ticket list
@@ -335,7 +436,7 @@ export class BotsStore {
         this.storage.delete(`ticket:friendly:${ticket.friendlyId}`)
       ];
       
-      if (ticket.ticketId !== conversationId) {
+      if (ticket.ticketId && ticket.ticketId !== conversationId) {
         promises.push(this.storage.delete(`ticket:unthread:${ticket.ticketId}`));
       }
       
@@ -344,10 +445,13 @@ export class BotsStore {
       // Remove from chat tickets list
       await this.removeFromChatTickets(ticket.chatId, conversationId);
       
-      console.log(`✅ Ticket deleted: ${ticket.friendlyId}`);
+      LogEngine.info(`Ticket deleted: ${ticket.friendlyId}`);
       return true;
     } catch (error) {
-      console.error('❌ Failed to delete ticket:', error);
+      LogEngine.error('Failed to delete ticket', {
+        error: error.message,
+        stack: error.stack
+      });
       return false;
     }
   }
@@ -400,10 +504,15 @@ export class BotsStore {
       // Store agent message for reply lookup
       await this.storage.set(`agent_message:telegram:${messageId}`, enrichedData);
       
-      console.log(`✅ Agent message stored: ${messageId} for conversation ${conversationId}`);
+      LogEngine.info(`Agent message stored: ${messageId} for conversation ${conversationId}`);
       return true;
     } catch (error) {
-      console.error('❌ Failed to store agent message:', error);
+      LogEngine.error('Failed to store agent message', {
+        error: error.message,
+        stack: error.stack,
+        messageId,
+        conversationId
+      });
       return false;
     }
   }
@@ -424,5 +533,26 @@ export class BotsStore {
   
   static async getAgentMessageByTelegramId(messageId) {
     return BotsStore.getInstance().getAgentMessageByTelegramId(messageId);
+  }
+
+  // Static methods for cache-aware customer management
+  static async getOrCreateCustomer(chatId, chatTitle, createCustomerFn) {
+    return BotsStore.getInstance().getOrCreateCustomer(chatId, chatTitle, createCustomerFn);
+  }
+
+  static async getCustomerByChatId(chatId) {
+    return BotsStore.getInstance().getCustomerByChatId(chatId);
+  }
+
+  static async storeCustomer(customerData) {
+    return BotsStore.getInstance().storeCustomer(customerData);
+  }
+
+  static async hasCustomer(chatId) {
+    return BotsStore.getInstance().hasCustomer(chatId);
+  }
+
+  static async getCustomerCacheStats() {
+    return BotsStore.getInstance().getCustomerCacheStats();
   }
 }

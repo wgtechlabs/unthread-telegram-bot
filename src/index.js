@@ -23,7 +23,7 @@ import { BotsStore } from './sdk/bots-brain/index.js';
 import { WebhookConsumer } from './sdk/unthread-webhook/index.js';
 import { TelegramWebhookHandler } from './handlers/webhookMessage.js';
 import packageJSON from '../package.json' with { type: 'json' };
-import * as logger from './utils/logger.js';
+import { LogEngine } from './utils/logengine.js';
 
 /**
  * Initialize the bot with the token from environment variables
@@ -53,7 +53,7 @@ const bot = createBot(process.env.TELEGRAM_BOT_TOKEN);
  */
 bot.use(async (ctx, next) => {
     if (ctx.message && ctx.message.text) {
-        logger.debug('Received text message', {
+        LogEngine.debug('Received text message', {
             messageId: ctx.message.message_id,
             chatId: ctx.chat.id,
             chatType: ctx.chat.type,
@@ -66,7 +66,7 @@ bot.use(async (ctx, next) => {
             isReply: !!ctx.message.reply_to_message
         });
     } else if (ctx.message) {
-        logger.debug('Received non-text message', {
+        LogEngine.debug('Received non-text message', {
             messageId: ctx.message.message_id,
             chatId: ctx.chat.id,
             chatType: ctx.chat.type,
@@ -119,7 +119,7 @@ bot.on('callback_query', async (ctx) => {
         // Route callback queries through the processSupportConversation function
         await processSupportConversation(ctx);
     } catch (error) {
-        logger.error('Error handling callback query', {
+        LogEngine.error('Error handling callback query', {
             error: error.message,
             stack: error.stack,
             callbackData: ctx.callbackQuery?.data,
@@ -137,13 +137,13 @@ bot.on('callback_query', async (ctx) => {
  */
 try {
     await db.connect();
-    logger.success('Database initialized successfully');
+    LogEngine.info('Database initialized successfully');
     
     // Initialize the BotsStore with database connection and platform Redis URL
     await BotsStore.initialize(db, process.env.PLATFORM_REDIS_URL);
-    logger.success('BotsStore initialized successfully');
+    LogEngine.info('BotsStore initialized successfully');
 } catch (error) {
-    logger.error('Failed to initialize database or storage', {
+    LogEngine.error('Failed to initialize database or storage', {
         error: error.message,
         stack: error.stack
     });
@@ -180,19 +180,19 @@ try {
 
         // Start the webhook consumer
         await webhookConsumer.start();
-        logger.success('Webhook consumer started successfully');
+        LogEngine.info('Webhook consumer started successfully');
     } else {
-        logger.warn('Webhook Redis URL not configured - webhook processing disabled');
-        logger.info('Bot will run in basic mode (ticket creation only)');
+        LogEngine.warn('Webhook Redis URL not configured - webhook processing disabled');
+        LogEngine.info('Bot will run in basic mode (ticket creation only)');
     }
 
 } catch (error) {
-    logger.error('Failed to initialize webhook consumer', {
+    LogEngine.error('Failed to initialize webhook consumer', {
         error: error.message,
         stack: error.stack
     });
     // Don't exit - bot can still work for ticket creation without webhook processing
-    logger.warn('Bot will continue without webhook processing capabilities');
+    LogEngine.warn('Bot will continue without webhook processing capabilities');
 }
 
 /**
@@ -209,14 +209,14 @@ try {
  * - Consider webhook mode for production
  */
 bot.botInfo = await bot.telegram.getMe();
-logger.success('Bot initialized successfully', {
+LogEngine.info('Bot initialized successfully', {
     username: bot.botInfo.username,
     botId: bot.botInfo.id,
     version: packageJSON.version,
     nodeVersion: process.version,
     platform: process.platform
 });
-logger.info('Bot is running and listening for messages...');
+LogEngine.info('Bot is running and listening for messages...');
 /**
  * Start polling for updates
  * 
@@ -236,37 +236,37 @@ startPolling(bot);
  * Properly close database connections, stop webhook consumer, and stop the bot on shutdown
  */
 process.on('SIGINT', async () => {
-    logger.info('Received SIGINT, shutting down gracefully...');
+    LogEngine.info('Received SIGINT, shutting down gracefully...');
     try {
         if (webhookConsumer) {
             await webhookConsumer.stop();
-            logger.info('Webhook consumer stopped');
+            LogEngine.info('Webhook consumer stopped');
         }
         await BotsStore.shutdown();
-        logger.info('BotsStore shutdown complete');
+        LogEngine.info('BotsStore shutdown complete');
         await db.close();
-        logger.info('Database connections closed');
+        LogEngine.info('Database connections closed');
         process.exit(0);
     } catch (error) {
-        logger.error('Error during shutdown', { error: error.message });
+        LogEngine.error('Error during shutdown', { error: error.message });
         process.exit(1);
     }
 });
 
 process.on('SIGTERM', async () => {
-    logger.info('Received SIGTERM, shutting down gracefully...');
+    LogEngine.info('Received SIGTERM, shutting down gracefully...');
     try {
         if (webhookConsumer) {
             await webhookConsumer.stop();
-            logger.info('Webhook consumer stopped');
+            LogEngine.info('Webhook consumer stopped');
         }
         await BotsStore.shutdown();
-        logger.info('BotsStore shutdown complete');
+        LogEngine.info('BotsStore shutdown complete');
         await db.close();
-        logger.info('Database connections closed');
+        LogEngine.info('Database connections closed');
         process.exit(0);
     } catch (error) {
-        logger.error('Error during shutdown', { error: error.message });
+        LogEngine.error('Error during shutdown', { error: error.message });
         process.exit(1);
     }
 });
