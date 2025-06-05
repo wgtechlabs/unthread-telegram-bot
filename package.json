@@ -11,11 +11,10 @@
   },
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
-    "db:verify": "node src/sdk/bots-brain/verify.js"
+    "dev": "nodemon src/index.js"
   },
   "dependencies": {
-    "@wgtechlabs/log-engine": "^1.2.0",
+    "@wgtechlabs/log-engine": "^1.2.1",
     "dotenv": "^16.4.7",
     "node-fetch": "^3.3.2",
     "pg": "^8.16.0",

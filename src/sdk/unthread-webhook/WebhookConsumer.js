@@ -33,7 +33,7 @@ export class WebhookConsumer {
       
       this.redisClient = createClient({ url: this.redisUrl });
       await this.redisClient.connect();
-      LogEngine.info('✅ Webhook consumer connected to Redis');
+      LogEngine.info('Webhook consumer connected to Redis');
       return true;
     } catch (error) {
       LogEngine.error('❌ Webhook consumer Redis connection failed:', error);
@@ -69,7 +69,7 @@ export class WebhookConsumer {
   subscribe(eventType, sourcePlatform, handler) {
     const key = `${eventType}:${sourcePlatform}`;
     this.eventHandlers.set(key, handler);
-    LogEngine.info(`📋 Subscribed to ${eventType} events from ${sourcePlatform}`);
+    LogEngine.info(`Subscribed to ${eventType} events from ${sourcePlatform}`);
   }
   
   /**
@@ -79,7 +79,7 @@ export class WebhookConsumer {
     const key = `${eventType}:${sourcePlatform}`;
     const removed = this.eventHandlers.delete(key);
     if (removed) {
-      LogEngine.info(`🗑️ Unsubscribed from ${eventType} events from ${sourcePlatform}`);
+      LogEngine.info(`Unsubscribed from ${eventType} events from ${sourcePlatform}`);
     }
     return removed;
   }
@@ -98,8 +98,8 @@ export class WebhookConsumer {
     }
     
     this.isRunning = true;
-    LogEngine.log(`🚀 Webhook consumer started (polling every ${this.pollInterval}ms)`);
-    LogEngine.info(`📋 Subscribed handlers: ${Array.from(this.eventHandlers.keys()).join(', ')}`);
+    LogEngine.log(`Webhook consumer started (polling every ${this.pollInterval}ms)`);
+    LogEngine.info(`Subscribed handlers: ${Array.from(this.eventHandlers.keys()).join(', ')}`);
     
     // Start polling loop
     this.pollTimer = setInterval(() => {
@@ -119,7 +119,7 @@ export class WebhookConsumer {
     }
     
     this.isRunning = false;
-    LogEngine.info('⏹️ Webhook consumer stopped');
+    LogEngine.info('Webhook consumer stopped');
   }
   
   /**
