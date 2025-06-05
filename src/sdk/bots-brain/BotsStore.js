@@ -53,16 +53,38 @@ export class BotsStore {
     return BotsStore.getInstance().getTicketByConversationId(conversationId);
   }
   
-  static async setUserState(userId, state) {
-    return BotsStore.getInstance().storeUserState(userId, state);
+  static async setUserState(telegramUserId, state) {
+    return BotsStore.getInstance().storeUserState(telegramUserId, state);
   }
   
-  static async getUserState(userId) {
-    return BotsStore.getInstance().getUserState(userId);
+  static async getUserState(telegramUserId) {
+    return BotsStore.getInstance().getUserState(telegramUserId);
   }
   
-  static async clearUserState(userId) {
-    return BotsStore.getInstance().clearUserState(userId);
+  static async clearUserState(telegramUserId) {
+    return BotsStore.getInstance().clearUserState(telegramUserId);
+  }
+
+  // Static methods for customer operations
+  static async storeCustomer(customerData) {
+    return BotsStore.getInstance().storeCustomer(customerData);
+  }
+
+  static async getCustomerById(customerId) {
+    return BotsStore.getInstance().getCustomerById(customerId);
+  }
+
+  static async getCustomerByChatId(chatId) {
+    return BotsStore.getInstance().getCustomerByChatId(chatId);
+  }
+
+  // Static methods for user operations
+  static async storeUser(userData) {
+    return BotsStore.getInstance().storeUser(userData);
+  }
+
+  static async getUserByTelegramId(telegramUserId) {
+    return BotsStore.getInstance().getUserByTelegramId(telegramUserId);
   }
   
   static async shutdown() {
@@ -83,7 +105,7 @@ export class BotsStore {
       conversationId,
       ticketId,
       friendlyId,
-      userId,
+      telegramUserId,
       createdAt
     } = ticketData;
     
@@ -172,8 +194,8 @@ export class BotsStore {
   /**
    * Store user state for ongoing ticket creation
    */
-  async storeUserState(userId, state) {
-    return await this.storage.set(`user:state:${userId}`, {
+  async storeUserState(telegramUserId, state) {
+    return await this.storage.set(`user:state:${telegramUserId}`, {
       ...state,
       updatedAt: new Date().toISOString()
     });
@@ -182,22 +204,22 @@ export class BotsStore {
   /**
    * Get user state for ongoing ticket creation
    */
-  async getUserState(userId) {
-    return await this.storage.get(`user:state:${userId}`);
+  async getUserState(telegramUserId) {
+    return await this.storage.get(`user:state:${telegramUserId}`);
   }
   
   /**
    * Clear user state
    */
-  async clearUserState(userId) {
-    return await this.storage.delete(`user:state:${userId}`);
+  async clearUserState(telegramUserId) {
+    return await this.storage.delete(`user:state:${telegramUserId}`);
   }
   
   /**
    * Store customer mapping (Telegram chat to Unthread customer)
    */
   async storeCustomer(customerData) {
-    const { chatId, unthreadCustomerId, chatTitle } = customerData;
+    const { chatId, unthreadCustomerId, chatTitle, customerName } = customerData;
     
     const enrichedCustomerData = {
       ...customerData,
@@ -207,32 +229,74 @@ export class BotsStore {
     
     try {
       await Promise.all([
-        // Lookup by chat ID
-        this.storage.set(`customer:telegram:${chatId}`, enrichedCustomerData),
+        // Primary lookup by customer ID
+        this.storage.set(`customer:id:${unthreadCustomerId}`, enrichedCustomerData),
         
-        // Lookup by Unthread customer ID
-        this.storage.set(`customer:unthread:${unthreadCustomerId}`, enrichedCustomerData)
+        // Lookup by chat ID for quick access
+        this.storage.set(`customer:telegram:${chatId}`, enrichedCustomerData)
       ]);
       
-      console.log(`✅ Customer stored: ${chatTitle} (${unthreadCustomerId})`);
+      console.log(`✅ Customer stored: ${customerName || chatTitle} (${unthreadCustomerId})`);
       return true;
     } catch (error) {
       console.error('❌ Failed to store customer:', error);
       return false;
     }
   }
-  
+
+  /**
+   * Get customer by Unthread customer ID (primary identifier)
+   */
+  async getCustomerById(customerId) {
+    return await this.storage.get(`customer:id:${customerId}`);
+  }
+
   /**
    * Get customer by Telegram chat ID
    */
   async getCustomerByChatId(chatId) {
     return await this.storage.get(`customer:telegram:${chatId}`);
   }
-  
+
   /**
-   * Get customer by Unthread customer ID
+   * Store user information
+   */
+  async storeUser(userData) {
+    const { telegramUserId, telegramUsername, unthreadName, unthreadEmail } = userData;
+    
+    const enrichedUserData = {
+      ...userData,
+      storedAt: new Date().toISOString(),
+      platform: 'telegram'
+    };
+    
+    try {
+      // Primary lookup by Telegram user ID
+      await this.storage.set(`user:telegram:${telegramUserId}`, enrichedUserData);
+      
+      console.log(`✅ User stored: ${unthreadName} (${telegramUserId})`);
+      return true;
+    } catch (error) {
+      console.error('❌ Failed to store user:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get user by Telegram user ID (primary identifier)
+   */
+  async getUserByTelegramId(telegramUserId) {
+    return await this.storage.get(`user:telegram:${telegramUserId}`);
+  }
+
+  /**
+   * Get customer by Unthread customer ID (legacy method for backwards compatibility)
    */
   async getCustomerByUnthreadId(unthreadCustomerId) {
+    // Try new format first, then fall back to old format
+    const customer = await this.storage.get(`customer:id:${unthreadCustomerId}`);
+    if (customer) return customer;
+    
     return await this.storage.get(`customer:unthread:${unthreadCustomerId}`);
   }
   

@@ -18,9 +18,6 @@ const SupportField = {
   COMPLETE: 'complete'
 };
 
-// Customer ID cache to avoid creating duplicates
-const customerCache = new Map();
-
 /**
  * Handler for the /start command
  * 
@@ -102,7 +99,7 @@ const supportCommand = async (ctx) => {
         }
         
         // Initialize state for this user using BotsStore
-        const userId = ctx.from.id;
+        const telegramUserId = ctx.from.id;
         const userStateData = {
             currentField: SupportField.SUMMARY,
             ticket: {
@@ -115,7 +112,7 @@ const supportCommand = async (ctx) => {
         };
         
         // Store user state using BotsStore
-        await BotsStore.setUserState(userId, userStateData);
+        await BotsStore.setUserState(telegramUserId, userStateData);
         
         // Ask for the first field
         await ctx.reply("Let's create a support ticket. Please provide your issue summary:");
@@ -123,7 +120,7 @@ const supportCommand = async (ctx) => {
         logger.error('Error in supportCommand', {
             error: error.message,
             stack: error.stack,
-            userId: ctx.from?.id,
+            telegramUserId: ctx.from?.id,
             username: ctx.from?.username,
             chatId: ctx.chat?.id,
             chatType: ctx.chat?.type
@@ -141,12 +138,12 @@ const supportCommand = async (ctx) => {
 export const processSupportConversation = async (ctx) => {
     try {
         // Check if this user has an active support ticket conversation
-        const userId = ctx.from?.id;
-        if (!userId) {
+        const telegramUserId = ctx.from?.id;
+        if (!telegramUserId) {
             return false;
         }
         
-        const userState = await BotsStore.getUserState(userId);
+        const userState = await BotsStore.getUserState(telegramUserId);
         if (!userState) {
             return false;
         }
@@ -176,7 +173,7 @@ export const processSupportConversation = async (ctx) => {
         if (messageText.startsWith('/')) {
             // Allow /cancel to abort the process
             if (messageText === '/cancel') {
-                await BotsStore.clearUserState(userId);
+                await BotsStore.clearUserState(telegramUserId);
                 await ctx.reply("Support ticket creation cancelled.");
                 return true;
             }
@@ -191,7 +188,7 @@ export const processSupportConversation = async (ctx) => {
                 userState.currentField = SupportField.EMAIL;
                 
                 // Update user state in BotsStore
-                await BotsStore.setUserState(userId, userState);
+                await BotsStore.setUserState(telegramUserId, userState);
                 
                 // Ask for email with skip button
                 await ctx.reply(
@@ -214,7 +211,7 @@ export const processSupportConversation = async (ctx) => {
         logger.error('Error in processSupportConversation', {
             error: error.message,
             stack: error.stack,
-            userId: ctx.from?.id,
+            telegramUserId: ctx.from?.id,
             username: ctx.from?.username,
             chatId: ctx.chat?.id,
             hasMessage: !!ctx.message,
@@ -233,13 +230,13 @@ export const processSupportConversation = async (ctx) => {
  */
 async function handleEmailField(ctx, userState, messageText) {
     try {
-        const userId = ctx.from?.id;
+        const telegramUserId = ctx.from?.id;
         
         // Check if user wants to skip
         if (messageText.toLowerCase() === 'skip') {
             // Generate email in format {username_id@telegram.user}
             const username = ctx.from.username || 'user';
-            userState.ticket.email = `${username}_${userId}@telegram.user`;
+            userState.ticket.email = `${username}_${telegramUserId}@telegram.user`;
         } else {
             userState.ticket.email = messageText;
         }
@@ -256,42 +253,22 @@ async function handleEmailField(ctx, userState, messageText) {
         const waitingMsg = await ctx.reply("Creating your support ticket... Please wait.");
         
         try {
-            // Step 1: Get or create a customer for this group chat
-            let customerId;
+            // Step 1: Get or create customer for this group chat
+            const customerData = await unthreadService.getOrCreateCustomer(groupChatName, ctx.chat.id);
+            const customerId = customerData.id;
             
-            // Check if we already have a customer ID for this chat
-            if (customerCache.has(ctx.chat.id)) {
-                customerId = customerCache.get(ctx.chat.id);
-                logger.debug('Using cached customer', {
-                    customerId,
-                    chatId: ctx.chat.id,
-                    groupChatName
-                });
-            } else {
-                // Create a new customer in Unthread
-                const customerResponse = await unthreadService.createCustomer(groupChatName);
-                customerId = customerResponse.id;
-                
-                // Cache the customer ID for future use
-                customerCache.set(ctx.chat.id, customerId);
-                logger.success('Created new customer', {
-                    customerId,
-                    chatId: ctx.chat.id,
-                    groupChatName,
-                    cacheSize: customerCache.size
-                });
-            }
+            // Step 2: Get or create user information  
+            const userData = await unthreadService.getOrCreateUser(telegramUserId, username);
             
-            // Step 2: Create a ticket with the customer ID
+            // Step 3: Create a ticket with the customer ID and user data
             const ticketResponse = await unthreadService.createTicket({
                 groupChatName,
                 customerId,
                 summary,
-                username,
-                userId
+                onBehalfOf: userData
             });
             
-            // Step 3: Generate success message with ticket ID
+            // Step 4: Generate success message with ticket ID
             const ticketNumber = ticketResponse.friendlyId;
             const ticketId = ticketResponse.id;
             
@@ -316,7 +293,7 @@ async function handleEmailField(ctx, userState, messageText) {
                 friendlyId: ticketNumber,
                 customerId: customerId,
                 chatId: ctx.chat.id,
-                userId: userId
+                telegramUserId: telegramUserId
             });
             
             // Log successful ticket creation
@@ -324,7 +301,7 @@ async function handleEmailField(ctx, userState, messageText) {
                 ticketNumber,
                 ticketId,
                 customerId,
-                userId,
+                telegramUserId,
                 username,
                 groupChatName,
                 email: userState.ticket.email,
@@ -337,7 +314,7 @@ async function handleEmailField(ctx, userState, messageText) {
                 error: error.message,
                 stack: error.stack,
                 groupChatName,
-                userId,
+                telegramUserId,
                 username,
                 summaryLength: summary?.length
             });
@@ -352,14 +329,14 @@ async function handleEmailField(ctx, userState, messageText) {
         }
         
         // Clear the user's state using BotsStore
-        if (userId) {
-            await BotsStore.clearUserState(userId);
+        if (telegramUserId) {
+            await BotsStore.clearUserState(telegramUserId);
         }
     } catch (error) {
         logger.error('Error in handleEmailField', {
             error: error.message,
             stack: error.stack,
-            userId: ctx.from?.id,
+            telegramUserId: ctx.from?.id,
             username: ctx.from?.username,
             chatId: ctx.chat?.id,
             messageText: messageText?.substring(0, 100) // Log first 100 chars for context

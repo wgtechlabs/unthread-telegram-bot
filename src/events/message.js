@@ -111,7 +111,7 @@ export async function handleMessage(ctx, next) {
             chatType: ctx.chat.type,
             chatId: ctx.chat.id,
             messageId: ctx.message.message_id,
-            userId: ctx.from?.id,
+            telegramUserId: ctx.from?.id,
             username: ctx.from?.username,
             hasText: !!ctx.message.text,
             hasReply: !!ctx.message.reply_to_message
@@ -183,7 +183,7 @@ async function handleTicketReply(ctx) {
             error: error.message,
             stack: error.stack,
             replyToMessageId: ctx.message?.reply_to_message?.message_id,
-            userId: ctx.from?.id,
+            telegramUserId: ctx.from?.id,
             username: ctx.from?.username,
             chatId: ctx.chat?.id,
             messageText: ctx.message?.text?.substring(0, 100)
@@ -203,7 +203,7 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
     try {
         
         // This is a reply to a ticket confirmation, send it to Unthread
-        const userId = ctx.from.id;
+        const telegramUserId = ctx.from.id;
         const username = ctx.from.username;
         const message = ctx.message.text;
         
@@ -213,12 +213,14 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
         });
         
         try {
+            // Get user information from database
+            const userData = await unthreadService.getOrCreateUser(telegramUserId, username);
+            
             // Send the message to the ticket
             await unthreadService.sendMessage({
                 conversationId: ticketInfo.ticketId,
                 message,
-                username,
-                userId
+                onBehalfOf: userData
             });
             
             // Update the waiting message with success
@@ -232,7 +234,7 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
             logger.success('Added message to ticket', {
                 ticketNumber: ticketInfo.friendlyId,
                 ticketId: ticketInfo.ticketId,
-                userId,
+                telegramUserId,
                 username,
                 messageLength: message?.length,
                 chatId: ctx.chat.id
@@ -246,7 +248,7 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
                 stack: error.stack,
                 ticketNumber: ticketInfo.friendlyId,
                 ticketId: ticketInfo.ticketId,
-                userId,
+                telegramUserId,
                 username,
                 messageLength: message?.length,
                 chatId: ctx.chat.id
@@ -268,7 +270,7 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
             error: error.message,
             stack: error.stack,
             replyToMessageId: ctx.message?.reply_to_message?.message_id,
-            userId: ctx.from?.id,
+            telegramUserId: ctx.from?.id,
             username: ctx.from?.username,
             chatId: ctx.chat?.id,
             hasTicketInfo: !!unthreadService.getTicketFromReply(ctx.message?.reply_to_message?.message_id)
@@ -287,7 +289,7 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
 async function handleAgentMessageReply(ctx, agentMessageInfo) {
     try {
         // This is a reply to an agent message, send it back to Unthread
-        const userId = ctx.from.id;
+        const telegramUserId = ctx.from.id;
         const username = ctx.from.username;
         const message = ctx.message.text;
         
@@ -302,7 +304,7 @@ async function handleAgentMessageReply(ctx, agentMessageInfo) {
                 conversationId: agentMessageInfo.conversationId,
                 message,
                 username,
-                userId
+                telegramUserId
             });
             
             // Update the waiting message with success
@@ -316,7 +318,7 @@ async function handleAgentMessageReply(ctx, agentMessageInfo) {
             logger.success('Sent reply to agent', {
                 ticketNumber: agentMessageInfo.friendlyId,
                 conversationId: agentMessageInfo.conversationId,
-                userId,
+                telegramUserId,
                 username,
                 messageLength: message?.length,
                 chatId: ctx.chat.id
@@ -330,7 +332,7 @@ async function handleAgentMessageReply(ctx, agentMessageInfo) {
                 stack: error.stack,
                 ticketNumber: agentMessageInfo.friendlyId,
                 conversationId: agentMessageInfo.conversationId,
-                userId,
+                telegramUserId,
                 username,
                 messageLength: message?.length,
                 chatId: ctx.chat.id
@@ -353,7 +355,7 @@ async function handleAgentMessageReply(ctx, agentMessageInfo) {
             stack: error.stack,
             agentMessageId: agentMessageInfo?.messageId,
             conversationId: agentMessageInfo?.conversationId,
-            userId: ctx.from?.id,
+            telegramUserId: ctx.from?.id,
             username: ctx.from?.username,
             chatId: ctx.chat?.id
         });
@@ -370,7 +372,7 @@ export async function handlePrivateMessage(ctx) {
     try {
         // Log information about the private message
         logger.info('Processing private message', {
-            userId: ctx.from?.id,
+            telegramUserId: ctx.from?.id,
             username: ctx.from?.username,
             firstName: ctx.from?.first_name,
             lastName: ctx.from?.last_name,
@@ -384,7 +386,7 @@ export async function handlePrivateMessage(ctx) {
         logger.error('Error in handlePrivateMessage', {
             error: error.message,
             stack: error.stack,
-            userId: ctx.from?.id,
+            telegramUserId: ctx.from?.id,
             username: ctx.from?.username
         });
     }

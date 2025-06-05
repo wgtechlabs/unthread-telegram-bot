@@ -58,7 +58,7 @@ bot.use(async (ctx, next) => {
             chatId: ctx.chat.id,
             chatType: ctx.chat.type,
             chatTitle: ctx.chat.title,
-            userId: ctx.from?.id,
+            telegramUserId: ctx.from?.id,
             username: ctx.from?.username,
             firstName: ctx.from?.first_name,
             messageLength: ctx.message.text.length,
@@ -71,7 +71,7 @@ bot.use(async (ctx, next) => {
             chatId: ctx.chat.id,
             chatType: ctx.chat.type,
             chatTitle: ctx.chat.title,
-            userId: ctx.from?.id,
+            telegramUserId: ctx.from?.id,
             username: ctx.from?.username,
             messageType: Object.keys(ctx.message).find(key => 
                 ['photo', 'document', 'sticker', 'video', 'audio', 'voice', 'animation'].includes(key)
@@ -123,7 +123,7 @@ bot.on('callback_query', async (ctx) => {
             error: error.message,
             stack: error.stack,
             callbackData: ctx.callbackQuery?.data,
-            userId: ctx.from?.id,
+            telegramUserId: ctx.from?.id,
             username: ctx.from?.username,
             chatId: ctx.chat?.id
         });
