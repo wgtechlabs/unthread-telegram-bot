@@ -165,13 +165,11 @@ export class TelegramWebhookHandler {
     // Clean and truncate message if too long
     const cleanText = this.sanitizeMessageText(text);
     const maxLength = 4000; // Telegram message limit is 4096, leave some room
-    
     let truncatedText = cleanText;
     if (cleanText.length > maxLength) {
       truncatedText = cleanText.substring(0, maxLength - 50) + '...\n\n_Message truncated_';
     }
-
-    return `🎧 **Agent Response** (${friendlyId})\n\n${truncatedText}`;
+    return `🎫 Ticket #${friendlyId}\n\n💬 Response:\n${truncatedText}\n\n──────────\n📝 Reply to this message to respond or add more info to your ticket.`;
   }
 
   /**
