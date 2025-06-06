@@ -1,7 +1,7 @@
 import { createClient } from 'redis';
 import pkg from 'pg';
 const { Pool } = pkg;
-import { LogEngine } from '../../utils/logengine.js';
+import { LogEngine } from '@wgtechlabs/log-engine';
 
 /**
  * UnifiedStorage - Multi-layer storage architecture

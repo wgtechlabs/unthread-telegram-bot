@@ -6,7 +6,7 @@
  */
 
 import fetch from 'node-fetch';
-import { LogEngine } from '../utils/logengine.js';
+import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import dotenv from 'dotenv';
 
@@ -155,9 +155,7 @@ export async function createCustomer(groupChatName) {
     } catch (error) {
         LogEngine.error('Error creating customer', {
             error: error.message,
-            stack: error.stack,
-            groupChatName,
-            apiUrl: `${API_BASE_URL}/customers`
+            groupChatName
         });
         throw error;
     }
@@ -223,12 +221,7 @@ export async function createTicket({ groupChatName, customerId, summary, onBehal
     } catch (error) {
         LogEngine.error('Error creating ticket', {
             error: error.message,
-            stack: error.stack,
-            groupChatName,
-            customerId,
-            username,
-            telegramUserId,
-            apiUrl: `${API_BASE_URL}/conversations`
+            customerId
         });
         throw error;
     }
@@ -273,11 +266,7 @@ export async function sendMessage({ conversationId, message, onBehalfOf }) {
     } catch (error) {
         LogEngine.error('Error sending message', {
             error: error.message,
-            stack: error.stack,
-            conversationId,
-            onBehalfOf: onBehalfOf,
-            messageLength: message?.length,
-            apiUrl: `${API_BASE_URL}/conversations/${conversationId}/messages`
+            conversationId
         });
         throw error;
     }
@@ -327,10 +316,7 @@ export async function registerTicketConfirmation({ messageId, ticketId, friendly
     } catch (error) {
         LogEngine.error('Error registering ticket confirmation', {
             error: error.message,
-            stack: error.stack,
-            messageId,
-            ticketId,
-            friendlyId
+            ticketId
         });
         throw error;
     }

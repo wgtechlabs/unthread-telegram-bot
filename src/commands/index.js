@@ -6,7 +6,7 @@
  */
 
 import packageJSON from '../../package.json' with { type: 'json' };
-import { LogEngine } from '../utils/logengine.js';
+import { LogEngine } from '@wgtechlabs/log-engine';
 import { Markup } from 'telegraf';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import * as unthreadService from '../services/unthread.js';

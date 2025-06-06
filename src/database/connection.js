@@ -7,11 +7,17 @@
 
 import pkg from 'pg';
 const { Pool } = pkg;
-import { LogEngine } from '../utils/logengine.js';
+import { LogEngine } from '@wgtechlabs/log-engine';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // Load environment variables
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Database Connection Class
@@ -116,7 +122,7 @@ export class DatabaseConnection {
     }
 
     /**
-     * Ensure database schema exists
+     * Ensure database schema exists (Alpha version - auto-setup always)
      * 
      * @returns {Promise<void>}
      */
@@ -127,19 +133,62 @@ export class DatabaseConnection {
                 SELECT table_name 
                 FROM information_schema.tables 
                 WHERE table_schema = 'public' 
-                AND table_name IN ('customers', 'tickets', 'user_states')
+                AND table_name IN ('customers', 'tickets', 'user_states', 'storage_cache')
             `);
 
-            if (tableCheck.rows.length === 0) {
-                LogEngine.info('Database tables not found. Schema setup may be needed.');
-                LogEngine.info('Run the schema.sql file to create the required tables.');
+            const requiredTables = ['customers', 'tickets', 'user_states'];
+            const foundTables = tableCheck.rows.map(row => row.table_name);
+            const missingTables = requiredTables.filter(table => !foundTables.includes(table));
+
+            if (missingTables.length > 0) {
+                LogEngine.info('Database tables missing - setting up automatically...', {
+                    missing: missingTables
+                });
+                await this.initializeSchema();
             } else {
                 LogEngine.info('Database schema verified', {
-                    tablesFound: tableCheck.rows.map(row => row.table_name)
+                    tablesFound: foundTables,
+                    botsBrainReady: foundTables.includes('storage_cache')
                 });
             }
         } catch (error) {
             LogEngine.error('Error checking database schema', {
+                error: error.message,
+                stack: error.stack
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Initialize database schema from schema.sql file
+     * 
+     * @returns {Promise<void>}
+     */
+    async initializeSchema() {
+        try {
+            LogEngine.info('Starting database schema initialization...');
+
+            const schemaPath = path.join(__dirname, 'schema.sql');
+            
+            // Check if schema file exists
+            if (!fs.existsSync(schemaPath)) {
+                throw new Error(`Schema file not found: ${schemaPath}`);
+            }
+
+            // Read schema file
+            const schema = fs.readFileSync(schemaPath, 'utf8');
+            LogEngine.debug('Schema file loaded', { 
+                path: schemaPath, 
+                size: schema.length 
+            });
+
+            // Execute schema
+            await this.query(schema);
+            LogEngine.info('Database schema created successfully');
+
+        } catch (error) {
+            LogEngine.error('Failed to initialize database schema', {
                 error: error.message,
                 stack: error.stack
             });

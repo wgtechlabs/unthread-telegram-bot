@@ -17,13 +17,13 @@ dotenv.config();
 
 import { createBot, configureCommands, startPolling } from './bot.js';
 import { startCommand, helpCommand, versionCommand, supportCommand, processSupportConversation } from './commands/index.js';
-import { handleMessage, registerTextPattern } from './events/message.js';
+import { handleMessage } from './events/message.js';
 import { db } from './database/connection.js';
 import { BotsStore } from './sdk/bots-brain/index.js';
 import { WebhookConsumer } from './sdk/unthread-webhook/index.js';
 import { TelegramWebhookHandler } from './handlers/webhookMessage.js';
 import packageJSON from '../package.json' with { type: 'json' };
-import { LogEngine } from './utils/logengine.js';
+import { LogEngine } from '@wgtechlabs/log-engine';
 
 /**
  * Initialize the bot with the token from environment variables
@@ -52,30 +52,11 @@ const bot = createBot(process.env.TELEGRAM_BOT_TOKEN);
  * - Add user tracking/analytics
  */
 bot.use(async (ctx, next) => {
-    if (ctx.message && ctx.message.text) {
-        LogEngine.debug('Received text message', {
-            messageId: ctx.message.message_id,
+    if (ctx.message) {
+        LogEngine.debug('Message received', {
             chatId: ctx.chat.id,
-            chatType: ctx.chat.type,
-            chatTitle: ctx.chat.title,
-            telegramUserId: ctx.from?.id,
-            username: ctx.from?.username,
-            firstName: ctx.from?.first_name,
-            messageLength: ctx.message.text.length,
-            isCommand: ctx.message.text.startsWith('/'),
-            isReply: !!ctx.message.reply_to_message
-        });
-    } else if (ctx.message) {
-        LogEngine.debug('Received non-text message', {
-            messageId: ctx.message.message_id,
-            chatId: ctx.chat.id,
-            chatType: ctx.chat.type,
-            chatTitle: ctx.chat.title,
-            telegramUserId: ctx.from?.id,
-            username: ctx.from?.username,
-            messageType: Object.keys(ctx.message).find(key => 
-                ['photo', 'document', 'sticker', 'video', 'audio', 'voice', 'animation'].includes(key)
-            ) || 'unknown'
+            userId: ctx.from?.id,
+            type: ctx.message.text ? 'text' : 'media'
         });
     }
     await next();
@@ -99,17 +80,6 @@ bot.help(helpCommand);
 bot.command('version', versionCommand);
 bot.command('support', supportCommand);
 
-/**
- * Register pattern-based message handlers
- * 
- * Use the registerTextPattern function from events/message.js to register
- * handlers for specific message patterns.
- * 
- * Example:
- * registerTextPattern(/hello/i, (ctx) => ctx.reply('Hello there!'));
- */
-// Add your pattern-based message handlers here
-
 // Register message handlers
 bot.on('message', handleMessage);
 
@@ -121,11 +91,7 @@ bot.on('callback_query', async (ctx) => {
     } catch (error) {
         LogEngine.error('Error handling callback query', {
             error: error.message,
-            stack: error.stack,
-            callbackData: ctx.callbackQuery?.data,
-            telegramUserId: ctx.from?.id,
-            username: ctx.from?.username,
-            chatId: ctx.chat?.id
+            userId: ctx.from?.id
         });
     }
 });
@@ -144,8 +110,7 @@ try {
     LogEngine.info('BotsStore initialized successfully');
 } catch (error) {
     LogEngine.error('Failed to initialize database or storage', {
-        error: error.message,
-        stack: error.stack
+        error: error.message
     });
     process.exit(1);
 }
@@ -165,8 +130,7 @@ try {
         // Initialize webhook consumer with dedicated webhook Redis URL
         webhookConsumer = new WebhookConsumer({
             redisUrl: process.env.WEBHOOK_REDIS_URL,
-            queueName: process.env.WEBHOOK_QUEUE_NAME || 'unthread-events',
-            pollInterval: parseInt(process.env.WEBHOOK_POLL_INTERVAL) || 1000
+            queueName: 'unthread-events'
         });
 
         // Initialize webhook handler
@@ -188,8 +152,7 @@ try {
 
 } catch (error) {
     LogEngine.error('Failed to initialize webhook consumer', {
-        error: error.message,
-        stack: error.stack
+        error: error.message
     });
     // Don't exit - bot can still work for ticket creation without webhook processing
     LogEngine.warn('Bot will continue without webhook processing capabilities');

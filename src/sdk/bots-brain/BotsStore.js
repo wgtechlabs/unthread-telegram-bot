@@ -4,7 +4,7 @@
  * Uses UnifiedStorage for multi-layer caching
  */
 import { UnifiedStorage } from './UnifiedStorage.js';
-import { LogEngine } from '../../utils/logengine.js';
+import { LogEngine } from '@wgtechlabs/log-engine';
 
 export class BotsStore {
   static instance = null;

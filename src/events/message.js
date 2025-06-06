@@ -13,32 +13,9 @@
  * - Add priority mechanism for overlapping patterns
  */
 
-import { LogEngine } from '../utils/logengine.js';
+import { LogEngine } from '@wgtechlabs/log-engine';
 import { processSupportConversation } from '../commands/index.js';
 import * as unthreadService from '../services/unthread.js';
-
-// Store for pattern-based message handlers
-const patternHandlers = [];
-
-/**
- * Registers a text message handler with pattern matching
- * 
- * @param {RegExp} pattern - Regular expression pattern to match against message text
- * @param {Function} handler - Handler function to execute when pattern matches
- * @returns {Function} - Function to remove this pattern handler
- */
-export function registerTextPattern(pattern, handler) {
-    const handlerEntry = { pattern, handler };
-    patternHandlers.push(handlerEntry);
-    
-    // Return a function to deregister this handler if needed
-    return () => {
-        const index = patternHandlers.indexOf(handlerEntry);
-        if (index !== -1) {
-            patternHandlers.splice(index, 1);
-        }
-    };
-}
 
 /**
  * Checks if a message is from a group chat (not a channel)
@@ -61,36 +38,6 @@ export function isPrivateChat(ctx) {
 }
 
 /**
- * Processes text messages against registered pattern handlers
- * 
- * @param {object} ctx - The Telegraf context object
- * @returns {boolean} True if any pattern matched and was handled
- */
-export function processPatterns(ctx) {
-    if (!ctx.message || !ctx.message.text) {
-        return false;
-    }
-    
-    let handled = false;
-    
-    // Try all registered patterns
-    for (const { pattern, handler } of patternHandlers) {
-        if (ctx.message.text.match(pattern)) {
-            try {
-                handler(ctx);
-                handled = true;
-                // Note: We don't return immediately to allow multiple handlers
-                // to process the same message if multiple patterns match
-            } catch (error) {
-                LogEngine.error(`Error in pattern handler: ${error.message}`);
-            }
-        }
-    }
-    
-    return handled;
-}
-
-/**
  * Handles all incoming messages
  * 
  * This function routes messages to appropriate handlers based on chat type
@@ -110,11 +57,7 @@ export async function handleMessage(ctx, next) {
         LogEngine.debug('Processing message', {
             chatType: ctx.chat.type,
             chatId: ctx.chat.id,
-            messageId: ctx.message.message_id,
-            telegramUserId: ctx.from?.id,
-            username: ctx.from?.username,
-            hasText: !!ctx.message.text,
-            hasReply: !!ctx.message.reply_to_message
+            userId: ctx.from?.id
         });
         
         // Check if this is part of a support conversation
@@ -133,17 +76,11 @@ export async function handleMessage(ctx, next) {
             }
         }
 
-        // Process against pattern handlers
-        const patternHandled = processPatterns(ctx);
-        
-        // Handle different chat types if not already handled by a pattern
-        if (!patternHandled) {
-            if (isPrivateChat(ctx)) {
-                await handlePrivateMessage(ctx);
-            } else if (isGroupChat(ctx)) {
-                await handleGroupMessage(ctx);
-            }
-            // You can add other chat type handlers here (channel)
+        // Handle different chat types
+        if (isPrivateChat(ctx)) {
+            await handlePrivateMessage(ctx);
+        } else if (isGroupChat(ctx)) {
+            await handleGroupMessage(ctx);
         }
 
         // Continue processing with other handlers
@@ -181,12 +118,7 @@ async function handleTicketReply(ctx) {
     } catch (error) {
         LogEngine.error('Error in handleTicketReply', {
             error: error.message,
-            stack: error.stack,
-            replyToMessageId: ctx.message?.reply_to_message?.message_id,
-            telegramUserId: ctx.from?.id,
-            username: ctx.from?.username,
-            chatId: ctx.chat?.id,
-            messageText: ctx.message?.text?.substring(0, 100)
+            chatId: ctx.chat?.id
         });
         return false;
     }
@@ -245,13 +177,7 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
             // Handle API errors
             LogEngine.error('Error adding message to ticket', {
                 error: error.message,
-                stack: error.stack,
-                ticketNumber: ticketInfo.friendlyId,
-                ticketId: ticketInfo.ticketId,
-                telegramUserId,
-                username,
-                messageLength: message?.length,
-                chatId: ctx.chat.id
+                ticketId: ticketInfo.ticketId
             });
             
             // Update the waiting message with error
@@ -268,12 +194,7 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
     } catch (error) {
         LogEngine.error('Error in handleTicketReply', {
             error: error.message,
-            stack: error.stack,
-            replyToMessageId: ctx.message?.reply_to_message?.message_id,
-            telegramUserId: ctx.from?.id,
-            username: ctx.from?.username,
-            chatId: ctx.chat?.id,
-            hasTicketInfo: !!unthreadService.getTicketFromReply(ctx.message?.reply_to_message?.message_id)
+            chatId: ctx.chat?.id
         });
         return false;
     }
@@ -329,13 +250,7 @@ async function handleAgentMessageReply(ctx, agentMessageInfo) {
             // Handle API errors
             LogEngine.error('Error sending reply to agent', {
                 error: error.message,
-                stack: error.stack,
-                ticketNumber: agentMessageInfo.friendlyId,
-                conversationId: agentMessageInfo.conversationId,
-                telegramUserId,
-                username,
-                messageLength: message?.length,
-                chatId: ctx.chat.id
+                conversationId: agentMessageInfo.conversationId
             });
             
             // Update the waiting message with error
@@ -352,12 +267,7 @@ async function handleAgentMessageReply(ctx, agentMessageInfo) {
     } catch (error) {
         LogEngine.error('Error in handleAgentMessageReply', {
             error: error.message,
-            stack: error.stack,
-            agentMessageId: agentMessageInfo?.messageId,
-            conversationId: agentMessageInfo?.conversationId,
-            telegramUserId: ctx.from?.id,
-            username: ctx.from?.username,
-            chatId: ctx.chat?.id
+            conversationId: agentMessageInfo?.conversationId
         });
         return false;
     }

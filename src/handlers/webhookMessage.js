@@ -1,4 +1,4 @@
-import { LogEngine } from '../utils/logengine.js';
+import { LogEngine } from '@wgtechlabs/log-engine';
 
 /**
  * Handles incoming webhook messages from Unthread agents
@@ -22,8 +22,8 @@ export class TelegramWebhookHandler {
     try {
       LogEngine.info('Processing agent message webhook', {
         conversationId: event.data.conversationId,
-        textLength: event.data.text?.length || 0,
-        sentBy: event.data.sentByUserId,
+        textLength: event.data.content?.length || 0,
+        sentBy: event.data.userId,
         timestamp: event.timestamp
       });
 
@@ -42,7 +42,7 @@ export class TelegramWebhookHandler {
       }
 
       // 3. Validate message content
-      const messageText = event.data.text;
+      const messageText = event.data.content;
       if (!messageText || messageText.trim().length === 0) {
         LogEngine.warn('Empty message text in webhook event', { conversationId });
         return;
@@ -73,7 +73,7 @@ export class TelegramWebhookHandler {
           sentAt: new Date().toISOString()
         });
 
-        this.LogEngine.info('✅ Agent message delivered to Telegram', {
+        this.        LogEngine.info('✅ Agent message delivered to Telegram', {
           conversationId,
           chatId: ticketData.chatId,
           replyToMessageId: ticketData.messageId,
@@ -82,7 +82,7 @@ export class TelegramWebhookHandler {
         });
 
       } catch (telegramError) {
-        this.LogEngine.error('Failed to send message to Telegram', {
+        LogEngine.error('Failed to send message to Telegram', {
           error: telegramError.message,
           chatId: ticketData.chatId,
           messageId: ticketData.messageId,

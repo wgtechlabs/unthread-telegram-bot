@@ -157,8 +157,20 @@ export class WebhookConsumer {
       });
       
       // Validate the event
-      if (!EventValidator.validate(event)) {
-        LogEngine.debug('Invalid event, skipping');
+      const validation = EventValidator.validate(event);
+      if (!validation.isValid) {
+        LogEngine.warn('Invalid event received', {
+          errors: validation.errors,
+          event: EventValidator.getEventSummary(event)
+        });
+        return;
+      }
+      
+      // Check if we should process this event
+      if (!EventValidator.shouldProcess(event)) {
+        LogEngine.debug('Event not processed by this bot', {
+          event: EventValidator.getEventSummary(event)
+        });
         return;
       }
       
@@ -172,12 +184,25 @@ export class WebhookConsumer {
       }
       
       // Execute the handler
-      LogEngine.info('🔄 Processing message_created event from dashboard');
+      LogEngine.info('🔄 Processing event', {
+        event: EventValidator.getEventSummary(event)
+      });
+      
       await handler(event);
-      LogEngine.info('✅ Event processed successfully');
+      
+      LogEngine.info('✅ Event processed successfully', {
+        event: EventValidator.getEventSummary(event)
+      });
       
     } catch (error) {
-      LogEngine.error('❌ Error processing event:', error.message);
+      LogEngine.error('❌ Error processing event', {
+        error: error.message,
+        stack: error.stack,
+        eventData: eventData
+      });
+      
+      // For simplicity, we just log errors and continue
+      // In production, you might want to implement retry logic or dead letter queues
     }
   }
   
