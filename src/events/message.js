@@ -281,7 +281,7 @@ async function handleAgentMessageReply(ctx, agentMessageInfo) {
 export async function handlePrivateMessage(ctx) {
     try {
         // Log information about the private message
-        logger.info('Processing private message', {
+        LogEngine.info('Processing private message', {
             telegramUserId: ctx.from?.id,
             username: ctx.from?.username,
             firstName: ctx.from?.first_name,

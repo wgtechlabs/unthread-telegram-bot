@@ -145,7 +145,7 @@ export async function createCustomer(groupChatName) {
         const result = await response.json();
         
         // Log the extraction for debugging
-        logger.info('Customer created with extracted name', {
+        LogEngine.info('Customer created with extracted name', {
             originalGroupChatName: groupChatName,
             extractedCustomerName: customerName,
             customerId: result.id
@@ -207,7 +207,7 @@ export async function createTicket({ groupChatName, customerId, summary, onBehal
         const result = await response.json();
         
         // Log the ticket creation with extracted names
-        logger.info('Ticket created with extracted customer name', {
+        LogEngine.info('Ticket created with extracted customer name', {
             originalGroupChatName: groupChatName,
             extractedCustomerName: customerCompanyName,
             ticketTitle: title,
@@ -396,7 +396,7 @@ export async function getOrCreateCustomer(groupChatName, chatId) {
         // First, check if we already have this customer in our database by chat ID
         const existingCustomer = await BotsStore.getCustomerByChatId(chatId);
         if (existingCustomer) {
-            logger.info('Using existing customer from database', {
+            LogEngine.info('Using existing customer from database', {
                 customerId: existingCustomer.unthreadCustomerId,
                 customerName: existingCustomer.customerName,
                 chatId: chatId
@@ -438,7 +438,7 @@ export async function getOrCreateCustomer(groupChatName, chatId) {
             createdAt: new Date().toISOString()
         });
         
-        logger.info('Created and stored new customer', {
+        LogEngine.info('Created and stored new customer', {
             originalGroupChatName: groupChatName,
             extractedCustomerName: customerName,
             customerId: result.id,
@@ -450,7 +450,7 @@ export async function getOrCreateCustomer(groupChatName, chatId) {
             name: customerName
         };
     } catch (error) {
-        logger.error('Error getting or creating customer', {
+        LogEngine.error('Error getting or creating customer', {
             error: error.message,
             stack: error.stack,
             groupChatName,
@@ -473,7 +473,7 @@ export async function getOrCreateUser(telegramUserId, username) {
         // First, check if we already have this user in our database
         const existingUser = await BotsStore.getUserByTelegramId(telegramUserId);
         if (existingUser) {
-            logger.info('Using existing user from database', {
+            LogEngine.info('Using existing user from database', {
                 telegramUserId: existingUser.telegramUserId,
                 unthreadName: existingUser.unthreadName,
                 unthreadEmail: existingUser.unthreadEmail
@@ -499,7 +499,7 @@ export async function getOrCreateUser(telegramUserId, username) {
             createdAt: new Date().toISOString()
         });
         
-        logger.info('Created and stored new user', {
+        LogEngine.info('Created and stored new user', {
             telegramUserId: telegramUserId,
             telegramUsername: username,
             unthreadName: unthreadName,
@@ -511,7 +511,7 @@ export async function getOrCreateUser(telegramUserId, username) {
             email: unthreadEmail
         };
     } catch (error) {
-        logger.error('Error getting or creating user', {
+        LogEngine.error('Error getting or creating user', {
             error: error.message,
             stack: error.stack,
             telegramUserId,
