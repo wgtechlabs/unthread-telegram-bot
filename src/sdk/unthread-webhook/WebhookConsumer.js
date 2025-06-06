@@ -2,6 +2,9 @@ import { createClient } from 'redis';
 import { EventValidator } from './EventValidator.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 
+// Helper function for command options (Redis v4 compatibility)
+const commandOptions = (options) => options;
+
 /**
  * WebhookConsumer - Simple Redis queue consumer for Unthread webhook events
  * 
@@ -130,7 +133,7 @@ export class WebhookConsumer {
     
     try {
       // Get the next event from the queue (blocking pop with 1 second timeout)
-      const result = await this.redisClient.blPop({ key: this.queueName, timeout: 1 });
+      const result = await this.redisClient.blPop(commandOptions({ isolated: true }), this.queueName, 1);
       
       if (result) {
         const eventData = result.element;
