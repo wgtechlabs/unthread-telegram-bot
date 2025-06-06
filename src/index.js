@@ -10,14 +10,20 @@
  * - Add graceful shutdown hooks
  * - Add configuration validation
  */
-import { createBot, configureCommands, onText, startPolling } from './bot.js';
-import { startCommand, helpCommand, versionCommand } from './commands/index.js';
-import packageJSON from '../package.json' with { type: 'json' };
-import * as logger from './utils/logger.js';
 import dotenv from 'dotenv';
 
 // Load environment variables from .env file
 dotenv.config();
+
+import { createBot, configureCommands, startPolling } from './bot.js';
+import { startCommand, helpCommand, versionCommand, supportCommand, processSupportConversation } from './commands/index.js';
+import { handleMessage } from './events/message.js';
+import { db } from './database/connection.js';
+import { BotsStore } from './sdk/bots-brain/index.js';
+import { WebhookConsumer } from './sdk/unthread-webhook/index.js';
+import { TelegramWebhookHandler } from './handlers/webhookMessage.js';
+import packageJSON from '../package.json' with { type: 'json' };
+import { LogEngine } from '@wgtechlabs/log-engine';
 
 /**
  * Initialize the bot with the token from environment variables
@@ -46,7 +52,13 @@ const bot = createBot(process.env.TELEGRAM_BOT_TOKEN);
  * - Add user tracking/analytics
  */
 bot.use(async (ctx, next) => {
-    logger.info(`Received a message: ${ctx.message.text}`);
+    if (ctx.message) {
+        LogEngine.debug('Message received', {
+            chatId: ctx.chat.id,
+            userId: ctx.from?.id,
+            type: ctx.message.text ? 'text' : 'media'
+        });
+    }
     await next();
 });
 
@@ -66,18 +78,85 @@ bot.use(async (ctx, next) => {
 bot.start(startCommand);
 bot.help(helpCommand);
 bot.command('version', versionCommand);
+bot.command('support', supportCommand);
 
-// Text pattern handlers section
+// Register message handlers
+bot.on('message', handleMessage);
+
+// Register callback query handler for buttons
+bot.on('callback_query', async (ctx) => {
+    try {
+        // Route callback queries through the processSupportConversation function
+        await processSupportConversation(ctx);
+    } catch (error) {
+        LogEngine.error('Error handling callback query', {
+            error: error.message,
+            userId: ctx.from?.id
+        });
+    }
+});
+
 /**
- * Add any text handlers if needed
- * Example: onText(bot, /some pattern/, (ctx) => { "handler" });
+ * Database and Storage initialization
  * 
- * Enhancement Opportunities:
- * - Add natural language processing capabilities
- * - Implement conversation flows
- * - Add AI-powered responses
+ * Initialize database connection and storage layers before starting the bot
  */
-// onText(bot, /some pattern/, (ctx) => { /* handler */ });
+try {
+    await db.connect();
+    LogEngine.info('Database initialized successfully');
+    
+    // Initialize the BotsStore with database connection and platform Redis URL
+    await BotsStore.initialize(db, process.env.PLATFORM_REDIS_URL);
+    LogEngine.info('BotsStore initialized successfully');
+} catch (error) {
+    LogEngine.error('Failed to initialize database or storage', {
+        error: error.message
+    });
+    process.exit(1);
+}
+
+/**
+ * Webhook Consumer and Handler initialization
+ * 
+ * Initialize the webhook consumer to listen for Unthread events
+ * and the handler to process agent messages
+ */
+let webhookConsumer;
+let webhookHandler;
+
+try {
+    // Check if webhook Redis URL is available before initializing webhook consumer
+    if (process.env.WEBHOOK_REDIS_URL) {
+        // Initialize webhook consumer with dedicated webhook Redis URL
+        webhookConsumer = new WebhookConsumer({
+            redisUrl: process.env.WEBHOOK_REDIS_URL,
+            queueName: 'unthread-events'
+        });
+
+        // Initialize webhook handler
+        const botsStore = BotsStore.getInstance();
+        webhookHandler = new TelegramWebhookHandler(bot, botsStore);
+
+        // Subscribe to agent message events from dashboard
+        webhookConsumer.subscribe('message_created', 'dashboard', 
+            webhookHandler.handleMessageCreated.bind(webhookHandler)
+        );
+
+        // Start the webhook consumer
+        await webhookConsumer.start();
+        LogEngine.info('Webhook consumer started successfully');
+    } else {
+        LogEngine.warn('Webhook Redis URL not configured - webhook processing disabled');
+        LogEngine.info('Bot will run in basic mode (ticket creation only)');
+    }
+
+} catch (error) {
+    LogEngine.error('Failed to initialize webhook consumer', {
+        error: error.message
+    });
+    // Don't exit - bot can still work for ticket creation without webhook processing
+    LogEngine.warn('Bot will continue without webhook processing capabilities');
+}
 
 /**
  * Bot initialization and startup
@@ -93,10 +172,14 @@ bot.command('version', versionCommand);
  * - Consider webhook mode for production
  */
 bot.botInfo = await bot.telegram.getMe();
-logger.info(`Bot started with username: @${bot.botInfo.username}`);
-logger.info(`Bot version: ${packageJSON.version}`);
-logger.info(`Bot ID: ${bot.botInfo.id}`);
-logger.info('Bot is running...');
+LogEngine.info('Bot initialized successfully', {
+    username: bot.botInfo.username,
+    botId: bot.botInfo.id,
+    version: packageJSON.version,
+    nodeVersion: process.version,
+    platform: process.platform
+});
+LogEngine.info('Bot is running and listening for messages...');
 /**
  * Start polling for updates
  * 
@@ -109,3 +192,44 @@ logger.info('Bot is running...');
  * - Add graceful shutdown on SIGINT/SIGTERM
  */
 startPolling(bot);
+
+/**
+ * Graceful shutdown handler
+ * 
+ * Properly close database connections, stop webhook consumer, and stop the bot on shutdown
+ */
+process.on('SIGINT', async () => {
+    LogEngine.info('Received SIGINT, shutting down gracefully...');
+    try {
+        if (webhookConsumer) {
+            await webhookConsumer.stop();
+            LogEngine.info('Webhook consumer stopped');
+        }
+        await BotsStore.shutdown();
+        LogEngine.info('BotsStore shutdown complete');
+        await db.close();
+        LogEngine.info('Database connections closed');
+        process.exit(0);
+    } catch (error) {
+        LogEngine.error('Error during shutdown', { error: error.message });
+        process.exit(1);
+    }
+});
+
+process.on('SIGTERM', async () => {
+    LogEngine.info('Received SIGTERM, shutting down gracefully...');
+    try {
+        if (webhookConsumer) {
+            await webhookConsumer.stop();
+            LogEngine.info('Webhook consumer stopped');
+        }
+        await BotsStore.shutdown();
+        LogEngine.info('BotsStore shutdown complete');
+        await db.close();
+        LogEngine.info('Database connections closed');
+        process.exit(0);
+    } catch (error) {
+        LogEngine.error('Error during shutdown', { error: error.message });
+        process.exit(1);
+    }
+});

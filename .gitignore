@@ -113,3 +113,15 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# HTTP files
+*.http
+
+# Test and validation scripts
+final-validation.js
+phase6-integration-test.js
+*-test.js
+*-validation.js
+
+# AI context
+ai_docs/

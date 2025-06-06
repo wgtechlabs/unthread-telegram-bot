@@ -3,15 +3,20 @@
  * 
  * This module defines command handlers for the Telegram bot.
  * Each command is exported as a function that can be attached to the bot instance.
- * 
- * Potential Improvements:
- * - Add more useful commands
- * - Organize commands by category
- * - Add command argument validation
- * - Implement interactive commands with inline keyboards
  */
 
 import packageJSON from '../../package.json' with { type: 'json' };
+import { LogEngine } from '@wgtechlabs/log-engine';
+import { Markup } from 'telegraf';
+import { BotsStore } from '../sdk/bots-brain/index.js';
+import * as unthreadService from '../services/unthread.js';
+
+// Support form field enum
+const SupportField = {
+  SUMMARY: 'summary',
+  EMAIL: 'email',
+  COMPLETE: 'complete'
+};
 
 /**
  * Handler for the /start command
@@ -53,7 +58,7 @@ const startCommand = (ctx) => {
  * - Add pagination for large command lists
  */
 const helpCommand = (ctx) => {
-    ctx.reply('Available commands:\n/start - Start the bot\n/help - Show this help message\n/version - Show the bot version');
+    ctx.reply('Available commands:\n/start - Start the bot\n/help - Show this help message\n/version - Show the bot version\n/support - Create a support ticket');
 };
 
 /**
@@ -76,12 +81,279 @@ const versionCommand = (ctx) => {
         ctx.reply(`Bot version: ${packageJSON.version}`);
     } catch (error) {
         ctx.reply('Error retrieving version information.');
-        console.error('Error in versionCommand:', error);
+        LogEngine.error('Error in versionCommand', {
+            error: error.message,
+            stack: error.stack
+        });
     }
 };
+
+/**
+ * Initializes a support ticket conversation
+ * 
+ * @param {object} ctx - The Telegraf context object
+ */
+const supportCommand = async (ctx) => {
+    try {
+        // Only allow support tickets in group chats
+        if (ctx.chat.type === 'private') {
+            await ctx.reply("Support tickets can only be created in group chats.");
+            return;
+        }
+        
+        // Initialize state for this user using BotsStore
+        const telegramUserId = ctx.from.id;
+        const userStateData = {
+            currentField: SupportField.SUMMARY,
+            ticket: {
+                summary: '',
+                email: '',
+                name: ctx.from.username || `${ctx.from.first_name} ${ctx.from.last_name || ''}`.trim(),
+                company: ctx.chat && ctx.chat.type !== 'private' ? ctx.chat.title : 'Individual Support',
+                chatId: ctx.chat.id
+            }
+        };
+        
+        // Store user state using BotsStore
+        await BotsStore.setUserState(telegramUserId, userStateData);
+        
+        // Ask for the first field
+        await ctx.reply("Let's create a support ticket. Please provide your issue summary:");
+    } catch (error) {
+        LogEngine.error('Error in supportCommand', {
+            error: error.message,
+            stack: error.stack,
+            telegramUserId: ctx.from?.id,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id,
+            chatType: ctx.chat?.type
+        });
+        await ctx.reply("Sorry, there was an error starting the support ticket process. Please try again later.");
+    }
+};
+
+/**
+ * Processes a message in the context of an ongoing support ticket conversation
+ * 
+ * @param {object} ctx - The Telegraf context object
+ * @returns {boolean} - True if the message was processed as part of a support conversation
+ */
+export const processSupportConversation = async (ctx) => {
+    try {
+        // Check if this user has an active support ticket conversation
+        const telegramUserId = ctx.from?.id;
+        if (!telegramUserId) {
+            return false;
+        }
+        
+        const userState = await BotsStore.getUserState(telegramUserId);
+        if (!userState) {
+            return false;
+        }
+
+        // Handle callback queries (button clicks)
+        if (ctx.callbackQuery) {
+            if (ctx.callbackQuery.data === 'skip_email') {
+                if (userState.currentField === SupportField.EMAIL) {
+                    // Process as if user typed "skip"
+                    await handleEmailField(ctx, userState, 'skip');
+                }
+            }
+            // Answer the callback query to remove the "loading" state of the button
+            await ctx.answerCbQuery();
+            // Important: We need to return true here to indicate we handled the callback
+            return true;
+        }
+
+        // Require text message for normal processing
+        if (!ctx.message?.text) {
+            return false;
+        }
+
+        const messageText = ctx.message.text.trim();
+
+        // Handle commands in the middle of a conversation
+        if (messageText.startsWith('/')) {
+            // Allow /cancel to abort the process
+            if (messageText === '/cancel') {
+                await BotsStore.clearUserState(telegramUserId);
+                await ctx.reply("Support ticket creation cancelled.");
+                return true;
+            }
+            // Let other commands pass through
+            return false;
+        }
+
+        // Update the current field and move to the next one
+        switch (userState.currentField) {
+            case SupportField.SUMMARY:
+                userState.ticket.summary = messageText;
+                userState.currentField = SupportField.EMAIL;
+                
+                // Update user state in BotsStore
+                await BotsStore.setUserState(telegramUserId, userState);
+                
+                // Ask for email with skip button
+                await ctx.reply(
+                    "Please provide your email address or skip this step:",
+                    Markup.inlineKeyboard([
+                        Markup.button.callback('Skip', 'skip_email')
+                    ])
+                );
+                break;
+                
+            case SupportField.EMAIL:
+                await handleEmailField(ctx, userState, messageText);
+                break;
+        }
+        
+        // We handled this message as part of a support conversation
+        return true;
+        
+    } catch (error) {
+        LogEngine.error('Error in processSupportConversation', {
+            error: error.message,
+            stack: error.stack,
+            telegramUserId: ctx.from?.id,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id,
+            hasMessage: !!ctx.message,
+            isCallbackQuery: !!ctx.callbackQuery
+        });
+        return false;
+    }
+};
+
+/**
+ * Handles the email field input and completes the ticket process
+ * 
+ * @param {object} ctx - The Telegraf context object
+ * @param {object} userState - The user's conversation state
+ * @param {string} messageText - The text message from the user
+ */
+async function handleEmailField(ctx, userState, messageText) {
+    try {
+        const telegramUserId = ctx.from?.id;
+        
+        // Check if user wants to skip
+        if (messageText.toLowerCase() === 'skip') {
+            // Generate email in format {username_id@telegram.user}
+            const username = ctx.from.username || 'user';
+            userState.ticket.email = `${username}_${telegramUserId}@telegram.user`;
+        } else {
+            userState.ticket.email = messageText;
+        }
+        
+        // Mark the ticket as complete
+        userState.currentField = SupportField.COMPLETE;
+        
+        // Get necessary information for ticket creation
+        const groupChatName = ctx.chat.title;
+        const username = ctx.from.username;
+        const summary = userState.ticket.summary;
+        
+        // Send a waiting message
+        const waitingMsg = await ctx.reply("Creating your support ticket... Please wait.");
+        
+        try {
+            // Step 1: Get or create customer for this group chat
+            const customerData = await unthreadService.getOrCreateCustomer(groupChatName, ctx.chat.id);
+            const customerId = customerData.id;
+            
+            // Step 2: Get or create user information  
+            const userData = await unthreadService.getOrCreateUser(telegramUserId, username);
+            
+            // Step 3: Create a ticket with the customer ID and user data
+            const ticketResponse = await unthreadService.createTicket({
+                groupChatName,
+                customerId,
+                summary,
+                onBehalfOf: userData
+            });
+            
+            // Step 4: Generate success message with ticket ID
+            const ticketNumber = ticketResponse.friendlyId;
+            const ticketId = ticketResponse.id;
+            
+            // Create success message
+            const successMessage = `🎫 Support Ticket Created Successfully!\n\n` +
+                `Ticket #${ticketNumber}\n\n` +
+                `Your issue has been submitted and our team will be in touch soon. ` +
+                `Reply to this message to add more information to your ticket.`;
+            
+            // Send the success message
+            const confirmationMsg = await ctx.telegram.editMessageText(
+                ctx.chat.id, 
+                waitingMsg.message_id, 
+                null, 
+                successMessage
+            );
+            
+            // Register this confirmation message so we can track replies to it
+            await unthreadService.registerTicketConfirmation({
+                messageId: confirmationMsg.message_id,
+                ticketId: ticketId,
+                friendlyId: ticketNumber,
+                customerId: customerId,
+                chatId: ctx.chat.id,
+                telegramUserId: telegramUserId
+            });
+            
+            // Log successful ticket creation
+            LogEngine.info('Support ticket created successfully', {
+                ticketNumber,
+                ticketId,
+                customerId,
+                telegramUserId,
+                username,
+                groupChatName,
+                email: userState.ticket.email,
+                summaryLength: summary?.length
+            });
+            
+        } catch (error) {
+            // Handle API errors
+            LogEngine.error('Error creating support ticket', {
+                error: error.message,
+                stack: error.stack,
+                groupChatName,
+                telegramUserId,
+                username,
+                summaryLength: summary?.length
+            });
+            
+            // Update the waiting message with an error
+            await ctx.telegram.editMessageText(
+                ctx.chat.id,
+                waitingMsg.message_id,
+                null,
+                `⚠️ Error creating support ticket: ${error.message}. Please try again later.`
+            );
+        }
+        
+        // Clear the user's state using BotsStore
+        if (telegramUserId) {
+            await BotsStore.clearUserState(telegramUserId);
+        }
+    } catch (error) {
+        LogEngine.error('Error in handleEmailField', {
+            error: error.message,
+            stack: error.stack,
+            telegramUserId: ctx.from?.id,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id,
+            messageText: messageText?.substring(0, 100) // Log first 100 chars for context
+        });
+        await ctx.reply("Sorry, there was an error processing your support ticket. Please try again later.");
+        
+        // Clean up user state using BotsStore
+        await BotsStore.clearUserState(ctx.from?.id);
+    }
+}
 
 export {
     startCommand,
     helpCommand,
     versionCommand,
+    supportCommand,
 };
