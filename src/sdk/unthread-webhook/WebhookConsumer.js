@@ -172,9 +172,9 @@ export class WebhookConsumer {
       }
       
       // Execute the handler
-      LogEngine.info('🔄 Processing message_created event from dashboard');
+      LogEngine.info(`🔄 Processing ${event.type} event from ${event.sourcePlatform}`);
       await handler(event);
-      LogEngine.info('✅ Event processed successfully');
+      LogEngine.info(`✅ Event processed successfully: ${event.type} from ${event.sourcePlatform}`);
       
     } catch (error) {
       LogEngine.error('❌ Error processing event:', error.message);
