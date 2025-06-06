@@ -8,6 +8,12 @@ The Unthread Telegram Bot seamlessly connects your Telegram community with Unthr
 
 With simple commands and intuitive interactions, support tickets automatically sync between both platforms, streamlining your workflow and improving response times. Whether you're managing a community group, running a business chat, or supporting an open-source project, this bot provides the tools you need for efficient, organized customer support.
 
+## 💸 Sponsored Ads
+
+Open source development is resource-intensive. These **sponsored ads help keep Log Engine free and actively maintained** while connecting you with tools and services that support open-source development.
+
+[![sponsored ads](https://gitads.dev/v1/ad-serve?source=wgtechlabs/unthread-telegram-bot@github)](https://gitads.dev/v1/ad-track?source=wgtechlabs/unthread-telegram-bot@github)
+
 ## 🤔 How It Works
 
 The Unthread Telegram Bot creates a seamless bridge between your Telegram group chats and Unthread's ticket management system. Here's how it works:
