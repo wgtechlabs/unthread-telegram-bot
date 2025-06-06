@@ -73,7 +73,7 @@ export class TelegramWebhookHandler {
           sentAt: new Date().toISOString()
         });
 
-        this.        LogEngine.info('✅ Agent message delivered to Telegram', {
+        this.        LogEngine.info('Agent message delivered to Telegram', {
           conversationId,
           chatId: ticketData.chatId,
           replyToMessageId: ticketData.messageId,

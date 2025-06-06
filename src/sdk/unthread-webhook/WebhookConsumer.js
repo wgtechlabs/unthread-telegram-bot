@@ -37,7 +37,7 @@ export class WebhookConsumer {
       LogEngine.info('Webhook consumer connected to Redis');
       return true;
     } catch (error) {
-      LogEngine.error('❌ Webhook consumer Redis connection failed:', error);
+      LogEngine.error('Webhook consumer Redis connection failed:', error);
       throw error;
     }
   }
@@ -86,7 +86,7 @@ export class WebhookConsumer {
     
     await this.connect();
     this.isRunning = true;
-    LogEngine.info('📨 Webhook consumer started - polling for events');
+    LogEngine.info('Webhook consumer started - polling for events');
     
     // Start the polling loop
     this.scheduleNextPoll();
@@ -172,12 +172,12 @@ export class WebhookConsumer {
       }
       
       // Execute the handler
-      LogEngine.info(`🔄 Processing ${event.type} event from ${event.sourcePlatform}`);
+      LogEngine.info(`Processing ${event.type} event from ${event.sourcePlatform}`);
       await handler(event);
-      LogEngine.info(`✅ Event processed successfully: ${event.type} from ${event.sourcePlatform}`);
+      LogEngine.info(`Event processed successfully: ${event.type} from ${event.sourcePlatform}`);
       
     } catch (error) {
-      LogEngine.error('❌ Error processing event:', error.message);
+      LogEngine.error('Error processing event:', error.message);
     }
   }
   

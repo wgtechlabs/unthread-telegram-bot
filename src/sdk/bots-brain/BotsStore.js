@@ -240,7 +240,7 @@ export class BotsStore {
         this.storage.set(`customer:telegram:${chatId}`, enrichedCustomerData)
       ]);
       
-      console.log(`✅ Customer stored: ${customerName || chatTitle} (${unthreadCustomerId})`);
+      LogEngine.info(`Customer stored: ${customerName || chatTitle} (${unthreadCustomerId})`);
       return true;
     } catch (error) {
       LogEngine.error('Failed to store customer', {
@@ -281,10 +281,10 @@ export class BotsStore {
       // Primary lookup by Telegram user ID
       await this.storage.set(`user:telegram:${telegramUserId}`, enrichedUserData);
       
-      console.log(`✅ User stored: ${unthreadName} (${telegramUserId})`);
+      LogEngine.info(`User stored: ${unthreadName} (${telegramUserId})`);
       return true;
     } catch (error) {
-      console.error('❌ Failed to store user:', error);
+      LogEngine.error('Failed to store user:', error);
       return false;
     }
   }
