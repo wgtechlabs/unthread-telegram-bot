@@ -416,3 +416,5 @@ This project is created by **[Waren Gonzaga](https://github.com/warengonzaga)** 
 ---
 
 💻 with ❤️ by [Waren Gonzaga](https://warengonzaga.com) under [WG Technology Labs](https://wgtechlabs.com), and [Him](https://www.youtube.com/watch?v=HHrxS4diLew&t=44s) 🙏
+
+<!-- GitAds-Verify: SKBGYTYZU867TO8VU9UB6VRLMN1V8RXA -->
