@@ -131,8 +131,7 @@ export class WebhookConsumer {
       this.scheduleNextPoll();
     }, this.pollInterval);
   }
-  
-  /**
+   /**
    * Poll Redis queue for new events
    */
   async pollForEvents() {
@@ -140,57 +139,114 @@ export class WebhookConsumer {
       LogEngine.warn('Blocking Redis client not connected, skipping poll');
       return;
     }
-    
+
     try {
+      LogEngine.debug(`Polling Redis queue: ${this.queueName}`);
+      
+      // Check queue length first for debugging
+      const queueLength = await this.redisClient.lLen(this.queueName);
+      if (queueLength > 0) {
+        LogEngine.info(`Found ${queueLength} events in queue ${this.queueName}`);
+      }
+      
       // Get the next event from the queue using dedicated blocking client (1 second timeout)
       const result = await this.blockingRedisClient.blPop(this.queueName, 1);
       
       if (result) {
+        LogEngine.info(`Received event from queue: ${this.queueName}`);
         const eventData = result.element;
         await this.processEvent(eventData);
+      } else {
+        LogEngine.debug(`No events in queue: ${this.queueName}`);
       }
     } catch (error) {
       LogEngine.error('Error polling for events:', error);
     }
   }
-  
-  /**
+   /**
    * Process a single event
    * @param {string} eventData - JSON string of the event
    */
   async processEvent(eventData) {
     try {
-      // Parse the event
-      const event = JSON.parse(eventData);
+      LogEngine.info('🔄 Starting event processing', { 
+        eventDataLength: eventData.length,
+        eventPreview: eventData.substring(0, 200) + '...'
+      });
       
-      LogEngine.debug('Processing webhook event', {
+      // Parse the event
+      let event;
+      try {
+        event = JSON.parse(eventData);
+        LogEngine.info('✅ Event parsed successfully', {
+          type: event.type,
+          sourcePlatform: event.sourcePlatform,
+          conversationId: event.data?.conversationId
+        });
+      } catch (parseError) {
+        LogEngine.error('❌ Failed to parse event JSON', {
+          error: parseError.message,
+          eventData: eventData.substring(0, 500)
+        });
+        return;
+      }
+      
+      LogEngine.info('🔍 Processing webhook event', {
         type: event.type,
         sourcePlatform: event.sourcePlatform,
         conversationId: event.data?.conversationId
       });
-      
+
       // Validate the event
+      LogEngine.info('🔍 Validating event...', {
+        eventType: event.type,
+        sourcePlatform: event.sourcePlatform,
+        hasData: !!event.data,
+        conversationId: event.data?.conversationId,
+        hasContent: !!event.data?.content,
+        hasText: !!event.data?.text,
+        eventDataKeys: event.data ? Object.keys(event.data) : []
+      });
       if (!EventValidator.validate(event)) {
-        LogEngine.debug('Invalid event, skipping');
+        LogEngine.warn('❌ Invalid event, skipping', { 
+          event: JSON.stringify(event, null, 2).substring(0, 1000) + '...'
+        });
         return;
       }
-      
+      LogEngine.info('✅ Event validation passed');
+
       // Find handler for this event
       const handlerKey = `${event.type}:${event.sourcePlatform}`;
+      LogEngine.info('🔍 Looking for handler', { handlerKey });
       const handler = this.eventHandlers.get(handlerKey);
-      
+
       if (!handler) {
-        LogEngine.debug(`No handler registered for ${handlerKey}`);
+        LogEngine.warn(`❌ No handler registered for ${handlerKey}`, {
+          availableHandlers: Array.from(this.eventHandlers.keys())
+        });
         return;
       }
-      
+
       // Execute the handler
-      LogEngine.info(`Processing ${event.type} event from ${event.sourcePlatform}`);
-      await handler(event);
-      LogEngine.info(`Event processed successfully: ${event.type} from ${event.sourcePlatform}`);
-      
+      LogEngine.info(`🚀 Executing handler for ${event.type} event from ${event.sourcePlatform}`);
+      try {
+        await handler(event);
+        LogEngine.info(`✅ Event processed successfully: ${event.type} from ${event.sourcePlatform}`);
+      } catch (handlerError) {
+        LogEngine.error(`❌ Handler execution failed for ${event.type}:${event.sourcePlatform}`, {
+          error: handlerError.message,
+          stack: handlerError.stack,
+          conversationId: event.data?.conversationId
+        });
+        throw handlerError;
+      }
+
     } catch (error) {
-      LogEngine.error('Error processing event:', error.message);
+      LogEngine.error('❌ Error processing event:', {
+        error: error.message,
+        stack: error.stack,
+        eventDataPreview: eventData ? eventData.substring(0, 500) : 'null'
+      });
     }
   }
   
