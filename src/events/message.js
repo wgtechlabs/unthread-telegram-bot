@@ -278,7 +278,12 @@ async function handleAgentMessageReply(ctx, agentMessageInfo) {
                 null,
                 `✅ Your reply has been sent to the agent for Ticket #${agentMessageInfo.friendlyId}`
             );
-            
+
+            // Auto-delete the confirmation message after 1 minute
+            setTimeout(() => {
+                ctx.telegram.deleteMessage(ctx.chat.id, waitingMsg.message_id).catch(() => {});
+            }, 5000); // 5,000 ms = 5 seconds
+
             LogEngine.info('Sent reply to agent', {
                 ticketNumber: agentMessageInfo.friendlyId,
                 conversationId: agentMessageInfo.conversationId,
