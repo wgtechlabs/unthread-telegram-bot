@@ -331,7 +331,17 @@ export async function registerTicketConfirmation({ messageId, ticketId, friendly
 export async function getTicketFromReply(replyToMessageId) {
     try {
         const ticketData = await BotsStore.getTicketByTelegramMessageId(replyToMessageId);
-        return ticketData ? ticketData.metadata : null;
+        
+        LogEngine.debug('getTicketFromReply debug', {
+            replyToMessageId,
+            hasTicketData: !!ticketData,
+            ticketDataKeys: ticketData ? Object.keys(ticketData) : null,
+            hasMetadata: ticketData ? !!ticketData.metadata : false
+        });
+        
+        // Return the ticketData directly, not ticketData.metadata
+        // The stored ticket data contains all the info we need
+        return ticketData || null;
     } catch (error) {
         LogEngine.error('Error getting ticket from reply', {
             error: error.message,

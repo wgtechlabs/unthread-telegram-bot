@@ -102,17 +102,39 @@ async function handleTicketReply(ctx) {
         // Get the ID of the message being replied to
         const replyToMessageId = ctx.message.reply_to_message.message_id;
         
+        LogEngine.info('Processing potential ticket reply', {
+            replyToMessageId,
+            messageText: ctx.message.text?.substring(0, 100),
+            chatId: ctx.chat.id,
+            userId: ctx.from.id
+        });
+        
         // Check if this is a reply to a ticket confirmation
         const ticketInfo = await unthreadService.getTicketFromReply(replyToMessageId);
         if (ticketInfo) {
+            LogEngine.info('Found ticket for reply', {
+                ticketId: ticketInfo.ticketId,
+                friendlyId: ticketInfo.friendlyId,
+                replyToMessageId
+            });
             return await handleTicketConfirmationReply(ctx, ticketInfo);
         }
         
         // Check if this is a reply to an agent message
         const agentMessageInfo = await unthreadService.getAgentMessageFromReply(replyToMessageId);
         if (agentMessageInfo) {
+            LogEngine.info('Found agent message for reply', {
+                conversationId: agentMessageInfo.conversationId,
+                friendlyId: agentMessageInfo.friendlyId,
+                replyToMessageId
+            });
             return await handleAgentMessageReply(ctx, agentMessageInfo);
         }
+        
+        LogEngine.debug('No ticket or agent message found for reply', {
+            replyToMessageId,
+            chatId: ctx.chat.id
+        });
         
         return false;
     } catch (error) {
@@ -139,6 +161,15 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
         const username = ctx.from.username;
         const message = ctx.message.text;
         
+        LogEngine.info('Processing ticket confirmation reply', {
+            conversationId: ticketInfo.conversationId,
+            ticketId: ticketInfo.ticketId,
+            friendlyId: ticketInfo.friendlyId,
+            telegramUserId,
+            username,
+            messageLength: message?.length
+        });
+        
         // Send a waiting message
         const waitingMsg = await ctx.reply("Adding your message to the ticket...", {
             reply_to_message_id: ctx.message.message_id
@@ -148,9 +179,15 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
             // Get user information from database
             const userData = await unthreadService.getOrCreateUser(telegramUserId, username);
             
-            // Send the message to the ticket
+            LogEngine.info('Retrieved user data for ticket reply', {
+                userData: JSON.stringify(userData),
+                hasName: !!userData.name,
+                hasEmail: !!userData.email
+            });
+            
+            // Send the message to the ticket using conversationId (which is the same as ticketId)
             await unthreadService.sendMessage({
-                conversationId: ticketInfo.ticketId,
+                conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
                 message,
                 onBehalfOf: userData
             });
@@ -165,7 +202,7 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
             
             LogEngine.info('Added message to ticket', {
                 ticketNumber: ticketInfo.friendlyId,
-                ticketId: ticketInfo.ticketId,
+                conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
                 telegramUserId,
                 username,
                 messageLength: message?.length,
@@ -177,7 +214,10 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
             // Handle API errors
             LogEngine.error('Error adding message to ticket', {
                 error: error.message,
-                ticketId: ticketInfo.ticketId
+                stack: error.stack,
+                conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
+                telegramUserId,
+                username
             });
             
             // Update the waiting message with error
@@ -194,6 +234,7 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
     } catch (error) {
         LogEngine.error('Error in handleTicketReply', {
             error: error.message,
+            stack: error.stack,
             chatId: ctx.chat?.id
         });
         return false;
@@ -220,12 +261,14 @@ async function handleAgentMessageReply(ctx, agentMessageInfo) {
         });
         
         try {
+            // Get user information for proper onBehalfOf formatting
+            const userData = await unthreadService.getOrCreateUser(telegramUserId, username);
+            
             // Send the message to the conversation
             await unthreadService.sendMessage({
                 conversationId: agentMessageInfo.conversationId,
                 message,
-                username,
-                telegramUserId
+                onBehalfOf: userData
             });
             
             // Update the waiting message with success
