@@ -2,9 +2,6 @@ import { createClient } from 'redis';
 import { EventValidator } from './EventValidator.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 
-// Helper function for command options (Redis v4 compatibility)
-const commandOptions = (options) => options;
-
 /**
  * WebhookConsumer - Simple Redis queue consumer for Unthread webhook events
  * 
@@ -20,8 +17,9 @@ export class WebhookConsumer {
     // Event handlers map: "eventType:sourcePlatform" -> handler function
     this.eventHandlers = new Map();
     
-    // Redis client
+    // Redis clients - separate clients for blocking and non-blocking operations
     this.redisClient = null;
+    this.blockingRedisClient = null; // Dedicated client for blPop operations
     this.isRunning = false;
     this.pollTimer = null;
   }
@@ -35,9 +33,15 @@ export class WebhookConsumer {
         throw new Error('Redis URL is required for webhook consumer');
       }
       
+      // Create main Redis client for general operations
       this.redisClient = createClient({ url: this.redisUrl });
       await this.redisClient.connect();
-      LogEngine.info('Webhook consumer connected to Redis');
+      
+      // Create dedicated Redis client for blocking operations (blPop)
+      this.blockingRedisClient = createClient({ url: this.redisUrl });
+      await this.blockingRedisClient.connect();
+      
+      LogEngine.info('Webhook consumer connected to Redis with isolated blocking client');
       return true;
     } catch (error) {
       LogEngine.error('Webhook consumer Redis connection failed:', error);
@@ -57,10 +61,16 @@ export class WebhookConsumer {
         this.pollTimer = null;
       }
       
+      // Disconnect both Redis clients
       if (this.redisClient && this.redisClient.isOpen) {
         await this.redisClient.disconnect();
-        LogEngine.info('Webhook consumer disconnected from Redis');
       }
+      
+      if (this.blockingRedisClient && this.blockingRedisClient.isOpen) {
+        await this.blockingRedisClient.disconnect();
+      }
+      
+      LogEngine.info('Webhook consumer disconnected from Redis');
     } catch (error) {
       LogEngine.error('Error disconnecting webhook consumer:', error);
     }
@@ -126,14 +136,14 @@ export class WebhookConsumer {
    * Poll Redis queue for new events
    */
   async pollForEvents() {
-    if (!this.redisClient || !this.redisClient.isOpen) {
-      LogEngine.warn('Redis client not connected, skipping poll');
+    if (!this.blockingRedisClient || !this.blockingRedisClient.isOpen) {
+      LogEngine.warn('Blocking Redis client not connected, skipping poll');
       return;
     }
     
     try {
-      // Get the next event from the queue (blocking pop with 1 second timeout)
-      const result = await this.redisClient.blPop(commandOptions({ isolated: true }), this.queueName, 1);
+      // Get the next event from the queue using dedicated blocking client (1 second timeout)
+      const result = await this.blockingRedisClient.blPop(this.queueName, 1);
       
       if (result) {
         const eventData = result.element;
@@ -192,6 +202,7 @@ export class WebhookConsumer {
     return {
       isRunning: this.isRunning,
       isConnected: this.redisClient && this.redisClient.isOpen,
+      isBlockingClientConnected: this.blockingRedisClient && this.blockingRedisClient.isOpen,
       subscribedEvents: Array.from(this.eventHandlers.keys()),
       queueName: this.queueName
     };
