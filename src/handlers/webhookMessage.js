@@ -20,7 +20,7 @@ export class TelegramWebhookHandler {
    */
   async handleMessageCreated(event) {
     try {
-      LogEngine.info('Processing agent message webhook', {
+      LogEngine.info('🔄 Processing agent message webhook', {
         conversationId: event.data.conversationId,
         textLength: event.data.content?.length || 0,
         sentBy: event.data.userId,
@@ -30,28 +30,58 @@ export class TelegramWebhookHandler {
       // 1. Get conversation ID from webhook event
       const conversationId = event.data.conversationId;
       if (!conversationId) {
-        LogEngine.warn('No conversation ID in webhook event', { event });
+        LogEngine.warn('❌ No conversation ID in webhook event', { event });
         return;
       }
+
+      LogEngine.info('🔍 Looking up ticket for conversation', { conversationId });
 
       // 2. Look up original ticket message using bots-brain
       const ticketData = await this.botsStore.getTicketByConversationId(conversationId);
       if (!ticketData) {
-        LogEngine.warn(`No ticket found for conversation: ${conversationId}`);
+        LogEngine.warn(`❌ No ticket found for conversation: ${conversationId}`);
         return;
       }
 
-      // 3. Validate message content
-      const messageText = event.data.content;
+      LogEngine.info('✅ Ticket found', {
+        conversationId,
+        friendlyId: ticketData.friendlyId,
+        chatId: ticketData.chatId,
+        messageId: ticketData.messageId
+      });
+
+      // 3. Validate message content - check both 'content' and 'text' fields
+      const messageText = event.data.content || event.data.text;
       if (!messageText || messageText.trim().length === 0) {
-        LogEngine.warn('Empty message text in webhook event', { conversationId });
+        LogEngine.warn('❌ Empty message text in webhook event', { 
+          conversationId,
+          hasContent: !!event.data.content,
+          hasText: !!event.data.text
+        });
         return;
       }
+
+      LogEngine.info('✅ Message content validated', { 
+        conversationId, 
+        messageLength: messageText.length,
+        messagePreview: messageText.substring(0, 100) + (messageText.length > 100 ? '...' : '')
+      });
 
       // 4. Format agent message for Telegram
       const formattedMessage = this.formatAgentMessage(messageText, ticketData.friendlyId);
+      
+      LogEngine.info('✅ Message formatted for Telegram', { 
+        conversationId,
+        formattedLength: formattedMessage.length
+      });
 
       // 5. Send agent message as reply to original ticket message
+      LogEngine.info('📤 Attempting to send message to Telegram', {
+        conversationId,
+        chatId: ticketData.chatId,
+        replyToMessageId: ticketData.messageId
+      });
+
       try {
         const sentMessage = await this.bot.telegram.sendMessage(
           ticketData.chatId,
@@ -73,7 +103,7 @@ export class TelegramWebhookHandler {
           sentAt: new Date().toISOString()
         });
 
-        this.        LogEngine.info('Agent message delivered to Telegram', {
+        LogEngine.info('✅🎉 Agent message delivered to Telegram successfully!', {
           conversationId,
           chatId: ticketData.chatId,
           replyToMessageId: ticketData.messageId,
@@ -100,13 +130,13 @@ export class TelegramWebhookHandler {
             }
           );
 
-          this.LogEngine.info('Agent message sent as new message (fallback)', {
+          LogEngine.info('Agent message sent as new message (fallback)', {
             conversationId,
             chatId: ticketData.chatId
           });
 
         } catch (fallbackError) {
-          this.LogEngine.error('Failed to send fallback message to Telegram', {
+          LogEngine.error('Failed to send fallback message to Telegram', {
             error: fallbackError.message,
             chatId: ticketData.chatId,
             conversationId
@@ -116,7 +146,7 @@ export class TelegramWebhookHandler {
       }
 
     } catch (error) {
-      this.LogEngine.error('Error handling webhook message', {
+      LogEngine.error('Error handling webhook message', {
         error: error.message,
         stack: error.stack,
         event: event
@@ -135,13 +165,11 @@ export class TelegramWebhookHandler {
     // Clean and truncate message if too long
     const cleanText = this.sanitizeMessageText(text);
     const maxLength = 4000; // Telegram message limit is 4096, leave some room
-    
     let truncatedText = cleanText;
     if (cleanText.length > maxLength) {
       truncatedText = cleanText.substring(0, maxLength - 50) + '...\n\n_Message truncated_';
     }
-
-    return `🎧 **Agent Response** (${friendlyId})\n\n${truncatedText}`;
+    return `🎫 Ticket #${friendlyId}\n\n💬 Response:\n${truncatedText}\n\n──────────\n📝 Reply to this message to respond or add more info to your ticket.`;
   }
 
   /**
@@ -172,7 +200,7 @@ export class TelegramWebhookHandler {
    * @param {Object} event - The webhook event data
    */
   async handleOtherEvent(eventType, event) {
-    this.LogEngine.info(`Received ${eventType} event (not processed)`, {
+    LogEngine.info(`Received ${eventType} event (not processed)`, {
       eventType,
       conversationId: event.data?.conversationId,
       timestamp: event.timestamp
