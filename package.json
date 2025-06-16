@@ -1,6 +1,6 @@
 {
   "name": "unthread-telegram-bot",
-  "version": "0.1.0-alpha",
+  "version": "0.1.0-beta",
   "description": "A Telegram bot integrated with Unthread API featuring enhanced logging with @wgtechlabs/log-engine",
   "main": "src/index.js",
   "type": "module",
