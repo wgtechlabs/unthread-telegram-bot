@@ -194,7 +194,8 @@ export class WebhookConsumer {
       LogEngine.info('🔍 Processing webhook event', {
         type: event.type,
         sourcePlatform: event.sourcePlatform,
-        conversationId: event.data?.conversationId
+        conversationId: event.data?.conversationId,
+        completeEvent: JSON.stringify(event, null, 2)
       });
 
       // Validate the event

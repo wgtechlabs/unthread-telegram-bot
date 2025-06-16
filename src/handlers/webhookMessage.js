@@ -206,4 +206,163 @@ export class TelegramWebhookHandler {
       timestamp: event.timestamp
     });
   }
+
+  /**
+   * Handle conversation updated events from Unthread (status changes)
+   * @param {Object} event - The webhook event
+   * @param {string} event.data.conversationId - Unthread conversation ID
+   * @param {string} event.data.status - New status (open/closed)
+   * @param {string} event.data.previousStatus - Previous status (if available)
+   * @param {string} event.timestamp - Event timestamp
+   */
+  async handleConversationUpdated(event) {
+    try {
+      LogEngine.info('🔄 Processing conversation status update webhook', {
+        conversationId: event.data.conversationId || event.data.id,
+        newStatus: event.data.status,
+        previousStatus: event.data.previousStatus,
+        timestamp: event.timestamp
+      });
+
+      // 1. Get conversation ID from webhook event (try both fields)
+      const conversationId = event.data.conversationId || event.data.id;
+      const newStatus = event.data.status?.toLowerCase();
+      
+      if (!conversationId) {
+        LogEngine.warn('❌ No conversation ID in webhook event', { event });
+        return;
+      }
+
+      if (!newStatus || !['open', 'closed'].includes(newStatus)) {
+        LogEngine.warn('❌ Invalid or missing status in webhook event', { 
+          status: event.data.status,
+          conversationId 
+        });
+        return;
+      }
+
+      LogEngine.info('🔍 Looking up ticket for status update', { conversationId, newStatus });
+
+      // 2. Look up original ticket message using bots-brain
+      const ticketData = await this.botsStore.getTicketByConversationId(conversationId);
+      if (!ticketData) {
+        LogEngine.warn(`❌ No ticket found for conversation: ${conversationId}`);
+        return;
+      }
+
+      LogEngine.info('✅ Ticket found for status update', {
+        conversationId,
+        friendlyId: ticketData.friendlyId,
+        chatId: ticketData.chatId,
+        messageId: ticketData.messageId,
+        newStatus
+      });
+
+      // 3. Format status update message for Telegram
+      const statusMessage = this.formatStatusUpdateMessage(newStatus, ticketData.friendlyId);
+      
+      LogEngine.info('✅ Status message formatted for Telegram', { 
+        conversationId,
+        newStatus,
+        messageLength: statusMessage.length
+      });
+
+      // 4. Send status notification as reply to original ticket message
+      LogEngine.info('📤 Attempting to send status notification to Telegram', {
+        conversationId,
+        chatId: ticketData.chatId,
+        replyToMessageId: ticketData.messageId,
+        newStatus
+      });
+
+      try {
+        const sentMessage = await this.bot.telegram.sendMessage(
+          ticketData.chatId,
+          statusMessage,
+          { 
+            reply_to_message_id: ticketData.messageId,
+            parse_mode: 'Markdown',
+            disable_web_page_preview: true
+          }
+        );
+
+        LogEngine.info('✅🎉 Status notification delivered to Telegram successfully!', {
+          conversationId,
+          chatId: ticketData.chatId,
+          replyToMessageId: ticketData.messageId,
+          sentMessageId: sentMessage.message_id,
+          friendlyId: ticketData.friendlyId,
+          newStatus
+        });
+
+      } catch (telegramError) {
+        LogEngine.error('Failed to send status notification to Telegram', {
+          error: telegramError.message,
+          chatId: ticketData.chatId,
+          messageId: ticketData.messageId,
+          conversationId,
+          newStatus
+        });
+
+        // Try sending without reply if reply fails (original message might be deleted)
+        try {
+          await this.bot.telegram.sendMessage(
+            ticketData.chatId,
+            `${statusMessage}\n\n_Note: Sent as new message (original ticket message not found)_`,
+            { 
+              parse_mode: 'Markdown',
+              disable_web_page_preview: true
+            }
+          );
+          
+          LogEngine.info('Status notification sent as new message (fallback)', {
+            conversationId,
+            chatId: ticketData.chatId,
+            newStatus
+          });
+
+        } catch (fallbackError) {
+          LogEngine.error('Failed to send fallback status notification to Telegram', {
+            error: fallbackError.message,
+            chatId: ticketData.chatId,
+            conversationId,
+            newStatus
+          });
+          throw fallbackError;
+        }
+      }
+
+    } catch (error) {
+      LogEngine.error('Error handling conversation update webhook', {
+        error: error.message,
+        stack: error.stack,
+        event: event
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Format status update message for display in Telegram
+   * @param {string} status - The new status (open/closed)
+   * @param {string} friendlyId - The ticket friendly ID (e.g., TKT-001)
+   * @returns {string} Formatted status message
+   */
+  formatStatusUpdateMessage(status, friendlyId) {
+    const statusIcon = status === 'closed' ? '🔒' : '📂';
+    const statusText = status === 'closed' ? 'CLOSED' : 'OPEN';
+    const statusEmoji = status === 'closed' ? '✅' : '🔄';
+    
+    let message = `${statusIcon} **Ticket Status Update**\n\n`;
+    message += `🎫 Ticket #${friendlyId}\n`;
+    message += `${statusEmoji} Status: **${statusText}**\n\n`;
+    
+    if (status === 'closed') {
+      message += `Your ticket has been resolved and closed. If you need further assistance, please create a new ticket using /support.`;
+    } else {
+      message += `Your ticket has been reopened and is now active. An agent will assist you shortly.`;
+    }
+
+    return message;
+  }
 }

@@ -142,6 +142,11 @@ try {
             webhookHandler.handleMessageCreated.bind(webhookHandler)
         );
 
+        // Subscribe to conversation status update events from dashboard
+        webhookConsumer.subscribe('conversation_updated', 'dashboard', 
+            webhookHandler.handleConversationUpdated.bind(webhookHandler)
+        );
+
         // Start the webhook consumer
         await webhookConsumer.start();
         LogEngine.info('Webhook consumer started successfully');

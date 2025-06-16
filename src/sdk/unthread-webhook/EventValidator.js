@@ -3,12 +3,12 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 /**
  * EventValidator - Simple validation for Unthread webhook events
  * 
- * Validates message_created events from dashboard for agent responses.
+ * Validates message_created and conversation_updated events from dashboard.
  */
 
 export class EventValidator {
   /**
-   * Validate message_created event structure
+   * Validate webhook event structure for supported event types
    * @param {Object} event - The webhook event to validate
    * @returns {boolean} - True if valid
    */
@@ -21,8 +21,8 @@ export class EventValidator {
     
     if (!hasEvent) return false;
     
-    const hasCorrectType = event.type === 'message_created';
-    LogEngine.debug('✅ Type is message_created:', { hasCorrectType, actual: event.type });
+    const hasCorrectType = ['message_created', 'conversation_updated'].includes(event.type);
+    LogEngine.debug('✅ Type is supported:', { hasCorrectType, actual: event.type });
     
     const hasCorrectPlatform = event.sourcePlatform === 'dashboard';
     LogEngine.debug('✅ Source is dashboard:', { hasCorrectPlatform, actual: event.sourcePlatform });
@@ -35,25 +35,64 @@ export class EventValidator {
     // Log the actual data structure for debugging
     LogEngine.debug('🔍 Event data structure:', { data: event.data });
     
-    const hasConversationId = !!event.data.conversationId;
-    LogEngine.debug('✅ Has conversationId:', { hasConversationId, actual: event.data.conversationId });
+    const hasConversationId = !!(event.data.conversationId || event.data.id);
+    LogEngine.debug('✅ Has conversationId:', { hasConversationId, conversationId: event.data.conversationId, id: event.data.id });
     
-    // Check for both 'content' and 'text' fields (webhook server sends 'text')
-    const hasContent = !!(event.data.content || event.data.text);
-    LogEngine.debug('✅ Has content/text:', { hasContent, content: event.data.content, text: event.data.text });
-    
-    // Additional checks for debugging
-    if (!hasConversationId) {
-      LogEngine.warn('❌ Missing conversationId - data keys:', { keys: Object.keys(event.data || {}) });
+    // Validate based on event type
+    if (event.type === 'message_created') {
+      // Check for both 'content' and 'text' fields (webhook server sends 'text')
+      const hasContent = !!(event.data.content || event.data.text);
+      LogEngine.debug('✅ Has content/text:', { hasContent, content: event.data.content, text: event.data.text });
+      
+      if (!hasContent) {
+        LogEngine.warn('❌ Missing content/text - data keys:', { keys: Object.keys(event.data || {}) });
+      }
+      
+      const isValid = hasEvent && hasCorrectType && hasCorrectPlatform && hasData && hasConversationId && hasContent;
+      LogEngine.info('🎯 Final validation result (message_created):', { isValid });
+      return isValid;
     }
     
-    if (!hasContent) {
-      LogEngine.warn('❌ Missing content/text - data keys:', { keys: Object.keys(event.data || {}) });
+    if (event.type === 'conversation_updated') {
+      // Log the complete event data structure for debugging
+      LogEngine.info('🔍 Conversation updated event data:', { 
+        fullEventData: JSON.stringify(event.data, null, 2),
+        dataKeys: Object.keys(event.data || {}),
+        conversationId: event.data.conversationId || event.data.id,
+        status: event.data.status,
+        statusType: typeof event.data.status
+      });
+      
+      // Check for status information
+      const hasStatus = !!(event.data.status);
+      const validStatus = hasStatus && ['open', 'closed'].includes(event.data.status?.toLowerCase());
+      LogEngine.debug('✅ Has valid status:', { hasStatus, validStatus, status: event.data.status });
+      
+      if (!hasStatus) {
+        LogEngine.warn('❌ Missing status - data keys:', { keys: Object.keys(event.data || {}) });
+      }
+      
+      if (!validStatus) {
+        LogEngine.warn('❌ Invalid status value:', { status: event.data.status });
+      }
+      
+      const isValid = hasEvent && hasCorrectType && hasCorrectPlatform && hasData && hasConversationId && hasStatus && validStatus;
+      LogEngine.info('🎯 Final validation result (conversation_updated):', { 
+        isValid,
+        hasEvent,
+        hasCorrectType,
+        hasCorrectPlatform, 
+        hasData,
+        hasConversationId,
+        hasStatus,
+        validStatus,
+        eventType: event.type,
+        sourcePlatform: event.sourcePlatform
+      });
+      return isValid;
     }
     
-    const isValid = hasEvent && hasCorrectType && hasCorrectPlatform && hasData && hasConversationId && hasContent;
-    LogEngine.info('🎯 Final validation result:', { isValid });
-    
-    return isValid;
+    LogEngine.warn('❌ Unsupported event type:', { type: event.type });
+    return false;
   }
 }
