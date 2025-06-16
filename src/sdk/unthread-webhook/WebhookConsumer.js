@@ -181,7 +181,7 @@ export class WebhookConsumer {
         LogEngine.info('✅ Event parsed successfully', {
           type: event.type,
           sourcePlatform: event.sourcePlatform,
-          conversationId: event.data?.conversationId
+          conversationId: event.data?.conversationId || event.data?.id
         });
       } catch (parseError) {
         LogEngine.error('❌ Failed to parse event JSON', {
@@ -194,7 +194,13 @@ export class WebhookConsumer {
       LogEngine.info('🔍 Processing webhook event', {
         type: event.type,
         sourcePlatform: event.sourcePlatform,
-        conversationId: event.data?.conversationId,
+        conversationId: event.data?.conversationId || event.data?.id,
+        timestamp: event.timestamp,
+        dataKeys: event.data ? Object.keys(event.data) : []
+      });
+
+      // Log full event payload at debug level to avoid log bloat
+      LogEngine.debug('🔍 Complete webhook event payload', {
         completeEvent: JSON.stringify(event, null, 2)
       });
 
@@ -203,7 +209,7 @@ export class WebhookConsumer {
         eventType: event.type,
         sourcePlatform: event.sourcePlatform,
         hasData: !!event.data,
-        conversationId: event.data?.conversationId,
+        conversationId: event.data?.conversationId || event.data?.id,
         hasContent: !!event.data?.content,
         hasText: !!event.data?.text,
         eventDataKeys: event.data ? Object.keys(event.data) : []
@@ -237,7 +243,7 @@ export class WebhookConsumer {
         LogEngine.error(`❌ Handler execution failed for ${event.type}:${event.sourcePlatform}`, {
           error: handlerError.message,
           stack: handlerError.stack,
-          conversationId: event.data?.conversationId
+          conversationId: event.data?.conversationId || event.data?.id
         });
         throw handlerError;
       }

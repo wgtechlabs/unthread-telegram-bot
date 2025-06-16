@@ -65,7 +65,7 @@ export class EventValidator {
       
       // Check for status information
       const hasStatus = !!(event.data.status);
-      const validStatus = hasStatus && ['open', 'closed'].includes(event.data.status?.toLowerCase());
+      const validStatus = hasStatus && typeof event.data.status === 'string' && ['open', 'closed'].includes(event.data.status.toLowerCase());
       LogEngine.debug('✅ Has valid status:', { hasStatus, validStatus, status: event.data.status });
       
       if (!hasStatus) {

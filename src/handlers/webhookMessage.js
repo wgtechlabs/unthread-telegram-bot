@@ -226,7 +226,7 @@ export class TelegramWebhookHandler {
 
       // 1. Get conversation ID from webhook event (try both fields)
       const conversationId = event.data.conversationId || event.data.id;
-      const newStatus = event.data.status?.toLowerCase();
+      const newStatus = typeof event.data.status === 'string' ? event.data.status.toLowerCase() : String(event.data.status || '').toLowerCase();
       
       if (!conversationId) {
         LogEngine.warn('❌ No conversation ID in webhook event', { event });
@@ -353,9 +353,9 @@ export class TelegramWebhookHandler {
     const statusText = status === 'closed' ? 'CLOSED' : 'OPEN';
     const statusEmoji = status === 'closed' ? '✅' : '🔄';
     
-    let message = `${statusIcon} **Ticket Status Update**\n\n`;
+    let message = `${statusIcon} *Ticket Status Update*\n\n`;
     message += `🎫 Ticket #${friendlyId}\n`;
-    message += `${statusEmoji} Status: **${statusText}**\n\n`;
+    message += `${statusEmoji} Status: *${statusText}*\n\n`;
     
     if (status === 'closed') {
       message += `Your ticket has been resolved and closed. If you need further assistance, please create a new ticket using /support.`;
