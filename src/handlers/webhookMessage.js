@@ -217,15 +217,15 @@ export class TelegramWebhookHandler {
    */
   async handleConversationUpdated(event) {
     try {
+      // 1. Get conversation ID from webhook event (try both fields)
+      const conversationId = event.data.conversationId || event.data.id;
+
       LogEngine.info('🔄 Processing conversation status update webhook', {
-        conversationId: event.data.conversationId || event.data.id,
+        conversationId: conversationId,
         newStatus: event.data.status,
         previousStatus: event.data.previousStatus,
         timestamp: event.timestamp
       });
-
-      // 1. Get conversation ID from webhook event (try both fields)
-      const conversationId = event.data.conversationId || event.data.id;
       const newStatus = typeof event.data.status === 'string' ? event.data.status.toLowerCase() : String(event.data.status || '').toLowerCase();
       
       if (!conversationId) {
