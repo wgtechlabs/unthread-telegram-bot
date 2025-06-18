@@ -54,14 +54,20 @@ export class EventValidator {
     }
     
     if (event.type === 'conversation_updated') {
-      // Log the complete event data structure for debugging
+      // Log the event data structure with redaction by default
       LogEngine.info('🔍 Conversation updated event data:', { 
-        fullEventData: JSON.stringify(event.data, null, 2),
         dataKeys: Object.keys(event.data || {}),
         conversationId: event.data.conversationId || event.data.id,
         status: event.data.status,
         statusType: typeof event.data.status
       });
+
+      // Optionally log the full, unredacted payload if debug flag is set
+      if (process.env.DEBUG_FULL_PAYLOADS === 'true' || process.env.LOG_REDACTION_DISABLED === 'true') {
+        LogEngine.withoutRedaction().info('🔍 [DEBUG] Full conversation_updated event data (unredacted):', {
+          fullEventData: event.data
+        });
+      }
       
       // Check for status information
       const hasStatus = !!(event.data.status);
