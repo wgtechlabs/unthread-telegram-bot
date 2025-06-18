@@ -143,9 +143,13 @@ try {
         );
 
         // Subscribe to conversation status update events from dashboard
-        webhookConsumer.subscribe('conversation_updated', 'dashboard', 
-            webhookHandler.handleConversationUpdated.bind(webhookHandler)
-        );
+        if (typeof webhookHandler.handleConversationUpdated === 'function') {
+            webhookConsumer.subscribe('conversation_updated', 'dashboard', 
+                webhookHandler.handleConversationUpdated.bind(webhookHandler)
+            );
+        } else {
+            LogEngine.warn('Webhook handler does not implement handleConversationUpdated; skipping subscription.');
+        }
 
         // Start the webhook consumer
         await webhookConsumer.start();
@@ -185,56 +189,3 @@ LogEngine.info('Bot initialized successfully', {
     platform: process.platform
 });
 LogEngine.info('Bot is running and listening for messages...');
-/**
- * Start polling for updates
- * 
- * Possible Bugs:
- * - No error handling for polling failures
- * - No timeout or retry mechanism for polling
- * 
- * Enhancement Opportunities:
- * - Implement webhook mode for better performance
- * - Add graceful shutdown on SIGINT/SIGTERM
- */
-startPolling(bot);
-
-/**
- * Graceful shutdown handler
- * 
- * Properly close database connections, stop webhook consumer, and stop the bot on shutdown
- */
-process.on('SIGINT', async () => {
-    LogEngine.info('Received SIGINT, shutting down gracefully...');
-    try {
-        if (webhookConsumer) {
-            await webhookConsumer.stop();
-            LogEngine.info('Webhook consumer stopped');
-        }
-        await BotsStore.shutdown();
-        LogEngine.info('BotsStore shutdown complete');
-        await db.close();
-        LogEngine.info('Database connections closed');
-        process.exit(0);
-    } catch (error) {
-        LogEngine.error('Error during shutdown', { error: error.message });
-        process.exit(1);
-    }
-});
-
-process.on('SIGTERM', async () => {
-    LogEngine.info('Received SIGTERM, shutting down gracefully...');
-    try {
-        if (webhookConsumer) {
-            await webhookConsumer.stop();
-            LogEngine.info('Webhook consumer stopped');
-        }
-        await BotsStore.shutdown();
-        LogEngine.info('BotsStore shutdown complete');
-        await db.close();
-        LogEngine.info('Database connections closed');
-        process.exit(0);
-    } catch (error) {
-        LogEngine.error('Error during shutdown', { error: error.message });
-        process.exit(1);
-    }
-});
