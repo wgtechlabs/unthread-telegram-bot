@@ -168,27 +168,17 @@ async function handleTicketReply(ctx: BotContext): Promise<boolean> {
  */
 async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): Promise<boolean> {
     try {
-        if (!ctx.from || !ctx.message || !('text' in ctx.message)) {
+        // Validate the reply context and ticket information
+        const validation = await validateTicketReply(ctx, ticketInfo);
+        if (!validation.isValid) {
             return false;
         }
         
-        // This is a reply to a ticket confirmation, send it to Unthread
-        const telegramUserId = ctx.from.id;
-        const username = ctx.from.username;
-        const message = ctx.message.text || '';
-        
-        LogEngine.info('Processing ticket confirmation reply', {
-            conversationId: ticketInfo.conversationId,
-            ticketId: ticketInfo.ticketId,
-            friendlyId: ticketInfo.friendlyId,
-            telegramUserId,
-            username,
-            messageLength: message?.length
-        });
+        const { telegramUserId, username, message } = validation;
         
         // Send a minimal status message
         const statusMsg = await safeReply(ctx, '⏳ Adding to ticket...', {
-            reply_to_message_id: ctx.message.message_id
+            reply_to_message_id: ctx.message!.message_id
         });
 
         if (!statusMsg) {
@@ -196,44 +186,11 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
         }
         
         try {
-            // Get user information from database
-            const userData = await unthreadService.getOrCreateUser(telegramUserId, username);
-            
-            LogEngine.info('Retrieved user data for ticket reply', {
-                userData: JSON.stringify(userData),
-                hasName: !!userData.name,
-                hasEmail: !!userData.email
-            });
-            
-            // Send the message to the ticket using conversationId (which is the same as ticketId)
-            await unthreadService.sendMessage({
-                conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
-                message: message || 'No message content',
-                onBehalfOf: userData
-            });
+            // Process and send the ticket message to Unthread
+            await processTicketMessage(ticketInfo, telegramUserId, username, message);
             
             // Update status message to success
-            await safeEditMessageText(
-                ctx,
-                ctx.chat!.id,
-                statusMsg.message_id,
-                undefined,
-                '✅ Added!'
-            );
-
-            // Delete status message after 3 seconds
-            setTimeout(() => {
-                ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
-            }, 3000);
-            
-            LogEngine.info('Added message to ticket', {
-                ticketNumber: ticketInfo.friendlyId,
-                conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
-                telegramUserId,
-                username,
-                messageLength: message?.length,
-                chatId: ctx.chat?.id
-            });
+            await updateStatusMessage(ctx, statusMsg, true);
             return true;
             
         } catch (error) {
@@ -248,19 +205,7 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
             });
             
             // Update status message to error
-            await safeEditMessageText(
-                ctx,
-                ctx.chat!.id,
-                statusMsg.message_id,
-                undefined,
-                '❌ Error!'
-            );
-
-            // Delete status message after 5 seconds
-            setTimeout(() => {
-                ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
-            }, 5000);
-            
+            await updateStatusMessage(ctx, statusMsg, false);
             return true;
         }
         
@@ -272,6 +217,99 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
             chatId: ctx.chat?.id
         });
         return false;
+    }
+}
+
+/**
+ * Validates the reply context and ticket information
+ */
+async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ isValid: false } | { isValid: true; telegramUserId: number; username: string | undefined; message: string }> {
+    if (!ctx.from || !ctx.message || !('text' in ctx.message)) {
+        return { isValid: false };
+    }
+    
+    const telegramUserId = ctx.from.id;
+    const username = ctx.from.username;
+    const message = ctx.message.text || '';
+    
+    LogEngine.info('Processing ticket confirmation reply', {
+        conversationId: ticketInfo.conversationId,
+        ticketId: ticketInfo.ticketId,
+        friendlyId: ticketInfo.friendlyId,
+        telegramUserId,
+        username,
+        messageLength: message?.length
+    });
+    
+    return {
+        isValid: true,
+        telegramUserId,
+        username,
+        message
+    };
+}
+
+/**
+ * Processes and sends the ticket message to Unthread
+ */
+async function processTicketMessage(ticketInfo: any, telegramUserId: number, username: string | undefined, message: string): Promise<void> {
+    // Get user information from database
+    const userData = await unthreadService.getOrCreateUser(telegramUserId, username);
+    
+    LogEngine.info('Retrieved user data for ticket reply', {
+        userData: JSON.stringify(userData),
+        hasName: !!userData.name,
+        hasEmail: !!userData.email
+    });
+    
+    // Send the message to the ticket using conversationId (which is the same as ticketId)
+    await unthreadService.sendMessage({
+        conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
+        message: message || 'No message content',
+        onBehalfOf: userData
+    });
+    
+    LogEngine.info('Added message to ticket', {
+        ticketNumber: ticketInfo.friendlyId,
+        conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
+        telegramUserId,
+        username,
+        messageLength: message?.length
+    });
+}
+
+/**
+ * Updates the status message and handles cleanup
+ */
+async function updateStatusMessage(ctx: BotContext, statusMsg: any, isSuccess: boolean): Promise<void> {
+    if (isSuccess) {
+        // Update status message to success
+        await safeEditMessageText(
+            ctx,
+            ctx.chat!.id,
+            statusMsg.message_id,
+            undefined,
+            '✅ Added!'
+        );
+
+        // Delete status message after 3 seconds
+        setTimeout(() => {
+            ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+        }, 3000);
+    } else {
+        // Update status message to error
+        await safeEditMessageText(
+            ctx,
+            ctx.chat!.id,
+            statusMsg.message_id,
+            undefined,
+            '❌ Error!'
+        );
+
+        // Delete status message after 5 seconds
+        setTimeout(() => {
+            ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+        }, 5000);
     }
 }
 

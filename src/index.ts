@@ -193,21 +193,82 @@ bot.on('callback_query', async (ctx) => {
 });
 
 /**
- * Database and Storage initialization
+ * Retry helper function with exponential backoff
+ */
+async function retryWithBackoff<T>(
+    operation: () => Promise<T>,
+    maxRetries: number = 5,
+    initialDelayMs: number = 1000,
+    maxDelayMs: number = 30000,
+    operationName: string = 'operation'
+): Promise<T> {
+    let lastError: Error;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            return await operation();
+        } catch (error) {
+            lastError = error as Error;
+            
+            if (attempt === maxRetries) {
+                LogEngine.error(`${operationName} failed after ${maxRetries} attempts`, {
+                    error: lastError.message,
+                    attempts: maxRetries
+                });
+                throw lastError;
+            }
+            
+            const delayMs = Math.min(initialDelayMs * Math.pow(2, attempt - 1), maxDelayMs);
+            LogEngine.warn(`${operationName} failed (attempt ${attempt}/${maxRetries}), retrying in ${delayMs}ms`, {
+                error: lastError.message,
+                attempt,
+                nextRetryIn: `${delayMs}ms`
+            });
+            
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+    }
+    
+    throw lastError!;
+}
+
+/**
+ * Database and Storage initialization with retry logic
  * 
  * Initialize database connection and storage layers before starting the bot
+ * Implements retry mechanism to handle transient failures gracefully
  */
 try {
-    await db.connect();
+    // Initialize database connection with retry logic
+    await retryWithBackoff(
+        async () => {
+            await db.connect();
+            LogEngine.info('Database connection established');
+        },
+        5, // max retries
+        2000, // initial delay: 2 seconds
+        30000, // max delay: 30 seconds
+        'Database connection'
+    );
     LogEngine.info('Database initialized successfully');
     
-    // Initialize the BotsStore with database connection and platform Redis URL
-    await BotsStore.initialize(db, process.env.PLATFORM_REDIS_URL);
+    // Initialize the BotsStore with retry logic
+    await retryWithBackoff(
+        async () => {
+            await BotsStore.initialize(db, process.env.PLATFORM_REDIS_URL);
+            LogEngine.info('BotsStore connection established');
+        },
+        5, // max retries
+        2000, // initial delay: 2 seconds
+        30000, // max delay: 30 seconds
+        'BotsStore initialization'
+    );
     LogEngine.info('BotsStore initialized successfully');
 } catch (error) {
     const err = error as Error;
-    LogEngine.error('Failed to initialize database or storage', {
-        error: err.message
+    LogEngine.error('Failed to initialize database or storage after all retry attempts', {
+        error: err.message,
+        maxRetries: 5
     });
     process.exit(1);
 }
@@ -424,12 +485,11 @@ async function cleanupBlockedUserGlobal(chatId: number): Promise<void> {
 }
 
 /**
- * Graceful shutdown handler
+ * Performs graceful shutdown of all services
  * 
- * Properly close database connections, stop webhook consumer, and stop the bot on shutdown
+ * Properly close database connections, stop webhook consumer, and stop the bot
  */
-process.on('SIGINT', async () => {
-    LogEngine.info('Received SIGINT, shutting down gracefully...');
+async function gracefulShutdown(): Promise<void> {
     try {
         if (webhookConsumer) {
             await webhookConsumer.stop();
@@ -445,23 +505,17 @@ process.on('SIGINT', async () => {
         LogEngine.error('Error during shutdown', { error: err.message });
         process.exit(1);
     }
+}
+
+/**
+ * Signal handlers for graceful shutdown
+ */
+process.on('SIGINT', async () => {
+    LogEngine.info('Received SIGINT, shutting down gracefully...');
+    await gracefulShutdown();
 });
 
 process.on('SIGTERM', async () => {
     LogEngine.info('Received SIGTERM, shutting down gracefully...');
-    try {
-        if (webhookConsumer) {
-            await webhookConsumer.stop();
-            LogEngine.info('Webhook consumer stopped');
-        }
-        await BotsStore.shutdown();
-        LogEngine.info('BotsStore shutdown complete');
-        await db.close();
-        LogEngine.info('Database connections closed');
-        process.exit(0);
-    } catch (error) {
-        const err = error as Error;
-        LogEngine.error('Error during shutdown', { error: err.message });
-        process.exit(1);
-    }
+    await gracefulShutdown();
 });

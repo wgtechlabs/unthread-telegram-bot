@@ -3,6 +3,12 @@
  * 
  * Provides PostgreSQL database connection with SSL support for Railway
  * and other cloud providers that require secure connections.
+ * 
+ * Security Features:
+ * - SSL certificate validation enabled by default in production
+ * - Configurable SSL validation for development environments
+ * - Support for custom CA certificates via DATABASE_SSL_CA environment variable
+ * - Environment-aware SSL configuration to prevent MITM attacks
  */
 
 import pkg from 'pg';
@@ -36,12 +42,14 @@ export class DatabaseConnection {
             throw new Error(error);
         }
 
+        // Configure SSL based on environment
+        const isProduction = process.env.NODE_ENV === 'production';
+        const sslConfig = this.getSSLConfig(isProduction);
+
         // Configure connection pool with SSL for Railway
         this.pool = new Pool({
             connectionString: process.env.POSTGRES_URL,
-            ssl: {
-                rejectUnauthorized: false // Required for Railway and most cloud providers
-            },
+            ssl: sslConfig,
             max: 10, // Maximum number of connections in pool
             idleTimeoutMillis: 30000, // Close idle connections after 30 seconds
             connectionTimeoutMillis: 10000, // Return error after 10 seconds if connection cannot be established
@@ -58,6 +66,8 @@ export class DatabaseConnection {
         LogEngine.info('Database connection pool initialized', {
             maxConnections: 10,
             sslEnabled: true,
+            sslValidation: isProduction ? 'enabled' : (process.env.DATABASE_SSL_VALIDATE === 'true' ? 'enabled' : 'disabled'),
+            environment: process.env.NODE_ENV || 'development',
             provider: 'Railway'
         });
     }
@@ -179,13 +189,15 @@ export class DatabaseConnection {
 
             const schemaPath = path.join(__dirname, 'schema.sql');
             
-            // Check if schema file exists
-            if (!fs.existsSync(schemaPath)) {
+            // Check if schema file exists asynchronously
+            try {
+                await fs.promises.access(schemaPath, fs.constants.F_OK);
+            } catch (accessError) {
                 throw new Error(`Schema file not found: ${schemaPath}`);
             }
 
-            // Read schema file
-            const schema = fs.readFileSync(schemaPath, 'utf8');
+            // Read schema file asynchronously
+            const schema = await fs.promises.readFile(schemaPath, 'utf8');
             LogEngine.debug('Schema file loaded', { 
                 path: schemaPath, 
                 size: schema.length 
@@ -220,6 +232,31 @@ export class DatabaseConnection {
             });
             throw error;
         }
+    }
+
+    /**
+     * Configure SSL settings based on environment
+     * @param isProduction - Whether running in production environment
+     * @returns SSL configuration object
+     */
+    private getSSLConfig(isProduction: boolean): any {
+        // In production, always validate SSL certificates for security
+        if (isProduction) {
+            return {
+                rejectUnauthorized: true,
+                // Allow custom CA certificate if provided
+                ca: process.env.DATABASE_SSL_CA || undefined
+            };
+        }
+
+        // In development, allow flexibility for local development
+        // Check if explicit SSL validation is requested via environment variable
+        const forceSSLValidation = process.env.DATABASE_SSL_VALIDATE === 'true';
+        
+        return {
+            rejectUnauthorized: forceSSLValidation,
+            ca: process.env.DATABASE_SSL_CA || undefined
+        };
     }
 }
 

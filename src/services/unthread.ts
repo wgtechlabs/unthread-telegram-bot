@@ -170,12 +170,12 @@ const CHANNEL_ID = process.env.UNTHREAD_CHANNEL_ID;
 // Validate required environment variables
 if (!UNTHREAD_API_KEY) {
     LogEngine.error('UNTHREAD_API_KEY environment variable is required but not defined');
-    process.exit(1);
+    throw new Error('Missing required environment variable: UNTHREAD_API_KEY');
 }
 
 if (!CHANNEL_ID) {
     LogEngine.error('UNTHREAD_CHANNEL_ID environment variable is required but not defined');
-    process.exit(1);
+    throw new Error('Missing required environment variable: UNTHREAD_CHANNEL_ID');
 }
 
 // Customer ID cache to avoid creating duplicates

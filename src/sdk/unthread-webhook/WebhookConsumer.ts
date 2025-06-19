@@ -144,10 +144,10 @@ export class WebhookConsumer {
         await this.pollForEvents();
       } catch (error) {
         LogEngine.error('Error during event polling:', error);
+      } finally {
+        // Schedule next poll only once per cycle, regardless of success or failure
+        this.scheduleNextPoll();
       }
-      
-      // Schedule next poll
-      this.scheduleNextPoll();
     }, this.pollInterval);
   }
 

@@ -1,3 +1,5 @@
+import type { Pool } from 'pg';
+
 /**
  * SDK Type Definitions
  * Core interfaces for the bots-brain and unthread-webhook SDKs
@@ -5,13 +7,13 @@
 
 // Database connection interface
 export interface DatabaseConnection {
-  readonly connectionPool: any; // PostgreSQL pool accessor
+  readonly connectionPool: Pool; // PostgreSQL pool accessor
   query(text: string, params?: any[]): Promise<any>;
 }
 
 // Storage interfaces
 export interface StorageConfig {
-  postgres?: any;
+  postgres?: Pool;
   redisUrl?: string | undefined;
 }
 
