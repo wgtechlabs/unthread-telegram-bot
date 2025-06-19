@@ -6,6 +6,7 @@
  * configuration, and bot startup.
  */
 import { Telegraf, Markup } from 'telegraf';
+import type { ExtraReplyMessage, ExtraEditMessageText } from 'telegraf/typings/telegram-types';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from './sdk/bots-brain/index.js';
 import { BotContext, TelegramError, CommandHandler } from './types/index.js';
@@ -60,7 +61,7 @@ export async function safeSendMessage(
     bot: Telegraf<BotContext>, 
     chatId: number, 
     text: string, 
-    options: any = {}
+    options: ExtraReplyMessage = {}
 ): Promise<any | null> {
     try {
         return await bot.telegram.sendMessage(chatId, text, options);
@@ -115,7 +116,7 @@ export async function safeSendMessage(
 export async function safeReply(
     ctx: BotContext, 
     text: string, 
-    options: any = {}
+    options: ExtraReplyMessage = {}
 ): Promise<any | null> {
     try {
         return await ctx.reply(text, options);
@@ -185,7 +186,7 @@ export async function safeEditMessageText(
     messageId: number, 
     inlineMessageId: string | undefined, 
     text: string, 
-    options: any = {}
+    options: ExtraEditMessageText = {}
 ): Promise<any | null> {
     try {
         return await ctx.telegram.editMessageText(chatId, messageId, inlineMessageId, text, options);

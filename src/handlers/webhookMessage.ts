@@ -1,6 +1,7 @@
 import { LogEngine } from '@wgtechlabs/log-engine';
 import type { Telegraf } from 'telegraf';
 import type { BotContext } from '../types/index.js';
+import type { IBotsStore } from '../sdk/types.js';
 
 /**
  * Handles incoming webhook messages from Unthread agents
@@ -8,9 +9,9 @@ import type { BotContext } from '../types/index.js';
  */
 export class TelegramWebhookHandler {
   private bot: Telegraf<BotContext>;
-  private botsStore: any; // SDK type, treated as any since we're skipping SDK conversion
+  private botsStore: IBotsStore; // SDK type, properly typed with IBotsStore interface
 
-  constructor(bot: Telegraf<BotContext>, botsStore: any) {
+  constructor(bot: Telegraf<BotContext>, botsStore: IBotsStore) {
     this.bot = bot;
     this.botsStore = botsStore;
   }

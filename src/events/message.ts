@@ -3,14 +3,7 @@
  * 
  * This module provides handlers for different types of Telegram messages.
  * It implements functionality to detect and respond to messages from different
- * chat typ            // Update the waiting message with success
-            await safeEditMessageText(
-                ctx,
-                ctx.chat!.id, 
-                waitingMsg.message_id, 
-                undefined, 
-                successMessage
-            );ate, group, supergroup, channel) and pattern matching for text messages.
+ * chat types (private, group, supergroup, channel) and pattern matching for text messages.
  */
 
 import { LogEngine } from '@wgtechlabs/log-engine';

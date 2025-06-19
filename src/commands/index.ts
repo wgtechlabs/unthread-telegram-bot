@@ -419,7 +419,7 @@ export const processSupportConversation = async (ctx: BotContext): Promise<boole
         const currentField = userState.currentField || userState.field;
         
         switch (currentField) {
-            case SupportFieldEnum.SUMMARY:
+            case SupportFieldEnum.SUMMARY: {
                 // Check if user already provided a summary and is waiting for confirmation
                 if (userState.ticket.summary && userState.ticket.summary.trim() !== '') {
                     // Check if user is trying to confirm or revise via text
@@ -493,10 +493,12 @@ export const processSupportConversation = async (ctx: BotContext): Promise<boole
                 // Update user state but don't change field yet - wait for confirmation
                 await BotsStore.setUserState(telegramUserId, userState);
                 break;
+            }
                 
-            case SupportFieldEnum.EMAIL:
+            case SupportFieldEnum.EMAIL: {
                 await handleEmailField(ctx, userState, messageText);
                 break;
+            }
         }
         
         // We handled this message as part of a support conversation
