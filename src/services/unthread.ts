@@ -8,7 +8,7 @@
 import fetch from 'node-fetch';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
-import { TicketData } from '../sdk/types.js';
+import { TicketData, AgentMessageData } from '../sdk/types.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -427,7 +427,7 @@ export async function getTicketFromReply(replyToMessageId: number): Promise<Tick
  * @param replyToMessageId - The Telegram message ID being replied to
  * @returns The agent message data if found, or null if not found or on error
  */
-export async function getAgentMessageFromReply(replyToMessageId: number): Promise<any | null> {
+export async function getAgentMessageFromReply(replyToMessageId: number): Promise<AgentMessageData | null> {
     try {
         const agentMessageData = await BotsStore.getAgentMessageByTelegramId(replyToMessageId);
         return agentMessageData || null;
@@ -449,7 +449,7 @@ export async function getAgentMessageFromReply(replyToMessageId: number): Promis
  * @param chatId - The Telegram chat ID
  * @returns An array of ticket confirmation information for the specified chat
  */
-export async function getTicketsForChat(chatId: number): Promise<any[]> {
+export async function getTicketsForChat(chatId: number): Promise<TicketData[]> {
     try {
         // Note: This would require a new method in BotsStore to search by chatId
         // For now, we'll return an empty array and implement this if needed
