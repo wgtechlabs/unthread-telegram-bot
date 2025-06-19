@@ -520,7 +520,9 @@ export const processSupportConversation = async (ctx: BotContext): Promise<boole
 };
 
 /**
- * Handles the email field input and completes the ticket process
+ * Processes the email input step of the support ticket conversation and completes ticket creation.
+ *
+ * If the user enters "skip", an auto-generated email is used. The function then finalizes the ticket by interacting with external services to create the customer, user, and ticket records, updates the user with confirmation or error messages, and clears the user's conversation state.
  */
 async function handleEmailField(ctx: BotContext, userState: any, messageText: string): Promise<void> {
     try {

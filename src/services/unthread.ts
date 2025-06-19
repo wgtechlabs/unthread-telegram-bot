@@ -80,11 +80,10 @@ interface SendMessageJSONParams {
 }
 
 /**
- * Extracts customer company name from group chat title by removing the bot's company name
- * Handles formats like "thirdweb x relay", "thirdweb <> relay", "relay x apple", etc.
- * 
+ * Extracts and formats the customer company name from a Telegram group chat title by removing the bot's company name and handling various separators.
+ *
  * @param groupChatTitle - The original group chat title
- * @returns The extracted customer company name, capitalized
+ * @returns The extracted and capitalized customer company name, or "Unknown Company" if extraction fails
  */
 function extractCustomerCompanyName(groupChatTitle: string): string {
     if (!groupChatTitle) {
@@ -143,10 +142,12 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
 }
 
 /**
- * Capitalizes company name properly (first letter of each word)
- * 
- * @param name - The company name to capitalize
- * @returns The capitalized company name
+ * Formats a company name by capitalizing each word, replacing spaces with hyphens, and removing invalid characters.
+ *
+ * Returns 'Unknown-Company' if the input is empty.
+ *
+ * @param name - The company name to format
+ * @returns The formatted and capitalized company name
  */
 function capitalizeCompanyName(name: string): string {
     if (!name) return 'Unknown-Company';
@@ -182,10 +183,10 @@ if (!CHANNEL_ID) {
 const customerCache = new Map<string, Customer>();
 
 /**
- * Creates a new customer in Unthread
- * 
+ * Creates a new customer in Unthread using the extracted company name from a Telegram group chat title.
+ *
  * @param groupChatName - The name of the Telegram group chat
- * @returns The created customer object with ID
+ * @returns The created customer object containing its ID and name
  */
 export async function createCustomer(groupChatName: string): Promise<Customer> {
     try {
@@ -228,10 +229,10 @@ export async function createCustomer(groupChatName: string): Promise<Customer> {
 }
 
 /**
- * Creates a new support ticket (conversation) in Unthread
- * 
- * @param params - The ticket parameters
- * @returns The created ticket object
+ * Creates a new support ticket in Unthread for a given customer and group chat.
+ *
+ * @param params - Includes group chat name, customer ID, ticket summary, and user information on whose behalf the ticket is created.
+ * @returns The created ticket object from Unthread.
  */
 export async function createTicket(params: CreateTicketParams): Promise<any> {
     try {
@@ -252,7 +253,13 @@ export async function createTicket(params: CreateTicketParams): Promise<any> {
 }
 
 /**
- * Creates a ticket without attachments using JSON
+ * Creates a new support ticket in Unthread using a JSON payload.
+ *
+ * Sends a POST request to the Unthread API to create a ticket with the specified title, summary, customer, and user information. Returns the created ticket's identifiers.
+ *
+ * @param params - Ticket creation details including title, summary, customer ID, and user information
+ * @returns An object containing the ticket's unique ID and friendly ID
+ * @throws If the API request fails or returns a non-OK response
  */
 async function createTicketJSON(params: CreateTicketJSONParams): Promise<any> {
     const { title, summary, customerId, onBehalfOf } = params;
@@ -294,10 +301,10 @@ async function createTicketJSON(params: CreateTicketJSONParams): Promise<any> {
 }
 
 /**
- * Sends a message to an existing conversation
- * 
- * @param params - The message parameters
- * @returns The response from the API
+ * Sends a message to an existing Unthread conversation.
+ *
+ * @param params - Contains the conversation ID, message content, and user information.
+ * @returns The API response for the sent message.
  */
 export async function sendMessage(params: SendMessageParams): Promise<any> {
     try {
@@ -312,7 +319,11 @@ export async function sendMessage(params: SendMessageParams): Promise<any> {
 }
 
 /**
- * Sends a message without attachments using JSON
+ * Sends a markdown-formatted message to a conversation in Unthread without attachments.
+ *
+ * @param params - Contains the conversation ID, message content, and user information for attribution.
+ * @returns The response data from the Unthread API after sending the message.
+ * @throws If the API request fails or returns a non-OK status.
  */
 async function sendMessageJSON(params: SendMessageJSONParams): Promise<any> {
     const { conversationId, message, onBehalfOf } = params;
@@ -343,9 +354,9 @@ async function sendMessageJSON(params: SendMessageJSONParams): Promise<any> {
 }
 
 /**
- * Registers a ticket confirmation message using BotsStore
- * 
- * @param params - The ticket information to store
+ * Stores ticket confirmation details in the BotsStore for later retrieval.
+ *
+ * @param params - Ticket confirmation data including message and ticket identifiers, chat and user IDs, and related metadata.
  */
 export async function registerTicketConfirmation(params: RegisterTicketConfirmationParams): Promise<void> {
     try {
@@ -380,10 +391,10 @@ export async function registerTicketConfirmation(params: RegisterTicketConfirmat
 }
 
 /**
- * Checks if a message is a reply to a ticket confirmation using BotsStore
- * 
- * @param replyToMessageId - The message ID this message is replying to
- * @returns The ticket information or null if not a ticket reply
+ * Retrieves ticket information associated with a replied-to Telegram message.
+ *
+ * @param replyToMessageId - The Telegram message ID being replied to
+ * @returns The ticket data if found, or null if no ticket is associated with the message
  */
 export async function getTicketFromReply(replyToMessageId: number): Promise<any | null> {
     try {
@@ -410,10 +421,10 @@ export async function getTicketFromReply(replyToMessageId: number): Promise<any 
 }
 
 /**
- * Checks if a message is a reply to an agent message using BotsStore
- * 
- * @param replyToMessageId - The message ID this message is replying to
- * @returns The agent message information or null if not an agent message reply
+ * Retrieves agent message information from BotsStore by the replied message ID.
+ *
+ * @param replyToMessageId - The Telegram message ID being replied to
+ * @returns The agent message data if found, or null if not found or on error
  */
 export async function getAgentMessageFromReply(replyToMessageId: number): Promise<any | null> {
     try {
@@ -430,10 +441,12 @@ export async function getAgentMessageFromReply(replyToMessageId: number): Promis
 }
 
 /**
- * Gets all active ticket confirmations for a specific chat using BotsStore
- * 
+ * Retrieves all active ticket confirmations for a given Telegram chat.
+ *
+ * Currently returns an empty array as the functionality is not yet implemented.
+ *
  * @param chatId - The Telegram chat ID
- * @returns Array of ticket confirmation info for this chat
+ * @returns An array of ticket confirmation information for the specified chat
  */
 export async function getTicketsForChat(chatId: number): Promise<any[]> {
     try {
@@ -452,11 +465,11 @@ export async function getTicketsForChat(chatId: number): Promise<any[]> {
 }
 
 /**
- * Gets or creates a customer, ensuring it's stored in the database
- * 
- * @param groupChatName - The name of the Telegram group chat
- * @param chatId - The Telegram chat ID
- * @returns Customer data with ID and name
+ * Retrieves an existing customer by Telegram chat ID or creates a new customer in Unthread and stores it locally.
+ *
+ * @param groupChatName - The name of the Telegram group chat.
+ * @param chatId - The Telegram chat ID.
+ * @returns The customer object containing the Unthread customer ID and name.
  */
 export async function getOrCreateCustomer(groupChatName: string, chatId: number): Promise<Customer> {
     try {
@@ -533,11 +546,13 @@ export async function getOrCreateCustomer(groupChatName: string, chatId: number)
 }
 
 /**
- * Gets or creates user information, ensuring it's stored in the database
- * 
+ * Retrieves user information by Telegram user ID, creating and storing a new user record if one does not exist.
+ *
+ * If the user is not found in the database, a new user is created with a generated name and email, optionally using the provided username.
+ *
  * @param telegramUserId - The Telegram user ID
- * @param username - The Telegram username (without @)
- * @returns User data with onBehalf information
+ * @param username - Optional Telegram username (without @)
+ * @returns An object containing the user's name and email for use as onBehalfOf information
  */
 export async function getOrCreateUser(telegramUserId: number, username?: string): Promise<OnBehalfOfUser> {
     try {

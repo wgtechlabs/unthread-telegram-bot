@@ -12,10 +12,11 @@ import { BotsStore } from './sdk/bots-brain/index.js';
 import { BotContext, TelegramError, CommandHandler } from './types/index.js';
 
 /**
- * Creates a new Telegram bot instance
- * 
- * @param token - The Telegram Bot API token
- * @returns A new Telegraf bot instance
+ * Creates and returns a new Telegraf bot instance using the provided Telegram Bot API token.
+ *
+ * @param token - The Telegram Bot API token to authenticate the bot
+ * @returns The initialized Telegraf bot instance
+ * @throws If the token is missing or empty
  */
 export function createBot(token: string): Telegraf<BotContext> {
     if (!token) {
@@ -25,10 +26,9 @@ export function createBot(token: string): Telegraf<BotContext> {
 }
 
 /**
- * Configures the bot's command handlers
- * 
- * @param bot - The Telegraf bot instance
- * @param commands - Array of command objects with name and handler
+ * Registers command handlers on the bot for each specified command.
+ *
+ * @param commands - List of command definitions, each containing a command name and its handler function.
  */
 export function configureCommands(
     bot: Telegraf<BotContext>, 
@@ -40,22 +40,23 @@ export function configureCommands(
 }
 
 /**
- * Starts the bot polling for updates
- * 
- * @param bot - The Telegraf bot instance
+ * Starts the bot's polling mechanism to receive updates from Telegram.
+ *
+ * Initiates the process for the bot to listen for and handle incoming messages and events.
  */
 export function startPolling(bot: Telegraf<BotContext>): void {
     bot.launch();
 }
 
 /**
- * Safely send a message with error handling for blocked users and other common errors
- * 
- * @param bot - The Telegraf bot instance
- * @param chatId - The chat ID to send the message to
- * @param text - The message text
- * @param options - Additional options for sendMessage
- * @returns The sent message object or null if failed
+ * Sends a message to a specified chat, handling common Telegram errors such as blocked users, chat not found, and rate limits.
+ *
+ * Attempts to send a message and performs cleanup if the bot is blocked or the chat does not exist. Returns null if sending fails due to these conditions or rate limiting; otherwise, returns the sent message object.
+ *
+ * @param chatId - The target chat ID
+ * @param text - The message text to send
+ * @param options - Optional parameters for message formatting and behavior
+ * @returns The sent message object, or null if the message could not be delivered due to blocking, chat not found, or rate limiting
  */
 export async function safeSendMessage(
     bot: Telegraf<BotContext>, 
@@ -106,12 +107,14 @@ export async function safeSendMessage(
 }
 
 /**
- * Safely reply to a message with cleanup handling for blocked users
- * 
- * @param ctx - The Telegraf context object
- * @param text - The message text to reply with
- * @param options - Additional options for the reply
- * @returns The sent message object or null if failed
+ * Replies to a message in the given context, handling errors such as blocked users, missing chats, and rate limits.
+ *
+ * If the bot is blocked or the chat is not found, associated user data is cleaned up and null is returned. If rate limits are exceeded, a warning is logged and null is returned. Other errors are logged and re-thrown.
+ *
+ * @param ctx - The Telegraf context for the incoming message
+ * @param text - The reply message text
+ * @param options - Optional parameters for the reply
+ * @returns The sent message object, or null if the reply could not be sent due to blocking, missing chat, or rate limiting
  */
 export async function safeReply(
     ctx: BotContext, 
@@ -170,15 +173,17 @@ export async function safeReply(
 }
 
 /**
- * Safely edit a message text with cleanup handling for blocked users
- * 
+ * Attempts to edit the text of a Telegram message, handling common errors such as blocked users, missing chats, rate limits, and non-critical edit failures.
+ *
+ * If the bot is blocked or the chat is not found, associated user data is cleaned up and `null` is returned. Rate limit errors also result in `null`. If the message is not found or already modified, the error is logged and `null` is returned. Other errors are logged and re-thrown.
+ *
  * @param ctx - The Telegraf context object
- * @param chatId - The chat ID
- * @param messageId - The message ID to edit
- * @param inlineMessageId - Inline message ID (if applicable)
- * @param text - The new message text
- * @param options - Additional options for editing
- * @returns The edited message object or null if failed
+ * @param chatId - The target chat ID
+ * @param messageId - The ID of the message to edit
+ * @param inlineMessageId - The inline message ID, if applicable
+ * @param text - The new text for the message
+ * @param options - Additional options for editing the message
+ * @returns The edited message object, or `null` if the operation fails due to handled errors
  */
 export async function safeEditMessageText(
     ctx: BotContext, 
@@ -248,10 +253,11 @@ export async function safeEditMessageText(
 }
 
 /**
- * Clean up user data when bot is blocked or chat is not found
- * This implements the fix from GitHub issue telegraf/telegraf#1513
- * 
- * @param chatId - The chat ID of the blocked user
+ * Cleans up all local data associated with a chat when the bot is blocked or the chat is not found.
+ *
+ * Removes tickets and customer mappings related to the specified chat from persistent storage. User state data is not explicitly removed but will expire automatically. Errors during cleanup are logged but do not interrupt bot operation.
+ *
+ * @param chatId - The Telegram chat ID to clean up data for
  */
 async function cleanupBlockedUser(chatId: number): Promise<void> {
     try {
