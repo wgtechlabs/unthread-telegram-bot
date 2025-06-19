@@ -42,6 +42,9 @@ build/Release
 node_modules/
 jspm_packages/
 
+# Prevent npm lock file (we use Yarn)
+package-lock.json
+
 # TypeScript cache
 *.tsbuildinfo
 

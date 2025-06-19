@@ -1,6 +1,21 @@
-import { createClient } from 'redis';
+import { createClient, RedisClientType } from 'redis';
 import { EventValidator } from './EventValidator.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
+import type { WebhookEvent } from '../types.js';
+
+/**
+ * WebhookConsumer configuration
+ */
+export interface WebhookConsumerConfig {
+  redisUrl: string;
+  queueName?: string;
+  pollInterval?: number;
+}
+
+/**
+ * Event handler function type
+ */
+export type EventHandler = (event: WebhookEvent) => Promise<void>;
 
 /**
  * WebhookConsumer - Simple Redis queue consumer for Unthread webhook events
@@ -9,25 +24,29 @@ import { LogEngine } from '@wgtechlabs/log-engine';
  * Polls Redis queue, validates events, and routes message_created events to handlers.
  */
 export class WebhookConsumer {
-  constructor(config) {
+  private redisUrl: string;
+  private queueName: string;
+  private pollInterval: number;
+  
+  // Event handlers map: "eventType:sourcePlatform" -> handler function
+  private eventHandlers: Map<string, EventHandler> = new Map();
+  
+  // Redis clients - separate clients for blocking and non-blocking operations
+  private redisClient: RedisClientType | null = null;
+  private blockingRedisClient: RedisClientType | null = null; // Dedicated client for blPop operations
+  private isRunning: boolean = false;
+  private pollTimer: NodeJS.Timeout | null = null;
+
+  constructor(config: WebhookConsumerConfig) {
     this.redisUrl = config.redisUrl;
     this.queueName = config.queueName || 'unthread-events';
     this.pollInterval = config.pollInterval || 1000; // 1 second default
-    
-    // Event handlers map: "eventType:sourcePlatform" -> handler function
-    this.eventHandlers = new Map();
-    
-    // Redis clients - separate clients for blocking and non-blocking operations
-    this.redisClient = null;
-    this.blockingRedisClient = null; // Dedicated client for blPop operations
-    this.isRunning = false;
-    this.pollTimer = null;
   }
   
   /**
    * Initialize Redis connection
    */
-  async connect() {
+  async connect(): Promise<boolean> {
     try {
       if (!this.redisUrl) {
         throw new Error('Redis URL is required for webhook consumer');
@@ -52,7 +71,7 @@ export class WebhookConsumer {
   /**
    * Disconnect from Redis
    */
-  async disconnect() {
+  async disconnect(): Promise<void> {
     try {
       this.isRunning = false;
       
@@ -78,11 +97,11 @@ export class WebhookConsumer {
   
   /**
    * Subscribe to a specific event type and platform
-   * @param {string} eventType - Type of event to listen for (e.g., 'message_created')
-   * @param {string} sourcePlatform - Source platform to filter by (e.g., 'dashboard')
-   * @param {Function} handler - Handler function to call for matching events
+   * @param eventType - Type of event to listen for (e.g., 'message_created')
+   * @param sourcePlatform - Source platform to filter by (e.g., 'dashboard')
+   * @param handler - Handler function to call for matching events
    */
-  subscribe(eventType, sourcePlatform, handler) {
+  subscribe(eventType: string, sourcePlatform: string, handler: EventHandler): void {
     const key = `${eventType}:${sourcePlatform}`;
     this.eventHandlers.set(key, handler);
     LogEngine.info(`Subscribed to ${eventType} events from ${sourcePlatform}`);
@@ -91,7 +110,7 @@ export class WebhookConsumer {
   /**
    * Start polling for events
    */
-  async start() {
+  async start(): Promise<void> {
     if (this.isRunning) {
       LogEngine.warn('Webhook consumer is already running');
       return;
@@ -108,7 +127,7 @@ export class WebhookConsumer {
   /**
    * Stop polling for events
    */
-  async stop() {
+  async stop(): Promise<void> {
     this.isRunning = false;
     await this.disconnect();
     LogEngine.info('Webhook consumer stopped');
@@ -117,7 +136,7 @@ export class WebhookConsumer {
   /**
    * Schedule the next poll
    */
-  scheduleNextPoll() {
+  private scheduleNextPoll(): void {
     if (!this.isRunning) return;
     
     this.pollTimer = setTimeout(async () => {
@@ -125,16 +144,17 @@ export class WebhookConsumer {
         await this.pollForEvents();
       } catch (error) {
         LogEngine.error('Error during event polling:', error);
+      } finally {
+        // Schedule next poll only once per cycle, regardless of success or failure
+        this.scheduleNextPoll();
       }
-      
-      // Schedule next poll
-      this.scheduleNextPoll();
     }, this.pollInterval);
   }
-   /**
+
+  /**
    * Poll Redis queue for new events
    */
-  async pollForEvents() {
+  private async pollForEvents(): Promise<void> {
     if (!this.blockingRedisClient || !this.blockingRedisClient.isOpen) {
       LogEngine.warn('Blocking Redis client not connected, skipping poll');
       return;
@@ -144,9 +164,11 @@ export class WebhookConsumer {
       LogEngine.debug(`Polling Redis queue: ${this.queueName}`);
       
       // Check queue length first for debugging
-      const queueLength = await this.redisClient.lLen(this.queueName);
-      if (queueLength > 0) {
-        LogEngine.info(`Found ${queueLength} events in queue ${this.queueName}`);
+      if (this.redisClient && this.redisClient.isOpen) {
+        const queueLength = await this.redisClient.lLen(this.queueName);
+        if (queueLength > 0) {
+          LogEngine.info(`Found ${queueLength} events in queue ${this.queueName}`);
+        }
       }
       
       // Get the next event from the queue using dedicated blocking client (1 second timeout)
@@ -163,11 +185,12 @@ export class WebhookConsumer {
       LogEngine.error('Error polling for events:', error);
     }
   }
-   /**
+
+  /**
    * Process a single event
-   * @param {string} eventData - JSON string of the event
+   * @param eventData - JSON string of the event
    */
-  async processEvent(eventData) {
+  private async processEvent(eventData: string): Promise<void> {
     try {
       LogEngine.info('🔄 Starting event processing', { 
         eventDataLength: eventData.length,
@@ -175,38 +198,50 @@ export class WebhookConsumer {
       });
       
       // Parse the event
-      let event;
+      let event: unknown;
       try {
         event = JSON.parse(eventData);
+        const eventObj = event as Record<string, unknown>;
         LogEngine.info('✅ Event parsed successfully', {
-          type: event.type,
-          sourcePlatform: event.sourcePlatform,
-          conversationId: event.data?.conversationId
+          type: eventObj.type,
+          sourcePlatform: eventObj.sourcePlatform,
+          conversationId: (eventObj.data as any)?.conversationId || (eventObj.data as any)?.id
         });
       } catch (parseError) {
         LogEngine.error('❌ Failed to parse event JSON', {
-          error: parseError.message,
+          error: (parseError as Error).message,
           eventData: eventData.substring(0, 500)
         });
         return;
       }
       
+      const eventObj = event as Record<string, unknown>;
+      const data = eventObj.data as Record<string, unknown>;
+      
       LogEngine.info('🔍 Processing webhook event', {
-        type: event.type,
-        sourcePlatform: event.sourcePlatform,
-        conversationId: event.data?.conversationId
+        type: eventObj.type,
+        sourcePlatform: eventObj.sourcePlatform,
+        conversationId: data?.conversationId || data?.id,
+        timestamp: eventObj.timestamp,
+        dataKeys: data ? Object.keys(data) : []
+      });
+
+      // Log full event payload at debug level to avoid log bloat
+      LogEngine.debug('🔍 Complete webhook event payload', {
+        completeEvent: JSON.stringify(event, null, 2)
       });
 
       // Validate the event
       LogEngine.info('🔍 Validating event...', {
-        eventType: event.type,
-        sourcePlatform: event.sourcePlatform,
-        hasData: !!event.data,
-        conversationId: event.data?.conversationId,
-        hasContent: !!event.data?.content,
-        hasText: !!event.data?.text,
-        eventDataKeys: event.data ? Object.keys(event.data) : []
+        eventType: eventObj.type,
+        sourcePlatform: eventObj.sourcePlatform,
+        hasData: !!eventObj.data,
+        conversationId: data?.conversationId || data?.id,
+        hasContent: !!data?.content,
+        hasText: !!data?.text,
+        eventDataKeys: data ? Object.keys(data) : []
       });
+
       if (!EventValidator.validate(event)) {
         LogEngine.warn('❌ Invalid event, skipping', { 
           event: JSON.stringify(event, null, 2).substring(0, 1000) + '...'
@@ -216,7 +251,8 @@ export class WebhookConsumer {
       LogEngine.info('✅ Event validation passed');
 
       // Find handler for this event
-      const handlerKey = `${event.type}:${event.sourcePlatform}`;
+      const validatedEvent = event as WebhookEvent;
+      const handlerKey = `${validatedEvent.type}:${validatedEvent.sourcePlatform}`;
       LogEngine.info('🔍 Looking for handler', { handlerKey });
       const handler = this.eventHandlers.get(handlerKey);
 
@@ -228,23 +264,23 @@ export class WebhookConsumer {
       }
 
       // Execute the handler
-      LogEngine.info(`🚀 Executing handler for ${event.type} event from ${event.sourcePlatform}`);
+      LogEngine.info(`🚀 Executing handler for ${validatedEvent.type} event from ${validatedEvent.sourcePlatform}`);
       try {
-        await handler(event);
-        LogEngine.info(`✅ Event processed successfully: ${event.type} from ${event.sourcePlatform}`);
+        await handler(validatedEvent);
+        LogEngine.info(`✅ Event processed successfully: ${validatedEvent.type} from ${validatedEvent.sourcePlatform}`);
       } catch (handlerError) {
-        LogEngine.error(`❌ Handler execution failed for ${event.type}:${event.sourcePlatform}`, {
-          error: handlerError.message,
-          stack: handlerError.stack,
-          conversationId: event.data?.conversationId
+        LogEngine.error(`❌ Handler execution failed for ${validatedEvent.type}:${validatedEvent.sourcePlatform}`, {
+          error: (handlerError as Error).message,
+          stack: (handlerError as Error).stack,
+          conversationId: data?.conversationId || data?.id
         });
         throw handlerError;
       }
 
     } catch (error) {
       LogEngine.error('❌ Error processing event:', {
-        error: error.message,
-        stack: error.stack,
+        error: (error as Error).message,
+        stack: (error as Error).stack,
         eventDataPreview: eventData ? eventData.substring(0, 500) : 'null'
       });
     }
@@ -252,13 +288,19 @@ export class WebhookConsumer {
   
   /**
    * Get connection status
-   * @returns {Object} Status information
+   * @returns Status information
    */
-  getStatus() {
+  getStatus(): {
+    isRunning: boolean;
+    isConnected: boolean;
+    isBlockingClientConnected: boolean;
+    subscribedEvents: string[];
+    queueName: string;
+  } {
     return {
       isRunning: this.isRunning,
-      isConnected: this.redisClient && this.redisClient.isOpen,
-      isBlockingClientConnected: this.blockingRedisClient && this.blockingRedisClient.isOpen,
+      isConnected: this.redisClient !== null && this.redisClient.isOpen,
+      isBlockingClientConnected: this.blockingRedisClient !== null && this.blockingRedisClient.isOpen,
       subscribedEvents: Array.from(this.eventHandlers.keys()),
       queueName: this.queueName
     };

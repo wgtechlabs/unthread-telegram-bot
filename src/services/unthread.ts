@@ -8,19 +8,85 @@
 import fetch from 'node-fetch';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
+import { TicketData } from '../sdk/types.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
 dotenv.config();
 
 /**
- * Extracts customer company name from group chat title by removing the bot's company name
- * Handles formats like "thirdweb x relay", "thirdweb <> relay", "relay x apple", etc.
- * 
- * @param {string} groupChatTitle - The original group chat title
- * @returns {string} - The extracted customer company name, capitalized
+ * Customer data structure
  */
-function extractCustomerCompanyName(groupChatTitle) {
+interface Customer {
+  id: string;
+  name: string;
+}
+
+/**
+ * User data for onBehalfOf
+ */
+interface OnBehalfOfUser {
+  name: string;
+  email: string;
+}
+
+/**
+ * Ticket creation parameters
+ */
+interface CreateTicketParams {
+  groupChatName: string;
+  customerId: string;
+  summary: string;
+  onBehalfOf: OnBehalfOfUser;
+}
+
+/**
+ * Message sending parameters
+ */
+interface SendMessageParams {
+  conversationId: string;
+  message: string;
+  onBehalfOf: OnBehalfOfUser;
+}
+
+/**
+ * Ticket confirmation parameters
+ */
+interface RegisterTicketConfirmationParams {
+  messageId: number;
+  ticketId: string;
+  friendlyId: string;
+  customerId: string;
+  chatId: number;
+  telegramUserId: number;
+}
+
+/**
+ * Ticket JSON creation parameters
+ */
+interface CreateTicketJSONParams {
+  title: string;
+  summary: string;
+  customerId: string;
+  onBehalfOf: OnBehalfOfUser;
+}
+
+/**
+ * Message JSON sending parameters
+ */
+interface SendMessageJSONParams {
+  conversationId: string;
+  message: string;
+  onBehalfOf: OnBehalfOfUser;
+}
+
+/**
+ * Extracts and formats the customer company name from a Telegram group chat title by removing the bot's company name and handling various separators.
+ *
+ * @param groupChatTitle - The original group chat title
+ * @returns The extracted and capitalized customer company name, or "Unknown Company" if extraction fails
+ */
+function extractCustomerCompanyName(groupChatTitle: string): string {
     if (!groupChatTitle) {
         return 'Unknown Company';
     }
@@ -49,10 +115,10 @@ function extractCustomerCompanyName(groupChatTitle) {
                 // Find which part is NOT our company name
                 const [part1, part2] = parts;
                 
-                if (part1 === lowerCompanyName && part2 !== lowerCompanyName) {
+                if (part1 === lowerCompanyName && part2 !== lowerCompanyName && part2) {
                     // Our company is first, customer is second
                     return capitalizeCompanyName(part2);
-                } else if (part2 === lowerCompanyName && part1 !== lowerCompanyName) {
+                } else if (part2 === lowerCompanyName && part1 !== lowerCompanyName && part1) {
                     // Customer is first, our company is second
                     return capitalizeCompanyName(part1);
                 }
@@ -77,12 +143,14 @@ function extractCustomerCompanyName(groupChatTitle) {
 }
 
 /**
- * Capitalizes company name properly (first letter of each word)
- * 
- * @param {string} name - The company name to capitalize
- * @returns {string} - The capitalized company name
+ * Formats a company name by capitalizing each word, replacing spaces with hyphens, and removing invalid characters.
+ *
+ * Returns 'Unknown-Company' if the input is empty.
+ *
+ * @param name - The company name to format
+ * @returns The formatted and capitalized company name
  */
-function capitalizeCompanyName(name) {
+function capitalizeCompanyName(name: string): string {
     if (!name) return 'Unknown-Company';
     
     return name
@@ -104,24 +172,24 @@ const CHANNEL_ID = process.env.UNTHREAD_CHANNEL_ID;
 // Validate required environment variables
 if (!UNTHREAD_API_KEY) {
     LogEngine.error('UNTHREAD_API_KEY environment variable is required but not defined');
-    process.exit(1);
+    throw new Error('Missing required environment variable: UNTHREAD_API_KEY');
 }
 
 if (!CHANNEL_ID) {
     LogEngine.error('UNTHREAD_CHANNEL_ID environment variable is required but not defined');
-    process.exit(1);
+    throw new Error('Missing required environment variable: UNTHREAD_CHANNEL_ID');
 }
 
 // Customer ID cache to avoid creating duplicates
-const customerCache = new Map();
+const customerCache = new Map<string, Customer>();
 
 /**
- * Creates a new customer in Unthread
- * 
- * @param {string} groupChatName - The name of the Telegram group chat
- * @returns {Promise<object>} - The created customer object with ID
+ * Creates a new customer in Unthread using the extracted company name from a Telegram group chat title.
+ *
+ * @param groupChatName - The name of the Telegram group chat
+ * @returns The created customer object containing its ID and name
  */
-export async function createCustomer(groupChatName) {
+export async function createCustomer(groupChatName: string): Promise<Customer> {
     try {
         // Extract the actual customer company name from the group chat title
         const customerName = extractCustomerCompanyName(groupChatName);
@@ -130,7 +198,7 @@ export async function createCustomer(groupChatName) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-API-KEY': UNTHREAD_API_KEY
+                'X-API-KEY': UNTHREAD_API_KEY!
             },
             body: JSON.stringify({
                 name: customerName
@@ -142,7 +210,7 @@ export async function createCustomer(groupChatName) {
             throw new Error(`Failed to create customer: ${response.status} ${errorText}`);
         }
 
-        const result = await response.json();
+        const result = await response.json() as Customer;
         
         // Log the extraction for debugging
         LogEngine.info('Customer created with extracted name', {
@@ -154,7 +222,7 @@ export async function createCustomer(groupChatName) {
         return result;
     } catch (error) {
         LogEngine.error('Error creating customer', {
-            error: error.message,
+            error: (error as Error).message,
             groupChatName
         });
         throw error;
@@ -162,137 +230,138 @@ export async function createCustomer(groupChatName) {
 }
 
 /**
- * Creates a new support ticket (conversation) in Unthread
- * 
- * @param {object} params - The ticket parameters
- * @param {string} params.groupChatName - The name of the Telegram group chat
- * @param {string} params.customerId - The Unthread customer ID
- * @param {string} params.summary - The ticket summary/description
- * @param {object} params.onBehalfOf - The user information for onBehalfOf
- * @param {string} params.onBehalfOf.name - The user's name
- * @param {string} params.onBehalfOf.email - The user's email
- * @returns {Promise<object>} - The created ticket object
+ * Creates a new support ticket in Unthread for a given customer and group chat.
+ *
+ * @param params - Includes group chat name, customer ID, ticket summary, and user information on whose behalf the ticket is created.
+ * @returns The created ticket object from Unthread.
  */
-export async function createTicket({ groupChatName, customerId, summary, onBehalfOf }) {
+export async function createTicket(params: CreateTicketParams): Promise<any> {
     try {
+        const { groupChatName, customerId, summary, onBehalfOf } = params;
+        
         // Extract the customer company name for the ticket title
         const customerCompanyName = extractCustomerCompanyName(groupChatName);
         const title = `[Telegram Ticket] ${customerCompanyName}`;
 
-        // Create the ticket payload
-        const payload = {
-            type: "slack",
-            title: title,
-            markdown: summary,
-            status: "open",
-            channelId: CHANNEL_ID,
-            customerId: customerId,
-            onBehalfOf: onBehalfOf
-        };
-
-        const response = await fetch(`${API_BASE_URL}/conversations`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-API-KEY': UNTHREAD_API_KEY
-            },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to create ticket: ${response.status} ${errorText}`);
-        }
-
-        const result = await response.json();
-        
-        // Log the ticket creation with extracted names
-        LogEngine.info('Ticket created with extracted customer name', {
-            originalGroupChatName: groupChatName,
-            extractedCustomerName: customerCompanyName,
-            ticketTitle: title,
-            ticketId: result.id,
-            friendlyId: result.friendlyId,
-            customerId: customerId,
-            onBehalfOf: onBehalfOf
-        });
-
-        return result;
+        return await createTicketJSON({ title, summary, customerId, onBehalfOf });
     } catch (error) {
         LogEngine.error('Error creating ticket', {
-            error: error.message,
-            customerId
+            error: (error as Error).message,
+            customerId: params.customerId
         });
         throw error;
     }
 }
 
 /**
- * Sends a message to an existing conversation
- * 
- * @param {object} params - The message parameters
- * @param {string} params.conversationId - The ID of the conversation to send a message to
- * @param {string} params.message - The message text
- * @param {object} params.onBehalfOf - The user information for onBehalfOf
- * @param {string} params.onBehalfOf.name - The user's name
- * @param {string} params.onBehalfOf.email - The user's email
- * @returns {Promise<object>} - The response from the API
+ * Creates a new support ticket in Unthread using a JSON payload.
+ *
+ * Sends a POST request to the Unthread API to create a ticket with the specified title, summary, customer, and user information. Returns the created ticket's identifiers.
+ *
+ * @param params - Ticket creation details including title, summary, customer ID, and user information
+ * @returns An object containing the ticket's unique ID and friendly ID
+ * @throws If the API request fails or returns a non-OK response
  */
-export async function sendMessage({ conversationId, message, onBehalfOf }) {
+async function createTicketJSON(params: CreateTicketJSONParams): Promise<any> {
+    const { title, summary, customerId, onBehalfOf } = params;
+    
+    const payload = {
+        type: "slack",
+        title: title,
+        markdown: summary,
+        status: "open",
+        channelId: CHANNEL_ID,
+        customerId: customerId,
+        onBehalfOf: onBehalfOf
+    };
+
+    const response = await fetch(`${API_BASE_URL}/conversations`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-API-KEY': UNTHREAD_API_KEY!
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to create ticket: ${response.status} ${errorText}`);
+    }
+
+    const result = await response.json() as { id: string; friendlyId: string };
+    
+    LogEngine.info('Ticket created (JSON)', {
+        ticketTitle: title,
+        ticketId: result.id,
+        friendlyId: result.friendlyId,
+        customerId: customerId
+    });
+
+    return result;
+}
+
+/**
+ * Sends a message to an existing Unthread conversation.
+ *
+ * @param params - Contains the conversation ID, message content, and user information.
+ * @returns The API response for the sent message.
+ */
+export async function sendMessage(params: SendMessageParams): Promise<any> {
     try {
-        const payload = {
-            body: {
-                type: "markdown",
-                value: message
-            },
-            onBehalfOf: onBehalfOf
-        };
-
-        const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-API-KEY': UNTHREAD_API_KEY
-            },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to send message: ${response.status} ${errorText}`);
-        }
-
-        return await response.json();
+        return await sendMessageJSON(params);
     } catch (error) {
         LogEngine.error('Error sending message', {
-            error: error.message,
-            conversationId
+            error: (error as Error).message,
+            conversationId: params.conversationId
         });
         throw error;
     }
 }
 
 /**
- * Registers a ticket confirmation message using BotsStore
- * 
- * @param {object} ticketInfo - The ticket information to store
- * @param {number} ticketInfo.messageId - The Telegram message ID of the confirmation
- * @param {string} ticketInfo.ticketId - The Unthread ticket/conversation ID
- * @param {string} ticketInfo.friendlyId - The human-readable ticket number
- * @param {string} ticketInfo.customerId - The Unthread customer ID
- * @param {number} ticketInfo.chatId - The Telegram chat ID
- * @param {number} ticketInfo.telegramUserId - The Telegram user ID of the ticket creator
+ * Sends a markdown-formatted message to a conversation in Unthread without attachments.
+ *
+ * @param params - Contains the conversation ID, message content, and user information for attribution.
+ * @returns The response data from the Unthread API after sending the message.
+ * @throws If the API request fails or returns a non-OK status.
  */
-export async function registerTicketConfirmation({ messageId, ticketId, friendlyId, customerId, chatId, telegramUserId }) {
+async function sendMessageJSON(params: SendMessageJSONParams): Promise<any> {
+    const { conversationId, message, onBehalfOf } = params;
+    
+    const payload = {
+        body: {
+            type: "markdown",
+            value: message
+        },
+        onBehalfOf: onBehalfOf
+    };
+
+    const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-API-KEY': UNTHREAD_API_KEY!
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to send message: ${response.status} ${errorText}`);
+    }
+
+    return await response.json();
+}
+
+/**
+ * Stores ticket confirmation details in the BotsStore for later retrieval.
+ *
+ * @param params - Ticket confirmation data including message and ticket identifiers, chat and user IDs, and related metadata.
+ */
+export async function registerTicketConfirmation(params: RegisterTicketConfirmationParams): Promise<void> {
     try {
-        const ticketData = {
-            ticketId,
-            friendlyId,
-            customerId,
-            chatId,
-            telegramUserId,
-            createdAt: Date.now()
-        };
+        const { messageId, ticketId, friendlyId, customerId, chatId, telegramUserId } = params;
         
         // Store ticket mapping using BotsStore
         await BotsStore.storeTicket({
@@ -302,7 +371,7 @@ export async function registerTicketConfirmation({ messageId, ticketId, friendly
             chatId: chatId,
             telegramUserId: telegramUserId,
             ticketId: ticketId,
-            createdAt: Date.now()
+            createdAt: Date.now().toString()
         });
         
         LogEngine.info('Registered ticket confirmation', {
@@ -315,20 +384,20 @@ export async function registerTicketConfirmation({ messageId, ticketId, friendly
         });
     } catch (error) {
         LogEngine.error('Error registering ticket confirmation', {
-            error: error.message,
-            ticketId
+            error: (error as Error).message,
+            ticketId: params.ticketId
         });
         throw error;
     }
 }
 
 /**
- * Checks if a message is a reply to a ticket confirmation using BotsStore
- * 
- * @param {number} replyToMessageId - The message ID this message is replying to
- * @returns {object|null} - The ticket information or null if not a ticket reply
+ * Retrieves ticket information associated with a replied-to Telegram message.
+ *
+ * @param replyToMessageId - The Telegram message ID being replied to
+ * @returns The ticket data if found, or null if no ticket is associated with the message
  */
-export async function getTicketFromReply(replyToMessageId) {
+export async function getTicketFromReply(replyToMessageId: number): Promise<TicketData | null> {
     try {
         const ticketData = await BotsStore.getTicketByTelegramMessageId(replyToMessageId);
         
@@ -344,8 +413,8 @@ export async function getTicketFromReply(replyToMessageId) {
         return ticketData || null;
     } catch (error) {
         LogEngine.error('Error getting ticket from reply', {
-            error: error.message,
-            stack: error.stack,
+            error: (error as Error).message,
+            stack: (error as Error).stack,
             replyToMessageId
         });
         return null;
@@ -353,19 +422,19 @@ export async function getTicketFromReply(replyToMessageId) {
 }
 
 /**
- * Checks if a message is a reply to an agent message using BotsStore
- * 
- * @param {number} replyToMessageId - The message ID this message is replying to
- * @returns {object|null} - The agent message information or null if not an agent message reply
+ * Retrieves agent message information from BotsStore by the replied message ID.
+ *
+ * @param replyToMessageId - The Telegram message ID being replied to
+ * @returns The agent message data if found, or null if not found or on error
  */
-export async function getAgentMessageFromReply(replyToMessageId) {
+export async function getAgentMessageFromReply(replyToMessageId: number): Promise<any | null> {
     try {
         const agentMessageData = await BotsStore.getAgentMessageByTelegramId(replyToMessageId);
         return agentMessageData || null;
     } catch (error) {
         LogEngine.error('Error getting agent message from reply', {
-            error: error.message,
-            stack: error.stack,
+            error: (error as Error).message,
+            stack: (error as Error).stack,
             replyToMessageId
         });
         return null;
@@ -373,12 +442,14 @@ export async function getAgentMessageFromReply(replyToMessageId) {
 }
 
 /**
- * Gets all active ticket confirmations for a specific chat using BotsStore
- * 
- * @param {number} chatId - The Telegram chat ID
- * @returns {Array<object>} - Array of ticket confirmation info for this chat
+ * Retrieves all active ticket confirmations for a given Telegram chat.
+ *
+ * Currently returns an empty array as the functionality is not yet implemented.
+ *
+ * @param chatId - The Telegram chat ID
+ * @returns An array of ticket confirmation information for the specified chat
  */
-export async function getTicketsForChat(chatId) {
+export async function getTicketsForChat(chatId: number): Promise<any[]> {
     try {
         // Note: This would require a new method in BotsStore to search by chatId
         // For now, we'll return an empty array and implement this if needed
@@ -386,8 +457,8 @@ export async function getTicketsForChat(chatId) {
         return [];
     } catch (error) {
         LogEngine.error('Error getting tickets for chat', {
-            error: error.message,
-            stack: error.stack,
+            error: (error as Error).message,
+            stack: (error as Error).stack,
             chatId
         });
         return [];
@@ -395,25 +466,25 @@ export async function getTicketsForChat(chatId) {
 }
 
 /**
- * Gets or creates a customer, ensuring it's stored in the database
- * 
- * @param {string} groupChatName - The name of the Telegram group chat
- * @param {string} chatId - The Telegram chat ID
- * @returns {Promise<object>} - Customer data with ID and name
+ * Retrieves an existing customer by Telegram chat ID or creates a new customer in Unthread and stores it locally.
+ *
+ * @param groupChatName - The name of the Telegram group chat.
+ * @param chatId - The Telegram chat ID.
+ * @returns The customer object containing the Unthread customer ID and name.
  */
-export async function getOrCreateCustomer(groupChatName, chatId) {
+export async function getOrCreateCustomer(groupChatName: string, chatId: number): Promise<Customer> {
     try {
         // First, check if we already have this customer in our database by chat ID
         const existingCustomer = await BotsStore.getCustomerByChatId(chatId);
         if (existingCustomer) {
             LogEngine.info('Using existing customer from database', {
                 customerId: existingCustomer.unthreadCustomerId,
-                customerName: existingCustomer.customerName,
+                customerName: existingCustomer.customerName || existingCustomer.name,
                 chatId: chatId
             });
             return {
                 id: existingCustomer.unthreadCustomerId,
-                name: existingCustomer.customerName
+                name: existingCustomer.customerName || existingCustomer.name || 'Unknown Customer'
             };
         }
 
@@ -425,7 +496,7 @@ export async function getOrCreateCustomer(groupChatName, chatId) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-API-KEY': UNTHREAD_API_KEY
+                'X-API-KEY': UNTHREAD_API_KEY!
             },
             body: JSON.stringify({
                 name: customerName
@@ -437,15 +508,19 @@ export async function getOrCreateCustomer(groupChatName, chatId) {
             throw new Error(`Failed to create customer: ${response.status} ${errorText}`);
         }
 
-        const result = await response.json();
+        const result = await response.json() as Customer;
         
         // Store customer in our database
         await BotsStore.storeCustomer({
-            chatId: chatId,
+            id: `customer_${chatId}`,
             unthreadCustomerId: result.id,
+            telegramChatId: chatId,
+            chatId: chatId,
             chatTitle: groupChatName,
             customerName: customerName,
-            createdAt: new Date().toISOString()
+            name: customerName,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
         });
         
         LogEngine.info('Created and stored new customer', {
@@ -461,8 +536,8 @@ export async function getOrCreateCustomer(groupChatName, chatId) {
         };
     } catch (error) {
         LogEngine.error('Error getting or creating customer', {
-            error: error.message,
-            stack: error.stack,
+            error: (error as Error).message,
+            stack: (error as Error).stack,
             groupChatName,
             chatId,
             apiUrl: `${API_BASE_URL}/customers`
@@ -472,13 +547,15 @@ export async function getOrCreateCustomer(groupChatName, chatId) {
 }
 
 /**
- * Gets or creates user information, ensuring it's stored in the database
- * 
- * @param {string} telegramUserId - The Telegram user ID
- * @param {string} username - The Telegram username (without @)
- * @returns {Promise<object>} - User data with onBehalf information
+ * Retrieves user information by Telegram user ID, creating and storing a new user record if one does not exist.
+ *
+ * If the user is not found in the database, a new user is created with a generated name and email, optionally using the provided username.
+ *
+ * @param telegramUserId - The Telegram user ID
+ * @param username - Optional Telegram username (without @)
+ * @returns An object containing the user's name and email for use as onBehalfOf information
  */
-export async function getOrCreateUser(telegramUserId, username) {
+export async function getOrCreateUser(telegramUserId: number, username?: string): Promise<OnBehalfOfUser> {
     try {
         // First, check if we already have this user in our database
         const existingUser = await BotsStore.getUserByTelegramId(telegramUserId);
@@ -489,8 +566,8 @@ export async function getOrCreateUser(telegramUserId, username) {
                 unthreadEmail: existingUser.unthreadEmail
             });
             return {
-                name: existingUser.unthreadName,
-                email: existingUser.unthreadEmail
+                name: existingUser.unthreadName || `User ${existingUser.telegramUserId}`,
+                email: existingUser.unthreadEmail || `user_${existingUser.telegramUserId}@telegram.user`
             };
         }
 
@@ -501,13 +578,21 @@ export async function getOrCreateUser(telegramUserId, username) {
             : `user_${telegramUserId}@telegram.user`;
 
         // Store user in our database
-        await BotsStore.storeUser({
+        const userData: any = {
+            id: `user_${telegramUserId}`,
             telegramUserId: telegramUserId,
-            telegramUsername: username || null,
             unthreadName: unthreadName,
             unthreadEmail: unthreadEmail,
-            createdAt: new Date().toISOString()
-        });
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+        
+        if (username) {
+            userData.telegramUsername = username;
+            userData.username = username;
+        }
+        
+        await BotsStore.storeUser(userData);
         
         LogEngine.info('Created and stored new user', {
             telegramUserId: telegramUserId,
@@ -522,8 +607,8 @@ export async function getOrCreateUser(telegramUserId, username) {
         };
     } catch (error) {
         LogEngine.error('Error getting or creating user', {
-            error: error.message,
-            stack: error.stack,
+            error: (error as Error).message,
+            stack: (error as Error).stack,
             telegramUserId,
             username
         });

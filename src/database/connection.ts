@@ -3,10 +3,17 @@
  * 
  * Provides PostgreSQL database connection with SSL support for Railway
  * and other cloud providers that require secure connections.
+ * 
+ * Security Features:
+ * - SSL certificate validation enabled by default in production
+ * - Configurable SSL validation for development environments
+ * - Support for custom CA certificates via DATABASE_SSL_CA environment variable
+ * - Environment-aware SSL configuration to prevent MITM attacks
  */
 
 import pkg from 'pg';
 const { Pool } = pkg;
+import type { Pool as PoolType, PoolClient, QueryResult } from 'pg';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import dotenv from 'dotenv';
 import fs from 'fs';
@@ -25,6 +32,8 @@ const __dirname = path.dirname(__filename);
  * Handles PostgreSQL connections with SSL support and connection pooling
  */
 export class DatabaseConnection {
+    private pool: PoolType;
+
     constructor() {
         // Validate required environment variable
         if (!process.env.POSTGRES_URL) {
@@ -33,19 +42,21 @@ export class DatabaseConnection {
             throw new Error(error);
         }
 
+        // Configure SSL based on environment
+        const isProduction = process.env.NODE_ENV === 'production';
+        const sslConfig = this.getSSLConfig(isProduction);
+
         // Configure connection pool with SSL for Railway
         this.pool = new Pool({
             connectionString: process.env.POSTGRES_URL,
-            ssl: {
-                rejectUnauthorized: false // Required for Railway and most cloud providers
-            },
+            ssl: sslConfig,
             max: 10, // Maximum number of connections in pool
             idleTimeoutMillis: 30000, // Close idle connections after 30 seconds
             connectionTimeoutMillis: 10000, // Return error after 10 seconds if connection cannot be established
         });
 
         // Handle pool errors
-        this.pool.on('error', (err) => {
+        this.pool.on('error', (err: Error) => {
             LogEngine.error('Unexpected error on idle client', {
                 error: err.message,
                 stack: err.stack
@@ -55,19 +66,29 @@ export class DatabaseConnection {
         LogEngine.info('Database connection pool initialized', {
             maxConnections: 10,
             sslEnabled: true,
+            sslValidation: isProduction ? 'enabled' : (process.env.DATABASE_SSL_VALIDATE === 'true' ? 'enabled' : 'disabled'),
+            environment: process.env.NODE_ENV || 'development',
             provider: 'Railway'
         });
     }
 
     /**
+     * Get the database connection pool
+     * @returns The PostgreSQL connection pool
+     */
+    get connectionPool(): PoolType {
+        return this.pool;
+    }
+
+    /**
      * Execute a database query
      * 
-     * @param {string} text - SQL query string
-     * @param {Array} params - Query parameters
-     * @returns {Promise<object>} Query result
+     * @param text - SQL query string
+     * @param params - Query parameters
+     * @returns Query result
      */
-    async query(text, params = []) {
-        const client = await this.pool.connect();
+    async query(text: string, params: any[] = []): Promise<QueryResult<any>> {
+        const client: PoolClient = await this.pool.connect();
         try {
             const start = Date.now();
             const result = await client.query(text, params);
@@ -82,11 +103,12 @@ export class DatabaseConnection {
             
             return result;
         } catch (error) {
+            const err = error as Error;
             LogEngine.error('Database query error', {
-                error: error.message,
+                error: err.message,
                 query: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
                 paramCount: params.length,
-                stack: error.stack
+                stack: err.stack
             });
             throw error;
         } finally {
@@ -96,15 +118,13 @@ export class DatabaseConnection {
 
     /**
      * Test database connection and create schema if needed
-     * 
-     * @returns {Promise<void>}
      */
-    async connect() {
+    async connect(): Promise<void> {
         try {
             // Test connection
             const result = await this.query('SELECT NOW() as current_time');
             LogEngine.info('Database connection established', {
-                currentTime: result.rows[0].current_time,
+                currentTime: result.rows[0]?.current_time,
                 ssl: 'enabled'
             });
 
@@ -112,9 +132,10 @@ export class DatabaseConnection {
             await this.ensureSchema();
             
         } catch (error) {
+            const err = error as Error;
             LogEngine.error('Failed to connect to database', {
-                error: error.message,
-                stack: error.stack,
+                error: err.message,
+                stack: err.stack,
                 postgresUrl: process.env.POSTGRES_URL ? 'configured' : 'missing'
             });
             throw error;
@@ -123,10 +144,8 @@ export class DatabaseConnection {
 
     /**
      * Ensure database schema exists (Alpha version - auto-setup always)
-     * 
-     * @returns {Promise<void>}
      */
-    async ensureSchema() {
+    async ensureSchema(): Promise<void> {
         try {
             // Check if tables exist
             const tableCheck = await this.query(`
@@ -137,7 +156,7 @@ export class DatabaseConnection {
             `);
 
             const requiredTables = ['customers', 'tickets', 'user_states'];
-            const foundTables = tableCheck.rows.map(row => row.table_name);
+            const foundTables = tableCheck.rows.map((row: any) => row.table_name);
             const missingTables = requiredTables.filter(table => !foundTables.includes(table));
 
             if (missingTables.length > 0) {
@@ -152,9 +171,10 @@ export class DatabaseConnection {
                 });
             }
         } catch (error) {
+            const err = error as Error;
             LogEngine.error('Error checking database schema', {
-                error: error.message,
-                stack: error.stack
+                error: err.message,
+                stack: err.stack
             });
             throw error;
         }
@@ -162,22 +182,22 @@ export class DatabaseConnection {
 
     /**
      * Initialize database schema from schema.sql file
-     * 
-     * @returns {Promise<void>}
      */
-    async initializeSchema() {
+    async initializeSchema(): Promise<void> {
         try {
             LogEngine.info('Starting database schema initialization...');
 
             const schemaPath = path.join(__dirname, 'schema.sql');
             
-            // Check if schema file exists
-            if (!fs.existsSync(schemaPath)) {
+            // Check if schema file exists asynchronously
+            try {
+                await fs.promises.access(schemaPath, fs.constants.F_OK);
+            } catch (accessError) {
                 throw new Error(`Schema file not found: ${schemaPath}`);
             }
 
-            // Read schema file
-            const schema = fs.readFileSync(schemaPath, 'utf8');
+            // Read schema file asynchronously
+            const schema = await fs.promises.readFile(schemaPath, 'utf8');
             LogEngine.debug('Schema file loaded', { 
                 path: schemaPath, 
                 size: schema.length 
@@ -188,55 +208,55 @@ export class DatabaseConnection {
             LogEngine.info('Database schema created successfully');
 
         } catch (error) {
+            const err = error as Error;
             LogEngine.error('Failed to initialize database schema', {
-                error: error.message,
-                stack: error.stack
+                error: err.message,
+                stack: err.stack
             });
             throw error;
-        }
-    }
-
-    /**
-     * Execute a transaction
-     * 
-     * @param {Function} callback - Function that receives client and executes queries
-     * @returns {Promise<any>} Transaction result
-     */
-    async transaction(callback) {
-        const client = await this.pool.connect();
-        try {
-            await client.query('BEGIN');
-            const result = await callback(client);
-            await client.query('COMMIT');
-            return result;
-        } catch (error) {
-            await client.query('ROLLBACK');
-            LogEngine.error('Transaction failed and rolled back', {
-                error: error.message,
-                stack: error.stack
-            });
-            throw error;
-        } finally {
-            client.release();
         }
     }
 
     /**
      * Close all connections in the pool
-     * 
-     * @returns {Promise<void>}
      */
-    async close() {
+    async close(): Promise<void> {
         try {
             await this.pool.end();
             LogEngine.info('Database connection pool closed');
         } catch (error) {
+            const err = error as Error;
             LogEngine.error('Error closing database pool', {
-                error: error.message,
-                stack: error.stack
+                error: err.message,
+                stack: err.stack
             });
             throw error;
         }
+    }
+
+    /**
+     * Configure SSL settings based on environment
+     * @param isProduction - Whether running in production environment
+     * @returns SSL configuration object
+     */
+    private getSSLConfig(isProduction: boolean): any {
+        // In production, always validate SSL certificates for security
+        if (isProduction) {
+            return {
+                rejectUnauthorized: true,
+                // Allow custom CA certificate if provided
+                ca: process.env.DATABASE_SSL_CA || undefined
+            };
+        }
+
+        // In development, allow flexibility for local development
+        // Check if explicit SSL validation is requested via environment variable
+        const forceSSLValidation = process.env.DATABASE_SSL_VALIDATE === 'true';
+        
+        return {
+            rejectUnauthorized: forceSSLValidation,
+            ca: process.env.DATABASE_SSL_CA || undefined
+        };
     }
 }
 
