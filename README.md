@@ -283,6 +283,8 @@ Bot: 🎫 Support Ticket Created Successfully!
 - **PostgreSQL 12+** (primary database)
 - **Redis 6+** (optional, for enhanced performance)
 
+> **⚠️ Package Manager Notice:** This project enforces the use of Yarn and will prevent npm installation attempts. If you try to use `npm install`, you'll receive an error message with instructions to use Yarn instead.
+
 ### **Step-by-Step Installation**
 
 #### **1. Clone Repository**

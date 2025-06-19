@@ -10,6 +10,7 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 import { Markup } from 'telegraf';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import * as unthreadService from '../services/unthread.js';
+import { safeReply, safeEditMessageText } from '../bot.js';
 
 // Support form field enum
 const SupportField = {
@@ -21,66 +22,106 @@ const SupportField = {
 /**
  * Handler for the /start command
  * 
- * This command welcomes the user and provides basic instructions.
+ * This command welcomes the user and provides different information based on chat type.
+ * For private chats, it shows bot information. For group chats, it provides support instructions.
  * 
  * @param {object} ctx - The Telegraf context object
- * 
- * Possible Bugs:
- * - No personalization for different users
- * - No tracking of new users
- * 
- * Enhancement Opportunities:
- * - Add personalized welcome message with user's name
- * - Add onboarding flow for new users
- * - Store user information for future interactions
- * - Add rich media (images, buttons) to the welcome message
  */
-const startCommand = (ctx) => {
-    ctx.reply('Welcome! Use /help to see available commands.');
+const startCommand = async (ctx) => {
+    if (ctx.chat.type === 'private') {
+        // Private chat - show bot information
+        const botInfo = `🤖 **Unthread Support Bot**
+
+**Version:** ${packageJSON.version}
+**Developer:** ${packageJSON.author}
+**License:** ${packageJSON.license}
+
+**About:**
+This bot is designed to help you create support tickets in group chats. It integrates with Unthread to streamline your customer support workflow.
+
+**How to use:**
+• Add this bot to your support group chat
+• Use \`/support\` command in the group to create tickets
+• The bot will guide you through the ticket creation process
+
+**Links:**
+• 📚 Documentation: [GitHub Repository](https://github.com/WarenGonzaga/unthread-telegram-bot)
+• 🐛 Report Issues: [GitHub Issues](https://github.com/WarenGonzaga/unthread-telegram-bot/issues)
+• 💬 Support: Contact through group chat where this bot is added
+
+**Note:** Support ticket creation is only available in group chats, not in private messages.`;
+
+        await safeReply(ctx, botInfo, { parse_mode: 'Markdown' });
+    } else {
+        // Group chat - show support instructions
+        await safeReply(ctx, `Welcome to the support bot! 🎫
+
+Use \`/support\` to create a new support ticket.
+Use \`/help\` to see all available commands.`, { parse_mode: 'Markdown' });
+    }
 };
 
 /**
  * Handler for the /help command
  * 
- * This command shows a list of available commands and their descriptions.
+ * This command shows different help information based on chat type.
+ * For private chats, it shows bot information. For group chats, it shows available commands.
  * 
  * @param {object} ctx - The Telegraf context object
- * 
- * Possible Bugs:
- * - Manual maintenance of command list can get out of sync with actual commands
- * - No categorization or organization of commands
- * 
- * Enhancement Opportunities:
- * - Dynamically generate command list based on registered commands
- * - Add command categories
- * - Add examples of how to use commands
- * - Add inline keyboard buttons for command selection
- * - Add pagination for large command lists
  */
-const helpCommand = (ctx) => {
-    ctx.reply('Available commands:\n/start - Start the bot\n/help - Show this help message\n/version - Show the bot version\n/support - Create a support ticket');
+const helpCommand = async (ctx) => {
+    if (ctx.chat.type === 'private') {
+        // Private chat - redirect to bot information
+        await startCommand(ctx);
+    } else {
+        // Group chat - show available commands
+        const helpText = `🤖 **Available Commands:**
+
+• \`/start\` - Welcome message and instructions
+• \`/help\` - Show this help message  
+• \`/version\` - Show bot version information
+• \`/support\` - Create a new support ticket
+• \`/cancel\` - Cancel ongoing support ticket creation
+• \`/reset\` - Reset your support conversation state
+
+**How to create a support ticket:**
+1. Use \`/support\` command in this group
+2. Provide your issue summary when prompted
+3. Provide your email address when prompted
+4. The bot will create a ticket and notify you
+
+**Note:** Support tickets can only be created in group chats.`;
+
+        await safeReply(ctx, helpText, { parse_mode: 'Markdown' });
+    }
 };
 
 /**
  * Handler for the /version command
  * 
- * This command shows the current version of the bot from package.json.
+ * This command shows the current version of the bot and additional information.
  * 
  * @param {object} ctx - The Telegraf context object
- * 
- * Possible Bugs:
- * - Error handling if package.json doesn't exist or has no version
- * 
- * Enhancement Opportunities:
- * - Add more version-related information such as release date or changelog
- * - Include git commit information if available
- * - Add link to GitHub repository
  */
-const versionCommand = (ctx) => {
+const versionCommand = async (ctx) => {
     try {
-        ctx.reply(`Bot version: ${packageJSON.version}`);
+        const versionInfo = `🤖 **Bot Information:**
+
+**Version:** ${packageJSON.version}
+**Name:** ${packageJSON.name}
+**Description:** ${packageJSON.description}
+**Developer:** ${packageJSON.author}
+**License:** ${packageJSON.license}
+
+**Repository:** [GitHub](https://github.com/WarenGonzaga/unthread-telegram-bot)
+**Report Issues:** [GitHub Issues](https://github.com/WarenGonzaga/unthread-telegram-bot/issues)
+
+**Node.js Version:** ${process.version}
+**Platform:** ${process.platform}`;
+
+        await safeReply(ctx, versionInfo, { parse_mode: 'Markdown' });
     } catch (error) {
-        ctx.reply('Error retrieving version information.');
+        await safeReply(ctx, 'Error retrieving version information.');
         LogEngine.error('Error in versionCommand', {
             error: error.message,
             stack: error.stack
@@ -97,7 +138,21 @@ const supportCommand = async (ctx) => {
     try {
         // Only allow support tickets in group chats
         if (ctx.chat.type === 'private') {
-            await ctx.reply("Support tickets can only be created in group chats.");
+            const privateMessage = `❌ **Support tickets can only be created in group chats.**
+
+🎫 **How to get support:**
+1. Add this bot to your support group chat
+2. Use \`/support\` command in the group chat
+3. Follow the prompts to create your ticket
+
+**Why group chats only?**
+This bot is designed for team-based customer support workflows where multiple team members can collaborate on tickets.
+
+**Need help?**
+• 📚 Documentation: [GitHub Repository](https://github.com/WarenGonzaga/unthread-telegram-bot)
+• 🐛 Report Issues: [GitHub Issues](https://github.com/WarenGonzaga/unthread-telegram-bot/issues)`;
+
+            await safeReply(ctx, privateMessage, { parse_mode: 'Markdown' });
             return;
         }
         
@@ -118,7 +173,7 @@ const supportCommand = async (ctx) => {
         await BotsStore.setUserState(telegramUserId, userStateData);
         
         // Ask for the first field
-        await ctx.reply("Let's create a support ticket. Please provide your issue summary:");
+        await safeReply(ctx, "🎫 **Let's create a support ticket!**\n\nPlease provide a brief summary of your issue:", { parse_mode: 'Markdown' });
     } catch (error) {
         LogEngine.error('Error in supportCommand', {
             error: error.message,
@@ -128,7 +183,7 @@ const supportCommand = async (ctx) => {
             chatId: ctx.chat?.id,
             chatType: ctx.chat?.type
         });
-        await ctx.reply("Sorry, there was an error starting the support ticket process. Please try again later.");
+        await safeReply(ctx, "❌ Sorry, there was an error starting the support ticket process. Please try again later.");
     }
 };
 
@@ -150,6 +205,15 @@ export const processSupportConversation = async (ctx) => {
         if (!userState) {
             return false;
         }
+        
+        // Debug logging to understand the current state
+        LogEngine.info('Found active support conversation state', {
+            telegramUserId,
+            currentField: userState.currentField,
+            hasTicket: !!userState.ticket,
+            chatType: ctx.chat?.type,
+            chatId: ctx.chat?.id
+        });
 
         // Handle callback queries (button clicks)
         if (ctx.callbackQuery) {
@@ -170,14 +234,14 @@ export const processSupportConversation = async (ctx) => {
             return false;
         }
 
-        const messageText = ctx.message.text.trim();
+        const messageText = ctx.message?.text?.trim() || '';
 
         // Handle commands in the middle of a conversation
         if (messageText.startsWith('/')) {
             // Allow /cancel to abort the process
             if (messageText === '/cancel') {
                 await BotsStore.clearUserState(telegramUserId);
-                await ctx.reply("Support ticket creation cancelled.");
+                await safeReply(ctx, "Support ticket creation cancelled.");
                 return true;
             }
             // Let other commands pass through
@@ -194,7 +258,7 @@ export const processSupportConversation = async (ctx) => {
                 await BotsStore.setUserState(telegramUserId, userState);
                 
                 // Ask for email with skip button
-                await ctx.reply(
+                await safeReply(ctx,
                     "Please provide your email address or skip this step:",
                     Markup.inlineKeyboard([
                         Markup.button.callback('Skip', 'skip_email')
@@ -253,7 +317,7 @@ async function handleEmailField(ctx, userState, messageText) {
         const summary = userState.ticket.summary;
         
         // Send a waiting message
-        const waitingMsg = await ctx.reply("Creating your support ticket... Please wait.");
+        const waitingMsg = await safeReply(ctx, "Creating your support ticket... Please wait.");
         
         try {
             // Step 1: Get or create customer for this group chat
@@ -276,13 +340,14 @@ async function handleEmailField(ctx, userState, messageText) {
             const ticketId = ticketResponse.id;
             
             // Create success message
-            const successMessage = `🎫 Support Ticket Created Successfully!\n\n` +
+            let successMessage = `🎫 Support Ticket Created Successfully!\n\n` +
                 `Ticket #${ticketNumber}\n\n` +
                 `Your issue has been submitted and our team will be in touch soon. ` +
                 `Reply to this message to add more information to your ticket.`;
             
             // Send the success message
-            const confirmationMsg = await ctx.telegram.editMessageText(
+            const confirmationMsg = await safeEditMessageText(
+                ctx,
                 ctx.chat.id, 
                 waitingMsg.message_id, 
                 null, 
@@ -323,7 +388,8 @@ async function handleEmailField(ctx, userState, messageText) {
             });
             
             // Update the waiting message with an error
-            await ctx.telegram.editMessageText(
+            await safeEditMessageText(
+                ctx,
                 ctx.chat.id,
                 waitingMsg.message_id,
                 null,
@@ -344,7 +410,7 @@ async function handleEmailField(ctx, userState, messageText) {
             chatId: ctx.chat?.id,
             messageText: messageText?.substring(0, 100) // Log first 100 chars for context
         });
-        await ctx.reply("Sorry, there was an error processing your support ticket. Please try again later.");
+        await safeReply(ctx, "Sorry, there was an error processing your support ticket. Please try again later.");
         
         // Clean up user state using BotsStore
         await BotsStore.clearUserState(ctx.from?.id);
@@ -356,4 +422,87 @@ export {
     helpCommand,
     versionCommand,
     supportCommand,
+    cancelCommand,
+    resetCommand
+};
+
+/**
+ * Handler for the /cancel command
+ * 
+ * This command cancels any ongoing support ticket creation process.
+ * 
+ * @param {object} ctx - The Telegraf context object
+ * 
+ * Enhancement Opportunities:
+ * - Add confirmation dialog before cancelling
+ * - Provide reason for cancellation tracking
+ */
+const cancelCommand = async (ctx) => {
+    try {
+        const telegramUserId = ctx.from?.id;
+        if (!telegramUserId) {
+            await safeReply(ctx, "Unable to process cancel request.");
+            return;
+        }
+
+        // Check if user has an active support ticket conversation
+        const userState = await BotsStore.getUserState(telegramUserId);
+        
+        if (!userState) {
+            await safeReply(ctx, "❌ No active support ticket creation process to cancel.");
+            return;
+        }
+
+        // Clear the user's state
+        await BotsStore.clearUserState(telegramUserId);
+        
+        await safeReply(ctx, "✅ Support ticket creation has been cancelled.");
+        
+        LogEngine.info('Support ticket creation cancelled by user', {
+            telegramUserId,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id,
+            currentField: userState.currentField
+        });
+        
+    } catch (error) {
+        LogEngine.error('Error in cancelCommand', {
+            error: error.message,
+            stack: error.stack,
+            telegramUserId: ctx.from?.id,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id
+        });
+        await safeReply(ctx, "Sorry, there was an error cancelling the support ticket process.");
+    }
+};
+
+/**
+ * Resets the user's support conversation state (for debugging)
+ * 
+ * @param {object} ctx - The Telegraf context object
+ */
+const resetCommand = async (ctx) => {
+    try {
+        const telegramUserId = ctx.from?.id;
+        if (!telegramUserId) {
+            await safeReply(ctx, "Error: Unable to identify user.");
+            return;
+        }
+        
+        const userState = await BotsStore.getUserState(telegramUserId);
+        if (userState) {
+            await BotsStore.clearUserState(telegramUserId);
+            await safeReply(ctx, "✅ Your support conversation state has been reset.");
+            LogEngine.info('User state cleared via reset command', { telegramUserId });
+        } else {
+            await safeReply(ctx, "ℹ️ No active support conversation state found.");
+        }
+    } catch (error) {
+        LogEngine.error('Error in resetCommand', {
+            error: error.message,
+            telegramUserId: ctx.from?.id
+        });
+        await safeReply(ctx, "❌ Error resetting state. Please try again.");
+    }
 };

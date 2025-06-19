@@ -402,6 +402,44 @@ export class BotsStore {
   }
   
   /**
+   * Get detailed memory storage statistics
+   * 
+   * @returns {object} - Detailed memory statistics
+   */
+  async getMemoryStats() {
+    return this.storage.getMemoryStats();
+  }
+
+  /**
+   * Get current in-memory storage contents
+   * 
+   * @returns {Array} - Array of memory cache entries
+   */
+  async getMemoryContents() {
+    return this.storage.getMemoryContents();
+  }
+
+  /**
+   * Clean up expired memory entries
+   * 
+   * @returns {number} - Number of entries cleaned up
+   */
+  async cleanupExpiredMemory() {
+    return this.storage.cleanupExpiredMemory();
+  }
+
+  /**
+   * Get filtered memory contents by key pattern
+   * 
+   * @param {string} pattern - Key pattern to filter by (e.g., 'ticket:', 'customer:', 'user:')
+   * @returns {Array} - Filtered memory cache entries
+   */
+  async getMemoryContentsByPattern(pattern) {
+    const allContents = this.storage.getMemoryContents();
+    return allContents.filter(entry => entry.key.includes(pattern));
+  }
+
+  /**
    * Helper: Add ticket to chat's ticket list
    */
   async addToChatTickets(chatId, messageId, conversationId) {
@@ -554,5 +592,22 @@ export class BotsStore {
 
   static async getCustomerCacheStats() {
     return BotsStore.getInstance().getCustomerCacheStats();
+  }
+
+  // Static methods for memory inspection
+  static async getMemoryStats() {
+    return BotsStore.getInstance().getMemoryStats();
+  }
+
+  static async getMemoryContents() {
+    return BotsStore.getInstance().getMemoryContents();
+  }
+
+  static async getMemoryContentsByPattern(pattern) {
+    return BotsStore.getInstance().getMemoryContentsByPattern(pattern);
+  }
+
+  static async cleanupExpiredMemory() {
+    return BotsStore.getInstance().cleanupExpiredMemory();
   }
 }

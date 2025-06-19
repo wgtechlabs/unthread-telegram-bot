@@ -179,45 +179,7 @@ export async function createTicket({ groupChatName, customerId, summary, onBehal
         const customerCompanyName = extractCustomerCompanyName(groupChatName);
         const title = `[Telegram Ticket] ${customerCompanyName}`;
 
-        // Create the ticket payload
-        const payload = {
-            type: "slack",
-            title: title,
-            markdown: summary,
-            status: "open",
-            channelId: CHANNEL_ID,
-            customerId: customerId,
-            onBehalfOf: onBehalfOf
-        };
-
-        const response = await fetch(`${API_BASE_URL}/conversations`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-API-KEY': UNTHREAD_API_KEY
-            },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to create ticket: ${response.status} ${errorText}`);
-        }
-
-        const result = await response.json();
-        
-        // Log the ticket creation with extracted names
-        LogEngine.info('Ticket created with extracted customer name', {
-            originalGroupChatName: groupChatName,
-            extractedCustomerName: customerCompanyName,
-            ticketTitle: title,
-            ticketId: result.id,
-            friendlyId: result.friendlyId,
-            customerId: customerId,
-            onBehalfOf: onBehalfOf
-        });
-
-        return result;
+        return await createTicketJSON({ title, summary, customerId, onBehalfOf });
     } catch (error) {
         LogEngine.error('Error creating ticket', {
             error: error.message,
@@ -225,6 +187,46 @@ export async function createTicket({ groupChatName, customerId, summary, onBehal
         });
         throw error;
     }
+}
+
+/**
+ * Creates a ticket without attachments using JSON
+ */
+async function createTicketJSON({ title, summary, customerId, onBehalfOf }) {
+    const payload = {
+        type: "slack",
+        title: title,
+        markdown: summary,
+        status: "open",
+        channelId: CHANNEL_ID,
+        customerId: customerId,
+        onBehalfOf: onBehalfOf
+    };
+
+    const response = await fetch(`${API_BASE_URL}/conversations`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-API-KEY': UNTHREAD_API_KEY
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to create ticket: ${response.status} ${errorText}`);
+    }
+
+    const result = await response.json();
+    
+    LogEngine.info('Ticket created (JSON)', {
+        ticketTitle: title,
+        ticketId: result.id,
+        friendlyId: result.friendlyId,
+        customerId: customerId
+    });
+
+    return result;
 }
 
 /**
@@ -240,29 +242,7 @@ export async function createTicket({ groupChatName, customerId, summary, onBehal
  */
 export async function sendMessage({ conversationId, message, onBehalfOf }) {
     try {
-        const payload = {
-            body: {
-                type: "markdown",
-                value: message
-            },
-            onBehalfOf: onBehalfOf
-        };
-
-        const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-API-KEY': UNTHREAD_API_KEY
-            },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to send message: ${response.status} ${errorText}`);
-        }
-
-        return await response.json();
+        return await sendMessageJSON({ conversationId, message, onBehalfOf });
     } catch (error) {
         LogEngine.error('Error sending message', {
             error: error.message,
@@ -270,6 +250,35 @@ export async function sendMessage({ conversationId, message, onBehalfOf }) {
         });
         throw error;
     }
+}
+
+/**
+ * Sends a message without attachments using JSON
+ */
+async function sendMessageJSON({ conversationId, message, onBehalfOf }) {
+    const payload = {
+        body: {
+            type: "markdown",
+            value: message
+        },
+        onBehalfOf: onBehalfOf
+    };
+
+    const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-API-KEY': UNTHREAD_API_KEY
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to send message: ${response.status} ${errorText}`);
+    }
+
+    return await response.json();
 }
 
 /**
@@ -530,6 +539,8 @@ export async function getOrCreateUser(telegramUserId, username) {
         throw error;
     }
 }
+
+
 
 // Export the customer cache for potential use in other modules
 export { customerCache };

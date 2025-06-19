@@ -11,6 +11,55 @@ export class TelegramWebhookHandler {
   }
 
   /**
+   * Safely send a message with error handling for blocked users and other common errors
+   * 
+   * @param {number} chatId - The chat ID to send the message to
+   * @param {string} text - The message text
+   * @param {object} options - Additional options for sendMessage
+   * @returns {Promise<object|null>} - The sent message object or null if failed
+   */
+  async safeSendMessage(chatId, text, options = {}) {
+    try {
+      return await this.bot.telegram.sendMessage(chatId, text, options);
+    } catch (error) {
+      if (error.response?.error_code === 403) {
+        if (error.response.description?.includes('bot was blocked by the user')) {
+          LogEngine.warn('Bot was blocked by user - cleaning up user data', { chatId });
+          
+          // Clean up blocked user from storage (solution from GitHub issue #1513)
+          await this.cleanupBlockedUser(chatId);
+          
+          return null;
+        }
+        if (error.response.description?.includes('chat not found')) {
+          LogEngine.warn('Chat not found - cleaning up chat data', { chatId });
+          
+          // Clean up chat that no longer exists
+          await this.cleanupBlockedUser(chatId);
+          
+          return null;
+        }
+      }
+      
+      if (error.response?.error_code === 429) {
+        LogEngine.warn('Rate limit exceeded when sending message', { 
+          chatId, 
+          retryAfter: error.response.parameters?.retry_after 
+        });
+        return null;
+      }
+      
+      // For other errors, log and re-throw
+      LogEngine.error('Error sending message', {
+        error: error.message,
+        chatId,
+        textLength: text?.length
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Handle agent message created events from Unthread
    * @param {Object} event - The webhook event
    * @param {string} event.data.conversationId - Unthread conversation ID
@@ -83,7 +132,7 @@ export class TelegramWebhookHandler {
       });
 
       try {
-        const sentMessage = await this.bot.telegram.sendMessage(
+        const sentMessage = await this.safeSendMessage(
           ticketData.chatId,
           formattedMessage,
           { 
@@ -93,23 +142,31 @@ export class TelegramWebhookHandler {
           }
         );
 
-        // 6. Store agent message for reply tracking
-        await this.botsStore.storeAgentMessage({
-          messageId: sentMessage.message_id,
-          conversationId: conversationId,
-          chatId: ticketData.chatId,
-          friendlyId: ticketData.friendlyId,
-          originalTicketMessageId: ticketData.messageId,
-          sentAt: new Date().toISOString()
-        });
+        if (sentMessage) {
+          // 6. Store agent message for reply tracking
+          await this.botsStore.storeAgentMessage({
+            messageId: sentMessage.message_id,
+            conversationId: conversationId,
+            chatId: ticketData.chatId,
+            friendlyId: ticketData.friendlyId,
+            originalTicketMessageId: ticketData.messageId,
+            sentAt: new Date().toISOString()
+          });
 
-        LogEngine.info('✅🎉 Agent message delivered to Telegram successfully!', {
-          conversationId,
-          chatId: ticketData.chatId,
-          replyToMessageId: ticketData.messageId,
-          sentMessageId: sentMessage.message_id,
-          friendlyId: ticketData.friendlyId
-        });
+          LogEngine.info('✅🎉 Agent message delivered to Telegram successfully!', {
+            conversationId,
+            chatId: ticketData.chatId,
+            replyToMessageId: ticketData.messageId,
+            sentMessageId: sentMessage.message_id,
+            friendlyId: ticketData.friendlyId
+          });
+        } else {
+          LogEngine.warn('Message not sent - user may have blocked bot or chat not found', {
+            conversationId,
+            chatId: ticketData.chatId,
+            friendlyId: ticketData.friendlyId
+          });
+        }
 
       } catch (telegramError) {
         LogEngine.error('Failed to send message to Telegram', {
@@ -117,11 +174,9 @@ export class TelegramWebhookHandler {
           chatId: ticketData.chatId,
           messageId: ticketData.messageId,
           conversationId
-        });
-
-        // Try sending without reply if reply fails (original message might be deleted)
+        });        // Try sending without reply if reply fails (original message might be deleted)
         try {
-          await this.bot.telegram.sendMessage(
+          const fallbackMessage = await this.safeSendMessage(
             ticketData.chatId,
             `${formattedMessage}\n\n_Note: Sent as new message (original ticket message not found)_`,
             { 
@@ -130,10 +185,17 @@ export class TelegramWebhookHandler {
             }
           );
 
-          LogEngine.info('Agent message sent as new message (fallback)', {
-            conversationId,
-            chatId: ticketData.chatId
-          });
+          if (fallbackMessage) {
+            LogEngine.info('Agent message sent as new message (fallback)', {
+              conversationId,
+              chatId: ticketData.chatId
+            });
+          } else {
+            LogEngine.warn('Fallback message also failed - user may have blocked bot', {
+              conversationId,
+              chatId: ticketData.chatId
+            });
+          }
 
         } catch (fallbackError) {
           LogEngine.error('Failed to send fallback message to Telegram', {
@@ -276,7 +338,7 @@ export class TelegramWebhookHandler {
       });
 
       try {
-        const sentMessage = await this.bot.telegram.sendMessage(
+        const sentMessage = await this.safeSendMessage(
           ticketData.chatId,
           statusMessage,
           { 
@@ -285,15 +347,24 @@ export class TelegramWebhookHandler {
             disable_web_page_preview: true
           }
         );
-
-        LogEngine.info('✅🎉 Status notification delivered to Telegram successfully!', {
-          conversationId,
-          chatId: ticketData.chatId,
-          replyToMessageId: ticketData.messageId,
-          sentMessageId: sentMessage.message_id,
-          friendlyId: ticketData.friendlyId,
-          newStatus
-        });
+        
+        if (sentMessage) {
+          LogEngine.info('✅🎉 Status notification delivered to Telegram successfully!', {
+            conversationId,
+            chatId: ticketData.chatId,
+            replyToMessageId: ticketData.messageId,
+            sentMessageId: sentMessage.message_id,
+            friendlyId: ticketData.friendlyId,
+            newStatus
+          });
+        } else {
+          LogEngine.warn('Status notification not sent - user may have blocked bot', {
+            conversationId,
+            chatId: ticketData.chatId,
+            friendlyId: ticketData.friendlyId,
+            newStatus
+          });
+        }
 
       } catch (telegramError) {
         LogEngine.error('Failed to send status notification to Telegram', {
@@ -306,7 +377,7 @@ export class TelegramWebhookHandler {
 
         // Try sending without reply if reply fails (original message might be deleted)
         try {
-          await this.bot.telegram.sendMessage(
+          const fallbackMessage = await this.safeSendMessage(
             ticketData.chatId,
             `${statusMessage}\n\n_Note: Sent as new message (original ticket message not found)_`,
             { 
@@ -315,11 +386,19 @@ export class TelegramWebhookHandler {
             }
           );
           
-          LogEngine.info('Status notification sent as new message (fallback)', {
-            conversationId,
-            chatId: ticketData.chatId,
-            newStatus
-          });
+          if (fallbackMessage) {
+            LogEngine.info('Status notification sent as new message (fallback)', {
+              conversationId,
+              chatId: ticketData.chatId,
+              newStatus
+            });
+          } else {
+            LogEngine.warn('Fallback status notification also failed - user may have blocked bot', {
+              conversationId,
+              chatId: ticketData.chatId,
+              newStatus
+            });
+          }
 
         } catch (fallbackError) {
           LogEngine.error('Failed to send fallback status notification to Telegram', {
@@ -364,5 +443,64 @@ export class TelegramWebhookHandler {
     }
 
     return message;
+  }
+
+  /**
+   * Clean up user data when bot is blocked or chat is not found
+   * This implements the fix from GitHub issue telegraf/telegraf#1513
+   * 
+   * @param {number} chatId - The chat ID of the blocked user
+   */
+  async cleanupBlockedUser(chatId) {
+    try {
+      LogEngine.info('Starting cleanup for blocked user', { chatId });
+      
+      // 1. Get all tickets for this chat
+      const tickets = await this.botsStore.getTicketsForChat(chatId);
+      
+      if (tickets.length > 0) {
+        LogEngine.info(`Found ${tickets.length} tickets to clean up for blocked user`, { 
+          chatId, 
+          ticketIds: tickets.map(t => t.conversationId) 
+        });
+        
+        // 2. Delete each ticket and its mappings
+        for (const ticket of tickets) {
+          await this.botsStore.deleteTicket(ticket.conversationId);
+          LogEngine.info(`Cleaned up ticket ${ticket.friendlyId} for blocked user`, { 
+            chatId, 
+            conversationId: ticket.conversationId 
+          });
+        }
+      }
+      
+      // 3. Clean up customer data for this chat
+      const customer = await this.botsStore.getCustomerByChatId(chatId);
+      if (customer) {
+        // Remove customer mappings (the customer still exists in Unthread, just remove local mappings)
+        await this.botsStore.storage.delete(`customer:telegram:${chatId}`);
+        await this.botsStore.storage.delete(`customer:id:${customer.unthreadCustomerId}`);
+        
+        LogEngine.info('Cleaned up customer mappings for blocked user', { 
+          chatId, 
+          customerId: customer.unthreadCustomerId 
+        });
+      }
+      
+      // 4. Clean up any user states
+      // Note: User states are keyed by telegram user ID, not chat ID
+      // So we can't clean them up directly without the user ID
+      // They will expire naturally due to TTL
+      
+      LogEngine.info('Successfully cleaned up blocked user data', { chatId });
+      
+    } catch (error) {
+      LogEngine.error('Error cleaning up blocked user data', {
+        error: error.message,
+        stack: error.stack,
+        chatId
+      });
+      // Don't throw - cleanup failure shouldn't crash the bot
+    }
   }
 }

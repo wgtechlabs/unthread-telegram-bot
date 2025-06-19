@@ -197,31 +197,6 @@ export class DatabaseConnection {
     }
 
     /**
-     * Execute a transaction
-     * 
-     * @param {Function} callback - Function that receives client and executes queries
-     * @returns {Promise<any>} Transaction result
-     */
-    async transaction(callback) {
-        const client = await this.pool.connect();
-        try {
-            await client.query('BEGIN');
-            const result = await callback(client);
-            await client.query('COMMIT');
-            return result;
-        } catch (error) {
-            await client.query('ROLLBACK');
-            LogEngine.error('Transaction failed and rolled back', {
-                error: error.message,
-                stack: error.stack
-            });
-            throw error;
-        } finally {
-            client.release();
-        }
-    }
-
-    /**
      * Close all connections in the pool
      * 
      * @returns {Promise<void>}

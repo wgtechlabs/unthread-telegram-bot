@@ -264,4 +264,87 @@ export class UnifiedStorage {
       }
     };
   }
+
+  // New methods for inspecting in-memory storage
+  getMemoryContents() {
+    const now = Date.now();
+    const contents = [];
+    
+    for (const [key, value] of this.memoryCache.entries()) {
+      const expiration = this.memoryCacheTTL.get(key);
+      const isExpired = expiration && now > expiration;
+      
+      contents.push({
+        key,
+        value,
+        expiresAt: expiration ? new Date(expiration).toISOString() : 'never',
+        isExpired,
+        size: JSON.stringify(value).length
+      });
+    }
+    
+    return contents;
+  }
+
+  getMemoryStats() {
+    const now = Date.now();
+    let totalSize = 0;
+    let expiredCount = 0;
+    let activeCount = 0;
+    const keyTypes = {};
+    
+    for (const [key, value] of this.memoryCache.entries()) {
+      const expiration = this.memoryCacheTTL.get(key);
+      const isExpired = expiration && now > expiration;
+      const size = JSON.stringify(value).length;
+      
+      totalSize += size;
+      
+      if (isExpired) {
+        expiredCount++;
+      } else {
+        activeCount++;
+      }
+      
+      // Categorize by key prefix
+      const keyType = key.split(':')[0];
+      if (!keyTypes[keyType]) {
+        keyTypes[keyType] = { count: 0, size: 0 };
+      }
+      keyTypes[keyType].count++;
+      keyTypes[keyType].size += size;
+    }
+    
+    return {
+      totalKeys: this.memoryCache.size,
+      activeKeys: activeCount,
+      expiredKeys: expiredCount,
+      totalSizeBytes: totalSize,
+      totalSizeKB: Math.round(totalSize / 1024 * 100) / 100,
+      keyTypes,
+      memoryTTL: this.memoryTTL,
+      connected: this.connected,
+      layers: {
+        memory: true,
+        redis: !!this.redisClient,
+        postgres: !!this.db
+      }
+    };
+  }
+
+  // Clean up expired memory entries manually
+  cleanupExpiredMemory() {
+    const now = Date.now();
+    let cleanedCount = 0;
+    
+    for (const [key, expiration] of this.memoryCacheTTL.entries()) {
+      if (now > expiration) {
+        this.memoryCache.delete(key);
+        this.memoryCacheTTL.delete(key);
+        cleanedCount++;
+      }
+    }
+    
+    return cleanedCount;
+  }
 }
