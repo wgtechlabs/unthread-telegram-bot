@@ -193,7 +193,17 @@ bot.on('callback_query', async (ctx) => {
 });
 
 /**
- * Retry helper function with exponential backoff
+ * Executes an asynchronous operation with retries and exponential backoff on failure.
+ *
+ * Retries the provided async operation up to a specified number of times, increasing the delay between attempts exponentially up to a maximum delay. Logs warnings on each retry and an error if all attempts fail.
+ *
+ * @param operation - The asynchronous function to execute and retry on failure
+ * @param maxRetries - Maximum number of retry attempts (default: 5)
+ * @param initialDelayMs - Initial delay in milliseconds before the first retry (default: 1000)
+ * @param maxDelayMs - Maximum delay in milliseconds between retries (default: 30000)
+ * @param operationName - Name used in log messages to identify the operation (default: 'operation')
+ * @returns The result of the successful operation
+ * @throws The last encountered error if all retries fail
  */
 async function retryWithBackoff<T>(
     operation: () => Promise<T>,
@@ -421,11 +431,11 @@ bot.catch(async (error: any, ctx?: BotContext) => {
 });
 
 /**
- * Clean up user data when bot is blocked or chat is not found
- * This implements the fix from GitHub issue telegraf/telegraf#1513
- * Global version for use in error handlers
- * 
- * @param chatId - The chat ID of the blocked user
+ * Removes all tickets and customer mappings associated with a Telegram chat when the bot is blocked or the chat is not found.
+ *
+ * Cleans up related tickets and customer data in storage for the specified chat ID. User state data is not explicitly removed but will expire automatically.
+ *
+ * @param chatId - The Telegram chat ID to clean up.
  */
 async function cleanupBlockedUserGlobal(chatId: number): Promise<void> {
     try {
@@ -485,9 +495,9 @@ async function cleanupBlockedUserGlobal(chatId: number): Promise<void> {
 }
 
 /**
- * Performs graceful shutdown of all services
- * 
- * Properly close database connections, stop webhook consumer, and stop the bot
+ * Shuts down all services and resources used by the bot, ensuring a clean exit.
+ *
+ * Stops the webhook consumer if running, shuts down the BotsStore, closes database connections, and exits the process. Logs each shutdown step and exits with an error code if any shutdown operation fails.
  */
 async function gracefulShutdown(): Promise<void> {
     try {

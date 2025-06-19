@@ -13,24 +13,27 @@ import { safeReply, safeEditMessageText } from '../bot.js';
 import type { BotContext } from '../types/index.js';
 
 /**
- * Checks if a message is from a group chat (not a channel)
+ * Returns true if the message originates from a group or supergroup chat.
+ *
+ * @returns True if the chat type is 'group' or 'supergroup'; otherwise, false.
  */
 export function isGroupChat(ctx: BotContext): boolean {
     return ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
 }
 
 /**
- * Checks if a message is from a private chat
+ * Determines whether the current chat is a private chat.
+ *
+ * @returns True if the chat type is 'private'; otherwise, false.
  */
 export function isPrivateChat(ctx: BotContext): boolean {
     return ctx.chat?.type === 'private';
 }
 
 /**
- * Handles all incoming messages
- * 
- * This function routes messages to appropriate handlers based on chat type
- * and processes text messages against registered patterns
+ * Main handler for incoming Telegram messages, routing them to appropriate processors based on chat type and message context.
+ *
+ * Determines whether to process the message as a command, support conversation, ticket reply, private chat, or group chat, and delegates handling accordingly. Prevents automatic responses in group chats and ensures that only relevant handlers are invoked for each message type.
  */
 export async function handleMessage(ctx: BotContext, next: () => Promise<void>): Promise<void> {
     try {
@@ -100,7 +103,11 @@ export async function handleMessage(ctx: BotContext, next: () => Promise<void>):
 }
 
 /**
- * Handles replies to ticket confirmation messages
+ * Processes replies to ticket confirmation or agent messages and routes them for handling.
+ *
+ * Checks if the incoming message is a reply to a ticket confirmation or agent message, and if so, processes the reply accordingly. Returns true if the reply was handled, or false otherwise.
+ *
+ * @returns True if the reply was processed as a ticket or agent message reply; false otherwise.
  */
 async function handleTicketReply(ctx: BotContext): Promise<boolean> {
     try {
@@ -157,7 +164,11 @@ async function handleTicketReply(ctx: BotContext): Promise<boolean> {
 }
 
 /**
- * Handles replies to ticket confirmation messages
+ * Processes a reply to a ticket confirmation message by validating the reply, sending the message to the ticket conversation, and updating the user with a status message.
+ *
+ * @param ctx - The Telegram bot context for the incoming message
+ * @param ticketInfo - Information about the ticket to which the reply is associated
+ * @returns True if the reply was processed (successfully or with an error status message), or false if validation failed or an unexpected error occurred
  */
 async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): Promise<boolean> {
     try {
@@ -214,7 +225,9 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
 }
 
 /**
- * Validates the reply context and ticket information
+ * Validates that the reply message and sender information are present and extracts user and message details for ticket processing.
+ *
+ * @returns An object indicating whether the reply is valid. If valid, includes the sender's Telegram user ID, username, and message text.
  */
 async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ isValid: false } | { isValid: true; telegramUserId: number; username: string | undefined; message: string }> {
     if (!ctx.from || !ctx.message || !('text' in ctx.message)) {
@@ -243,7 +256,9 @@ async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ 
 }
 
 /**
- * Processes and sends the ticket message to Unthread
+ * Sends a user's message to the specified ticket conversation in Unthread.
+ *
+ * Retrieves or creates user data based on the Telegram user ID and username, then sends the provided message to the ticket conversation identified by the ticket information.
  */
 async function processTicketMessage(ticketInfo: any, telegramUserId: number, username: string | undefined, message: string): Promise<void> {
     // Get user information from database
@@ -272,7 +287,9 @@ async function processTicketMessage(ticketInfo: any, telegramUserId: number, use
 }
 
 /**
- * Updates the status message and handles cleanup
+ * Updates a status message to indicate success or error, then deletes it after a short delay.
+ *
+ * The message is updated to show a checkmark for success or an error icon for failure, and is automatically removed after 3 seconds (success) or 5 seconds (error).
  */
 async function updateStatusMessage(ctx: BotContext, statusMsg: any, isSuccess: boolean): Promise<void> {
     if (isSuccess) {
@@ -307,7 +324,11 @@ async function updateStatusMessage(ctx: BotContext, statusMsg: any, isSuccess: b
 }
 
 /**
- * Handles replies to agent messages
+ * Processes a user's reply to an agent message by forwarding it to the corresponding Unthread conversation.
+ *
+ * Sends a status message indicating progress, updates it upon success or error, and deletes the status message after a delay. Returns true if the reply was processed, false otherwise.
+ *
+ * @returns True if the reply was handled (successfully sent or error occurred), false if the context was invalid.
  */
 async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): Promise<boolean> {
     try {
@@ -400,7 +421,9 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
 }
 
 /**
- * Handles messages from private chats (direct messages to the bot)
+ * Processes incoming messages from private chats and responds with an about message for non-command texts.
+ *
+ * Skips messages that are commands, allowing them to be handled by their respective handlers.
  */
 export async function handlePrivateMessage(ctx: BotContext): Promise<void> {
     try {
@@ -438,7 +461,9 @@ export async function handlePrivateMessage(ctx: BotContext): Promise<void> {
 }
 
 /**
- * Handles messages from group chats
+ * Processes incoming messages from group chats without sending automatic responses.
+ *
+ * Logs detailed information about the group, sender, and message content for monitoring and debugging purposes.
  */
 export async function handleGroupMessage(ctx: BotContext): Promise<void> {
     try {
