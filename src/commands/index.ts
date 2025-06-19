@@ -130,7 +130,7 @@ const aboutCommand = async (ctx: BotContext): Promise<void> => {
         const aboutText = `💜 **Unthread Telegram Bot**
 *Ticketing support for customers and partners—right in Telegram.*
 
-**Version:** 0.1.0-beta
+**Version:** ${packageJSON.version}
 **Developer:** Waren Gonzaga, WG Technology Labs
 **License:** AGPL-3.0-only
 

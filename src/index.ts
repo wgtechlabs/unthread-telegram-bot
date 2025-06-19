@@ -9,7 +9,7 @@ import dotenv from 'dotenv';
 // Load environment variables from .env file
 dotenv.config();
 
-import { createBot, startPolling, safeReply } from './bot.js';
+import { createBot, startPolling, safeReply, cleanupBlockedUser } from './bot.js';
 import { 
     startCommand, 
     helpCommand, 
@@ -143,20 +143,6 @@ bot.command('about', commandMiddleware, wrapCommandHandler(aboutCommand, 'about'
 bot.command('support', commandMiddleware, wrapCommandHandler(supportCommand, 'support'));
 bot.command('cancel', commandMiddleware, wrapCommandHandler(cancelCommand, 'cancel'));
 bot.command('reset', commandMiddleware, wrapCommandHandler(resetCommand, 'reset'));
-
-// Test handler - this should catch ALL text messages
-bot.use(async (ctx, next) => {
-    if (ctx.message && 'text' in ctx.message) {
-        // Try to process support conversation for ALL text messages, not just replies
-        if (!ctx.message.text?.startsWith('/')) {
-            const handled = await processSupportConversation(ctx);
-            if (handled) {
-                return; // Don't continue processing
-            }
-        }
-    }
-    return next();
-});
 
 // Register message handlers with middleware
 bot.on('text', async (ctx, next) => {
@@ -396,7 +382,7 @@ bot.catch(async (error: any, ctx?: BotContext) => {
             
             // Clean up blocked user data (solution from GitHub issue #1513)
             if (ctx?.chat?.id) {
-                await cleanupBlockedUserGlobal(ctx.chat.id);
+                await cleanupBlockedUser(ctx.chat.id);
             }
             
             return; // Silently skip blocked users
@@ -408,7 +394,7 @@ bot.catch(async (error: any, ctx?: BotContext) => {
             
             // Clean up chat that no longer exists
             if (ctx?.chat?.id) {
-                await cleanupBlockedUserGlobal(ctx.chat.id);
+                await cleanupBlockedUser(ctx.chat.id);
             }
             
             return;
@@ -429,70 +415,6 @@ bot.catch(async (error: any, ctx?: BotContext) => {
         stack: error.stack
     });
 });
-
-/**
- * Removes all tickets and customer mappings associated with a Telegram chat when the bot is blocked or the chat is not found.
- *
- * Cleans up related tickets and customer data in storage for the specified chat ID. User state data is not explicitly removed but will expire automatically.
- *
- * @param chatId - The Telegram chat ID to clean up.
- */
-async function cleanupBlockedUserGlobal(chatId: number): Promise<void> {
-    try {
-        LogEngine.info('Starting global cleanup for blocked user', { chatId });
-        
-        // Get BotsStore instance
-        const botsStore = BotsStore.getInstance();
-        
-        // 1. Get all tickets for this chat
-        const tickets = await botsStore.getTicketsForChat(chatId);
-        
-        if (tickets.length > 0) {
-            LogEngine.info(`Found ${tickets.length} tickets to clean up for blocked user`, { 
-                chatId, 
-                ticketIds: tickets.map((t: any) => t.conversationId) 
-            });
-            
-            // 2. Delete each ticket and its mappings
-            for (const ticket of tickets) {
-                await botsStore.deleteTicket(ticket.conversationId);
-                LogEngine.info(`Cleaned up ticket ${ticket.friendlyId} for blocked user`, { 
-                    chatId, 
-                    conversationId: ticket.conversationId 
-                });
-            }
-        }
-        
-        // 3. Clean up customer data for this chat
-        const customer = await botsStore.getCustomerByChatId(chatId);
-        if (customer) {
-            // Remove customer mappings (the customer still exists in Unthread, just remove local mappings)
-            await botsStore.storage.delete(`customer:telegram:${chatId}`);
-            await botsStore.storage.delete(`customer:id:${customer.unthreadCustomerId}`);
-            
-            LogEngine.info('Cleaned up customer mappings for blocked user', { 
-                chatId, 
-                customerId: customer.unthreadCustomerId 
-            });
-        }
-        
-        // 4. Clean up any user states
-        // Note: User states are keyed by telegram user ID, not chat ID
-        // So we can't clean them up directly without the user ID
-        // They will expire naturally due to TTL
-        
-        LogEngine.info('Successfully cleaned up blocked user data', { chatId });
-        
-    } catch (error) {
-        const err = error as Error;
-        LogEngine.error('Error cleaning up blocked user data', {
-            error: err.message,
-            stack: err.stack,
-            chatId
-        });
-        // Don't throw - cleanup failure shouldn't crash the bot
-    }
-}
 
 /**
  * Shuts down all services and resources used by the bot, ensuring a clean exit.

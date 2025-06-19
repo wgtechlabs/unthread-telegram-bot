@@ -259,7 +259,7 @@ export async function safeEditMessageText(
  *
  * @param chatId - The Telegram chat ID to clean up data for
  */
-async function cleanupBlockedUser(chatId: number): Promise<void> {
+export async function cleanupBlockedUser(chatId: number): Promise<void> {
     try {
         LogEngine.info('Starting cleanup for blocked user', { chatId });
         

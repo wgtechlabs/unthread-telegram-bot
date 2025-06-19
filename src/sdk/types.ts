@@ -41,6 +41,7 @@ export interface TicketData {
   platform?: string;
   storedAt?: string;
   version?: string;
+  metadata?: Record<string, any>;
 }
 
 export interface TicketInfo {

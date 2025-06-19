@@ -8,6 +8,7 @@
 import fetch from 'node-fetch';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
+import { TicketData } from '../sdk/types.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -396,7 +397,7 @@ export async function registerTicketConfirmation(params: RegisterTicketConfirmat
  * @param replyToMessageId - The Telegram message ID being replied to
  * @returns The ticket data if found, or null if no ticket is associated with the message
  */
-export async function getTicketFromReply(replyToMessageId: number): Promise<any | null> {
+export async function getTicketFromReply(replyToMessageId: number): Promise<TicketData | null> {
     try {
         const ticketData = await BotsStore.getTicketByTelegramMessageId(replyToMessageId);
         
@@ -404,7 +405,7 @@ export async function getTicketFromReply(replyToMessageId: number): Promise<any 
             replyToMessageId,
             hasTicketData: !!ticketData,
             ticketDataKeys: ticketData ? Object.keys(ticketData) : null,
-            hasMetadata: ticketData ? !!(ticketData as any).metadata : false
+            hasMetadata: ticketData ? !!ticketData.metadata : false
         });
         
         // Return the ticketData directly, not ticketData.metadata
