@@ -7,6 +7,7 @@
 
 import pkg from 'pg';
 const { Pool } = pkg;
+import type { Pool as PoolType, PoolClient, QueryResult } from 'pg';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import dotenv from 'dotenv';
 import fs from 'fs';
@@ -25,6 +26,8 @@ const __dirname = path.dirname(__filename);
  * Handles PostgreSQL connections with SSL support and connection pooling
  */
 export class DatabaseConnection {
+    private pool: PoolType;
+
     constructor() {
         // Validate required environment variable
         if (!process.env.POSTGRES_URL) {
@@ -45,7 +48,7 @@ export class DatabaseConnection {
         });
 
         // Handle pool errors
-        this.pool.on('error', (err) => {
+        this.pool.on('error', (err: Error) => {
             LogEngine.error('Unexpected error on idle client', {
                 error: err.message,
                 stack: err.stack
@@ -60,14 +63,22 @@ export class DatabaseConnection {
     }
 
     /**
+     * Get the database connection pool
+     * @returns The PostgreSQL connection pool
+     */
+    get connectionPool(): PoolType {
+        return this.pool;
+    }
+
+    /**
      * Execute a database query
      * 
-     * @param {string} text - SQL query string
-     * @param {Array} params - Query parameters
-     * @returns {Promise<object>} Query result
+     * @param text - SQL query string
+     * @param params - Query parameters
+     * @returns Query result
      */
-    async query(text, params = []) {
-        const client = await this.pool.connect();
+    async query(text: string, params: any[] = []): Promise<QueryResult<any>> {
+        const client: PoolClient = await this.pool.connect();
         try {
             const start = Date.now();
             const result = await client.query(text, params);
@@ -82,11 +93,12 @@ export class DatabaseConnection {
             
             return result;
         } catch (error) {
+            const err = error as Error;
             LogEngine.error('Database query error', {
-                error: error.message,
+                error: err.message,
                 query: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
                 paramCount: params.length,
-                stack: error.stack
+                stack: err.stack
             });
             throw error;
         } finally {
@@ -96,15 +108,13 @@ export class DatabaseConnection {
 
     /**
      * Test database connection and create schema if needed
-     * 
-     * @returns {Promise<void>}
      */
-    async connect() {
+    async connect(): Promise<void> {
         try {
             // Test connection
             const result = await this.query('SELECT NOW() as current_time');
             LogEngine.info('Database connection established', {
-                currentTime: result.rows[0].current_time,
+                currentTime: result.rows[0]?.current_time,
                 ssl: 'enabled'
             });
 
@@ -112,9 +122,10 @@ export class DatabaseConnection {
             await this.ensureSchema();
             
         } catch (error) {
+            const err = error as Error;
             LogEngine.error('Failed to connect to database', {
-                error: error.message,
-                stack: error.stack,
+                error: err.message,
+                stack: err.stack,
                 postgresUrl: process.env.POSTGRES_URL ? 'configured' : 'missing'
             });
             throw error;
@@ -123,10 +134,8 @@ export class DatabaseConnection {
 
     /**
      * Ensure database schema exists (Alpha version - auto-setup always)
-     * 
-     * @returns {Promise<void>}
      */
-    async ensureSchema() {
+    async ensureSchema(): Promise<void> {
         try {
             // Check if tables exist
             const tableCheck = await this.query(`
@@ -137,7 +146,7 @@ export class DatabaseConnection {
             `);
 
             const requiredTables = ['customers', 'tickets', 'user_states'];
-            const foundTables = tableCheck.rows.map(row => row.table_name);
+            const foundTables = tableCheck.rows.map((row: any) => row.table_name);
             const missingTables = requiredTables.filter(table => !foundTables.includes(table));
 
             if (missingTables.length > 0) {
@@ -152,9 +161,10 @@ export class DatabaseConnection {
                 });
             }
         } catch (error) {
+            const err = error as Error;
             LogEngine.error('Error checking database schema', {
-                error: error.message,
-                stack: error.stack
+                error: err.message,
+                stack: err.stack
             });
             throw error;
         }
@@ -162,10 +172,8 @@ export class DatabaseConnection {
 
     /**
      * Initialize database schema from schema.sql file
-     * 
-     * @returns {Promise<void>}
      */
-    async initializeSchema() {
+    async initializeSchema(): Promise<void> {
         try {
             LogEngine.info('Starting database schema initialization...');
 
@@ -188,9 +196,10 @@ export class DatabaseConnection {
             LogEngine.info('Database schema created successfully');
 
         } catch (error) {
+            const err = error as Error;
             LogEngine.error('Failed to initialize database schema', {
-                error: error.message,
-                stack: error.stack
+                error: err.message,
+                stack: err.stack
             });
             throw error;
         }
@@ -198,17 +207,16 @@ export class DatabaseConnection {
 
     /**
      * Close all connections in the pool
-     * 
-     * @returns {Promise<void>}
      */
-    async close() {
+    async close(): Promise<void> {
         try {
             await this.pool.end();
             LogEngine.info('Database connection pool closed');
         } catch (error) {
+            const err = error as Error;
             LogEngine.error('Error closing database pool', {
-                error: error.message,
-                stack: error.stack
+                error: err.message,
+                stack: err.stack
             });
             throw error;
         }

@@ -5,21 +5,33 @@
  */
 import { UnifiedStorage } from './UnifiedStorage.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
+import type { 
+  TicketData, 
+  UserState, 
+  CustomerData, 
+  UserData, 
+  AgentMessageData, 
+  TicketInfo,
+  IBotsStore,
+  StorageConfig
+} from '../types.js';
+import type { DatabaseConnection } from '../../database/connection.js';
 
-export class BotsStore {
-  static instance = null;
+export class BotsStore implements IBotsStore {
+  private static instance: BotsStore | null = null;
+  public storage: UnifiedStorage;
   
-  constructor(unifiedStorage) {
+  constructor(unifiedStorage: UnifiedStorage) {
     this.storage = unifiedStorage;
   }
   
   /**
    * Initialize the BotsStore singleton with database connection
    */
-  static async initialize(dbConnection, platformRedisUrl = null) {
+  static async initialize(dbConnection: DatabaseConnection, platformRedisUrl?: string): Promise<BotsStore> {
     if (!BotsStore.instance) {
       const unifiedStorageConfig = {
-        postgres: dbConnection.pool, // Pass the existing pool instead of config
+        postgres: dbConnection.connectionPool, // Use the getter to access the pool
         redisUrl: platformRedisUrl
       };
       const unifiedStorage = new UnifiedStorage(unifiedStorageConfig);
@@ -32,7 +44,7 @@ export class BotsStore {
   /**
    * Get the singleton instance
    */
-  static getInstance() {
+  static getInstance(): BotsStore {
     if (!BotsStore.instance) {
       throw new Error('BotsStore not initialized. Call BotsStore.initialize() first.');
     }
@@ -42,53 +54,53 @@ export class BotsStore {
   /**
    * Static methods for convenience
    */
-  static async storeTicket(ticketData) {
+  static async storeTicket(ticketData: TicketData): Promise<boolean> {
     return BotsStore.getInstance().storeTicket(ticketData);
   }
   
-  static async getTicketByTelegramMessageId(messageId) {
+  static async getTicketByTelegramMessageId(messageId: number): Promise<TicketData | null> {
     return BotsStore.getInstance().getTicketByMessageId(messageId);
   }
   
-  static async getTicketByConversationId(conversationId) {
+  static async getTicketByConversationId(conversationId: string): Promise<TicketData | null> {
     return BotsStore.getInstance().getTicketByConversationId(conversationId);
   }
   
-  static async setUserState(telegramUserId, state) {
+  static async setUserState(telegramUserId: number, state: UserState): Promise<boolean> {
     return BotsStore.getInstance().storeUserState(telegramUserId, state);
   }
   
-  static async getUserState(telegramUserId) {
+  static async getUserState(telegramUserId: number): Promise<UserState | null> {
     return BotsStore.getInstance().getUserState(telegramUserId);
   }
   
-  static async clearUserState(telegramUserId) {
+  static async clearUserState(telegramUserId: number): Promise<boolean> {
     return BotsStore.getInstance().clearUserState(telegramUserId);
   }
 
   // Static methods for customer operations
-  static async storeCustomer(customerData) {
+  static async storeCustomer(customerData: CustomerData): Promise<boolean> {
     return BotsStore.getInstance().storeCustomer(customerData);
   }
 
-  static async getCustomerById(customerId) {
+  static async getCustomerById(customerId: string): Promise<CustomerData | null> {
     return BotsStore.getInstance().getCustomerById(customerId);
   }
 
-  static async getCustomerByChatId(chatId) {
+  static async getCustomerByChatId(chatId: number): Promise<CustomerData | null> {
     return BotsStore.getInstance().getCustomerByChatId(chatId);
   }
 
   // Static methods for user operations
-  static async storeUser(userData) {
+  static async storeUser(userData: UserData): Promise<boolean> {
     return BotsStore.getInstance().storeUser(userData);
   }
 
-  static async getUserByTelegramId(telegramUserId) {
+  static async getUserByTelegramId(telegramUserId: number): Promise<UserData | null> {
     return BotsStore.getInstance().getUserByTelegramId(telegramUserId);
   }
   
-  static async shutdown() {
+  static async shutdown(): Promise<void> {
     if (BotsStore.instance) {
       await BotsStore.instance.storage.disconnect();
       BotsStore.instance = null;
@@ -99,7 +111,7 @@ export class BotsStore {
    * Store ticket data with bidirectional mapping
    * Creates multiple keys for different lookup patterns
    */
-  async storeTicket(ticketData) {
+  async storeTicket(ticketData: TicketData): Promise<boolean> {
     const {
       chatId,
       messageId,
@@ -111,7 +123,7 @@ export class BotsStore {
     } = ticketData;
     
     // Enhanced ticket data with metadata
-    const enrichedTicketData = {
+    const enrichedTicketData: TicketData = {
       ...ticketData,
       platform: 'telegram',
       storedAt: new Date().toISOString(),
@@ -130,7 +142,7 @@ export class BotsStore {
         // Lookup by Unthread ticket ID (if different from conversation ID)
         ticketId !== conversationId ? 
           this.storage.set(`ticket:unthread:${ticketId}`, enrichedTicketData) : 
-          Promise.resolve(true),
+          Promise.resolve(),
         
         // Lookup by friendly ID
         this.storage.set(`ticket:friendly:${friendlyId}`, enrichedTicketData),
@@ -143,9 +155,10 @@ export class BotsStore {
       LogEngine.info(`Ticket stored: ${friendlyId} (${conversationId})`);
       return true;
     } catch (error) {
+      const err = error as Error;
       LogEngine.error('Failed to store ticket', {
-        error: error.message,
-        stack: error.stack
+        error: err.message,
+        stack: err.stack
       });
       return false;
     }
@@ -154,37 +167,36 @@ export class BotsStore {
   /**
    * Get ticket by Unthread conversation ID
    */
-  async getTicketByConversationId(conversationId) {
+  async getTicketByConversationId(conversationId: string): Promise<TicketData | null> {
     return await this.storage.get(`ticket:unthread:${conversationId}`);
   }
   
   /**
    * Get ticket by Telegram message ID
    */
-  async getTicketByMessageId(messageId) {
+  async getTicketByMessageId(messageId: number): Promise<TicketData | null> {
     return await this.storage.get(`ticket:telegram:${messageId}`);
   }
   
   /**
    * Get ticket by friendly ID
    */
-  async getTicketByFriendlyId(friendlyId) {
+  async getTicketByFriendlyId(friendlyId: string): Promise<TicketData | null> {
     return await this.storage.get(`ticket:friendly:${friendlyId}`);
   }
   
   /**
    * Get ticket by Unthread ticket ID
    */
-  async getTicketByTicketId(ticketId) {
+  async getTicketByTicketId(ticketId: string): Promise<TicketData | null> {
     return await this.storage.get(`ticket:unthread:${ticketId}`);
   }
   
   /**
    * Get all tickets for a specific chat
    */
-  async getTicketsForChat(chatId) {
-    const chatTickets = await this.storage.get(`chat:tickets:${chatId}`);
-    if (!chatTickets) return [];
+  async getTicketsForChat(chatId: number): Promise<TicketData[]> {
+    const chatTickets: TicketInfo[] = await this.storage.get(`chat:tickets:${chatId}`) || [];
     
     // Get full ticket data for each ticket
     const ticketPromises = chatTickets.map(ticketInfo => 
@@ -192,43 +204,97 @@ export class BotsStore {
     );
     
     const tickets = await Promise.all(ticketPromises);
-    return tickets.filter(ticket => ticket !== null);
+    return tickets.filter((ticket): ticket is TicketData => ticket !== null);
   }
   
   /**
    * Store user state for ongoing ticket creation
    */
-  async storeUserState(telegramUserId, state) {
-    return await this.storage.set(`user:state:${telegramUserId}`, {
-      ...state,
-      updatedAt: new Date().toISOString()
-    });
+  async storeUserState(telegramUserId: number, state: UserState): Promise<boolean> {
+    try {
+      const stateData = {
+        ...state,
+        updatedAt: new Date().toISOString()
+      };
+      
+      LogEngine.debug('Storing user state', {
+        telegramUserId,
+        key: `user:state:${telegramUserId}`,
+        state: JSON.stringify(stateData)
+      });
+      
+      await this.storage.set(`user:state:${telegramUserId}`, stateData);
+      
+      LogEngine.debug('User state stored successfully', { telegramUserId });
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to store user state', {
+        error: err.message,
+        stack: err.stack,
+        telegramUserId
+      });
+      return false;
+    }
   }
   
   /**
    * Get user state for ongoing ticket creation
    */
-  async getUserState(telegramUserId) {
-    return await this.storage.get(`user:state:${telegramUserId}`);
+  async getUserState(telegramUserId: number): Promise<UserState | null> {
+    try {
+      LogEngine.debug('Getting user state', {
+        telegramUserId,
+        key: `user:state:${telegramUserId}`
+      });
+      
+      const state = await this.storage.get(`user:state:${telegramUserId}`);
+      
+      LogEngine.debug('User state retrieved', {
+        telegramUserId,
+        found: !!state,
+        state: state ? JSON.stringify(state) : 'null'
+      });
+      
+      return state;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to get user state', {
+        error: err.message,
+        stack: err.stack,
+        telegramUserId
+      });
+      return null;
+    }
   }
   
   /**
    * Clear user state
    */
-  async clearUserState(telegramUserId) {
-    return await this.storage.delete(`user:state:${telegramUserId}`);
+  async clearUserState(telegramUserId: number): Promise<boolean> {
+    try {
+      await this.storage.delete(`user:state:${telegramUserId}`);
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to clear user state', {
+        error: err.message,
+        telegramUserId
+      });
+      return false;
+    }
   }
   
   /**
    * Store customer mapping (Telegram chat to Unthread customer)
    */
-  async storeCustomer(customerData) {
-    const { chatId, unthreadCustomerId, chatTitle, customerName } = customerData;
+  async storeCustomer(customerData: CustomerData): Promise<boolean> {
+    const { telegramChatId, unthreadCustomerId, name, company } = customerData;
     
-    const enrichedCustomerData = {
+    const enrichedCustomerData: CustomerData = {
       ...customerData,
-      storedAt: new Date().toISOString(),
-      platform: 'telegram'
+      createdAt: customerData.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
     
     try {
@@ -237,15 +303,16 @@ export class BotsStore {
         this.storage.set(`customer:id:${unthreadCustomerId}`, enrichedCustomerData),
         
         // Lookup by chat ID for quick access
-        this.storage.set(`customer:telegram:${chatId}`, enrichedCustomerData)
+        this.storage.set(`customer:telegram:${telegramChatId}`, enrichedCustomerData)
       ]);
       
-      LogEngine.info(`Customer stored: ${customerName || chatTitle} (${unthreadCustomerId})`);
+      LogEngine.info(`Customer stored: ${name || company} (${unthreadCustomerId})`);
       return true;
     } catch (error) {
+      const err = error as Error;
       LogEngine.error('Failed to store customer', {
-        error: error.message,
-        stack: error.stack
+        error: err.message,
+        stack: err.stack
       });
       return false;
     }
@@ -254,37 +321,41 @@ export class BotsStore {
   /**
    * Get customer by Unthread customer ID (primary identifier)
    */
-  async getCustomerById(customerId) {
+  async getCustomerById(customerId: string): Promise<CustomerData | null> {
     return await this.storage.get(`customer:id:${customerId}`);
   }
 
   /**
    * Get customer by Telegram chat ID
    */
-  async getCustomerByChatId(chatId) {
+  async getCustomerByChatId(chatId: number): Promise<CustomerData | null> {
     return await this.storage.get(`customer:telegram:${chatId}`);
   }
 
   /**
    * Store user information
    */
-  async storeUser(userData) {
-    const { telegramUserId, telegramUsername, unthreadName, unthreadEmail } = userData;
+  async storeUser(userData: UserData): Promise<boolean> {
+    const { telegramUserId, username, firstName, lastName } = userData;
     
-    const enrichedUserData = {
+    const enrichedUserData: UserData = {
       ...userData,
-      storedAt: new Date().toISOString(),
-      platform: 'telegram'
+      createdAt: userData.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
     
     try {
       // Primary lookup by Telegram user ID
       await this.storage.set(`user:telegram:${telegramUserId}`, enrichedUserData);
       
-      LogEngine.info(`User stored: ${unthreadName} (${telegramUserId})`);
+      LogEngine.info(`User stored: ${firstName} ${lastName || ''} (${telegramUserId})`);
       return true;
     } catch (error) {
-      LogEngine.error('Failed to store user:', error);
+      const err = error as Error;
+      LogEngine.error('Failed to store user', {
+        error: err.message,
+        telegramUserId
+      });
       return false;
     }
   }
@@ -292,14 +363,14 @@ export class BotsStore {
   /**
    * Get user by Telegram user ID (primary identifier)
    */
-  async getUserByTelegramId(telegramUserId) {
+  async getUserByTelegramId(telegramUserId: number): Promise<UserData | null> {
     return await this.storage.get(`user:telegram:${telegramUserId}`);
   }
 
   /**
    * Get customer by Unthread customer ID (legacy method for backwards compatibility)
    */
-  async getCustomerByUnthreadId(unthreadCustomerId) {
+  async getCustomerByUnthreadId(unthreadCustomerId: string): Promise<CustomerData | null> {
     // Try new format first, then fall back to old format
     const customer = await this.storage.get(`customer:id:${unthreadCustomerId}`);
     if (customer) return customer;
@@ -309,14 +380,12 @@ export class BotsStore {
 
   /**
    * Get or create customer for chat ID with proper cache hierarchy
-   * This method encapsulates the complete cache-first logic
-   * 
-   * @param {number} chatId - Telegram chat ID
-   * @param {string} chatTitle - Chat title for new customer creation
-   * @param {function} createCustomerFn - Function to create new customer if not found
-   * @returns {object} - Customer data with unthreadCustomerId
    */
-  async getOrCreateCustomer(chatId, chatTitle, createCustomerFn) {
+  async getOrCreateCustomer(
+    chatId: number, 
+    chatTitle: string, 
+    createCustomerFn: (title: string) => Promise<{ id: string }>
+  ): Promise<CustomerData> {
     try {
       // Step 1: Try to get existing customer (uses cache hierarchy automatically)
       const existingCustomer = await this.getCustomerByChatId(chatId);
@@ -332,25 +401,25 @@ export class BotsStore {
       const unthreadCustomerId = newCustomerResponse.id;
       
       // Step 3: Store new customer (populates all cache layers)
-      const customerData = {
-        chatId,
+      const customerData: CustomerData = {
+        id: unthreadCustomerId,
         unthreadCustomerId,
-        chatTitle
+        telegramChatId: chatId,
+        company: chatTitle,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       };
       
       await this.storeCustomer(customerData);
       
       LogEngine.info(`Created and cached new customer: ${unthreadCustomerId}`);
-      return {
-        ...customerData,
-        storedAt: new Date().toISOString(),
-        platform: 'telegram'
-      };
+      return customerData;
       
     } catch (error) {
+      const err = error as Error;
       LogEngine.error(`Error in getOrCreateCustomer for chat ${chatId}`, {
-        error: error.message,
-        stack: error.stack
+        error: err.message,
+        stack: err.stack
       });
       throw error;
     }
@@ -358,93 +427,27 @@ export class BotsStore {
 
   /**
    * Check if customer exists in cache (fast check without creating)
-   * 
-   * @param {number} chatId - Telegram chat ID
-   * @returns {boolean} - True if customer exists in cache
    */
-  async hasCustomer(chatId) {
+  async hasCustomer(chatId: number): Promise<boolean> {
     try {
       const customer = await this.getCustomerByChatId(chatId);
       return !!customer;
     } catch (error) {
+      const err = error as Error;
       LogEngine.error(`Error checking customer existence for chat ${chatId}`, {
-        error: error.message,
-        stack: error.stack
+        error: err.message,
+        stack: err.stack
       });
       return false;
     }
   }
 
   /**
-   * Get cache statistics for customers
-   * 
-   * @returns {object} - Cache statistics
-   */
-  async getCustomerCacheStats() {
-    const storageStats = this.storage.getStats();
-    
-    // Count customer keys in memory cache
-    let customerKeysInMemory = 0;
-    if (this.storage.memoryCache) {
-      for (const key of this.storage.memoryCache.keys()) {
-        if (key.startsWith('customer:')) {
-          customerKeysInMemory++;
-        }
-      }
-    }
-    
-    return {
-      ...storageStats,
-      customerKeysInMemory,
-      cacheHierarchy: 'Memory → Redis → PostgreSQL',
-      sdkVersion: 'bots-brain-1.0.0'
-    };
-  }
-  
-  /**
-   * Get detailed memory storage statistics
-   * 
-   * @returns {object} - Detailed memory statistics
-   */
-  async getMemoryStats() {
-    return this.storage.getMemoryStats();
-  }
-
-  /**
-   * Get current in-memory storage contents
-   * 
-   * @returns {Array} - Array of memory cache entries
-   */
-  async getMemoryContents() {
-    return this.storage.getMemoryContents();
-  }
-
-  /**
-   * Clean up expired memory entries
-   * 
-   * @returns {number} - Number of entries cleaned up
-   */
-  async cleanupExpiredMemory() {
-    return this.storage.cleanupExpiredMemory();
-  }
-
-  /**
-   * Get filtered memory contents by key pattern
-   * 
-   * @param {string} pattern - Key pattern to filter by (e.g., 'ticket:', 'customer:', 'user:')
-   * @returns {Array} - Filtered memory cache entries
-   */
-  async getMemoryContentsByPattern(pattern) {
-    const allContents = this.storage.getMemoryContents();
-    return allContents.filter(entry => entry.key.includes(pattern));
-  }
-
-  /**
    * Helper: Add ticket to chat's ticket list
    */
-  async addToChatTickets(chatId, messageId, conversationId) {
+  private async addToChatTickets(chatId: number, messageId: number, conversationId: string): Promise<void> {
     const key = `chat:tickets:${chatId}`;
-    const existingTickets = await this.storage.get(key) || [];
+    const existingTickets: TicketInfo[] = await this.storage.get(key) || [];
     
     // Check if ticket already exists
     const ticketExists = existingTickets.some(t => t.conversationId === conversationId);
@@ -452,7 +455,7 @@ export class BotsStore {
       existingTickets.push({
         messageId,
         conversationId,
-        addedAt: new Date().toISOString()
+        friendlyId: '', // Will be filled from ticket data if needed
       });
       
       await this.storage.set(key, existingTickets);
@@ -462,7 +465,7 @@ export class BotsStore {
   /**
    * Delete ticket and all its mappings
    */
-  async deleteTicket(conversationId) {
+  async deleteTicket(conversationId: string): Promise<boolean> {
     try {
       // Get ticket data first to know all the keys to delete
       const ticket = await this.getTicketByConversationId(conversationId);
@@ -486,9 +489,10 @@ export class BotsStore {
       LogEngine.info(`Ticket deleted: ${ticket.friendlyId}`);
       return true;
     } catch (error) {
+      const err = error as Error;
       LogEngine.error('Failed to delete ticket', {
-        error: error.message,
-        stack: error.stack
+        error: err.message,
+        stack: err.stack
       });
       return false;
     }
@@ -497,32 +501,18 @@ export class BotsStore {
   /**
    * Helper: Remove ticket from chat's ticket list
    */
-  async removeFromChatTickets(chatId, conversationId) {
+  private async removeFromChatTickets(chatId: number, conversationId: string): Promise<void> {
     const key = `chat:tickets:${chatId}`;
-    const existingTickets = await this.storage.get(key) || [];
+    const existingTickets: TicketInfo[] = await this.storage.get(key) || [];
     
     const filteredTickets = existingTickets.filter(t => t.conversationId !== conversationId);
     await this.storage.set(key, filteredTickets);
   }
   
   /**
-   * Get storage statistics
-   */
-  async getStats() {
-    const storageStats = this.storage.getStats();
-    
-    return {
-      ...storageStats,
-      sdk: 'bots-brain',
-      version: '1.0.0'
-    };
-  }
-  
-  /**
    * Store agent message data for reply tracking
-   * This allows us to track when users reply to agent messages
    */
-  async storeAgentMessage(agentMessageData) {
+  async storeAgentMessage(agentMessageData: AgentMessageData): Promise<boolean> {
     const {
       messageId,      // Telegram message ID of the agent message
       conversationId, // Unthread conversation ID
@@ -545,9 +535,10 @@ export class BotsStore {
       LogEngine.info(`Agent message stored: ${messageId} for conversation ${conversationId}`);
       return true;
     } catch (error) {
+      const err = error as Error;
       LogEngine.error('Failed to store agent message', {
-        error: error.message,
-        stack: error.stack,
+        error: err.message,
+        stack: err.stack,
         messageId,
         conversationId
       });
@@ -558,56 +549,60 @@ export class BotsStore {
   /**
    * Get agent message data by Telegram message ID
    */
-  async getAgentMessageByTelegramId(messageId) {
+  async getAgentMessage(messageId: number): Promise<AgentMessageData | null> {
     return await this.storage.get(`agent_message:telegram:${messageId}`);
   }
   
   /**
    * Static methods for agent message tracking
    */
-  static async storeAgentMessage(agentMessageData) {
+  static async storeAgentMessage(agentMessageData: AgentMessageData): Promise<boolean> {
     return BotsStore.getInstance().storeAgentMessage(agentMessageData);
   }
   
-  static async getAgentMessageByTelegramId(messageId) {
-    return BotsStore.getInstance().getAgentMessageByTelegramId(messageId);
+  static async getAgentMessageByTelegramId(messageId: number): Promise<AgentMessageData | null> {
+    return BotsStore.getInstance().getAgentMessage(messageId);
   }
 
   // Static methods for cache-aware customer management
-  static async getOrCreateCustomer(chatId, chatTitle, createCustomerFn) {
+  static async getOrCreateCustomer(
+    chatId: number, 
+    chatTitle: string, 
+    createCustomerFn: (title: string) => Promise<{ id: string }>
+  ): Promise<CustomerData> {
     return BotsStore.getInstance().getOrCreateCustomer(chatId, chatTitle, createCustomerFn);
   }
 
-  static async getCustomerByChatId(chatId) {
-    return BotsStore.getInstance().getCustomerByChatId(chatId);
-  }
-
-  static async storeCustomer(customerData) {
-    return BotsStore.getInstance().storeCustomer(customerData);
-  }
-
-  static async hasCustomer(chatId) {
+  static async hasCustomer(chatId: number): Promise<boolean> {
     return BotsStore.getInstance().hasCustomer(chatId);
   }
 
-  static async getCustomerCacheStats() {
-    return BotsStore.getInstance().getCustomerCacheStats();
+  static async getCustomerCacheStats(): Promise<any> {
+    const instance = BotsStore.getInstance();
+    const storageStats = instance.storage.getStats();
+    
+    return {
+      ...storageStats,
+      cacheHierarchy: 'Memory → Redis → PostgreSQL',
+      sdkVersion: 'bots-brain-1.0.0'
+    };
   }
 
-  // Static methods for memory inspection
-  static async getMemoryStats() {
-    return BotsStore.getInstance().getMemoryStats();
+  // Memory inspection methods
+  static async getMemoryStats(): Promise<any> {
+    return BotsStore.getInstance().storage.getMemoryStats();
   }
 
-  static async getMemoryContents() {
-    return BotsStore.getInstance().getMemoryContents();
+  static async getMemoryContents(): Promise<any> {
+    return BotsStore.getInstance().storage.getMemoryContents();
   }
 
-  static async getMemoryContentsByPattern(pattern) {
-    return BotsStore.getInstance().getMemoryContentsByPattern(pattern);
+  static async getMemoryContentsByPattern(pattern: string): Promise<any> {
+    const allContents = BotsStore.getInstance().storage.getMemoryContents();
+    return allContents.filter((entry: any) => entry.key.includes(pattern));
   }
 
-  static async cleanupExpiredMemory() {
-    return BotsStore.getInstance().cleanupExpiredMemory();
+  static async cleanupExpiredMemory(): Promise<number> {
+    return BotsStore.getInstance().storage.cleanupExpiredMemory();
   }
 }

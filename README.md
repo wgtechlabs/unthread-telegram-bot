@@ -93,6 +93,7 @@ For webhook server setup instructions, see the [`wgtechlabs/unthread-webhook-ser
 - Complete conversation history maintained across both platforms
 - Message reply chains preserve conversation context
 - **Status Notifications**: Real-time alerts when tickets are opened or closed with emoji-rich formatting
+- **Reaction-Based Feedback**: User messages are reacted to with ⏳ (sending) → ✅ (sent) or ❌ (error) for clean, non-intrusive status updates
 
 ### **🏢 Enterprise-Ready Customer Management**
 
@@ -244,6 +245,7 @@ Bot: 🎫 Support Ticket Created Successfully!
 - No special commands needed - natural conversation flow
 - All replies are automatically sent back to Unthread
 - **Status Updates**: Users receive real-time notifications when tickets are closed (🔒) or reopened (📂)
+- **Reply Status**: Message reactions show reply status (⏳ sending → ✅ sent successfully / ❌ error)
 - Status notifications include clear messaging about next steps and reply to original ticket messages
 
 ### **Group Chat Setup**

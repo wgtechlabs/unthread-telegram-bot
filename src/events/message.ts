@@ -2,44 +2,35 @@
  * Message Event Handlers Module
  * 
  * This module provides handlers for different types of Telegram messages.
- * It includes functionality to detect and respond to messages from different
- * chat types (private, group, supergroup, channel) and pattern matching for text messages.
- * 
- * Features:
- * - Text message handling
- * - Ticket reply processing
- * - Agent message reply handling
- * 
- * Potential Improvements:
- * - Implement rate limiting for message handlers
- * - Add user tracking/analytics
- * - Implement conversation flows
- * - Add priority mechanism for overlapping patterns
+ * It implements functionality to detect and respond to messages from different
+ * chat typ            // Update the waiting message with success
+            await safeEditMessageText(
+                ctx,
+                ctx.chat!.id, 
+                waitingMsg.message_id, 
+                undefined, 
+                successMessage
+            );ate, group, supergroup, channel) and pattern matching for text messages.
  */
 
 import { LogEngine } from '@wgtechlabs/log-engine';
-import { processSupportConversation } from '../commands/index.js';
+import { processSupportConversation, aboutCommand } from '../commands/index.js';
 import * as unthreadService from '../services/unthread.js';
 import { safeReply, safeEditMessageText } from '../bot.js';
+import type { BotContext } from '../types/index.js';
 
 /**
  * Checks if a message is from a group chat (not a channel)
- * 
- * @param {object} ctx - The Telegraf context object
- * @returns {boolean} True if the message is from a group chat, false otherwise
  */
-export function isGroupChat(ctx) {
-    return ctx.chat && (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup');
+export function isGroupChat(ctx: BotContext): boolean {
+    return ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
 }
 
 /**
  * Checks if a message is from a private chat
- * 
- * @param {object} ctx - The Telegraf context object
- * @returns {boolean} True if the message is from a private chat, false otherwise
  */
-export function isPrivateChat(ctx) {
-    return ctx.chat && ctx.chat.type === 'private';
+export function isPrivateChat(ctx: BotContext): boolean {
+    return ctx.chat?.type === 'private';
 }
 
 /**
@@ -47,11 +38,8 @@ export function isPrivateChat(ctx) {
  * 
  * This function routes messages to appropriate handlers based on chat type
  * and processes text messages against registered patterns
- * 
- * @param {object} ctx - The Telegraf context object
- * @param {Function} next - The next middleware function
  */
-export async function handleMessage(ctx, next) {
+export async function handleMessage(ctx: BotContext, next: () => Promise<void>): Promise<void> {
     try {
         // Skip if there's no message or chat
         if (!ctx.message || !ctx.chat) {
@@ -63,34 +51,37 @@ export async function handleMessage(ctx, next) {
             chatType: ctx.chat.type,
             chatId: ctx.chat.id,
             userId: ctx.from?.id,
-            messageText: ctx.message?.text?.substring(0, 50),
-            isCommand: ctx.message?.text?.startsWith('/')
+            messageText: 'text' in ctx.message ? ctx.message.text?.substring(0, 50) : undefined,
+            isCommand: 'text' in ctx.message ? ctx.message.text?.startsWith('/') : false,
+            hasFromUser: !!ctx.from,
+            messageType: 'text' in ctx.message ? 'text' : 'other'
         });
         
         // If this is a command, let Telegraf handle it and don't process further
-        if (ctx.message?.text?.startsWith('/')) {
+        if ('text' in ctx.message && ctx.message.text?.startsWith('/')) {
             LogEngine.debug('Command detected, passing to command handlers', {
                 command: ctx.message.text,
                 chatType: ctx.chat.type
             });
-            return await next();
+            return;  // Don't call next() for commands, let Telegraf handle them
         }
         
-        // Check if this is part of a support conversation
+        // Check if this is part of a support conversation (BEFORE handling different chat types)
         const isSupportMessage = await processSupportConversation(ctx);
+        
         if (isSupportMessage) {
             // Skip other handlers if this was a support conversation message
             LogEngine.debug('Message processed as support conversation');
-            return await next();
+            return;  // Don't call next() for support messages, we're done
         }
         
         // Check if this is a reply to a ticket confirmation
-        if (ctx.message.reply_to_message && ctx.message.text) {
+        if ('reply_to_message' in ctx.message && ctx.message.reply_to_message && 'text' in ctx.message && ctx.message.text) {
             const handled = await handleTicketReply(ctx);
             if (handled) {
                 // Skip other handlers if this was a ticket reply
                 LogEngine.debug('Message processed as ticket reply');
-                return await next();
+                return;  // Don't call next() for ticket replies, we're done
             }
         }
 
@@ -109,27 +100,29 @@ export async function handleMessage(ctx, next) {
         // Continue processing with other handlers (only for private chats)
         return await next();
     } catch (error) {
-        LogEngine.error(`Error handling message: ${error.message}`);
+        const err = error as Error;
+        LogEngine.error(`Error handling message: ${err.message}`);
         return await next();
     }
 }
 
 /**
  * Handles replies to ticket confirmation messages
- * 
- * @param {object} ctx - The Telegraf context object
- * @returns {boolean} - True if the message was processed as a ticket reply
  */
-async function handleTicketReply(ctx) {
+async function handleTicketReply(ctx: BotContext): Promise<boolean> {
     try {
+        if (!ctx.message || !('reply_to_message' in ctx.message) || !ctx.message.reply_to_message) {
+            return false;
+        }
+
         // Get the ID of the message being replied to
         const replyToMessageId = ctx.message.reply_to_message.message_id;
         
         LogEngine.info('Processing potential ticket reply', {
             replyToMessageId,
-            messageText: ctx.message.text?.substring(0, 100),
-            chatId: ctx.chat.id,
-            userId: ctx.from.id
+            messageText: 'text' in ctx.message ? ctx.message.text?.substring(0, 100) : undefined,
+            chatId: ctx.chat?.id,
+            userId: ctx.from?.id
         });
         
         // Check if this is a reply to a ticket confirmation
@@ -156,13 +149,14 @@ async function handleTicketReply(ctx) {
         
         LogEngine.debug('No ticket or agent message found for reply', {
             replyToMessageId,
-            chatId: ctx.chat.id
+            chatId: ctx.chat?.id
         });
         
         return false;
     } catch (error) {
+        const err = error as Error;
         LogEngine.error('Error in handleTicketReply', {
-            error: error.message,
+            error: err.message,
             chatId: ctx.chat?.id
         });
         return false;
@@ -171,13 +165,12 @@ async function handleTicketReply(ctx) {
 
 /**
  * Handles replies to ticket confirmation messages
- * 
- * @param {object} ctx - The Telegraf context object
- * @param {object} ticketInfo - The ticket information
- * @returns {boolean} - True if the message was processed
  */
-async function handleTicketConfirmationReply(ctx, ticketInfo) {
+async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): Promise<boolean> {
     try {
+        if (!ctx.from || !ctx.message || !('text' in ctx.message)) {
+            return false;
+        }
         
         // This is a reply to a ticket confirmation, send it to Unthread
         const telegramUserId = ctx.from.id;
@@ -193,10 +186,14 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
             messageLength: message?.length
         });
         
-        // Send a waiting message
-        const waitingMsg = await safeReply(ctx, "Adding your message to the ticket...", {
+        // Send a minimal status message
+        const statusMsg = await safeReply(ctx, '⏳ Adding to ticket...', {
             reply_to_message_id: ctx.message.message_id
         });
+
+        if (!statusMsg) {
+            return false;
+        }
         
         try {
             // Get user information from database
@@ -215,17 +212,19 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
                 onBehalfOf: userData
             });
             
-            // Create success message
-            let successMessage = `✅ Your message has been added to Ticket #${ticketInfo.friendlyId}`;
-            
-            // Update the waiting message with success
+            // Update status message to success
             await safeEditMessageText(
                 ctx,
-                ctx.chat.id,
-                waitingMsg.message_id,
-                null,
-                successMessage
+                ctx.chat!.id,
+                statusMsg.message_id,
+                undefined,
+                '✅ Added!'
             );
+
+            // Delete status message after 3 seconds
+            setTimeout(() => {
+                ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+            }, 3000);
             
             LogEngine.info('Added message to ticket', {
                 ticketNumber: ticketInfo.friendlyId,
@@ -233,36 +232,43 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
                 telegramUserId,
                 username,
                 messageLength: message?.length,
-                chatId: ctx.chat.id
+                chatId: ctx.chat?.id
             });
             return true;
             
         } catch (error) {
+            const err = error as Error;
             // Handle API errors
             LogEngine.error('Error adding message to ticket', {
-                error: error.message,
-                stack: error.stack,
+                error: err.message,
+                stack: err.stack,
                 conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
                 telegramUserId,
                 username
             });
             
-            // Update the waiting message with error
+            // Update status message to error
             await safeEditMessageText(
                 ctx,
-                ctx.chat.id,
-                waitingMsg.message_id,
-                null,
-                `⚠️ Error adding message to ticket: ${error.message}`
+                ctx.chat!.id,
+                statusMsg.message_id,
+                undefined,
+                '❌ Error!'
             );
+
+            // Delete status message after 5 seconds
+            setTimeout(() => {
+                ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+            }, 5000);
             
             return true;
         }
         
     } catch (error) {
+        const err = error as Error;
         LogEngine.error('Error in handleTicketReply', {
-            error: error.message,
-            stack: error.stack,
+            error: err.message,
+            stack: err.stack,
             chatId: ctx.chat?.id
         });
         return false;
@@ -271,22 +277,26 @@ async function handleTicketConfirmationReply(ctx, ticketInfo) {
 
 /**
  * Handles replies to agent messages
- * 
- * @param {object} ctx - The Telegraf context object
- * @param {object} agentMessageInfo - The agent message information
- * @returns {boolean} - True if the message was processed
  */
-async function handleAgentMessageReply(ctx, agentMessageInfo) {
+async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): Promise<boolean> {
     try {
+        if (!ctx.from || !ctx.message || !('text' in ctx.message)) {
+            return false;
+        }
+
         // This is a reply to an agent message, send it back to Unthread
         const telegramUserId = ctx.from.id;
         const username = ctx.from.username;
         const message = ctx.message.text || '';
         
-        // Send a waiting message
-        const waitingMsg = await safeReply(ctx, "Sending your reply to the agent...", {
+        // Send a minimal status message
+        const statusMsg = await safeReply(ctx, '⏳ Sending...', {
             reply_to_message_id: ctx.message.message_id
         });
+
+        if (!statusMsg) {
+            return false;
+        }
         
         try {
             // Get user information for proper onBehalfOf formatting
@@ -299,22 +309,19 @@ async function handleAgentMessageReply(ctx, agentMessageInfo) {
                 onBehalfOf: userData
             });
             
-            // Create success message
-            let successMessage = `✅ Your reply has been sent to the agent for Ticket #${agentMessageInfo.friendlyId}`;
-            
-            // Update the waiting message with success
+            // Update status message to success
             await safeEditMessageText(
                 ctx,
-                ctx.chat.id,
-                waitingMsg.message_id,
-                null,
-                successMessage
+                ctx.chat!.id,
+                statusMsg.message_id,
+                undefined,
+                '✅ Sent!'
             );
 
-            // Auto-delete the confirmation message after 5 seconds
+            // Delete status message after 3 seconds
             setTimeout(() => {
-                ctx.telegram.deleteMessage(ctx.chat.id, waitingMsg.message_id).catch(() => {});
-            }, 5000); // 5,000 ms = 5 seconds
+                ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+            }, 3000);
 
             LogEngine.info('Sent reply to agent', {
                 ticketNumber: agentMessageInfo.friendlyId,
@@ -322,32 +329,39 @@ async function handleAgentMessageReply(ctx, agentMessageInfo) {
                 telegramUserId,
                 username,
                 messageLength: message?.length,
-                chatId: ctx.chat.id
+                chatId: ctx.chat?.id
             });
             return true;
             
         } catch (error) {
+            const err = error as Error;
             // Handle API errors
             LogEngine.error('Error sending reply to agent', {
-                error: error.message,
+                error: err.message,
                 conversationId: agentMessageInfo.conversationId
             });
             
-            // Update the waiting message with error
+            // Update status message to error
             await safeEditMessageText(
                 ctx,
-                ctx.chat.id,
-                waitingMsg.message_id,
-                null,
-                `⚠️ Error sending reply to agent: ${error.message}`
+                ctx.chat!.id,
+                statusMsg.message_id,
+                undefined,
+                '❌ Error!'
             );
+
+            // Delete status message after 5 seconds
+            setTimeout(() => {
+                ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+            }, 5000);
             
             return true;
         }
         
     } catch (error) {
+        const err = error as Error;
         LogEngine.error('Error in handleAgentMessageReply', {
-            error: error.message,
+            error: err.message,
             conversationId: agentMessageInfo?.conversationId
         });
         return false;
@@ -356,10 +370,8 @@ async function handleAgentMessageReply(ctx, agentMessageInfo) {
 
 /**
  * Handles messages from private chats (direct messages to the bot)
- * 
- * @param {object} ctx - The Telegraf context object
  */
-export async function handlePrivateMessage(ctx) {
+export async function handlePrivateMessage(ctx: BotContext): Promise<void> {
     try {
         // Log information about the private message
         LogEngine.info('Processing private message', {
@@ -368,45 +380,26 @@ export async function handlePrivateMessage(ctx) {
             firstName: ctx.from?.first_name,
             lastName: ctx.from?.last_name,
             messageId: ctx.message?.message_id,
-            messageText: ctx.message?.text?.substring(0, 100)
+            messageText: ctx.message && 'text' in ctx.message ? ctx.message.text?.substring(0, 100) : undefined
         });
         
         // Only respond to private messages if they're not commands
         // Commands should be handled by their respective handlers
-        if (ctx.message?.text && ctx.message.text.startsWith('/')) {
+        if (ctx.message && 'text' in ctx.message && ctx.message.text?.startsWith('/')) {
             LogEngine.debug('Skipping private message - it\'s a command', {
                 command: ctx.message.text.split(' ')[0]
             });
             return;
         }
         
-        // Provide helpful information about the bot's purpose
-        const infoMessage = `🤖 **Hello! I'm the Unthread Support Bot**
-
-I'm designed to help create support tickets in **group chats only**, not in private messages.
-
-🎫 **To get support:**
-1. Add me to your support group chat
-2. Use \`/support\` command in the group
-3. Follow the prompts to create your ticket
-
-📋 **Available commands:**
-• \`/start\` - Get started and see bot information
-• \`/help\` - Show help and usage instructions
-• \`/version\` - View bot version and details
-
-🔗 **Useful links:**
-• [GitHub Repository](https://github.com/WarenGonzaga/unthread-telegram-bot)
-• [Report Issues](https://github.com/WarenGonzaga/unthread-telegram-bot/issues)
-
-**Note:** I don't support private conversations for ticket creation.`;
-        
-        await safeReply(ctx, infoMessage, { parse_mode: 'Markdown' });
+        // Send the about message for any non-command private message
+        await aboutCommand(ctx);
         
     } catch (error) {
+        const err = error as Error;
         LogEngine.error('Error in handlePrivateMessage', {
-            error: error.message,
-            stack: error.stack,
+            error: err.message,
+            stack: err.stack,
             telegramUserId: ctx.from?.id,
             username: ctx.from?.username
         });
@@ -415,13 +408,12 @@ I'm designed to help create support tickets in **group chats only**, not in priv
 
 /**
  * Handles messages from group chats
- * 
- * @param {object} ctx - The Telegraf context object
  */
-export async function handleGroupMessage(ctx) {
+export async function handleGroupMessage(ctx: BotContext): Promise<void> {
     try {
         // Log more detailed information about the group message
-        LogEngine.info(`Processing message from group: ${ctx.chat.title} (ID: ${ctx.chat.id})`);
+        const chatTitle = ctx.chat && ('title' in ctx.chat) ? ctx.chat.title : 'Unknown';
+        LogEngine.info(`Processing message from group: ${chatTitle} (ID: ${ctx.chat?.id})`);
         
         // Additional information about the sender if available
         if (ctx.from) {
@@ -431,24 +423,18 @@ export async function handleGroupMessage(ctx) {
         // Log the message content for debugging
         LogEngine.debug('Group message details', {
             messageId: ctx.message?.message_id,
-            messageText: ctx.message?.text?.substring(0, 100),
-            messageType: ctx.message?.photo ? 'photo' : 
-                        ctx.message?.document ? 'document' : 
-                        ctx.message?.text ? 'text' : 'other',
-            hasReply: !!ctx.message?.reply_to_message,
-            replyToId: ctx.message?.reply_to_message?.message_id
+            messageText: ctx.message && 'text' in ctx.message ? ctx.message.text?.substring(0, 100) : undefined,
+            messageType: ctx.message && 'photo' in ctx.message ? 'photo' : 
+                        ctx.message && 'document' in ctx.message ? 'document' : 
+                        ctx.message && 'text' in ctx.message ? 'text' : 'other',
+            hasReply: ctx.message && 'reply_to_message' in ctx.message && !!ctx.message.reply_to_message,
+            replyToId: ctx.message && 'reply_to_message' in ctx.message ? ctx.message.reply_to_message?.message_id : undefined
         });
-        
-        // For group chats, we should NOT execute any commands or send automatic responses
-        // Commands should be restricted to private chats only
-        // This function should only handle special group-specific logic like:
-        // - Processing replies to bot messages (already handled by handleTicketReply)
-        // - Processing mentions (not implemented yet)
-        // - Group-specific features (not implemented yet)
         
         LogEngine.debug('Group message processed - no automatic responses sent');
         
     } catch (error) {
-        LogEngine.error(`Error in handleGroupMessage: ${error.message}`);
+        const err = error as Error;
+        LogEngine.error(`Error in handleGroupMessage: ${err.message}`);
     }
 }

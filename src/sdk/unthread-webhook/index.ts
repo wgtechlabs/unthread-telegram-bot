@@ -4,7 +4,7 @@
  * Consumes agent responses from Unthread dashboard and delivers them to Telegram.
  * 
  * Usage:
- * ```javascript
+ * ```typescript
  * import { WebhookConsumer } from './unthread-webhook';
  * 
  * const consumer = new WebhookConsumer({

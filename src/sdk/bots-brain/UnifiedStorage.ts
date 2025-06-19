@@ -1,7 +1,9 @@
-import { createClient } from 'redis';
+import { createClient, RedisClientType } from 'redis';
 import pkg from 'pg';
 const { Pool } = pkg;
+import type { Pool as PoolType } from 'pg';
 import { LogEngine } from '@wgtechlabs/log-engine';
+import type { StorageConfig, Storage } from '../types.js';
 
 /**
  * UnifiedStorage - Multi-layer storage architecture
@@ -9,17 +11,27 @@ import { LogEngine } from '@wgtechlabs/log-engine';
  * Layer 2: Redis cache (3-day TTL) - fast distributed cache
  * Layer 3: PostgreSQL (permanent) - persistent storage
  */
-export class UnifiedStorage {
-  constructor(config) {
+export class UnifiedStorage implements Storage {
+  private memoryCache: Map<string, any>;
+  private memoryCacheTTL: Map<string, number>;
+  private memoryTTL: number;
+  private redisConfig: { url?: string; ttl: number };
+  private redisClient: RedisClientType | null;
+  private dbConfig: any;
+  private db: PoolType | null;
+  private connected: boolean;
+  private cleanupInterval: NodeJS.Timeout | null;
+
+  constructor(config: StorageConfig) {
     // Layer 1: Memory cache with TTL
     this.memoryCache = new Map();
-    this.memoryCacheTTL = new Map(); // Store expiration times
-    this.memoryTTL = config.memoryTTL || 24 * 60 * 60 * 1000; // 24 hours default
+    this.memoryCacheTTL = new Map();
+    this.memoryTTL = 24 * 60 * 60 * 1000; // 24 hours default
     
     // Layer 2: Redis configuration
     this.redisConfig = {
-      url: config.redisUrl,
-      ttl: config.redisTTL || 3 * 24 * 60 * 60 // 3 days default
+      url: config.redisUrl || '',
+      ttl: 3 * 24 * 60 * 60 // 3 days default
     };
     this.redisClient = null;
     
@@ -29,12 +41,13 @@ export class UnifiedStorage {
     
     // Connection status
     this.connected = false;
+    this.cleanupInterval = null;
     
     // Start memory cleanup interval
     this.startMemoryCleanup();
   }
   
-  async connect() {
+  async connect(): Promise<void> {
     try {
       // Connect to Redis (optional)
       if (this.redisConfig.url) {
@@ -59,22 +72,25 @@ export class UnifiedStorage {
           // Otherwise create a new Pool with the config
           this.db = new Pool(this.dbConfig);
         }
-        await this.db.query('SELECT 1'); // Test connection
+        if (this.db) {
+          await this.db.query('SELECT 1'); // Test connection
+        }
         LogEngine.info('PostgreSQL connected for bots-brain');
       }
       
       this.connected = true;
       LogEngine.info('UnifiedStorage initialized with multi-layer architecture');
     } catch (error) {
+      const err = error as Error;
       LogEngine.error('UnifiedStorage connection failed', {
-        error: error.message,
-        stack: error.stack
+        error: err.message,
+        stack: err.stack
       });
       throw error;
     }
   }
   
-  async disconnect() {
+  async disconnect(): Promise<void> {
     if (this.redisClient) {
       await this.redisClient.quit();
     }
@@ -83,6 +99,12 @@ export class UnifiedStorage {
     if (this.db && this.dbConfig && !this.dbConfig.query) {
       await this.db.end();
     }
+    
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    
     this.connected = false;
     LogEngine.info('UnifiedStorage disconnected');
   }
@@ -90,7 +112,7 @@ export class UnifiedStorage {
   /**
    * Get value from storage (Memory → Redis → PostgreSQL)
    */
-  async get(key) {
+  async get(key: string): Promise<any> {
     try {
       // Layer 1: Check memory cache first
       const memoryCached = this.getFromMemory(key);
@@ -124,9 +146,10 @@ export class UnifiedStorage {
       
       return null;
     } catch (error) {
+      const err = error as Error;
       LogEngine.error(`Error getting ${key}`, {
-        error: error.message,
-        stack: error.stack
+        error: err.message,
+        stack: err.stack
       });
       return null;
     }
@@ -135,33 +158,33 @@ export class UnifiedStorage {
   /**
    * Set value in all storage layers
    */
-  async set(key, value) {
+  async set(key: string, value: any, ttl?: number): Promise<void> {
     try {
       // Store in all layers
       this.setInMemory(key, value);
       
       if (this.redisClient) {
-        await this.redisClient.setEx(key, this.redisConfig.ttl, JSON.stringify(value));
+        const redisTTL = ttl || this.redisConfig.ttl;
+        await this.redisClient.setEx(key, redisTTL, JSON.stringify(value));
       }
       
       if (this.db) {
-        await this.setInPostgres(key, value);
+        await this.setInPostgres(key, value, ttl);
       }
-      
-      return true;
     } catch (error) {
+      const err = error as Error;
       LogEngine.error(`Error setting ${key}`, {
-        error: error.message,
-        stack: error.stack
+        error: err.message,
+        stack: err.stack
       });
-      return false;
+      throw error;
     }
   }
   
   /**
    * Delete from all storage layers
    */
-  async delete(key) {
+  async delete(key: string): Promise<void> {
     try {
       // Delete from all layers
       this.memoryCache.delete(key);
@@ -174,19 +197,51 @@ export class UnifiedStorage {
       if (this.db) {
         await this.deleteFromPostgres(key);
       }
-      
-      return true;
     } catch (error) {
+      const err = error as Error;
       LogEngine.error(`Error deleting ${key}`, {
-        error: error.message,
-        stack: error.stack
+        error: err.message,
+        stack: err.stack
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Check if key exists in any storage layer
+   */
+  async exists(key: string): Promise<boolean> {
+    try {
+      // Check memory first
+      if (this.getFromMemory(key) !== null) {
+        return true;
+      }
+      
+      // Check Redis
+      if (this.redisClient) {
+        const exists = await this.redisClient.exists(key);
+        if (exists) return true;
+      }
+      
+      // Check PostgreSQL
+      if (this.db) {
+        const pgValue = await this.getFromPostgres(key);
+        return pgValue !== null;
+      }
+      
+      return false;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error(`Error checking existence of ${key}`, {
+        error: err.message,
+        stack: err.stack
       });
       return false;
     }
   }
   
   // Memory cache operations
-  getFromMemory(key) {
+  private getFromMemory(key: string): any {
     const expiration = this.memoryCacheTTL.get(key);
     if (expiration && Date.now() > expiration) {
       // Expired, clean up
@@ -197,15 +252,15 @@ export class UnifiedStorage {
     return this.memoryCache.get(key) || null;
   }
   
-  setInMemory(key, value) {
+  private setInMemory(key: string, value: any): void {
     this.memoryCache.set(key, value);
     this.memoryCacheTTL.set(key, Date.now() + this.memoryTTL);
   }
   
   // PostgreSQL operations using key-value table
-  async getFromPostgres(key) {
+  private async getFromPostgres(key: string): Promise<any> {
     try {
-      const result = await this.db.query(
+      const result = await this.db!.query(
         'SELECT value FROM storage_cache WHERE key = $1 AND expires_at > NOW()',
         [key]
       );
@@ -216,10 +271,10 @@ export class UnifiedStorage {
     }
   }
   
-  async setInPostgres(key, value) {
+  private async setInPostgres(key: string, value: any, ttl?: number): Promise<void> {
     try {
-      const expiresAt = new Date(Date.now() + (this.redisConfig.ttl * 1000));
-      await this.db.query(`
+      const expiresAt = new Date(Date.now() + ((ttl || this.redisConfig.ttl) * 1000));
+      await this.db!.query(`
         INSERT INTO storage_cache (key, value, expires_at) 
         VALUES ($1, $2, $3)
         ON CONFLICT (key) 
@@ -231,17 +286,17 @@ export class UnifiedStorage {
     }
   }
   
-  async deleteFromPostgres(key) {
+  private async deleteFromPostgres(key: string): Promise<void> {
     try {
-      await this.db.query('DELETE FROM storage_cache WHERE key = $1', [key]);
+      await this.db!.query('DELETE FROM storage_cache WHERE key = $1', [key]);
     } catch (error) {
       // Table might not exist, that's okay
     }
   }
   
   // Memory cleanup
-  startMemoryCleanup() {
-    setInterval(() => {
+  private startMemoryCleanup(): void {
+    this.cleanupInterval = setInterval(() => {
       const now = Date.now();
       for (const [key, expiration] of this.memoryCacheTTL.entries()) {
         if (now > expiration) {
@@ -253,7 +308,15 @@ export class UnifiedStorage {
   }
   
   // Utility methods
-  getStats() {
+  getStats(): {
+    memoryKeys: number;
+    connected: boolean;
+    layers: {
+      memory: boolean;
+      redis: boolean;
+      postgres: boolean;
+    };
+  } {
     return {
       memoryKeys: this.memoryCache.size,
       connected: this.connected,
@@ -266,13 +329,25 @@ export class UnifiedStorage {
   }
 
   // New methods for inspecting in-memory storage
-  getMemoryContents() {
+  getMemoryContents(): Array<{
+    key: string;
+    value: any;
+    expiresAt: string;
+    isExpired: boolean;
+    size: number;
+  }> {
     const now = Date.now();
-    const contents = [];
+    const contents: Array<{
+      key: string;
+      value: any;
+      expiresAt: string;
+      isExpired: boolean;
+      size: number;
+    }> = [];
     
     for (const [key, value] of this.memoryCache.entries()) {
       const expiration = this.memoryCacheTTL.get(key);
-      const isExpired = expiration && now > expiration;
+      const isExpired = expiration ? now > expiration : false;
       
       contents.push({
         key,
@@ -286,16 +361,30 @@ export class UnifiedStorage {
     return contents;
   }
 
-  getMemoryStats() {
+  getMemoryStats(): {
+    totalKeys: number;
+    activeKeys: number;
+    expiredKeys: number;
+    totalSizeBytes: number;
+    totalSizeKB: number;
+    keyTypes: Record<string, { count: number; size: number }>;
+    memoryTTL: number;
+    connected: boolean;
+    layers: {
+      memory: boolean;
+      redis: boolean;
+      postgres: boolean;
+    };
+  } {
     const now = Date.now();
     let totalSize = 0;
     let expiredCount = 0;
     let activeCount = 0;
-    const keyTypes = {};
+    const keyTypes: Record<string, { count: number; size: number }> = {};
     
     for (const [key, value] of this.memoryCache.entries()) {
       const expiration = this.memoryCacheTTL.get(key);
-      const isExpired = expiration && now > expiration;
+      const isExpired = expiration ? now > expiration : false;
       const size = JSON.stringify(value).length;
       
       totalSize += size;
@@ -307,7 +396,7 @@ export class UnifiedStorage {
       }
       
       // Categorize by key prefix
-      const keyType = key.split(':')[0];
+      const keyType = key.split(':')[0] || 'unknown';
       if (!keyTypes[keyType]) {
         keyTypes[keyType] = { count: 0, size: 0 };
       }
@@ -333,7 +422,7 @@ export class UnifiedStorage {
   }
 
   // Clean up expired memory entries manually
-  cleanupExpiredMemory() {
+  cleanupExpiredMemory(): number {
     const now = Date.now();
     let cleanedCount = 0;
     

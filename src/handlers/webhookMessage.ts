@@ -1,11 +1,16 @@
 import { LogEngine } from '@wgtechlabs/log-engine';
+import type { Telegraf } from 'telegraf';
+import type { BotContext } from '../types/index.js';
 
 /**
  * Handles incoming webhook messages from Unthread agents
  * Sends agent responses as replies to original ticket messages in Telegram
  */
 export class TelegramWebhookHandler {
-  constructor(bot, botsStore) {
+  private bot: Telegraf<BotContext>;
+  private botsStore: any; // SDK type, treated as any since we're skipping SDK conversion
+
+  constructor(bot: Telegraf<BotContext>, botsStore: any) {
     this.bot = bot;
     this.botsStore = botsStore;
   }
@@ -13,15 +18,15 @@ export class TelegramWebhookHandler {
   /**
    * Safely send a message with error handling for blocked users and other common errors
    * 
-   * @param {number} chatId - The chat ID to send the message to
-   * @param {string} text - The message text
-   * @param {object} options - Additional options for sendMessage
-   * @returns {Promise<object|null>} - The sent message object or null if failed
+   * @param chatId - The chat ID to send the message to
+   * @param text - The message text
+   * @param options - Additional options for sendMessage
+   * @returns The sent message object or null if failed
    */
-  async safeSendMessage(chatId, text, options = {}) {
+  async safeSendMessage(chatId: number, text: string, options: any = {}): Promise<any | null> {
     try {
       return await this.bot.telegram.sendMessage(chatId, text, options);
-    } catch (error) {
+    } catch (error: any) {
       if (error.response?.error_code === 403) {
         if (error.response.description?.includes('bot was blocked by the user')) {
           LogEngine.warn('Bot was blocked by user - cleaning up user data', { chatId });
@@ -61,13 +66,9 @@ export class TelegramWebhookHandler {
 
   /**
    * Handle agent message created events from Unthread
-   * @param {Object} event - The webhook event
-   * @param {string} event.data.conversationId - Unthread conversation ID
-   * @param {string} event.data.text - Agent message text
-   * @param {string} event.data.sentByUserId - ID of the agent who sent the message
-   * @param {string} event.timestamp - Event timestamp
+   * @param event - The webhook event
    */
-  async handleMessageCreated(event) {
+  async handleMessageCreated(event: any): Promise<void> {
     try {
       LogEngine.info('🔄 Processing agent message webhook', {
         conversationId: event.data.conversationId,
@@ -169,12 +170,15 @@ export class TelegramWebhookHandler {
         }
 
       } catch (telegramError) {
+        const err = telegramError as Error;
         LogEngine.error('Failed to send message to Telegram', {
-          error: telegramError.message,
+          error: err.message,
           chatId: ticketData.chatId,
           messageId: ticketData.messageId,
           conversationId
-        });        // Try sending without reply if reply fails (original message might be deleted)
+        });
+        
+        // Try sending without reply if reply fails (original message might be deleted)
         try {
           const fallbackMessage = await this.safeSendMessage(
             ticketData.chatId,
@@ -198,8 +202,9 @@ export class TelegramWebhookHandler {
           }
 
         } catch (fallbackError) {
+          const fallbackErr = fallbackError as Error;
           LogEngine.error('Failed to send fallback message to Telegram', {
-            error: fallbackError.message,
+            error: fallbackErr.message,
             chatId: ticketData.chatId,
             conversationId
           });
@@ -208,9 +213,10 @@ export class TelegramWebhookHandler {
       }
 
     } catch (error) {
+      const err = error as Error;
       LogEngine.error('Error handling webhook message', {
-        error: error.message,
-        stack: error.stack,
+        error: err.message,
+        stack: err.stack,
         event: event
       });
       throw error;
@@ -219,11 +225,11 @@ export class TelegramWebhookHandler {
 
   /**
    * Format agent message for display in Telegram
-   * @param {string} text - The agent message text
-   * @param {string} friendlyId - The ticket friendly ID (e.g., TKT-001)
-   * @returns {string} Formatted message
+   * @param text - The agent message text
+   * @param friendlyId - The ticket friendly ID (e.g., TKT-001)
+   * @returns Formatted message
    */
-  formatAgentMessage(text, friendlyId) {
+  formatAgentMessage(text: string, friendlyId: string): string {
     // Clean and truncate message if too long
     const cleanText = this.sanitizeMessageText(text);
     const maxLength = 4000; // Telegram message limit is 4096, leave some room
@@ -236,10 +242,10 @@ export class TelegramWebhookHandler {
 
   /**
    * Sanitize message text for Telegram Markdown
-   * @param {string} text - Raw message text
-   * @returns {string} Sanitized text
+   * @param text - Raw message text
+   * @returns Sanitized text
    */
-  sanitizeMessageText(text) {
+  sanitizeMessageText(text: string): string {
     if (!text) return '';
     
     // Basic cleanup
@@ -258,10 +264,10 @@ export class TelegramWebhookHandler {
 
   /**
    * Handle other webhook events (for future expansion)
-   * @param {string} eventType - Type of webhook event
-   * @param {Object} event - The webhook event data
+   * @param eventType - Type of webhook event
+   * @param event - The webhook event data
    */
-  async handleOtherEvent(eventType, event) {
+  async handleOtherEvent(eventType: string, event: any): Promise<void> {
     LogEngine.info(`Received ${eventType} event (not processed)`, {
       eventType,
       conversationId: event.data?.conversationId,
@@ -271,13 +277,9 @@ export class TelegramWebhookHandler {
 
   /**
    * Handle conversation updated events from Unthread (status changes)
-   * @param {Object} event - The webhook event
-   * @param {string} event.data.conversationId - Unthread conversation ID
-   * @param {string} event.data.status - New status (open/closed)
-   * @param {string} event.data.previousStatus - Previous status (if available)
-   * @param {string} event.timestamp - Event timestamp
+   * @param event - The webhook event
    */
-  async handleConversationUpdated(event) {
+  async handleConversationUpdated(event: any): Promise<void> {
     try {
       // 1. Get conversation ID from webhook event (try both fields)
       const conversationId = event.data.conversationId || event.data.id;
@@ -288,7 +290,10 @@ export class TelegramWebhookHandler {
         previousStatus: event.data.previousStatus,
         timestamp: event.timestamp
       });
-      const newStatus = typeof event.data.status === 'string' ? event.data.status.toLowerCase() : String(event.data.status || '').toLowerCase();
+      
+      const newStatus = typeof event.data.status === 'string' 
+        ? event.data.status.toLowerCase() 
+        : String(event.data.status || '').toLowerCase();
       
       if (!conversationId) {
         LogEngine.warn('❌ No conversation ID in webhook event', { event });
@@ -367,8 +372,9 @@ export class TelegramWebhookHandler {
         }
 
       } catch (telegramError) {
+        const err = telegramError as Error;
         LogEngine.error('Failed to send status notification to Telegram', {
-          error: telegramError.message,
+          error: err.message,
           chatId: ticketData.chatId,
           messageId: ticketData.messageId,
           conversationId,
@@ -401,8 +407,9 @@ export class TelegramWebhookHandler {
           }
 
         } catch (fallbackError) {
+          const fallbackErr = fallbackError as Error;
           LogEngine.error('Failed to send fallback status notification to Telegram', {
-            error: fallbackError.message,
+            error: fallbackErr.message,
             chatId: ticketData.chatId,
             conversationId,
             newStatus
@@ -412,9 +419,10 @@ export class TelegramWebhookHandler {
       }
 
     } catch (error) {
+      const err = error as Error;
       LogEngine.error('Error handling conversation update webhook', {
-        error: error.message,
-        stack: error.stack,
+        error: err.message,
+        stack: err.stack,
         event: event
       });
       throw error;
@@ -423,11 +431,11 @@ export class TelegramWebhookHandler {
 
   /**
    * Format status update message for display in Telegram
-   * @param {string} status - The new status (open/closed)
-   * @param {string} friendlyId - The ticket friendly ID (e.g., TKT-001)
-   * @returns {string} Formatted status message
+   * @param status - The new status (open/closed)
+   * @param friendlyId - The ticket friendly ID (e.g., TKT-001)
+   * @returns Formatted status message
    */
-  formatStatusUpdateMessage(status, friendlyId) {
+  formatStatusUpdateMessage(status: string, friendlyId: string): string {
     const statusIcon = status === 'closed' ? '🔒' : '📂';
     const statusText = status === 'closed' ? 'CLOSED' : 'OPEN';
     const statusEmoji = status === 'closed' ? '✅' : '🔄';
@@ -449,9 +457,9 @@ export class TelegramWebhookHandler {
    * Clean up user data when bot is blocked or chat is not found
    * This implements the fix from GitHub issue telegraf/telegraf#1513
    * 
-   * @param {number} chatId - The chat ID of the blocked user
+   * @param chatId - The chat ID of the blocked user
    */
-  async cleanupBlockedUser(chatId) {
+  async cleanupBlockedUser(chatId: number): Promise<void> {
     try {
       LogEngine.info('Starting cleanup for blocked user', { chatId });
       
@@ -461,7 +469,7 @@ export class TelegramWebhookHandler {
       if (tickets.length > 0) {
         LogEngine.info(`Found ${tickets.length} tickets to clean up for blocked user`, { 
           chatId, 
-          ticketIds: tickets.map(t => t.conversationId) 
+          ticketIds: tickets.map((t: any) => t.conversationId) 
         });
         
         // 2. Delete each ticket and its mappings
@@ -495,9 +503,10 @@ export class TelegramWebhookHandler {
       LogEngine.info('Successfully cleaned up blocked user data', { chatId });
       
     } catch (error) {
+      const err = error as Error;
       LogEngine.error('Error cleaning up blocked user data', {
-        error: error.message,
-        stack: error.stack,
+        error: err.message,
+        stack: err.stack,
         chatId
       });
       // Don't throw - cleanup failure shouldn't crash the bot
