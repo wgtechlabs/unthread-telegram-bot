@@ -182,7 +182,7 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
         
         // Send a minimal status message
         const statusMsg = await safeReply(ctx, '⏳ Adding to ticket...', {
-            reply_to_message_id: ctx.message!.message_id
+            reply_parameters: { message_id: ctx.message!.message_id }
         });
 
         if (!statusMsg) {
@@ -343,7 +343,7 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
         
         // Send a minimal status message
         const statusMsg = await safeReply(ctx, '⏳ Sending...', {
-            reply_to_message_id: ctx.message.message_id
+            reply_parameters: { message_id: ctx.message.message_id }
         });
 
         if (!statusMsg) {
