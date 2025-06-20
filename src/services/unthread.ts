@@ -81,6 +81,14 @@ interface SendMessageJSONParams {
 }
 
 /**
+ * Ticket creation response
+ */
+interface CreateTicketResponse {
+  id: string;
+  friendlyId: string;
+}
+
+/**
  * Extracts and formats the customer company name from a Telegram group chat title by removing the bot's company name and handling various separators.
  *
  * @param groupChatTitle - The original group chat title
@@ -235,7 +243,7 @@ export async function createCustomer(groupChatName: string): Promise<Customer> {
  * @param params - Includes group chat name, customer ID, ticket summary, and user information on whose behalf the ticket is created.
  * @returns The created ticket object from Unthread.
  */
-export async function createTicket(params: CreateTicketParams): Promise<any> {
+export async function createTicket(params: CreateTicketParams): Promise<CreateTicketResponse> {
     try {
         const { groupChatName, customerId, summary, onBehalfOf } = params;
         
@@ -262,7 +270,7 @@ export async function createTicket(params: CreateTicketParams): Promise<any> {
  * @returns An object containing the ticket's unique ID and friendly ID
  * @throws If the API request fails or returns a non-OK response
  */
-async function createTicketJSON(params: CreateTicketJSONParams): Promise<any> {
+async function createTicketJSON(params: CreateTicketJSONParams): Promise<CreateTicketResponse> {
     const { title, summary, customerId, onBehalfOf } = params;
     
     const payload = {
@@ -289,7 +297,7 @@ async function createTicketJSON(params: CreateTicketJSONParams): Promise<any> {
         throw new Error(`Failed to create ticket: ${response.status} ${errorText}`);
     }
 
-    const result = await response.json() as { id: string; friendlyId: string };
+    const result = await response.json() as CreateTicketResponse;
     
     LogEngine.info('Ticket created (JSON)', {
         ticketTitle: title,
