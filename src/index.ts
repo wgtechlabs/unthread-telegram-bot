@@ -179,9 +179,9 @@ bot.on('callback_query', async (ctx) => {
 });
 
 /**
- * Executes an asynchronous operation with retries and exponential backoff on failure.
+ * Executes an asynchronous operation with automatic retries and exponential backoff on failure.
  *
- * Retries the provided async operation up to a specified number of times, increasing the delay between attempts exponentially up to a maximum delay. Logs warnings on each retry and an error if all attempts fail.
+ * Retries the given async operation up to a specified number of times, increasing the delay between attempts exponentially up to a maximum delay. Logs warnings on each retry and throws the last encountered error if all attempts fail.
  *
  * @param operation - The asynchronous function to execute and retry on failure
  * @param maxRetries - Maximum number of retry attempts (default: 5)
@@ -229,11 +229,31 @@ async function retryWithBackoff<T>(
 }
 
 /**
+ * Closes the database connection if it was initialized and initialization fails.
+ *
+ * @param dbInitialized - Indicates if the database connection was established before failure
+ */
+async function cleanupDatabaseOnInitFailure(dbInitialized: boolean): Promise<void> {
+    if (dbInitialized) {
+        try {
+            await db.close();
+            LogEngine.info('Database connection closed during cleanup');
+        } catch (cleanupError) {
+            LogEngine.error('Failed to cleanup database during initialization failure', {
+                error: (cleanupError as Error).message
+            });
+        }
+    }
+}
+
+/**
  * Database and Storage initialization with retry logic
  * 
  * Initialize database connection and storage layers before starting the bot
  * Implements retry mechanism to handle transient failures gracefully
  */
+let dbInitialized = false;
+
 try {
     // Initialize database connection with retry logic
     await retryWithBackoff(
@@ -246,6 +266,7 @@ try {
         30000, // max delay: 30 seconds
         'Database connection'
     );
+    dbInitialized = true;
     LogEngine.info('Database initialized successfully');
     
     // Initialize the BotsStore with retry logic
@@ -266,6 +287,10 @@ try {
         error: err.message,
         maxRetries: 5
     });
+    
+    // Cleanup partial initialization
+    await cleanupDatabaseOnInitFailure(dbInitialized);
+    
     process.exit(1);
 }
 

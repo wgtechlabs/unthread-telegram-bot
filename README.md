@@ -8,6 +8,22 @@ The Unthread Telegram Bot seamlessly connects your Telegram community with Unthr
 
 With simple commands and intuitive interactions, support tickets automatically sync between both platforms, streamlining your workflow and improving response times. Users receive real-time notifications when ticket status changes, ensuring they stay informed throughout the support process. Whether you're managing a community group, running a business chat, or supporting an open-source project, this bot provides the tools you need for efficient, organized customer support.
 
+## 🤗 Special Thanks
+
+### 🤝 Partner Organizations
+
+These outstanding organizations partner with us to support our open-source work:
+
+| | |
+|-|-|
+<!-- partners --><!-- partners -->
+
+### 🙏 Individual Supporters
+
+Special thanks to all our individual supporters:
+
+<!-- supporters --><!-- supporters -->
+
 ## 💸 Sponsored Ads
 
 Open source development is resource-intensive. These **sponsored ads help keep Log Engine free and actively maintained** while connecting you with tools and services that support open-source development.
@@ -435,7 +451,7 @@ Contributions are welcome, create a pull request to this repo and I will review 
 
 Read the project's [contributing guide](./contributing.md) for more info.
 
-## 🙏 Sponsor
+## 💖 Sponsors
 
 Like this project? **Leave a star**! ⭐⭐⭐⭐⭐
 

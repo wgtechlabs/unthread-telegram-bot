@@ -8,7 +8,7 @@
 import fetch from 'node-fetch';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
-import { TicketData } from '../sdk/types.js';
+import { TicketData, AgentMessageData, UserData } from '../sdk/types.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -78,6 +78,14 @@ interface SendMessageJSONParams {
   conversationId: string;
   message: string;
   onBehalfOf: OnBehalfOfUser;
+}
+
+/**
+ * Ticket creation response
+ */
+interface CreateTicketResponse {
+  id: string;
+  friendlyId: string;
 }
 
 /**
@@ -230,12 +238,12 @@ export async function createCustomer(groupChatName: string): Promise<Customer> {
 }
 
 /**
- * Creates a new support ticket in Unthread for a given customer and group chat.
+ * Creates a new support ticket in Unthread for the specified customer and group chat.
  *
- * @param params - Includes group chat name, customer ID, ticket summary, and user information on whose behalf the ticket is created.
- * @returns The created ticket object from Unthread.
+ * @param params - Contains group chat name, customer ID, ticket summary, and user information for whom the ticket is created.
+ * @returns The response object with ticket identifiers from Unthread.
  */
-export async function createTicket(params: CreateTicketParams): Promise<any> {
+export async function createTicket(params: CreateTicketParams): Promise<CreateTicketResponse> {
     try {
         const { groupChatName, customerId, summary, onBehalfOf } = params;
         
@@ -254,15 +262,15 @@ export async function createTicket(params: CreateTicketParams): Promise<any> {
 }
 
 /**
- * Creates a new support ticket in Unthread using a JSON payload.
+ * Creates a new support ticket in Unthread with the specified details.
  *
- * Sends a POST request to the Unthread API to create a ticket with the specified title, summary, customer, and user information. Returns the created ticket's identifiers.
+ * Sends a POST request to the Unthread API to create a ticket using the provided title, summary, customer ID, and user information.
  *
  * @param params - Ticket creation details including title, summary, customer ID, and user information
  * @returns An object containing the ticket's unique ID and friendly ID
  * @throws If the API request fails or returns a non-OK response
  */
-async function createTicketJSON(params: CreateTicketJSONParams): Promise<any> {
+async function createTicketJSON(params: CreateTicketJSONParams): Promise<CreateTicketResponse> {
     const { title, summary, customerId, onBehalfOf } = params;
     
     const payload = {
@@ -289,7 +297,7 @@ async function createTicketJSON(params: CreateTicketJSONParams): Promise<any> {
         throw new Error(`Failed to create ticket: ${response.status} ${errorText}`);
     }
 
-    const result = await response.json() as { id: string; friendlyId: string };
+    const result = await response.json() as CreateTicketResponse;
     
     LogEngine.info('Ticket created (JSON)', {
         ticketTitle: title,
@@ -422,12 +430,12 @@ export async function getTicketFromReply(replyToMessageId: number): Promise<Tick
 }
 
 /**
- * Retrieves agent message information from BotsStore by the replied message ID.
+ * Retrieves agent message data associated with a given Telegram reply message ID.
  *
  * @param replyToMessageId - The Telegram message ID being replied to
- * @returns The agent message data if found, or null if not found or on error
+ * @returns The corresponding agent message data, or null if not found or on error
  */
-export async function getAgentMessageFromReply(replyToMessageId: number): Promise<any | null> {
+export async function getAgentMessageFromReply(replyToMessageId: number): Promise<AgentMessageData | null> {
     try {
         const agentMessageData = await BotsStore.getAgentMessageByTelegramId(replyToMessageId);
         return agentMessageData || null;
@@ -442,14 +450,14 @@ export async function getAgentMessageFromReply(replyToMessageId: number): Promis
 }
 
 /**
- * Retrieves all active ticket confirmations for a given Telegram chat.
+ * Retrieves all active ticket confirmations for a specified Telegram chat.
  *
- * Currently returns an empty array as the functionality is not yet implemented.
+ * Currently returns an empty array as this functionality is not implemented.
  *
  * @param chatId - The Telegram chat ID
- * @returns An array of ticket confirmation information for the specified chat
+ * @returns An array of ticket confirmation data for the given chat, or an empty array if not implemented
  */
-export async function getTicketsForChat(chatId: number): Promise<any[]> {
+export async function getTicketsForChat(chatId: number): Promise<TicketData[]> {
     try {
         // Note: This would require a new method in BotsStore to search by chatId
         // For now, we'll return an empty array and implement this if needed
@@ -547,12 +555,12 @@ export async function getOrCreateCustomer(groupChatName: string, chatId: number)
 }
 
 /**
- * Retrieves user information by Telegram user ID, creating and storing a new user record if one does not exist.
+ * Retrieves user information for a given Telegram user ID, creating and storing a new user if one does not exist.
  *
- * If the user is not found in the database, a new user is created with a generated name and email, optionally using the provided username.
+ * If the user is not found, a new user is generated with a name and email based on the Telegram user ID and optional username.
  *
- * @param telegramUserId - The Telegram user ID
- * @param username - Optional Telegram username (without @)
+ * @param telegramUserId - The Telegram user ID to look up or create
+ * @param username - Optional Telegram username (without @) to use for the new user
  * @returns An object containing the user's name and email for use as onBehalfOf information
  */
 export async function getOrCreateUser(telegramUserId: number, username?: string): Promise<OnBehalfOfUser> {
@@ -578,7 +586,7 @@ export async function getOrCreateUser(telegramUserId: number, username?: string)
             : `user_${telegramUserId}@telegram.user`;
 
         // Store user in our database
-        const userData: any = {
+        const userData: UserData = {
             id: `user_${telegramUserId}`,
             telegramUserId: telegramUserId,
             unthreadName: unthreadName,
