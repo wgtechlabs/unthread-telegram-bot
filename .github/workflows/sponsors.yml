@@ -14,14 +14,40 @@ jobs:
       - name: Checkout Repository 🛎️
         uses: actions/checkout@v4
 
-      - name: Generate Partner Organizations (Gold+) 🤝
+      - name: Generate Platinum Partners ($1000+) 💎
         uses: JamesIves/github-sponsors-readme-action@v1
         with:
           token: ${{ secrets.SPONSORS_PAT }}
           file: 'README.md'
-          template: '| <a href="{{ websiteUrl }}"><img src="https://github.com/{{ login }}.png" width="100px" alt="{{ login }}" /></a> | {{ login }} |'
-          minimum: 50000  # $500+ (Gold tier and above)
-          marker: 'partners'
+          template: '<a href="{{ websiteUrl }}"><img src="https://github.com/{{ login }}.png" width="120px" alt="{{ login }}" title="{{ login }} - Platinum Partner ($1000+)" /></a>'
+          minimum: 100000  # $1000+ (Platinum tier)
+          marker: 'platinum-partners'
+          organization: true
+          fallback: ''
+          active-only: true
+          include-private: false
+
+      - name: Generate Gold Partners ($500+) �
+        uses: JamesIves/github-sponsors-readme-action@v1
+        with:
+          token: ${{ secrets.SPONSORS_PAT }}
+          file: 'README.md'
+          template: '<a href="{{ websiteUrl }}"><img src="https://github.com/{{ login }}.png" width="100px" alt="{{ login }}" title="{{ login }} - Gold Partner ($500+)" /></a>'
+          minimum: 50000  # $500+ (Gold tier)
+          marker: 'gold-partners'
+          organization: true
+          fallback: ''
+          active-only: true
+          include-private: false
+
+      - name: Generate Silver Partners ($100+) 🥈
+        uses: JamesIves/github-sponsors-readme-action@v1
+        with:
+          token: ${{ secrets.SPONSORS_PAT }}
+          file: 'README.md'
+          template: '<a href="{{ websiteUrl }}"><img src="https://github.com/{{ login }}.png" width="80px" alt="{{ login }}" title="{{ login }} - Silver Partner ($100+)" /></a>'
+          minimum: 10000  # $100+ (Silver tier)
+          marker: 'silver-partners'
           organization: true
           fallback: ''
           active-only: true
@@ -32,7 +58,7 @@ jobs:
         with:
           token: ${{ secrets.SPONSORS_PAT }}
           file: 'README.md'
-          template: '<a href="https://github.com/{{ login }}"><img src="https://github.com/{{ login }}.png" width="50px" alt="{{ login }}" title="{{ login }}" style="border-radius: 50%; margin: 2px;" /></a>'
+          template: '<a href="https://github.com/{{ login }}"><img src="https://github.com/{{ login }}.png" width="60px" alt="{{ login }}" title="{{ login }}" style="border-radius: 50%; margin: 2px;" /></a>'
           minimum: 0
           marker: 'supporters'
           organization: false
