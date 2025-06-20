@@ -14,13 +14,12 @@ With simple commands and intuitive interactions, support tickets automatically s
 
 These outstanding organizations partner with us to support our open-source work:
 
-<!-- platinum-partners --><a href="https:&#x2F;&#x2F;tombachant.com"><img src="https://github.com/bachonk.png" width="80px" alt="bachonk" title="bachonk" style="margin: 2px;" /></a><a href="https:&#x2F;&#x2F;unthread.io"><img src="https://github.com/unthread-io.png" width="80px" alt="unthread-io" title="unthread-io" style="margin: 2px;" /></a><!-- platinum-partners -->
-
-### 🙏 Individual Supporters
-
-Special thanks to all our individual supporters:
-
-<!-- supporters --><!-- supporters -->
+<!-- markdownlint-disable MD033 -->
+| <div align="center">💎 Platinum Sponsor</div> |
+|:-------------------------------------------:|
+| <a href="https://unthread.com"><img src="https://raw.githubusercontent.com/wgtechlabs/unthread-discord-bot/main/.github/assets/sponsors/platinum_unthread.png" width="250" alt="Unthread"></a> |
+| <div align="center"><a href="https://unthread.com" target="_blank"><b>Unthread</b></a><br/>Streamlined support ticketing for modern teams.</div> |
+<!-- markdownlint-enable MD033 -->
 
 ## 💸 Sponsored Ads
 
