@@ -8,7 +8,7 @@
 import fetch from 'node-fetch';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
-import { TicketData } from '../sdk/types.js';
+import { TicketData, UserData } from '../sdk/types.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -578,7 +578,7 @@ export async function getOrCreateUser(telegramUserId: number, username?: string)
             : `user_${telegramUserId}@telegram.user`;
 
         // Store user in our database
-        const userData: any = {
+        const userData: UserData = {
             id: `user_${telegramUserId}`,
             telegramUserId: telegramUserId,
             unthreadName: unthreadName,
