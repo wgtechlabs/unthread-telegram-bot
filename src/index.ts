@@ -229,11 +229,34 @@ async function retryWithBackoff<T>(
 }
 
 /**
+ * Cleans up database connection during initialization failure.
+ *
+ * This function handles the cleanup of database resources when partial initialization
+ * fails, ensuring no database connections are left hanging.
+ *
+ * @param dbInitialized - Flag indicating whether database was successfully initialized
+ */
+async function cleanupDatabaseOnInitFailure(dbInitialized: boolean): Promise<void> {
+    if (dbInitialized) {
+        try {
+            await db.close();
+            LogEngine.info('Database connection closed during cleanup');
+        } catch (cleanupError) {
+            LogEngine.error('Failed to cleanup database during initialization failure', {
+                error: (cleanupError as Error).message
+            });
+        }
+    }
+}
+
+/**
  * Database and Storage initialization with retry logic
  * 
  * Initialize database connection and storage layers before starting the bot
  * Implements retry mechanism to handle transient failures gracefully
  */
+let dbInitialized = false;
+
 try {
     // Initialize database connection with retry logic
     await retryWithBackoff(
@@ -246,6 +269,7 @@ try {
         30000, // max delay: 30 seconds
         'Database connection'
     );
+    dbInitialized = true;
     LogEngine.info('Database initialized successfully');
     
     // Initialize the BotsStore with retry logic
@@ -266,6 +290,10 @@ try {
         error: err.message,
         maxRetries: 5
     });
+    
+    // Cleanup partial initialization
+    await cleanupDatabaseOnInitFailure(dbInitialized);
+    
     process.exit(1);
 }
 

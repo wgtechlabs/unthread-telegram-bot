@@ -8,7 +8,7 @@
 import fetch from 'node-fetch';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
-import { TicketData, AgentMessageData } from '../sdk/types.js';
+import { TicketData, AgentMessageData, UserData } from '../sdk/types.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -78,6 +78,14 @@ interface SendMessageJSONParams {
   conversationId: string;
   message: string;
   onBehalfOf: OnBehalfOfUser;
+}
+
+/**
+ * Ticket creation response
+ */
+interface CreateTicketResponse {
+  id: string;
+  friendlyId: string;
 }
 
 /**
@@ -235,7 +243,7 @@ export async function createCustomer(groupChatName: string): Promise<Customer> {
  * @param params - Includes group chat name, customer ID, ticket summary, and user information on whose behalf the ticket is created.
  * @returns The created ticket object from Unthread.
  */
-export async function createTicket(params: CreateTicketParams): Promise<any> {
+export async function createTicket(params: CreateTicketParams): Promise<CreateTicketResponse> {
     try {
         const { groupChatName, customerId, summary, onBehalfOf } = params;
         
@@ -262,7 +270,7 @@ export async function createTicket(params: CreateTicketParams): Promise<any> {
  * @returns An object containing the ticket's unique ID and friendly ID
  * @throws If the API request fails or returns a non-OK response
  */
-async function createTicketJSON(params: CreateTicketJSONParams): Promise<any> {
+async function createTicketJSON(params: CreateTicketJSONParams): Promise<CreateTicketResponse> {
     const { title, summary, customerId, onBehalfOf } = params;
     
     const payload = {
@@ -289,7 +297,7 @@ async function createTicketJSON(params: CreateTicketJSONParams): Promise<any> {
         throw new Error(`Failed to create ticket: ${response.status} ${errorText}`);
     }
 
-    const result = await response.json() as { id: string; friendlyId: string };
+    const result = await response.json() as CreateTicketResponse;
     
     LogEngine.info('Ticket created (JSON)', {
         ticketTitle: title,
@@ -578,7 +586,7 @@ export async function getOrCreateUser(telegramUserId: number, username?: string)
             : `user_${telegramUserId}@telegram.user`;
 
         // Store user in our database
-        const userData: any = {
+        const userData: UserData = {
             id: `user_${telegramUserId}`,
             telegramUserId: telegramUserId,
             unthreadName: unthreadName,
