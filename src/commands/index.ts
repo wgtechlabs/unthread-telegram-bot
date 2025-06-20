@@ -132,7 +132,7 @@ const aboutCommand = async (ctx: BotContext): Promise<void> => {
 
 **Version:** ${packageJSON.version}
 **Developer:** Waren Gonzaga, WG Technology Labs
-**License:** AGPL-3.0-only
+**License:** ${packageJSON.license}
 
 **Overview:**
 Enable customers and business partners to open support tickets directly within Telegram group chats. This bot connects to your Unthread dashboard, ensuring real-time updates, threaded discussions, and smooth issue tracking.
