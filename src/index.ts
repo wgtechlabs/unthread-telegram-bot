@@ -282,7 +282,7 @@ try {
         }
     }
     
-    process.exit(1);
+    await gracefulShutdown(1);
 }
 
 /**
