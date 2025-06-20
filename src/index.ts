@@ -179,9 +179,9 @@ bot.on('callback_query', async (ctx) => {
 });
 
 /**
- * Executes an asynchronous operation with retries and exponential backoff on failure.
+ * Executes an asynchronous operation with automatic retries and exponential backoff on failure.
  *
- * Retries the provided async operation up to a specified number of times, increasing the delay between attempts exponentially up to a maximum delay. Logs warnings on each retry and an error if all attempts fail.
+ * Retries the given async operation up to a specified number of times, increasing the delay between attempts exponentially up to a maximum delay. Logs warnings on each retry and throws the last encountered error if all attempts fail.
  *
  * @param operation - The asynchronous function to execute and retry on failure
  * @param maxRetries - Maximum number of retry attempts (default: 5)
@@ -229,12 +229,9 @@ async function retryWithBackoff<T>(
 }
 
 /**
- * Cleans up database connection during initialization failure.
+ * Closes the database connection if it was initialized and initialization fails.
  *
- * This function handles the cleanup of database resources when partial initialization
- * fails, ensuring no database connections are left hanging.
- *
- * @param dbInitialized - Flag indicating whether database was successfully initialized
+ * @param dbInitialized - Indicates if the database connection was established before failure
  */
 async function cleanupDatabaseOnInitFailure(dbInitialized: boolean): Promise<void> {
     if (dbInitialized) {
