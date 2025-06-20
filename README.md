@@ -14,7 +14,7 @@ With simple commands and intuitive interactions, support tickets automatically s
 
 These outstanding organizations partner with us to support our open-source work:
 
-<!-- platinum-partners --><!-- platinum-partners --><!-- gold-partners --><!-- gold-partners --><!-- silver-partners --><!-- silver-partners -->
+<!-- platinum-partners --><a href="https:&#x2F;&#x2F;tombachant.com"><img src="https://github.com/bachonk.png" width="120px" alt="bachonk" title="bachonk - Platinum Partner (<!-- platinum-partners -->000+)" /></a><a href="https:&#x2F;&#x2F;unthread.io"><img src="https://github.com/unthread-io.png" width="120px" alt="unthread-io" title="unthread-io - Platinum Partner (<!-- platinum-partners -->000+)" /></a><!-- platinum-partners --><!-- gold-partners --><a href="https:&#x2F;&#x2F;tombachant.com"><img src="https://github.com/bachonk.png" width="100px" alt="bachonk" title="bachonk - Gold Partner ($500+)" /></a><a href="https:&#x2F;&#x2F;unthread.io"><img src="https://github.com/unthread-io.png" width="100px" alt="unthread-io" title="unthread-io - Gold Partner ($500+)" /></a><!-- gold-partners --><!-- silver-partners --><a href="https:&#x2F;&#x2F;tombachant.com"><img src="https://github.com/bachonk.png" width="80px" alt="bachonk" title="bachonk - Silver Partner (<!-- silver-partners -->00+)" /></a><a href="https:&#x2F;&#x2F;unthread.io"><img src="https://github.com/unthread-io.png" width="80px" alt="unthread-io" title="unthread-io - Silver Partner (<!-- silver-partners -->00+)" /></a><!-- silver-partners -->
 
 ### 🙏 Individual Supporters
 
