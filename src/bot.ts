@@ -25,19 +25,7 @@ export function createBot(token: string): Telegraf<BotContext> {
     return new Telegraf<BotContext>(token);
 }
 
-/**
- * Registers command handlers on the bot for each specified command.
- *
- * @param commands - List of command definitions, each containing a command name and its handler function.
- */
-export function configureCommands(
-    bot: Telegraf<BotContext>, 
-    commands: Array<{ name: string; handler: CommandHandler }>
-): void {
-    commands.forEach(command => {
-        bot.command(command.name, command.handler);
-    });
-}
+
 
 /**
  * Starts the bot's polling mechanism to receive updates from Telegram.
@@ -48,63 +36,6 @@ export function startPolling(bot: Telegraf<BotContext>): void {
     bot.launch();
 }
 
-/**
- * Sends a message to a specified chat, handling common Telegram errors such as blocked users, chat not found, and rate limits.
- *
- * Attempts to send a message and performs cleanup if the bot is blocked or the chat does not exist. Returns null if sending fails due to these conditions or rate limiting; otherwise, returns the sent message object.
- *
- * @param chatId - The target chat ID
- * @param text - The message text to send
- * @param options - Optional parameters for message formatting and behavior
- * @returns The sent message object, or null if the message could not be delivered due to blocking, chat not found, or rate limiting
- */
-export async function safeSendMessage(
-    bot: Telegraf<BotContext>, 
-    chatId: number, 
-    text: string, 
-    options: ExtraReplyMessage = {}
-): Promise<any | null> {
-    try {
-        return await bot.telegram.sendMessage(chatId, text, options);
-    } catch (error) {
-        const telegramError = error as TelegramError;
-        
-        if (telegramError.response?.error_code === 403) {
-            if (telegramError.response.description?.includes('bot was blocked by the user')) {
-                LogEngine.warn('Bot was blocked by user - cleaning up user data', { chatId });
-                
-                // Clean up blocked user from storage
-                await cleanupBlockedUser(chatId);
-                
-                return null;
-            }
-            if (telegramError.response.description?.includes('chat not found')) {
-                LogEngine.warn('Chat not found - cleaning up chat data', { chatId });
-                
-                // Clean up chat that no longer exists
-                await cleanupBlockedUser(chatId);
-                
-                return null;
-            }
-        }
-        
-        if (telegramError.response?.error_code === 429) {
-            LogEngine.warn('Rate limit exceeded when sending message', { 
-                chatId, 
-                retryAfter: telegramError.response.parameters?.retry_after 
-            });
-            return null;
-        }
-        
-        // For other errors, log and re-throw
-        LogEngine.error('Error sending message', {
-            error: telegramError.message,
-            chatId,
-            textLength: text?.length
-        });
-        throw error;
-    }
-}
 
 /**
  * Replies to a message in the given context, handling errors such as blocked users, missing chats, and rate limits.
