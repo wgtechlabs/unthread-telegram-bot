@@ -1,12 +1,12 @@
-# Unthread Telegram Bot 🎫🤖 [![made by](https://img.shields.io/badge/made%20by-WG%20Tech%20Labs-0060a0.svg?logo=github&longCache=true&labelColor=181717&style=flat-square)](https://github.com/wgtechlabs)
+# Unthread Telegram Bot 🎫🤖 [![made by](https://img.shields.io/badge/made%20by-WG%20Tech%20Labs-0060a0.svg?logo=github&longCache=true&labelColor=181717&style=flat-square)](https://github.com/wgtechlabs) [![official](https://img.shields.io/badge/Official-Unthread%20Extension-00d4aa.svg?logo=telegram&logoColor=white&labelColor=181717&style=flat-square)](https://unthread.com)
 
 [![sponsors](https://img.shields.io/badge/sponsor-%E2%9D%A4-%23db61a2.svg?&logo=github&logoColor=white&labelColor=181717&style=flat-square)](https://github.com/sponsors/wgtechlabs) [![release](https://img.shields.io/github/release/wgtechlabs/unthread-telegram-bot.svg?logo=github&labelColor=181717&color=green&style=flat-square)](https://github.com/wgtechlabs/unthread-telegram-bot/releases) [![star](https://img.shields.io/github/stars/wgtechlabs/unthread-telegram-bot.svg?&logo=github&labelColor=181717&color=yellow&style=flat-square)](https://github.com/wgtechlabs/unthread-telegram-bot/stargazers) [![license](https://img.shields.io/github/license/wgtechlabs/unthread-telegram-bot.svg?&logo=github&labelColor=181717&style=flat-square)](https://github.com/wgtechlabs/unthread-telegram-bot/blob/main/license)
 
 <!-- [![banner](https://raw.githubusercontent.com/wgtechlabs/unthread-telegram-bot/main/.github/assets/repo_banner.jpg)](https://github.com/wgtechlabs/unthread-telegram-bot) -->
 
-The Unthread Telegram Bot seamlessly connects your Telegram community with Unthread's powerful ticket management system. This official integration transforms how you handle support requests by enabling users to create and manage tickets directly within Telegram.
+**Official Unthread Extension** - The Unthread Telegram Bot is the official integration that connects your customer and partner Telegram chats with Unthread's ticket management system. Create and manage support tickets directly within dedicated Telegram groups, with real-time bidirectional communication between your team and clients.
 
-With simple commands and intuitive interactions, support tickets automatically sync between both platforms, streamlining your workflow and improving response times. Users receive real-time notifications when ticket status changes, ensuring they stay informed throughout the support process. Whether you're managing a community group, running a business chat, or supporting an open-source project, this bot provides the tools you need for efficient, organized customer support.
+Perfect for businesses managing customer support through private Telegram groups or partner channels - not for public community groups.
 
 ## 🤗 Special Thanks
 
@@ -29,25 +29,25 @@ Open source development is resource-intensive. These **sponsored ads help keep L
 
 ## 🤔 How It Works
 
-The Unthread Telegram Bot creates a seamless bridge between your Telegram group chats and Unthread's ticket management system. Here's how it works:
+The **Official Unthread Telegram Bot** creates a seamless bridge between your customer/partner Telegram chats and Unthread's ticket management system. Here's how it works:
 
 ### **📥 Ticket Creation**
 
-- Users in group chats can create support tickets using the `/support` command
+- Customers and partners in dedicated group chats can create support tickets using the `/support` command
 - The bot guides them through a simple conversation to collect issue summary and email (optional)
 - Tickets are automatically created in Unthread with proper customer and user association
 
 ### **🔄 Bidirectional Communication**
 
-- **Agent → User**: When agents respond via the Unthread dashboard, messages are delivered to Telegram in real-time through webhook processing
-- **User → Agent**: Users can simply reply to agent messages naturally - no special commands needed
+- **Agent → Customer**: When agents respond via the Unthread dashboard, messages are delivered to Telegram in real-time through webhook processing
+- **Customer → Agent**: Customers can simply reply to agent messages naturally - no special commands needed
 - **Status Notifications**: Receive real-time notifications when ticket status changes (Open/Closed) with clear messaging and emoji indicators
 - **Conversation Flow**: Maintains complete conversation history across both platforms using message reply chains
 - **Webhook Server**: Powered by [`wgtechlabs/unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server) which processes Unthread webhooks and queues events in Redis for real-time delivery
 
 ### **🏢 Smart Customer Management**
 
-- Automatically extracts customer company names from group chat titles (e.g., "Company X Relay" → "Company X")
+- Automatically extracts customer company names from group chat titles (e.g., "Company X Support" → "Company X")
 - Creates customers in Unthread with `[Telegram]` prefix for platform identification
 - Maps Telegram users to Unthread user profiles with fallback email generation
 
@@ -66,9 +66,9 @@ This bot works in conjunction with the [`wgtechlabs/unthread-webhook-server`](ht
 ```text
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Unthread      │    │   Webhook       │    │   Redis         │    │   Telegram      │
-│   Dashboard     │───▶│   Server        │───▶│   Queue         │───▶│     Bot         │
+│   Dashboard     │───▶│   Server        │───▶│   Queue         │───▶│  Bot (Official) │
 │                 │    │ (wgtechlabs/    │    │ unthread-events │    │                 │
-│   Agent Reply   │    │  unthread-      │    │                 │    │ User receives   │
+│   Agent Reply   │    │  unthread-      │    │                 │    │ Customer gets   │
 │                 │    │  webhook-server)│    │                 │    │ agent message   │
 └─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
@@ -94,7 +94,7 @@ For webhook server setup instructions, see the [`wgtechlabs/unthread-webhook-ser
 
 ### **🎫 Seamless Ticket Management**
 
-- Create support tickets directly from Telegram group chats with `/support` command
+- Create support tickets directly from customer/partner Telegram chats with `/support` command
 - Interactive ticket creation with guided prompts for summary and email
 - Automatic ticket numbering and confirmation messages
 - Smart customer extraction from group chat names
@@ -102,11 +102,11 @@ For webhook server setup instructions, see the [`wgtechlabs/unthread-webhook-ser
 ### **💬 Real-Time Bidirectional Communication**
 
 - Agent responses from Unthread dashboard delivered instantly to Telegram
-- Users reply naturally to agent messages without special commands
+- Customers reply naturally to agent messages without special commands
 - Complete conversation history maintained across both platforms
 - Message reply chains preserve conversation context
 - **Status Notifications**: Real-time alerts when tickets are opened or closed with emoji-rich formatting
-- **Reaction-Based Feedback**: User messages are reacted to with ⏳ (sending) → ✅ (sent) or ❌ (error) for clean, non-intrusive status updates
+- **Reaction-Based Feedback**: Customer messages are reacted to with ⏳ (sending) → ✅ (sent) or ❌ (error) for clean, non-intrusive status updates
 
 ### **🏢 Enterprise-Ready Customer Management**
 
@@ -215,12 +215,12 @@ The bot provides several commands for users and administrators:
 
 - `/start` - Welcome message and bot introduction
 - `/help` - Display available commands and usage instructions  
-- `/support` - Create a new support ticket (group chats only)
+- `/support` - Create a new support ticket (customer/partner group chats only)
 - `/version` - Show current bot version
 
 #### **Support Ticket Creation**
 
-1. **Initiate Ticket**: Use `/support` in a group chat
+1. **Initiate Ticket**: Use `/support` in a customer/partner group chat
 2. **Provide Summary**: Describe your issue when prompted
 3. **Email (Optional)**: Provide email or skip for auto-generated one
 4. **Confirmation**: Receive ticket number and confirmation message
@@ -246,18 +246,18 @@ Bot: 🎫 Support Ticket Created Successfully!
 - Customer name shows as `[Telegram] GroupChatName`
 - User information includes Telegram username and ID
 
-#### **Responding to Users**
+#### **Responding to Customers**
 
 - Reply to tickets in Unthread dashboard as normal
 - Messages are automatically delivered to the original Telegram group
-- Users receive agent responses in real-time
+- Customers receive agent responses in real-time
 
 #### **Ongoing Conversations**
 
-- Users can reply directly to agent messages in Telegram
+- Customers can reply directly to agent messages in Telegram
 - No special commands needed - natural conversation flow
 - All replies are automatically sent back to Unthread
-- **Status Updates**: Users receive real-time notifications when tickets are closed (🔒) or reopened (📂)
+- **Status Updates**: Customers receive real-time notifications when tickets are closed (🔒) or reopened (📂)
 - **Reply Status**: Message reactions show reply status (⏳ sending → ✅ sent successfully / ❌ error)
 - Status notifications include clear messaging about next steps and reply to original ticket messages
 
@@ -265,7 +265,7 @@ Bot: 🎫 Support Ticket Created Successfully!
 
 #### **Adding the Bot**
 
-1. Add your bot to the desired Telegram group chat
+1. Add your bot to the desired customer/partner Telegram group chat
 2. Ensure the bot has permission to read and send messages
 3. Group chat title should ideally include customer company name
 
@@ -274,6 +274,7 @@ Bot: 🎫 Support Ticket Created Successfully!
 - Use descriptive group chat names (e.g., "Acme Corp Support", "ClientName x YourCompany")
 - The bot automatically extracts customer names from chat titles
 - Only group members can create support tickets (private chats are blocked)
+- Recommended for dedicated customer/partner support channels, not public community groups
 
 ### **Admin Features**
 
