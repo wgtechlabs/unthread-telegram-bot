@@ -12,7 +12,7 @@ With simple commands and intuitive interactions, support tickets automatically s
 
 ### 🤝 Partner Organizations
 
-These amazing organizations partner with us to support our open-source work:
+These outstanding organizations partner with us to support our open-source work:
 
 | | |
 |-|-|
