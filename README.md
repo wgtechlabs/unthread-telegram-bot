@@ -16,7 +16,7 @@ These outstanding organizations partner with us to support our open-source work:
 
 | | |
 |-|-|
-<!-- partners --><!-- partners -->
+<!-- partners -->| <a href="https:&#x2F;&#x2F;tombachant.com"><img src="https://github.com/bachonk.png" width="100px" alt="bachonk" /></a> | bachonk || <a href="https:&#x2F;&#x2F;unthread.io"><img src="https://github.com/unthread-io.png" width="100px" alt="unthread-io" /></a> | unthread-io |<!-- partners -->
 
 ### 🙏 Individual Supporters
 
