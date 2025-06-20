@@ -14,7 +14,7 @@ With simple commands and intuitive interactions, support tickets automatically s
 
 These outstanding organizations partner with us to support our open-source work:
 
-<!-- platinum-partners --><!-- platinum-partners -->
+<!-- platinum-partners --><a href="https:&#x2F;&#x2F;tombachant.com"><img src="https://github.com/bachonk.png" width="80px" alt="bachonk" title="bachonk" style="margin: 2px;" /></a><a href="https:&#x2F;&#x2F;unthread.io"><img src="https://github.com/unthread-io.png" width="80px" alt="unthread-io" title="unthread-io" style="margin: 2px;" /></a><!-- platinum-partners -->
 
 ### 🙏 Individual Supporters
 
