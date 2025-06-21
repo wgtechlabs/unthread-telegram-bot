@@ -211,6 +211,13 @@ docker run -d \
 docker-compose up -d
 ```
 
+> [!WARNING]
+> **Security Notice**
+> 
+> Never commit sensitive secrets, credentials, or production environment variables (such as API keys or database URLs) to your repository.
+> For production deployments, use Docker secrets, environment variables, or a secure secrets manager to inject sensitive values at runtime.
+> This helps keep your application and data safe.
+
 ### **Database Requirements**
 
 - **PostgreSQL 12+** (required)
