@@ -209,6 +209,8 @@ docker run -d \
   -e UNTHREAD_CHANNEL_ID=your_channel_id \
   -e UNTHREAD_WEBHOOK_SECRET=your_webhook_secret \
   -e POSTGRES_URL=your_postgres_url \
+  -e WEBHOOK_REDIS_URL=redis://<host>:6379 \
+  -e PLATFORM_REDIS_URL=redis://<host>:6379 \
   unthread-telegram-bot
 ```
 
