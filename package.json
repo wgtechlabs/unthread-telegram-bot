@@ -14,7 +14,7 @@
     "preinstall": "test \"$DOCKER_BUILD\" = \"true\" || npx only-allow yarn",
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "nodemon --exec 'npm run build && npm start' src/index.ts",
+    "dev": "nodemon --exec 'yarn build && yarn start' src/index.ts",
     "dev:watch": "concurrently \"tsc --watch\" \"nodemon dist/index.js\"",
     "clean": "rm -rf dist"
   },

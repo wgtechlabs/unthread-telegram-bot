@@ -10,10 +10,9 @@ WORKDIR /app
 COPY package.json yarn.lock ./
 
 # Install all dependencies (including devDependencies for build)
-# Configure npm and yarn for Docker environment
-RUN npm config set strict-ssl false && \
-    npm config set registry http://registry.npmjs.org/ && \
-    yarn config set strict-ssl false && \
+# Update CA certificates for secure connections
+RUN apk update && apk add --no-cache ca-certificates && update-ca-certificates
+RUN npm config set registry https://registry.npmjs.org/ && \
     DOCKER_BUILD=true yarn install --frozen-lockfile
 
 # Copy source code
@@ -33,10 +32,9 @@ WORKDIR /app
 COPY package.json yarn.lock ./
 
 # Install only production dependencies
-# Configure npm and yarn for Docker environment
-RUN npm config set strict-ssl false && \
-    npm config set registry http://registry.npmjs.org/ && \
-    yarn config set strict-ssl false && \
+# Update CA certificates for secure connections
+RUN apk update && apk add --no-cache ca-certificates && update-ca-certificates
+RUN npm config set registry https://registry.npmjs.org/ && \
     DOCKER_BUILD=true yarn install --frozen-lockfile --production
 
 # Copy built application from builder stage
