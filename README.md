@@ -129,6 +129,7 @@ For webhook server setup instructions, see the [`wgtechlabs/unthread-webhook-ser
 - Structured logging with `@wgtechlabs/log-engine` integration
 - Auto-setup database schema on first run
 - Clean separation of concerns with SDK architecture
+- Docker support with multi-stage builds for easy deployment
 
 ### **🔧 Flexible Configuration**
 
@@ -194,7 +195,19 @@ That's it! The database schema will be created automatically on first run.
 #### **🐳 Docker Support**
 
 ```bash
-# Coming soon - Docker deployment support
+# Build the Docker image
+docker build -t unthread-telegram-bot .
+
+# Run the container with environment variables
+docker run -d \
+  --name unthread-bot \
+  -e TELEGRAM_BOT_TOKEN=your_bot_token \
+  -e UNTHREAD_API_KEY=your_api_key \
+  -e UNTHREAD_CHANNEL_ID=your_channel_id \
+  -e DATABASE_URL=your_postgres_url \
+  unthread-telegram-bot
+
+# Or use docker-compose (create docker-compose.yml first)
 docker-compose up -d
 ```
 
