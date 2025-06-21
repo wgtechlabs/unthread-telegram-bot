@@ -11,7 +11,7 @@
   },
   "packageManager": "yarn@1.22.22",
   "scripts": {
-    "preinstall": "npx only-allow yarn",
+    "preinstall": "test \"$DOCKER_BUILD\" = \"true\" || npx only-allow yarn",
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "nodemon --exec 'npm run build && npm start' src/index.ts",

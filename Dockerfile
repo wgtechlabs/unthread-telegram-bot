@@ -14,8 +14,7 @@ COPY package.json yarn.lock ./
 RUN npm config set strict-ssl false && \
     npm config set registry http://registry.npmjs.org/ && \
     yarn config set strict-ssl false && \
-    sed -i 's/"preinstall": "npx only-allow yarn",/"preinstall": "",/' package.json && \
-    yarn install --frozen-lockfile
+    DOCKER_BUILD=true yarn install --frozen-lockfile
 
 # Copy source code
 COPY src/ ./src/
@@ -38,8 +37,7 @@ COPY package.json yarn.lock ./
 RUN npm config set strict-ssl false && \
     npm config set registry http://registry.npmjs.org/ && \
     yarn config set strict-ssl false && \
-    sed -i 's/"preinstall": "npx only-allow yarn",/"preinstall": "",/' package.json && \
-    yarn install --frozen-lockfile --production
+    DOCKER_BUILD=true yarn install --frozen-lockfile --production
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
