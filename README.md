@@ -129,7 +129,6 @@ For webhook server setup instructions, see the [`wgtechlabs/unthread-webhook-ser
 - Structured logging with `@wgtechlabs/log-engine` integration
 - Auto-setup database schema on first run
 - Clean separation of concerns with SDK architecture
-- Docker support with multi-stage builds for easy deployment
 
 ### **🔧 Flexible Configuration**
 
@@ -193,61 +192,14 @@ That's it! The database schema will be created automatically on first run.
 
 [![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/u/warengonzaga)
 
-#### **🐳 Docker Support**
-
-##### Option 1: Docker Run (Single Container)
-
-```bash
-# Build the Docker image
-docker build -t unthread-telegram-bot .
-
-# Run the container with environment variables
-docker run -d \
-  --name unthread-bot \
-  -e TELEGRAM_BOT_TOKEN=your_bot_token \
-  -e UNTHREAD_API_KEY=your_api_key \
-  -e UNTHREAD_CHANNEL_ID=your_channel_id \
-  -e UNTHREAD_WEBHOOK_SECRET=your_webhook_secret \
-  -e POSTGRES_URL=your_postgres_url \
-  -e WEBHOOK_REDIS_URL=redis://<host>:6379 \
-  -e PLATFORM_REDIS_URL=redis://<host>:6379 \
-  unthread-telegram-bot
-```
-
-##### Option 2: Docker Compose (Recommended)
-
-Docker Compose provides a complete setup with PostgreSQL and Redis included:
-
-- **Complete Stack**: Automatically sets up the bot, PostgreSQL database, and Redis cache
-- **Health Checks**: Ensures services start in the correct order
-- **Data Persistence**: Database and Redis data are persisted across restarts
-- **Network Isolation**: All services run in a dedicated Docker network
-- **Easy Management**: Single command to start/stop the entire stack
-
-```bash
-# Copy the Docker environment file
-cp .env.docker .env
-
-# Edit .env with your configuration
-nano .env
-
-# Start all services (bot, database, redis)
-docker-compose up -d
-
-# View logs
-docker-compose logs -f unthread-bot
-
-# Stop all services
-docker-compose down
-```
-
-> [!WARNING]
-> **Security Notice**
-> Never commit sensitive secrets, credentials, or production environment variables (such as API keys or database URLs) to your repository.
-> For production deployments, use Docker secrets, environment variables, or a secure secrets manager to inject sensitive values at runtime.
-> This helps keep your application and data safe.
-
 ### **Database Requirements**
+
+- **PostgreSQL 12+** (required)
+- **Redis 6+** (optional, for enhanced performance)
+- Automatic schema setup on first connection
+- No manual migration scripts needed
+
+## 🕹️ Usage
 
 - **PostgreSQL 12+** (required)
 - **Redis 6+** (optional, for enhanced performance)
@@ -394,9 +346,6 @@ createdb unthread_telegram_bot
 ```bash
 # Copy example environment file
 cp .env.example .env
-
-# For Docker Compose deployment, use the Docker-specific template:
-# cp .env.docker .env
 
 # Edit .env with your configuration
 nano .env
