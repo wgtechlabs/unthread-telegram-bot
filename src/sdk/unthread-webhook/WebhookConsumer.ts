@@ -1,3 +1,36 @@
+/**
+ * Unthread Telegram Bot - Webhook Consumer
+ * 
+ * Redis-based queue consumer that processes webhook events from the Unthread
+ * platform and routes them to appropriate handlers. Designed for reliable
+ * message delivery with comprehensive error handling and retry mechanisms.
+ * 
+ * Core Functionality:
+ * - Polls Redis queue for incoming webhook events
+ * - Validates event structure and content
+ * - Routes events to registered handlers based on type and source
+ * - Provides reliable delivery guarantees with retry logic
+ * 
+ * Supported Events:
+ * - message_created: Agent messages from Unthread dashboard
+ * - conversation_updated: Ticket status and metadata changes
+ * 
+ * Features:
+ * - Configurable polling intervals for optimal performance
+ * - Event validation before processing
+ * - Graceful error handling and logging
+ * - Connection management with automatic reconnection
+ * - Queue monitoring and health checks
+ * 
+ * Configuration:
+ * - Redis connection URL
+ * - Custom queue names for different environments
+ * - Polling interval adjustment for performance tuning * - Handler registration for different event types
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ * @version 1.0.0
+ * @since 2025
+ */
 import { createClient, RedisClientType } from 'redis';
 import { EventValidator } from './EventValidator.js';
 import { LogEngine } from '@wgtechlabs/log-engine';

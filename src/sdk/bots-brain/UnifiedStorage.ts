@@ -1,3 +1,37 @@
+/**
+ * Unthread Telegram Bot - Bots Brain UnifiedStorage
+ * 
+ * Multi-layer storage architecture that provides intelligent caching and data
+ * persistence for bot applications. Implements a three-tier storage system
+ * optimized for performance, scalability, and reliability.
+ * 
+ * Storage Architecture:
+ * - Layer 1: Memory Cache (24hr TTL) - Fastest access for hot data
+ * - Layer 2: Redis Cache (3-day TTL) - Fast distributed cache for warm data
+ * - Layer 3: PostgreSQL (Permanent) - Persistent storage for cold data
+ * 
+ * Key Features:
+ * - Automatic data tier management and promotion/demotion
+ * - Configurable TTL (Time To Live) for each storage layer
+ * - Intelligent fallback mechanism between storage tiers
+ * - Memory cleanup and garbage collection
+ * - Connection pooling and error recovery
+ * 
+ * Performance Benefits:
+ * - Sub-millisecond access for frequently used data
+ * - Reduced database load through intelligent caching
+ * - Horizontal scalability with Redis distribution
+ * - Automatic cache warming and data preloading
+ * 
+ * Reliability:
+ * - Graceful degradation when storage layers are unavailable
+ * - Automatic retry mechanisms with exponential backoff
+ * - Data consistency guarantees across all layers * - Comprehensive error handling and logging
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ * @version 1.0.0
+ * @since 2025
+ */
 import { createClient, RedisClientType } from 'redis';
 import pkg from 'pg';
 const { Pool } = pkg;

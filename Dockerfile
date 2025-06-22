@@ -1,68 +1,82 @@
+# =============================================================================
+# UNTHREAD TELEGRAM BOT - DOCKERFILE
+# =============================================================================
+# Multi-stage Docker build for the Unthread Telegram Bot
+# 
+# Build stages:
+# 1. deps    - Install production dependencies only
+# 2. build   - Install dev dependencies and build the application
+# 3. final   - Create minimal runtime image with built app
+#
+# Usage:
+#   docker build -t unthread-telegram-bot .
+#   docker run --env-file .env unthread-telegram-bot
+# =============================================================================
+
 # syntax=docker/dockerfile:1
 
-# Comments are provided throughout this file to help you get started.
-# If you need more help, visit the Dockerfile reference guide at
-# https://docs.docker.com/go/dockerfile-reference/
-
-# Want to help us make this template better? Share your feedback here: https://forms.gle/ybq9Krt8jtBL3iCk7
-
+# Use Node.js LTS Alpine for smaller image size
 ARG NODE_VERSION=20.18.0
 
-################################################################################
-# Use node image for base image for all stages.
+# =============================================================================
+# STAGE 1: Base Image
+# =============================================================================
+# Alpine Linux base for minimal image size
 FROM node:${NODE_VERSION}-alpine AS base
 
-# Set working directory for all build stages.
+# Set working directory for all subsequent stages
 WORKDIR /usr/src/app
 
-
-################################################################################
-# Create a stage for installing production dependecies.
+# =============================================================================
+# STAGE 2: Production Dependencies
+# =============================================================================
+# Install only production dependencies for runtime
 FROM base AS deps
 
-# Download dependencies as a separate step to take advantage of Docker's caching.
-# Leverage a cache mount to /root/.yarn to speed up subsequent builds.
-# Leverage bind mounts to package.json and yarn.lock to avoid having to copy them
-# into this layer.
+# Use bind mounts and cache for faster builds
+# Downloads dependencies without copying package files into the layer
 RUN --mount=type=bind,source=package.json,target=package.json \
     --mount=type=bind,source=yarn.lock,target=yarn.lock \
     --mount=type=cache,target=/root/.yarn \
     yarn install --production --frozen-lockfile
 
-################################################################################
-# Create a stage for building the application.
+# =============================================================================
+# STAGE 3: Build Application  
+# =============================================================================
+# Install dev dependencies and build the TypeScript application
 FROM deps AS build
 
-# Download additional development dependencies before building, as some projects require
-# "devDependencies" to be installed to build. If you don't need this, remove this step.
+# Install all dependencies (including devDependencies for building)
 RUN --mount=type=bind,source=package.json,target=package.json \
     --mount=type=bind,source=yarn.lock,target=yarn.lock \
     --mount=type=cache,target=/root/.yarn \
     yarn install --frozen-lockfile
 
-# Copy the rest of the source files into the image.
+# Copy source code and build the application
 COPY . .
-# Run the build script.
 RUN yarn run build
 
-################################################################################
-# Create a new stage to run the application with minimal runtime dependencies
-# where the necessary files are copied from the build stage.
+# Copy non-TypeScript files that need to be in the final build
+RUN cp src/database/schema.sql dist/database/
+
+# =============================================================================
+# STAGE 4: Final Runtime Image
+# =============================================================================
+# Minimal production image with only necessary files
 FROM base AS final
 
-# Use production node environment by default.
+# Set production environment
 ENV NODE_ENV=production
 
-# Run the application as a non-root user.
+# Run as non-root user for security
 USER node
 
-# Copy package.json so that package manager commands can be used.
+# Copy package.json for package manager commands
 COPY package.json .
 
-# Copy the production dependencies from the deps stage and also
-# the built application from the build stage into the image.
+# Copy production dependencies and built application
 COPY --from=deps /usr/src/app/node_modules ./node_modules
 COPY --from=build /usr/src/app/dist ./dist
 
-# Run the application.
+# Start the application
 CMD ["yarn", "start"]

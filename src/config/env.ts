@@ -1,8 +1,26 @@
 /**
- * Environment Configuration and Validation
+ * Unthread Telegram Bot - Environment Configuration and Validation
  * 
- * This module validates that all required environment variables are present.
- * Import this module after dotenv.config() has been called.
+ * Validates and manages environment variables required for the Unthread Telegram Bot
+ * to function properly. This module ensures all necessary API keys, database connections,
+ * and service endpoints are configured before the bot starts.
+ * 
+ * Required Environment Variables:
+ * - TELEGRAM_BOT_TOKEN: Telegram Bot API authentication token
+ * - UNTHREAD_API_KEY: Unthread platform API key for ticket creation
+ * - UNTHREAD_SLACK_CHANNEL_ID: Target Slack channel for ticket routing
+ * - UNTHREAD_WEBHOOK_SECRET: Secret for webhook signature verification
+ * - PLATFORM_REDIS_URL: Redis connection for bot state management
+ * - WEBHOOK_REDIS_URL: Redis connection for webhook event processing
+ * - POSTGRES_URL: PostgreSQL database connection for persistent storage
+ * 
+ * Security:
+ * - Validates all critical environment variables at startup
+ * - Provides clear error messages for missing configuration * - Prevents bot startup with incomplete configuration
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ * @version 1.0.0
+ * @since 2025
  */
 
 /**

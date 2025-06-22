@@ -1,3 +1,31 @@
+/**
+ * Unthread Telegram Bot - Webhook Message Handler
+ * 
+ * Handles incoming webhook events from the Unthread platform and delivers agent
+ * responses back to Telegram users. This module bridges the communication gap
+ * between Unthread agents and Telegram conversations.
+ * 
+ * Core Functionality:
+ * - Processes webhook events from Unthread dashboard
+ * - Routes agent messages to corresponding Telegram chats
+ * - Maintains conversation threading and context
+ * - Handles delivery errors and user blocking scenarios
+ * 
+ * Features:
+ * - Safe message delivery with comprehensive error handling
+ * - Automatic user blocking detection and cleanup
+ * - Message formatting and threading preservation
+ * - Integration with Bots Brain storage for conversation context
+ * - Real-time agent response delivery to Telegram users
+ * 
+ * Error Handling:
+ * - Graceful handling of blocked users and deleted chats
+ * - Rate limiting and API error recovery * - Comprehensive logging for debugging and monitoring
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ * @version 1.0.0
+ * @since 2025
+ */
 import { LogEngine } from '@wgtechlabs/log-engine';
 import type { Telegraf } from 'telegraf';
 import type { BotContext } from '../types/index.js';

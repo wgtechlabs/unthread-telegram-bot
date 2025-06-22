@@ -1,8 +1,27 @@
 /**
- * Main Bot Application Entry Point
+ * Unthread Telegram Bot - Main Application Entry Point
  * 
- * This file is the entry point for the Telegram bot application. It handles the bot
- * initialization, configures middleware, sets up command handlers, and starts the bot.
+ * This is the main entry point for the Unthread Telegram Bot application that bridges
+ * Telegram conversations with the Unthread customer support platform. The bot enables
+ * seamless ticket creation, message routing, and agent response delivery.
+ * 
+ * Key Features:
+ * - Automated ticket creation from Telegram messages
+ * - Bidirectional message routing between Telegram and Unthread dashboard
+ * - Support form collection with email validation
+ * - Multi-chat support (private, group, supergroup)
+ * - Persistent conversation state management with Bots Brain SDK
+ * - Real-time webhook event processing for agent responses
+ * 
+ * Architecture:
+ * - Bot initialization with Telegraf framework
+ * - Database connection with PostgreSQL and Redis caching
+ * - Command handlers for user interactions * - Webhook consumer for Unthread agent responses
+ * - Unified storage system for state persistence
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ * @version 1.0.0
+ * @since 2025
  */
 import dotenv from 'dotenv';
 

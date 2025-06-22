@@ -1,8 +1,37 @@
 /**
- * Unthread API Service
+ * Unthread Telegram Bot - Unthread API Service
  * 
- * This module provides functionality to interact with the Unthread API
- * for creating customers, tickets, and sending messages.
+ * Provides comprehensive integration with the Unthread platform API for customer
+ * support ticket management. This service handles customer creation, ticket
+ * management, and message routing between Telegram and Unthread.
+ * 
+ * Core Features:
+ * - Customer profile creation and management
+ * - Support ticket creation and status tracking
+ * - Message sending and conversation threading
+ * - API authentication and error handling
+ * - Data persistence with Bots Brain storage integration
+ * 
+ * API Operations:
+ * - Customer creation with Telegram user data
+ * - Ticket creation with support form data
+ * - Message posting to existing conversations
+ * - Ticket status updates and notifications
+ * 
+ * Integration Points:
+ * - Telegram user data mapping to Unthread customers
+ * - Support form data collection and validation
+ * - Conversation state management and persistence
+ * - Error handling and retry mechanisms
+ * 
+ * Security:
+ * - API key authentication
+ * - Request signing and validation
+ * - Rate limiting compliance * - Data sanitization and validation
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ * @version 1.0.0
+ * @since 2025
  */
 
 import fetch from 'node-fetch';

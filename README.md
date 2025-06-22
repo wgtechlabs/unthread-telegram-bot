@@ -84,11 +84,12 @@ This bot works in conjunction with the [`wgtechlabs/unthread-webhook-server`](ht
 
 ### **⚙️ Configuration Requirements**
 
-- **Webhook Server**: Must be deployed separately to receive Unthread webhooks
-- **Shared Redis**: Both webhook server and bot must use the same Redis instance
+- **Webhook Server**: Included in Docker Compose setup using [`wgtechlabs/unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server)
+- **Shared Redis**: The `redis-webhook` service is shared between webhook server and bot
 - **Queue Names**: Both webhook server and bot use the standard queue name `unthread-events`
+- **Network**: All services communicate via `unthread-integration-network`
 
-For webhook server setup instructions, see the [`wgtechlabs/unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server) repository.
+For standalone webhook server setup, see the [`wgtechlabs/unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server) repository.
 
 ## ✨ Key Features
 
@@ -351,12 +352,12 @@ nano .env
 
 ```bash
 TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
-POSTGRES_URL=postgresql://user:password@localhost:5432/unthread_telegram_bot
+POSTGRES_URL=postgresql://postgres:postgres@localhost:5432/unthread_bot
 UNTHREAD_API_KEY=your_unthread_api_key
 UNTHREAD_SLACK_CHANNEL_ID=your_unthread_slack_channel_id
 UNTHREAD_WEBHOOK_SECRET=your_unthread_webhook_secret
 PLATFORM_REDIS_URL=redis://localhost:6379
-WEBHOOK_REDIS_URL=redis://localhost:6379
+WEBHOOK_REDIS_URL=redis://localhost:6380
 ```
 
 **Optional environment variables:**
@@ -365,12 +366,16 @@ WEBHOOK_REDIS_URL=redis://localhost:6379
 COMPANY_NAME=YourCompanyName
 WEBHOOK_POLL_INTERVAL=1000
 NODE_ENV=development
+DATABASE_SSL_VALIDATE=false
 ```
 
 **📱 Environment Notes:**
 
 - **Local Development**: Use `localhost` for database and Redis URLs
-- **Docker Deployment**: Update URLs to use service names (e.g., `postgres:5432`, `redis:6379`) if using docker-compose
+- **Docker Deployment**: Update URLs to use service names:
+  - Database: `postgres-platform:5432`
+  - Platform Redis: `redis-platform:6379`  
+  - Webhook Redis: `redis-webhook:6379`
 - **Production**: Set `NODE_ENV=production` and use secure connection strings
 - **Enterprise**: This same `.env` file works seamlessly across all deployment methods
 
@@ -451,10 +456,18 @@ Edit the `.env` file and configure the following required variables:
 Start your application with all dependencies:
 
 ```bash
-docker compose up --build
+docker compose up -d
 ```
 
-This will build the image and start the bot with any configured services.
+This will build and start:
+
+- **Bot server** (`server`) - The main Telegram bot application
+- **Webhook server** (`unthread-webhook-server`) - Handles Unthread webhooks on port 3000
+- **PostgreSQL** (`postgres-platform`) - Database for the bot on port 5432  
+- **Redis Platform** (`redis-platform`) - Redis for bot operations on port 6379
+- **Redis Webhook** (`redis-webhook`) - Shared Redis for webhook communication on port 6380
+
+All services run on the `unthread-integration-network` for seamless communication.
 
 #### **Method 2: Using Docker Commands**
 
@@ -512,9 +525,14 @@ yarn dev
 ### **Docker Troubleshooting**
 
 - Ensure all required environment variables are set in your `.env` file
-- Check Docker logs: `docker logs <container-id>`
+- Check service logs: `docker-compose logs <service-name>`
+  - Bot: `docker-compose logs server`
+  - Webhook: `docker-compose logs unthread-webhook-server`
+  - Database: `docker-compose logs postgres-platform`
+  - Redis: `docker-compose logs redis-platform redis-webhook`
 - Verify your Telegram bot token is valid
-- Ensure external services (database, Redis) are accessible from the container
+- Test webhook server health: `curl http://localhost:3000/health`
+- Ensure the `unthread-integration-network` exists: `docker network ls`
 
 ### **Docker Environment Notes**
 

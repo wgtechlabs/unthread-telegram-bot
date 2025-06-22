@@ -18,13 +18,12 @@
   "engines": {
     "node": ">=20.0.0",
     "yarn": ">=1.22.22"
-  },
-  "scripts": {
+  },  "scripts": {
     "preinstall": "npx only-allow yarn",
     "clean": "rm -rf dist",
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "nodemon --exec 'yarn build && yarn start' src/index.ts",
+    "dev": "nodemon --exec \"yarn build && yarn start\" src/index.ts",
     "dev:watch": "concurrently \"tsc --watch\" \"nodemon dist/index.js\"",
     "docker:build": "docker build -t unthread-telegram-bot .",
     "docker:run": "docker run --env-file .env unthread-telegram-bot"
