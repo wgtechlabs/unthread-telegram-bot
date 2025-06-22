@@ -77,7 +77,11 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
 
 3. **Deploy Instantly**
 
-   **Option A: Docker (Recommended)**
+   **Option A: Railway (One-Click Deploy)**
+
+   [![deploy on railway](https://railway.com/button.svg)](https://railway.com/deploy/unthread-telegram-bo?referralCode=dTwT-i)
+
+   **Option B: Docker (Recommended)**
 
    ```bash
    # Clone and setup
@@ -90,7 +94,7 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
    docker compose up -d
    ```
 
-   **Option B: Manual Installation**
+   **Option C: Manual Installation**
 
    ```bash
    # Clone and setup
@@ -108,6 +112,15 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
    - Add your bot to a Telegram group
    - Send `/start` to see if it responds
    - Try creating a ticket with `/support`
+
+## 🚂 One-Click Deploy
+
+Deploy instantly to Railway with a single click:
+
+[![deploy on railway](https://railway.com/button.svg)](https://railway.com/deploy/unthread-telegram-bo?referralCode=dTwT-i)
+
+> [!TIP]
+> Deploying using Railway directly supports this project's ongoing development and maintenance! 🚀
 
 ### **📋 Required Configuration**
 
@@ -240,7 +253,7 @@ There are several ways you can support this project:
 
 - [Become a sponsor](https://github.com/sponsors/wgtechlabs) and get some perks! 💖
 - [Buy me a coffee](https://buymeacoffee.com/wgtechlabs) if you just love what I do! ☕
-- Deploy using the [Railway Template](https://railway.com/template/nVHIjj?referralCode=dTwT-i) which directly supports the ongoing development! 🛠️
+- Deploy using the [Railway Template](https://railway.com/deploy/unthread-telegram-bo?referralCode=dTwT-i) which directly supports the ongoing development! 🛠️
 
 ## ⭐ GitHub Star Nomination
 
