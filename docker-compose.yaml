@@ -26,8 +26,7 @@ services:
   # =============================================================================
   # Main Node.js application that handles Telegram bot interactions
   server:
-    build:
-      context: .
+    image: wgtechlabs/unthread-telegram-bot:latest
     environment:
       NODE_ENV: production
     env_file:
@@ -45,7 +44,6 @@ services:
   # Handles incoming webhooks from Unthread and queues them for processing
   unthread-webhook-server:
     image: wgtechlabs/unthread-webhook-server:latest
-    container_name: docker-unthread-webhook-server
     ports:
       - "3000:3000"  # Expose webhook endpoint
     env_file:
