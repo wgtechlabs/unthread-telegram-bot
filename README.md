@@ -147,24 +147,7 @@ PLATFORM_REDIS_URL=redis://redis-platform:6379
 
 ### **🛤️ Railway Deployment**
 
-Railway's managed PostgreSQL uses self-signed SSL certificates, which the bot automatically handles:
-
-#### **Automatic SSL Detection**
-
-- The bot automatically detects Railway environment by checking for `railway.internal` in your service URLs
-- When Railway is detected, SSL encryption is maintained but certificate validation is relaxed to accept Railway's self-signed certificates
-- No manual SSL configuration is needed - the bot handles this automatically
-
-#### **SSL Configuration Priority**
-
-1. **Railway Environment**: Uses Railway-compatible SSL (accepts self-signed certificates)
-2. **Production Environment**: Strict SSL validation for security
-3. **Development Environment**: Configurable via `DATABASE_SSL_VALIDATE` environment variable
-
-#### **Railway SSL Behavior**
-
-- ✅ **SSL Encryption**: Always enabled for secure data transmission
-- ✅ **Railway Certificates**: Automatically accepts Railway's self-signed certificates
+For detailed information about Railway's managed PostgreSQL and SSL handling, please refer to the [Railway Deployment section in the README](README.md#🛤️-railway-deployment).
 - ✅ **Environment Override**: Railway detection takes precedence over all other SSL settings
 - ✅ **No Configuration**: Works out-of-the-box without manual SSL setup
 
