@@ -8,7 +8,7 @@
  * - TELEGRAM_BOT_TOKEN: Telegram Bot API authentication token
  * - UNTHREAD_API_KEY: Unthread platform API key for ticket creation
  * - UNTHREAD_SLACK_CHANNEL_ID: Target Slack channel for ticket routing
- * - UNTHREAD_WEBHOOK_SECRET: Secret for webhook signature verification
+ * - UNTHREAD_WEBHOOK_SECRET: Secret for webhook signature verification (required for full integration)
  * - PLATFORM_REDIS_URL: Redis connection for bot state management
  * - WEBHOOK_REDIS_URL: Redis connection for webhook event processing
  * - POSTGRES_URL: PostgreSQL database connection for persistent storage
