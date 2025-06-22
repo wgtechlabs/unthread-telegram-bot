@@ -3,9 +3,10 @@
 # =============================================================================
 
 # ======= Environment & Configuration =======
-# Ignore all .env files except the example template
+# Ignore all .env files except templates
 .env*
 !.env.example
+!.env.railway
 
 # ======= Build Output & Dependencies =======
 # Node.js
