@@ -75,14 +75,14 @@ services:
     restart: always
     environment:
       POSTGRES_DB: unthread_telegram_bot    # Database name
-      POSTGRES_USER: postgres               # Username
-      POSTGRES_PASSWORD: postgres           # Password (change in production!)
+      POSTGRES_USER: ${POSTGRES_USER}       # Username from .env file
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}  # Password from .env file (secure!)
     ports:
       - "5432:5432"  # Expose for external connections (optional)
     volumes:
       - postgres_data:/var/lib/postgresql/data  # Persistent data storage
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 10s
       timeout: 5s
       retries: 5

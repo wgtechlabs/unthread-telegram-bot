@@ -1,0 +1,139 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+env:
+  REGISTRY_DOCKERHUB: wgtechlabs/unthread-telegram-bot
+  REGISTRY_GHCR: ghcr.io/wgtechlabs/unthread-telegram-bot
+
+jobs:
+  build-production:
+    name: Build Production Images
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+          
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: cloud
+          endpoint: "wgtechlabs/unthread-bot-builder"
+          install: true
+          
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Extract version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "major=$(echo $VERSION | cut -d. -f1)" >> $GITHUB_OUTPUT
+          echo "minor=$(echo $VERSION | cut -d. -f1-2)" >> $GITHUB_OUTPUT
+          echo "patch=$(echo $VERSION | cut -d. -f1-3)" >> $GITHUB_OUTPUT
+          echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+          
+      - name: Generate Docker tags
+        id: tags
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          MAJOR="${{ steps.version.outputs.major }}"
+          MINOR="${{ steps.version.outputs.minor }}"
+          PATCH="${{ steps.version.outputs.patch }}"
+          
+          # Docker Hub tags (no 'v' prefix)
+          DOCKERHUB_TAGS="${{ env.REGISTRY_DOCKERHUB }}:latest"
+          DOCKERHUB_TAGS="$DOCKERHUB_TAGS,${{ env.REGISTRY_DOCKERHUB }}:$VERSION"
+          DOCKERHUB_TAGS="$DOCKERHUB_TAGS,${{ env.REGISTRY_DOCKERHUB }}:$PATCH"
+          DOCKERHUB_TAGS="$DOCKERHUB_TAGS,${{ env.REGISTRY_DOCKERHUB }}:$MINOR"
+          DOCKERHUB_TAGS="$DOCKERHUB_TAGS,${{ env.REGISTRY_DOCKERHUB }}:$MAJOR"
+          
+          # GitHub Container Registry tags (with 'v' prefix)
+          GHCR_TAGS="${{ env.REGISTRY_GHCR }}:latest"
+          GHCR_TAGS="$GHCR_TAGS,${{ env.REGISTRY_GHCR }}:v$VERSION"
+          GHCR_TAGS="$GHCR_TAGS,${{ env.REGISTRY_GHCR }}:v$PATCH"
+          GHCR_TAGS="$GHCR_TAGS,${{ env.REGISTRY_GHCR }}:v$MINOR"
+          GHCR_TAGS="$GHCR_TAGS,${{ env.REGISTRY_GHCR }}:v$MAJOR"
+          
+          # Combine all tags
+          ALL_TAGS="$DOCKERHUB_TAGS,$GHCR_TAGS"          
+          echo "tags=$ALL_TAGS" >> $GITHUB_OUTPUT
+          
+      - name: Build and push production images
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=Unthread Telegram Bot
+            org.opencontainers.image.description=Turn private Telegram groups into real-time support ticket hubs — powered by Unthread.io.
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.created=${{ steps.version.outputs.build_date }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.licenses=GPL-3.0
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        continue-on-error: true
+        with:
+          image-ref: ${{ env.REGISTRY_DOCKERHUB }}:${{ steps.version.outputs.version }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        with:
+          sarif_file: 'trivy-results.sarif'
+          
+      - name: Production release summary
+        run: |
+          echo "## 🚀 Production Release Complete" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Release:** \`${{ github.event.release.tag_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Docker Hub Images:**" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY_DOCKERHUB }}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY_DOCKERHUB }}:${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY_DOCKERHUB }}:${{ steps.version.outputs.patch }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY_DOCKERHUB }}:${{ steps.version.outputs.minor }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY_DOCKERHUB }}:${{ steps.version.outputs.major }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**GitHub Container Registry Images:**" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY_GHCR }}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY_GHCR }}:v${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY_GHCR }}:v${{ steps.version.outputs.patch }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY_GHCR }}:v${{ steps.version.outputs.minor }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY_GHCR }}:v${{ steps.version.outputs.major }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Deploy with:**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.REGISTRY_DOCKERHUB }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo "# OR" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.REGISTRY_GHCR }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
