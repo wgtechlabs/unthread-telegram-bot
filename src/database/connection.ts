@@ -264,13 +264,12 @@ export class DatabaseConnection {
         const platformRedis = process.env.PLATFORM_REDIS_URL;
         const webhookRedis = process.env.WEBHOOK_REDIS_URL;
         const postgresUrl = process.env.POSTGRES_URL;
-        
-        // Railway internal services use 'railway.internal' in their hostnames
+          // Railway internal services use 'railway.internal' in their hostnames
         const isRailwayHost = (url: string | undefined): boolean => {
-            if (!url) return false;
+            if (!url || url.trim() === '') return false;
             try {
                 const parsedUrl = new URL(url);
-                return parsedUrl.hostname.includes('railway.internal');
+                return parsedUrl.hostname.toLowerCase().includes('railway.internal');
             } catch {
                 return false; // Invalid URL
             }
