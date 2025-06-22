@@ -352,12 +352,12 @@ nano .env
 
 ```bash
 TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
-POSTGRES_URL=postgresql://postgres:postgres@localhost:5432/unthread_bot
+POSTGRES_URL=postgresql://postgres:postgres@localhost:5432/unthread_telegram_bot
 UNTHREAD_API_KEY=your_unthread_api_key
 UNTHREAD_SLACK_CHANNEL_ID=your_unthread_slack_channel_id
 UNTHREAD_WEBHOOK_SECRET=your_unthread_webhook_secret
 PLATFORM_REDIS_URL=redis://localhost:6379
-WEBHOOK_REDIS_URL=redis://localhost:6380
+WEBHOOK_REDIS_URL=redis://localhost:6379
 ```
 
 **Optional environment variables:**

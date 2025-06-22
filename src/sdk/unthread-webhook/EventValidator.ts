@@ -28,7 +28,8 @@ import type { WebhookEvent, MessageCreatedEvent, ConversationUpdatedEvent } from
  * Error Handling:
  * - Detailed validation error reporting
  * - Graceful handling of invalid events
- * - Comprehensive logging for debugging * - Silent rejection of malicious events
+ * - Comprehensive logging for debugging 
+ * - Silent rejection of malicious events
  * 
  * @author Waren Gonzaga, WG Technology Labs
  * @version 1.0.0

@@ -4,7 +4,6 @@
  * Validates and manages environment variables required for the Unthread Telegram Bot
  * to function properly. This module ensures all necessary API keys, database connections,
  * and service endpoints are configured before the bot starts.
- * 
  * Required Environment Variables:
  * - TELEGRAM_BOT_TOKEN: Telegram Bot API authentication token
  * - UNTHREAD_API_KEY: Unthread platform API key for ticket creation
@@ -13,6 +12,12 @@
  * - PLATFORM_REDIS_URL: Redis connection for bot state management
  * - WEBHOOK_REDIS_URL: Redis connection for webhook event processing
  * - POSTGRES_URL: PostgreSQL database connection for persistent storage
+ * 
+ * Optional Environment Variables:
+ * - DATABASE_SSL_VALIDATE: SSL validation mode for database connections (true/false)
+ * - NODE_ENV: Runtime environment (development/production)
+ * - WEBHOOK_POLL_INTERVAL: Webhook polling interval in milliseconds
+ * - COMPANY_NAME: Company name for ticket attribution
  * 
  * Security:
  * - Validates all critical environment variables at startup

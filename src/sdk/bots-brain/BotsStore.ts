@@ -18,12 +18,12 @@
  * - Customer profile management
  * - Message history and threading
  * - Form data collection and validation
- * 
  * Performance:
  * - Multi-layer caching for optimal performance
  * - Automatic fallback between storage layers
  * - Memory cache for frequently accessed data
- * - Redis for distributed caching across instances * - PostgreSQL for permanent data persistence
+ * - Redis for distributed caching across instances
+ * - PostgreSQL for permanent data persistence
  * 
  * @author Waren Gonzaga, WG Technology Labs
  * @version 1.0.0

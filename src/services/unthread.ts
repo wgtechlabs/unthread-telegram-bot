@@ -27,7 +27,8 @@
  * Security:
  * - API key authentication
  * - Request signing and validation
- * - Rate limiting compliance * - Data sanitization and validation
+ * - Rate limiting compliance 
+ * - Data sanitization and validation
  * 
  * @author Waren Gonzaga, WG Technology Labs
  * @version 1.0.0

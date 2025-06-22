@@ -26,8 +26,8 @@
  * Reliability:
  * - Graceful degradation when storage layers are unavailable
  * - Automatic retry mechanisms with exponential backoff
- * - Data consistency guarantees across all layers * - Comprehensive error handling and logging
- * 
+ * - Data consistency guarantees across all layers
+ * - Comprehensive error handling and logging 
  * @author Waren Gonzaga, WG Technology Labs
  * @version 1.0.0
  * @since 2025

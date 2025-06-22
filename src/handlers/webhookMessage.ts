@@ -17,10 +17,10 @@
  * - Message formatting and threading preservation
  * - Integration with Bots Brain storage for conversation context
  * - Real-time agent response delivery to Telegram users
- * 
  * Error Handling:
  * - Graceful handling of blocked users and deleted chats
- * - Rate limiting and API error recovery * - Comprehensive logging for debugging and monitoring
+ * - Rate limiting and API error recovery
+ * - Comprehensive logging for debugging and monitoring
  * 
  * @author Waren Gonzaga, WG Technology Labs
  * @version 1.0.0
