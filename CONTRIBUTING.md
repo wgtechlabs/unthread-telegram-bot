@@ -285,6 +285,46 @@ DATABASE_SSL_VALIDATE=false
 - **Production**: Set `NODE_ENV=production` and use secure connection strings
 - **Enterprise**: The same `.env` file works seamlessly across all deployment methods
 
+#### **Railway SSL Configuration**
+
+Railway's managed PostgreSQL uses self-signed SSL certificates. The bot automatically handles this:
+
+**Automatic Detection:**
+
+- The bot detects Railway environment by checking for `railway.internal` in service URLs (`PLATFORM_REDIS_URL`, `WEBHOOK_REDIS_URL`, or `POSTGRES_URL`)
+- When Railway is detected, SSL encryption is maintained but certificate validation is relaxed
+- No manual configuration needed - works out-of-the-box
+
+**SSL Priority Logic:**
+
+```typescript
+// 1. Railway environment (highest priority)
+if (isRailwayEnvironment()) {
+    return { rejectUnauthorized: false }; // Accept Railway's self-signed certs
+}
+
+// 2. Production environment  
+if (isProduction) {
+    return { rejectUnauthorized: true }; // Strict SSL validation
+}
+
+// 3. Development environment
+// Uses DATABASE_SSL_VALIDATE environment variable
+```
+
+**Railway SSL Behavior:**
+
+- ✅ SSL encryption always enabled for secure data transmission
+- ✅ Accepts Railway's self-signed certificates automatically
+- ✅ Railway detection overrides `DATABASE_SSL_VALIDATE` environment variable
+- ✅ Maintains security while working with Railway's infrastructure
+
+**Environment Variable Impact:**
+
+- `DATABASE_SSL_VALIDATE=false` is **ignored** on Railway (Railway-specific SSL is used)
+- `DATABASE_SSL_VALIDATE=true` is **ignored** on Railway (Railway-specific SSL is used)
+- Only affects non-Railway environments (local, other cloud providers)
+
 ### 🔗 Webhook Server Integration
 
 This bot works in conjunction with the [`wgtechlabs/unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server) to enable real-time bidirectional communication.
