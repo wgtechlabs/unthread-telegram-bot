@@ -44,56 +44,50 @@ echo -e "${BLUE}🔍 Generating SBOM locally for ${IMAGE_NAME}${NC}"
 # Create output directory
 mkdir -p "${OUTPUT_DIR}"
 
-# Force use of local Docker builder (not cloud builder)
-echo -e "${BLUE}🔧 Ensuring local Docker builder is used...${NC}"
-docker buildx use default 2>/dev/null || docker buildx create --use --name local-builder --driver docker
+# Ensure we're using local Docker context and builder
+echo -e "${BLUE}🔧 Ensuring local Docker setup...${NC}"
+docker context use default 2>/dev/null || true
+docker buildx use default 2>/dev/null || true
 
 # Check if image exists locally
 if ! docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
     echo -e "${RED}❌ Image ${IMAGE_NAME} not found locally${NC}"
-    echo -e "${YELLOW}💡 Building image with SBOM generation using LOCAL builder only...${NC}"
+    echo -e "${YELLOW}💡 Building image locally (SBOM will be generated with syft)...${NC}"
     
-    # Build image with SBOM generation using LOCAL builder only
-    docker buildx build \
-        --builder local-builder \
-        --sbom=true \
-        --provenance=mode=max \
-        --tag "${IMAGE_NAME}" \
-        --metadata-file "${OUTPUT_DIR}/build_metadata_${TIMESTAMP}.json" \
-        --load \
-        .
+    # Simple local build without buildx complications
+    docker build -t "${IMAGE_NAME}" .
 else
     echo -e "${GREEN}✅ Image ${IMAGE_NAME} found locally${NC}"
 fi
 
-# Try to extract SBOM from existing image
-echo -e "${YELLOW}📋 Attempting to extract SBOM from image...${NC}"
-if docker buildx imagetools inspect "${IMAGE_NAME}" --format "{{ json .SBOM.SPDX }}" > "${OUTPUT_DIR}/sbom_${TIMESTAMP}.spdx.json" 2>/dev/null; then
-    echo -e "${GREEN}✅ SBOM extracted successfully${NC}"
+# Generate SBOM using syft (most reliable method for local development)
+echo -e "${YELLOW}📋 Generating SBOM with syft...${NC}"
+if command -v syft >/dev/null 2>&1; then
+    syft "${IMAGE_NAME}" -o spdx-json > "${OUTPUT_DIR}/sbom_${TIMESTAMP}.spdx.json"
+    echo -e "${GREEN}✅ SBOM generated with syft${NC}"
 else
-    echo -e "${YELLOW}⚠️  No embedded SBOM found. Generating with syft...${NC}"
+    echo -e "${YELLOW}📦 Installing syft locally for SBOM generation...${NC}"
     
-    # Use syft as fallback to generate SBOM
-    if command -v syft >/dev/null 2>&1; then
-        syft "${IMAGE_NAME}" -o spdx-json > "${OUTPUT_DIR}/sbom_${TIMESTAMP}.spdx.json"
-        echo -e "${GREEN}✅ SBOM generated with syft${NC}"
+    # Create local bin directory for syft
+    mkdir -p ./bin
+    
+    # Download and install syft to local directory (Windows-compatible)
+    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" || "$OSTYPE" == "cygwin" ]]; then
+        # Windows
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b ./bin
     else
-        echo -e "${YELLOW}📦 Installing syft for SBOM generation...${NC}"
-        # Install syft using the official installer
-        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-        syft "${IMAGE_NAME}" -o spdx-json > "${OUTPUT_DIR}/sbom_${TIMESTAMP}.spdx.json"
-        echo -e "${GREEN}✅ SBOM generated with syft${NC}"
+        # Linux/Mac
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b ./bin
     fi
+    
+    # Use local syft binary
+    ./bin/syft "${IMAGE_NAME}" -o spdx-json > "${OUTPUT_DIR}/sbom_${TIMESTAMP}.spdx.json"
+    echo -e "${GREEN}✅ SBOM generated with local syft installation${NC}"
 fi
 
-# Try to extract provenance (optional, won't fail if not available)
-echo -e "${YELLOW}📋 Attempting to extract provenance attestations...${NC}"
-if docker buildx imagetools inspect "${IMAGE_NAME}" --format "{{ json .Provenance }}" > "${OUTPUT_DIR}/provenance_${TIMESTAMP}.json" 2>/dev/null; then
-    echo -e "${GREEN}✅ Provenance attestations extracted${NC}"
-else
-    echo -e "${YELLOW}⚠️  No provenance attestations found (this is normal for locally built images)${NC}"
-    echo "null" > "${OUTPUT_DIR}/provenance_${TIMESTAMP}.json"
-fi
+# Skip provenance extraction to avoid buildx complications for local development
+echo -e "${YELLOW}ℹ️  Skipping provenance extraction (not needed for local development)${NC}"
+echo "null" > "${OUTPUT_DIR}/provenance_${TIMESTAMP}.json"
 
 # Generate human-readable summary
 echo -e "${YELLOW}📄 Creating human-readable SBOM summary...${NC}"

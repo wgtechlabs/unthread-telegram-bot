@@ -69,6 +69,9 @@ ai_docs/
 # SBOM (Software Bill of Materials) generated files
 sbom/
 
+# Local tool binaries (syft, etc.)
+bin/
+
 # Temporary files
 *.tmp
 *.temp
