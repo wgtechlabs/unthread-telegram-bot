@@ -9,6 +9,8 @@
 # Requirements:
 #   - Docker with BuildKit support
 #   - docker buildx command
+#   - jq (for JSON parsing and SBOM analysis)
+#   - cosign (optional, for SBOM signature verification)
 #
 # Usage:
 #   ./scripts/generate-sbom.sh [image-name]
@@ -41,13 +43,14 @@ echo -e "${YELLOW}📋 Generating SBOM in SPDX JSON format...${NC}"
 docker buildx imagetools inspect "${IMAGE_NAME}" --format "{{ json .SBOM.SPDX }}" > "${OUTPUT_DIR}/sbom_${TIMESTAMP}.spdx.json" 2>/dev/null || {
     echo -e "${RED}❌ Failed to extract SBOM from image. Building with SBOM generation...${NC}"
     
-    # Build image with SBOM generation
-    echo -e "${YELLOW}🔨 Building image with SBOM generation...${NC}"
-    docker build \
+    # Build image with SBOM generation using BuildKit
+    echo -e "${YELLOW}🔨 Building image with SBOM generation using BuildKit...${NC}"
+    docker buildx build \
         --sbom=true \
         --provenance=mode=max \
         --tag "${IMAGE_NAME}" \
         --metadata-file "${OUTPUT_DIR}/build_metadata_${TIMESTAMP}.json" \
+        --load \
         .
     
     # Extract SBOM again
