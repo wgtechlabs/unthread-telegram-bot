@@ -27,6 +27,15 @@
 
 set -euo pipefail
 
+# Check for required dependencies
+REQUIRED_COMMANDS=("docker" "jq")
+for cmd in "${REQUIRED_COMMANDS[@]}"; do
+    if ! command -v "$cmd" &> /dev/null; then
+        echo "Error: Required command '$cmd' is not installed or not in PATH" >&2
+        exit 1
+    fi
+done
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -107,7 +116,6 @@ included in the Unthread Telegram Bot Docker image.
 
 - \`sbom_${TIMESTAMP}.spdx.json\` - Complete SBOM in SPDX JSON format
 - \`provenance_${TIMESTAMP}.json\` - Build provenance attestations (if available)
-- \`build_metadata_${TIMESTAMP}.json\` - Build metadata (if available)
 
 ## Local Development & Testing
 
