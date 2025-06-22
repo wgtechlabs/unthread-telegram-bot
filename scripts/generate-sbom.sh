@@ -28,7 +28,7 @@
 set -euo pipefail
 
 # Check for required dependencies
-REQUIRED_COMMANDS=("docker" "jq")
+REQUIRED_COMMANDS=("docker" "jq" "curl")
 for cmd in "${REQUIRED_COMMANDS[@]}"; do
     if ! command -v "$cmd" &> /dev/null; then
         echo "Error: Required command '$cmd' is not installed or not in PATH" >&2

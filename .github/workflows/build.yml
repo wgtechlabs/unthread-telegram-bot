@@ -52,10 +52,12 @@ jobs:
             ${{ env.REGISTRY_GHCR }}:dev-${{ steps.meta.outputs.short_sha }}
           labels: |
             org.opencontainers.image.title=Unthread Telegram Bot
-            org.opencontainers.image.description=Turn private Telegram groups into real-time support ticket hubs — powered by Unthread.io.            org.opencontainers.image.version=dev-${{ steps.meta.outputs.short_sha }}
+            org.opencontainers.image.description=Turn private Telegram groups into real-time support ticket hubs — powered by Unthread.io.
+            org.opencontainers.image.version=dev-${{ steps.meta.outputs.short_sha }}
             org.opencontainers.image.created=${{ steps.meta.outputs.build_date }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.licenses=GPL-3.0
           cache-from: type=gha
           cache-to: type=gha,mode=max
