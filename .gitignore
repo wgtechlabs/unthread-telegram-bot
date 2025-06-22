@@ -66,6 +66,9 @@ redis-data/
 # AI documentation and context files
 ai_docs/
 
+# SBOM (Software Bill of Materials) generated files
+sbom/
+
 # Temporary files
 *.tmp
 *.temp
