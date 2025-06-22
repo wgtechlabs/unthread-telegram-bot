@@ -15,14 +15,14 @@
 
 # syntax=docker/dockerfile:1
 
-# Use latest Node.js LTS Alpine with security patches
-ARG NODE_VERSION=20.18.1
+# Use latest Node.js 22 LTS Alpine with security patches
+ARG NODE_VERSION=22-alpine3.21
 
 # =============================================================================
 # STAGE 1: Base Image
 # =============================================================================
-# Alpine Linux base for minimal image size with security updates
-FROM node:${NODE_VERSION}-alpine AS base
+# Alpine Linux 3.21 base for minimal image size with latest security updates
+FROM node:${NODE_VERSION} AS base
 
 # Install security updates for Alpine packages
 RUN apk update && apk upgrade && \
