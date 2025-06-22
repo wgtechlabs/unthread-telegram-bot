@@ -15,14 +15,19 @@
 
 # syntax=docker/dockerfile:1
 
-# Use Node.js LTS Alpine for smaller image size
-ARG NODE_VERSION=20.18.0
+# Use latest Node.js LTS Alpine with security patches
+ARG NODE_VERSION=20.18.1
 
 # =============================================================================
 # STAGE 1: Base Image
 # =============================================================================
-# Alpine Linux base for minimal image size
+# Alpine Linux base for minimal image size with security updates
 FROM node:${NODE_VERSION}-alpine AS base
+
+# Install security updates for Alpine packages
+RUN apk update && apk upgrade && \
+    apk add --no-cache dumb-init && \
+    rm -rf /var/cache/apk/*
 
 # Set working directory for all subsequent stages
 WORKDIR /usr/src/app
@@ -65,18 +70,24 @@ RUN cp src/database/schema.sql dist/database/
 # Minimal production image with only necessary files
 FROM base AS final
 
-# Set production environment
-ENV NODE_ENV=production
+# Set production environment with security options
+ENV NODE_ENV=production \
+    NODE_OPTIONS="--enable-source-maps --max-old-space-size=512"
 
-# Run as non-root user for security
-USER node
+# Create a dedicated user for the application
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001 -G nodejs
 
 # Copy package.json for package manager commands
-COPY package.json .
+COPY --chown=nextjs:nodejs package.json .
 
 # Copy production dependencies and built application
-COPY --from=deps /usr/src/app/node_modules ./node_modules
-COPY --from=build /usr/src/app/dist ./dist
+COPY --from=deps --chown=nextjs:nodejs /usr/src/app/node_modules ./node_modules
+COPY --from=build --chown=nextjs:nodejs /usr/src/app/dist ./dist
 
-# Start the application
-CMD ["yarn", "start"]
+# Switch to non-root user
+USER nextjs
+
+# Use dumb-init for proper signal handling and start the application
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "dist/index.js"]
