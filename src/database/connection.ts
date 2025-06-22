@@ -84,12 +84,14 @@ export class DatabaseConnection {
         });        LogEngine.info('Database connection pool initialized', {
             maxConnections: 10,
             sslEnabled: sslConfig !== false,
-            sslValidation: isProduction ? 'enabled' : (
-                process.env.DATABASE_SSL_VALIDATE === 'false' ? 'disabled' :
-                process.env.DATABASE_SSL_VALIDATE === 'true' ? 'enabled' : 'enabled-no-validation'
+            sslValidation: this.isRailwayEnvironment() ? 'railway-compatible' : (
+                isProduction ? 'enabled' : (
+                    process.env.DATABASE_SSL_VALIDATE === 'false' ? 'disabled' :
+                    process.env.DATABASE_SSL_VALIDATE === 'true' ? 'enabled' : 'enabled-no-validation'
+                )
             ),
             environment: process.env.NODE_ENV || 'development',
-            provider: 'Railway'
+            provider: this.isRailwayEnvironment() ? 'Railway' : 'Unknown'
         });
     }
 
@@ -254,11 +256,38 @@ export class DatabaseConnection {
             throw error;
         }
     }    /**
+     * Check if running on Railway platform
+     * @returns True if detected Railway environment
+     */
+    private isRailwayEnvironment(): boolean {
+        // Check Redis URLs and PostgreSQL URL that are available to this service
+        const platformRedis = process.env.PLATFORM_REDIS_URL;
+        const webhookRedis = process.env.WEBHOOK_REDIS_URL;
+        const postgresUrl = process.env.POSTGRES_URL;
+        
+        // Railway internal services use 'railway.internal' in their hostnames
+        return !!(
+            (platformRedis && platformRedis.includes('railway.internal')) ||
+            (webhookRedis && webhookRedis.includes('railway.internal')) ||
+            (postgresUrl && postgresUrl.includes('railway.internal'))
+        );
+    }
+
+    /**
      * Configure SSL settings based on environment
      * @param isProduction - Whether running in production environment
      * @returns SSL configuration object, or false to disable SSL entirely
      */
     private getSSLConfig(isProduction: boolean): any {
+        // Check if we're on Railway first - they use self-signed certificates
+        if (this.isRailwayEnvironment()) {
+            return {
+                rejectUnauthorized: false, // Accept Railway's self-signed certificates
+                // SSL encryption is still enabled for secure data transmission
+                ca: process.env.DATABASE_SSL_CA || undefined
+            };
+        }
+
         // In production, always validate SSL certificates for security
         if (isProduction) {
             return {
