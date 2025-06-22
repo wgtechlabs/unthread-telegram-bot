@@ -31,11 +31,9 @@
   "include": [
     "src/**/*",
     "src/types/*.d.ts"
-  ],
-  "exclude": [
+  ],  "exclude": [
     "node_modules",
     "dist",
-    "src/sdk/**/*",
     "**/*.test.ts",
     "**/*.spec.ts"
   ]

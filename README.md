@@ -156,7 +156,7 @@ POSTGRES_URL=postgresql://user:password@host:port/database
 
 # Required - Unthread API Configuration
 UNTHREAD_API_KEY=your_unthread_api_key
-UNTHREAD_CHANNEL_ID=your_unthread_channel_id
+UNTHREAD_SLACK_CHANNEL_ID=your_unthread_slack_channel_id
 
 # Optional - Webhook Configuration (for real-time agent responses)
 # Requires wgtechlabs/unthread-webhook-server to be deployed and configured
@@ -193,13 +193,6 @@ That's it! The database schema will be created automatically on first run.
 [![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/u/warengonzaga)
 
 ### **Database Requirements**
-
-- **PostgreSQL 12+** (required)
-- **Redis 6+** (optional, for enhanced performance)
-- Automatic schema setup on first connection
-- No manual migration scripts needed
-
-## 🕹️ Usage
 
 - **PostgreSQL 12+** (required)
 - **Redis 6+** (optional, for enhanced performance)
@@ -343,6 +336,9 @@ createdb unthread_telegram_bot
 
 #### **6. Environment Configuration**
 
+> **🎯 Unified Configuration Approach**  
+> This project uses a **single `.env` file** for both local development and Docker deployment, ensuring consistency across all environments.
+
 ```bash
 # Copy example environment file
 cp .env.example .env
@@ -351,23 +347,32 @@ cp .env.example .env
 nano .env
 ```
 
-Required environment variables:
+**Required environment variables:**
 
 ```bash
 TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
 POSTGRES_URL=postgresql://user:password@localhost:5432/unthread_telegram_bot
 UNTHREAD_API_KEY=your_unthread_api_key
-UNTHREAD_CHANNEL_ID=your_unthread_channel_id
+UNTHREAD_SLACK_CHANNEL_ID=your_unthread_slack_channel_id
+UNTHREAD_WEBHOOK_SECRET=your_unthread_webhook_secret
+PLATFORM_REDIS_URL=redis://localhost:6379
+WEBHOOK_REDIS_URL=redis://localhost:6379
 ```
 
-Optional environment variables:
+**Optional environment variables:**
 
 ```bash
-WEBHOOK_REDIS_URL=redis://localhost:6379
-PLATFORM_REDIS_URL=redis://localhost:6379
 COMPANY_NAME=YourCompanyName
 WEBHOOK_POLL_INTERVAL=1000
+NODE_ENV=development
 ```
+
+**📱 Environment Notes:**
+
+- **Local Development**: Use `localhost` for database and Redis URLs
+- **Docker Deployment**: Update URLs to use service names (e.g., `postgres:5432`, `redis:6379`) if using docker-compose
+- **Production**: Set `NODE_ENV=production` and use secure connection strings
+- **Enterprise**: This same `.env` file works seamlessly across all deployment methods
 
 #### **7. Start the Bot**
 
@@ -413,6 +418,111 @@ yarn start
 NODE_ENV=development yarn start
 ```
 
+## 🐳 Docker Deployment
+
+The bot includes a production-ready Docker setup that uses the same `.env` configuration as local development.
+
+### **Docker Prerequisites**
+
+- Docker installed on your system
+- Docker Compose (comes with Docker Desktop)
+- Copy `.env.example` to `.env` and configure your environment variables
+
+### **Environment Configuration**
+
+Before building the Docker image, create a `.env` file from the example:
+
+```bash
+cp .env.example .env
+```
+
+Edit the `.env` file and configure the following required variables:
+
+- `TELEGRAM_BOT_TOKEN`: Your Telegram bot token from BotFather
+- `UNTHREAD_API_KEY`: Your Unthread API key
+- `UNTHREAD_SLACK_CHANNEL_ID`: Your Unthread Slack channel ID
+- `UNTHREAD_WEBHOOK_SECRET`: Webhook secret for security
+- Database and Redis URLs as needed
+
+### **Building and Running**
+
+#### **Method 1: Using Docker Compose (Recommended)**
+
+Start your application with all dependencies:
+
+```bash
+docker compose up --build
+```
+
+This will build the image and start the bot with any configured services.
+
+#### **Method 2: Using Docker Commands**
+
+Build the Docker image:
+
+```bash
+docker build -t unthread-telegram-bot .
+# or use the yarn script
+yarn docker:build
+```
+
+Run the container:
+
+```bash
+docker run --env-file .env unthread-telegram-bot
+# or use the yarn script
+yarn docker:run
+```
+
+### **Production Deployment**
+
+#### **Building for Different Architectures**
+
+If deploying to a different CPU architecture (e.g., from Mac M1 to Linux amd64):
+
+```bash
+docker build --platform=linux/amd64 -t unthread-telegram-bot .
+```
+
+#### **Pushing to Registry**
+
+Tag and push your image to a container registry:
+
+```bash
+docker tag unthread-telegram-bot your-registry.com/unthread-telegram-bot:latest
+docker push your-registry.com/unthread-telegram-bot:latest
+```
+
+### **Docker Features**
+
+- **Multi-stage build** for optimized image size (217MB)
+- **Non-root user** for enhanced security  
+- **Alpine Linux** base for minimal attack surface
+- **Build caching** for faster subsequent builds
+- **Enterprise-ready** with best practices
+
+### **Development**
+
+For development with hot reload, use the local development setup instead of Docker:
+
+```bash
+yarn dev
+```
+
+### **Docker Troubleshooting**
+
+- Ensure all required environment variables are set in your `.env` file
+- Check Docker logs: `docker logs <container-id>`
+- Verify your Telegram bot token is valid
+- Ensure external services (database, Redis) are accessible from the container
+
+### **Docker Environment Notes**
+
+- Uses the **same `.env` file** as local development
+- No separate Docker-specific configuration needed
+- Update database/Redis URLs in `.env` for your Docker environment
+- Perfect for containerized deployments and CI/CD pipelines
+
 ## 💬 Community Discussions
 
 Join our community discussions to get help, share ideas, and connect with other users:
@@ -440,7 +550,7 @@ Please report any issues, bugs, or improvement suggestions by [creating a new is
 
 ### Security Vulnerabilities
 
-For security vulnerabilities, please do not report them publicly. Follow the guidelines in our [security policy](./security.md) to responsibly disclose security issues.
+For security vulnerabilities, please do not report them publicly. Follow the guidelines in our [security policy](./SECURITY.md) to responsibly disclose security issues.
 
 Your contributions to improving this project are greatly appreciated! 🙏✨
 
@@ -448,7 +558,7 @@ Your contributions to improving this project are greatly appreciated! 🙏✨
 
 Contributions are welcome, create a pull request to this repo and I will review your code. Please consider to submit your pull request to the `dev` branch. Thank you!
 
-Read the project's [contributing guide](./contributing.md) for more info.
+Read the project's [contributing guide](./CONTRIBUTING.md) for more info.
 
 ## 💖 Sponsors
 
@@ -466,7 +576,7 @@ Found this project helpful? Consider nominating me **(@warengonzaga)** for the [
 
 ## 📋 Code of Conduct
 
-I'm committed to providing a welcoming and inclusive environment for all contributors and users. Please review the project's [Code of Conduct](./code_of_conduct.md) to understand the community standards and expectations for participation.
+I'm committed to providing a welcoming and inclusive environment for all contributors and users. Please review the project's [Code of Conduct](./CODE_OF_CONDUCT.md) to understand the community standards and expectations for participation.
 
 ## 📃 License
 
