@@ -1,8 +1,35 @@
 import type { Pool } from 'pg';
 
 /**
- * SDK Type Definitions
- * Core interfaces for the bots-brain and unthread-webhook SDKs
+ * Unthread Telegram Bot - SDK Type Definitions
+ * 
+ * Core TypeScript interfaces and type definitions for the Bots Brain and
+ * Unthread Webhook SDKs. Provides comprehensive type safety and IntelliSense
+ * support for all SDK components and integrations.
+ * 
+ * Type Categories:
+ * - Storage Interfaces: Multi-layer storage system types
+ * - Database Connections: PostgreSQL and Redis connection interfaces
+ * - Ticket Management: Support ticket and customer data structures
+ * - Webhook Events: Event types for Unthread platform integration
+ * - User Management: User state and conversation data types
+ * 
+ * Key Interfaces:
+ * - IBotsStore: High-level bot storage operations interface
+ * - Storage: Low-level storage engine interface
+ * - TicketData: Support ticket information and metadata
+ * - WebhookEvent: Unthread platform webhook event structure
+ * - UserState: Conversation state and form data management
+ * 
+ * Features:
+ * - Type-safe database operations
+ * - Comprehensive webhook event typing
+ * - Storage layer abstraction interfaces
+ * - User state management types * - Integration with external service types
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ * @version 1.0.0
+ * @since 2025
  */
 
 // Database connection interface

@@ -1,0 +1,148 @@
+# =============================================================================
+# UNTHREAD TELEGRAM BOT - DOCKER COMPOSE CONFIGURATION
+# =============================================================================
+# Complete application stack for the Unthread Telegram Bot integration
+#
+# Services:
+# ┌─ server                     → Main Telegram bot application  
+# ├─ unthread-webhook-server    → Handles incoming Unthread webhooks
+# ├─ postgres-platform          → PostgreSQL database for bot data
+# ├─ redis-platform             → Redis for bot operations & caching
+# └─ redis-webhook              → Redis for webhook message queuing
+#
+# Usage:
+#   docker-compose up -d                    # Start all services
+#   docker-compose logs -f server           # View bot logs
+#   docker-compose exec postgres-platform psql -U postgres -d unthread_telegram_bot
+#
+# Prerequisites: 
+#   - Copy .env.example to .env and configure your tokens
+#   - Ensure external network exists: docker network create unthread-integration-network
+# =============================================================================
+
+services:
+  # =============================================================================
+  # TELEGRAM BOT APPLICATION
+  # =============================================================================
+  # Main Node.js application that handles Telegram bot interactions
+  server:
+    image: wgtechlabs/unthread-telegram-bot:latest
+    environment:
+      NODE_ENV: production
+    env_file:
+      - .env  # Contains bot tokens, API keys, and database URLs
+    depends_on:
+      - postgres-platform    # Requires database to be ready
+      - redis-platform       # Requires Redis for caching
+      - redis-webhook        # Requires Redis for webhook communication
+    networks:
+      - unthread-integration-network
+
+  # =============================================================================
+  # WEBHOOK SERVER  
+  # =============================================================================
+  # Handles incoming webhooks from Unthread and queues them for processing
+  unthread-webhook-server:
+    image: wgtechlabs/unthread-webhook-server:latest
+    ports:
+      - "3000:3000"  # Expose webhook endpoint
+    env_file:
+      - .env
+    environment:
+      # Override Redis URL to use webhook-specific Redis instance
+      - REDIS_URL=redis://redis-webhook:6379
+    depends_on:
+      redis-webhook:
+        condition: service_healthy  # Wait for Redis to be ready
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - unthread-integration-network
+
+  # =============================================================================
+  # DATABASE
+  # =============================================================================
+  # PostgreSQL database for storing tickets, customers, and user states
+  postgres-platform:
+    image: postgres:15-alpine  # Alpine for smaller image size
+    restart: always
+    environment:
+      POSTGRES_DB: unthread_telegram_bot    # Database name
+      POSTGRES_USER: ${POSTGRES_USER}       # Username from .env file
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}  # Password from .env file (secure!)
+    ports:
+      - "5432:5432"  # Expose for external connections (optional)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data  # Persistent data storage
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - unthread-integration-network
+
+  # =============================================================================
+  # REDIS - PLATFORM OPERATIONS
+  # =============================================================================
+  # Redis instance for bot caching, session management, and general operations
+  redis-platform:
+    image: redis:7-alpine  # Latest stable Redis
+    restart: always
+    ports:
+      - "6379:6379"  # Standard Redis port
+    volumes:
+      - redis_platform_data:/data  # Persistent Redis data
+    command: redis-server --appendonly yes  # Enable data persistence
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - unthread-integration-network
+
+  # =============================================================================
+  # REDIS - WEBHOOK OPERATIONS
+  # =============================================================================
+  # Dedicated Redis instance for webhook message queuing and communication
+  redis-webhook:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"  # Different external port to avoid conflicts
+    volumes:
+      - redis_webhook_data:/data  # Separate data storage
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    networks:
+      - unthread-integration-network
+
+# =============================================================================
+# PERSISTENT VOLUMES
+# =============================================================================
+# Named volumes for data persistence across container restarts
+volumes:
+  postgres_data:      # PostgreSQL database files
+  redis_platform_data:  # Redis platform cache data  
+  redis_webhook_data:    # Redis webhook queue data
+
+# =============================================================================
+# NETWORKING
+# =============================================================================
+# External network for communication between services
+# Create with: docker network create unthread-integration-network
+networks:
+  unthread-integration-network:
+    external: true
+
+

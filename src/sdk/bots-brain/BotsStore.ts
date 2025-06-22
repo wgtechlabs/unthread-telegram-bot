@@ -1,7 +1,33 @@
 /**
- * BotsStore - High-level bot storage operations
- * Provides bot-specific methods for storing and retrieving ticket data
- * Uses UnifiedStorage for multi-layer caching
+ * Unthread Telegram Bot - Bots Brain BotsStore
+ * 
+ * High-level storage operations specifically designed for bot applications.
+ * Provides bot-centric methods for storing and retrieving conversation data,
+ * user states, and ticket information using the UnifiedStorage multi-layer architecture.
+ * 
+ * Core Features:
+ * - Ticket data storage and retrieval with conversation threading
+ * - User state management for multi-step workflows
+ * - Customer profile persistence and lookup
+ * - Agent message storage and conversation history
+ * - Automatic data expiration and cleanup
+ * 
+ * Storage Operations:
+ * - Ticket creation and status tracking
+ * - User conversation state persistence
+ * - Customer profile management
+ * - Message history and threading
+ * - Form data collection and validation
+ * Performance:
+ * - Multi-layer caching for optimal performance
+ * - Automatic fallback between storage layers
+ * - Memory cache for frequently accessed data
+ * - Redis for distributed caching across instances
+ * - PostgreSQL for permanent data persistence
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ * @version 1.0.0
+ * @since 2025
  */
 import { UnifiedStorage } from './UnifiedStorage.js';
 import { LogEngine } from '@wgtechlabs/log-engine';

@@ -2,9 +2,38 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 import type { WebhookEvent, MessageCreatedEvent, ConversationUpdatedEvent } from '../types.js';
 
 /**
- * EventValidator - Simple validation for Unthread webhook events
+ * Unthread Telegram Bot - Webhook Event Validator
  * 
- * Validates message_created and conversation_updated events from dashboard.
+ * Validates incoming webhook events from the Unthread platform to ensure data
+ * integrity and security. Performs comprehensive validation of event structure,
+ * content, and source before allowing event processing.
+ * 
+ * Validation Features:
+ * - Event structure validation (type, platform, data)
+ * - Content validation for message_created events
+ * - Source platform verification (dashboard only)
+ * - Data type checking and sanitization
+ * - Security validation to prevent malicious events
+ * 
+ * Supported Event Types:
+ * - message_created: Agent messages from Unthread dashboard
+ * - conversation_updated: Ticket status and metadata updates
+ * 
+ * Security:
+ * - Strict type checking for all event properties
+ * - Source platform validation (dashboard only)
+ * - Content sanitization and validation
+ * - Protection against malformed or malicious events
+ * 
+ * Error Handling:
+ * - Detailed validation error reporting
+ * - Graceful handling of invalid events
+ * - Comprehensive logging for debugging 
+ * - Silent rejection of malicious events
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ * @version 1.0.0
+ * @since 2025
  */
 
 export class EventValidator {

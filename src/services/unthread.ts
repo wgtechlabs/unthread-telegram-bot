@@ -1,8 +1,38 @@
 /**
- * Unthread API Service
+ * Unthread Telegram Bot - Unthread API Service
  * 
- * This module provides functionality to interact with the Unthread API
- * for creating customers, tickets, and sending messages.
+ * Provides comprehensive integration with the Unthread platform API for customer
+ * support ticket management. This service handles customer creation, ticket
+ * management, and message routing between Telegram and Unthread.
+ * 
+ * Core Features:
+ * - Customer profile creation and management
+ * - Support ticket creation and status tracking
+ * - Message sending and conversation threading
+ * - API authentication and error handling
+ * - Data persistence with Bots Brain storage integration
+ * 
+ * API Operations:
+ * - Customer creation with Telegram user data
+ * - Ticket creation with support form data
+ * - Message posting to existing conversations
+ * - Ticket status updates and notifications
+ * 
+ * Integration Points:
+ * - Telegram user data mapping to Unthread customers
+ * - Support form data collection and validation
+ * - Conversation state management and persistence
+ * - Error handling and retry mechanisms
+ * 
+ * Security:
+ * - API key authentication
+ * - Request signing and validation
+ * - Rate limiting compliance 
+ * - Data sanitization and validation
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ * @version 1.0.0
+ * @since 2025
  */
 
 import fetch from 'node-fetch';
@@ -175,7 +205,7 @@ function capitalizeCompanyName(name: string): string {
 // API URLs and Auth Keys
 const API_BASE_URL = 'https://api.unthread.io/api';
 const UNTHREAD_API_KEY = process.env.UNTHREAD_API_KEY;
-const CHANNEL_ID = process.env.UNTHREAD_CHANNEL_ID;
+const CHANNEL_ID = process.env.UNTHREAD_SLACK_CHANNEL_ID;
 
 // Validate required environment variables
 if (!UNTHREAD_API_KEY) {
@@ -183,9 +213,8 @@ if (!UNTHREAD_API_KEY) {
     throw new Error('Missing required environment variable: UNTHREAD_API_KEY');
 }
 
-if (!CHANNEL_ID) {
-    LogEngine.error('UNTHREAD_CHANNEL_ID environment variable is required but not defined');
-    throw new Error('Missing required environment variable: UNTHREAD_CHANNEL_ID');
+if (!CHANNEL_ID) {    LogEngine.error('UNTHREAD_SLACK_CHANNEL_ID environment variable is required but not defined');
+    throw new Error('Missing required environment variable: UNTHREAD_SLACK_CHANNEL_ID');
 }
 
 // Customer ID cache to avoid creating duplicates

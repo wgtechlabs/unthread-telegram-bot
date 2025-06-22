@@ -1,14 +1,30 @@
 /**
- * Database Connection Module
+ * Unthread Telegram Bot - Database Connection Module
  * 
- * Provides PostgreSQL database connection with SSL support for Railway
- * and other cloud providers that require secure connections.
+ * Provides secure PostgreSQL database connection with comprehensive SSL support 
+ * for the Unthread Telegram Bot project. Designed for cloud deployment on Railway
+ * and other cloud providers requiring secure database connections.
+ * 
+ * This module manages database connections for storing customer data, support tickets,
+ * user conversation states, and Bots Brain unified storage cache for the Telegram bot.
+ * 
+ * Key Features:
+ * - Production-grade SSL certificate validation with MITM attack prevention
+ * - Connection pooling with automatic retry and error handling
+ * - Environment-aware configuration (development/production)
+ * - Automatic schema initialization and migration support
+ * - Support for custom CA certificates via DATABASE_SSL_CA environment variable
+ * - Comprehensive logging and monitoring for debugging and performance tracking
+ * - Integration with Bots Brain unified storage system
  * 
  * Security Features:
  * - SSL certificate validation enabled by default in production
- * - Configurable SSL validation for development environments
- * - Support for custom CA certificates via DATABASE_SSL_CA environment variable
- * - Environment-aware SSL configuration to prevent MITM attacks
+ * - Configurable SSL validation for development environments   * - Environment-aware SSL configuration to prevent MITM attacks
+ * - Secure connection string handling with validation
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ * @version 1.0.0
+ * @since 2025
  */
 
 import pkg from 'pg';
@@ -40,20 +56,24 @@ export class DatabaseConnection {
             const error = 'POSTGRES_URL environment variable is required but not defined';
             LogEngine.error(error);
             throw new Error(error);
-        }
-
-        // Configure SSL based on environment
+        }        // Configure SSL based on environment
         const isProduction = process.env.NODE_ENV === 'production';
         const sslConfig = this.getSSLConfig(isProduction);
 
-        // Configure connection pool with SSL for Railway
-        this.pool = new Pool({
+        // Configure connection pool
+        const poolConfig: any = {
             connectionString: process.env.POSTGRES_URL,
-            ssl: sslConfig,
             max: 10, // Maximum number of connections in pool
             idleTimeoutMillis: 30000, // Close idle connections after 30 seconds
             connectionTimeoutMillis: 10000, // Return error after 10 seconds if connection cannot be established
-        });
+        };
+
+        // Only add SSL config if it's not explicitly disabled
+        if (sslConfig !== false) {
+            poolConfig.ssl = sslConfig;
+        }
+
+        this.pool = new Pool(poolConfig);
 
         // Handle pool errors
         this.pool.on('error', (err: Error) => {
@@ -61,12 +81,13 @@ export class DatabaseConnection {
                 error: err.message,
                 stack: err.stack
             });
-        });
-
-        LogEngine.info('Database connection pool initialized', {
+        });        LogEngine.info('Database connection pool initialized', {
             maxConnections: 10,
-            sslEnabled: true,
-            sslValidation: isProduction ? 'enabled' : (process.env.DATABASE_SSL_VALIDATE === 'true' ? 'enabled' : 'disabled'),
+            sslEnabled: sslConfig !== false,
+            sslValidation: isProduction ? 'enabled' : (
+                process.env.DATABASE_SSL_VALIDATE === 'false' ? 'disabled' :
+                process.env.DATABASE_SSL_VALIDATE === 'true' ? 'enabled' : 'enabled-no-validation'
+            ),
             environment: process.env.NODE_ENV || 'development',
             provider: 'Railway'
         });
@@ -232,12 +253,10 @@ export class DatabaseConnection {
             });
             throw error;
         }
-    }
-
-    /**
+    }    /**
      * Configure SSL settings based on environment
      * @param isProduction - Whether running in production environment
-     * @returns SSL configuration object
+     * @returns SSL configuration object, or false to disable SSL entirely
      */
     private getSSLConfig(isProduction: boolean): any {
         // In production, always validate SSL certificates for security
@@ -249,12 +268,25 @@ export class DatabaseConnection {
             };
         }
 
-        // In development, allow flexibility for local development
-        // Check if explicit SSL validation is requested via environment variable
-        const forceSSLValidation = process.env.DATABASE_SSL_VALIDATE === 'true';
+        // In development, check SSL validation setting
+        const sslValidate = process.env.DATABASE_SSL_VALIDATE;
         
+        // If explicitly set to false, disable SSL entirely (useful for local Docker)
+        if (sslValidate === 'false') {
+            return false;
+        }
+        
+        // If explicitly set to true, enable SSL with validation
+        if (sslValidate === 'true') {
+            return {
+                rejectUnauthorized: true,
+                ca: process.env.DATABASE_SSL_CA || undefined
+            };
+        }
+        
+        // Default for development: SSL enabled but without certificate validation
         return {
-            rejectUnauthorized: forceSSLValidation,
+            rejectUnauthorized: false,
             ca: process.env.DATABASE_SSL_CA || undefined
         };
     }

@@ -1,9 +1,24 @@
 /**
- * Telegram Bot Utility Module
+ * Unthread Telegram Bot - Core Bot Utilities Module
  * 
- * This module provides utility functions for creating and configuring a Telegram bot
- * using the Telegraf framework. It includes functions for bot initialization, command
- * configuration, and bot startup.
+ * Provides essential utility functions for creating, configuring, and managing
+ * the Telegram bot instance using the Telegraf framework. This module handles
+ * bot lifecycle management, error handling, and safe message operations.
+ * 
+ * Core Functions:
+ * - Bot instance creation and configuration
+ * - Safe message sending with error handling for blocked users
+ * - Bot startup and polling management
+ * - Command registration and middleware setup
+ * - User blocking and cleanup utilities
+ * 
+ * Error Handling:
+ * - Automatic detection and cleanup of blocked users
+ * - Graceful handling of rate limits and API errors * - Comprehensive logging for debugging and monitoring
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ * @version 1.0.0
+ * @since 2025
  */
 import { Telegraf, Markup } from 'telegraf';
 import type { ExtraReplyMessage, ExtraEditMessageText } from 'telegraf/typings/telegram-types';

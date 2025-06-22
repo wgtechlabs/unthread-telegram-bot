@@ -1,8 +1,33 @@
 /**
- * Bot Commands Module
+ * Unthread Telegram Bot - Command Handlers Module
  * 
- * This module defines command handlers for the Telegram bot.
- * Each command is exported as a function that can be attached to the bot instance.
+ * Defines and implements all bot command handlers for user interactions with the
+ * Unthread Telegram Bot. Each command provides specific functionality for ticket
+ * management, user support, and bot information.
+ * 
+ * Available Commands:
+ * - /start: Welcome message and bot introduction
+ * - /help: Display available commands and usage instructions
+ * - /support: Initiate support ticket creation with form collection
+ * - /version: Show bot version and build information
+ * - /about: Display detailed bot information and capabilities
+ * - /cancel: Cancel ongoing support form or operation
+ * - /reset: Reset user conversation state and clear form data
+ * 
+ * Support Flow:
+ * - Multi-step form collection (summary, email)
+ * - State persistence using Bots Brain unified storage
+ * - Automatic ticket creation in Unthread platform
+ * - Real-time validation and error handling
+ * 
+ * Features:
+ * - Context-aware responses for different chat types
+ * - Form validation with email format checking
+ * - Conversation state management and cleanup * - Integration with Unthread API for ticket creation
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ * @version 1.0.0
+ * @since 2025
  */
 
 import packageJSON from '../../package.json' with { type: 'json' };
