@@ -145,12 +145,30 @@ PLATFORM_REDIS_URL=redis://redis-platform:6379
 
 > **💡 Pro Tip**: The Docker setup includes PostgreSQL and Redis automatically - no separate installation needed!
 
-### **🔧 Need Help?**
+### **🛤️ Railway Deployment**
 
-- **Quick Questions**: Check our [Community Discussions](https://github.com/wgtechlabs/unthread-telegram-bot/discussions)
-- **Technical Setup**: See our detailed [Contributing Guide](./CONTRIBUTING.md)
-- **Issues**: Report bugs in our [Issue Tracker](https://github.com/wgtechlabs/unthread-telegram-bot/issues)
-- No manual migration scripts needed
+Railway's managed PostgreSQL uses self-signed SSL certificates, which the bot automatically handles:
+
+#### **Automatic SSL Detection**
+
+- The bot automatically detects Railway environment by checking for `railway.internal` in your service URLs
+- When Railway is detected, SSL encryption is maintained but certificate validation is relaxed to accept Railway's self-signed certificates
+- No manual SSL configuration is needed - the bot handles this automatically
+
+#### **SSL Configuration Priority**
+
+1. **Railway Environment**: Uses Railway-compatible SSL (accepts self-signed certificates)
+2. **Production Environment**: Strict SSL validation for security
+3. **Development Environment**: Configurable via `DATABASE_SSL_VALIDATE` environment variable
+
+#### **Railway SSL Behavior**
+
+- ✅ **SSL Encryption**: Always enabled for secure data transmission
+- ✅ **Railway Certificates**: Automatically accepts Railway's self-signed certificates
+- ✅ **Environment Override**: Railway detection takes precedence over all other SSL settings
+- ✅ **No Configuration**: Works out-of-the-box without manual SSL setup
+
+> **🔒 Security Note**: Railway's self-signed certificates are secure within their managed infrastructure. The bot maintains SSL encryption while accommodating Railway's certificate setup.
 
 ## 🕹️ Usage
 
