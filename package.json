@@ -25,10 +25,11 @@
     "type-check": "tsc --noEmit",
     "start": "node dist/index.js",
     "dev": "nodemon --exec \"yarn build && yarn start\" src/index.ts",
-    "dev:watch": "concurrently \"tsc --watch\" \"nodemon dist/index.js\"",
-    "docker:build": "docker build -t unthread-telegram-bot .",
+    "dev:watch": "concurrently \"tsc --watch\" \"nodemon dist/index.js\"",    "docker:build": "docker build -t unthread-telegram-bot .",
     "docker:build:secure": "docker build --no-cache --pull -t unthread-telegram-bot .",
-    "docker:run": "docker run --env-file .env unthread-telegram-bot"
+    "docker:build:sbom": "docker build --sbom=true --provenance=mode=max -t unthread-telegram-bot .",
+    "docker:run": "docker run --env-file .env unthread-telegram-bot",
+    "sbom:generate": "bash scripts/generate-sbom.sh unthread-telegram-bot:latest"
   },
   "dependencies": {
     "@wgtechlabs/log-engine": "^2.0.0",

@@ -29,7 +29,7 @@ Open source development is resource-intensive. These **sponsored ads help keep L
 
 ## 🤔 How It Works
 
-The **Official Unthread Telegram Bot** creates a seamless bridge between your customer/partner Telegram chats and Unthread's ticket management system. Here's how it works:
+The **Official Unthread Telegram Bot** creates a seamless bridge between your customer/partner Telegram chats and Unthread's ticket management system.
 
 ### **📥 Ticket Creation**
 
@@ -39,11 +39,10 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
 
 ### **🔄 Bidirectional Communication**
 
-- **Agent → Customer**: When agents respond via the Unthread dashboard, messages are delivered to Telegram in real-time through webhook processing
+- **Agent → Customer**: When agents respond via the Unthread dashboard, messages are delivered to Telegram in real-time
 - **Customer → Agent**: Customers can simply reply to agent messages naturally - no special commands needed
-- **Status Notifications**: Receive real-time notifications when ticket status changes (Open/Closed) with clear messaging and emoji indicators
-- **Conversation Flow**: Maintains complete conversation history across both platforms using message reply chains
-- **Webhook Server**: Powered by [`wgtechlabs/unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server) which processes Unthread webhooks and queues events in Redis for real-time delivery
+- **Status Notifications**: Receive real-time notifications when ticket status changes with clear messaging and emoji indicators
+- **Conversation Flow**: Maintains complete conversation history across both platforms
 
 ### **🏢 Smart Customer Management**
 
@@ -51,174 +50,112 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
 - Creates customers in Unthread with `[Telegram]` prefix for platform identification
 - Maps Telegram users to Unthread user profiles with fallback email generation
 
-### **💾 Multi-Layer Storage**
-
-- **Memory Layer** (24h): Fast access for active conversations
-- **Redis Layer** (3 days): Intermediate caching for recent activity  
-- **PostgreSQL** (permanent): Long-term storage with full conversation history
-
-## 🔗 Webhook Server Integration
-
-This bot works in conjunction with the [`wgtechlabs/unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server) to enable real-time bidirectional communication. Here's how the complete system works:
-
-### **🏗️ System Architecture**
-
-```text
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Unthread      │    │   Webhook       │    │   Redis         │    │   Telegram      │
-│   Dashboard     │───▶│   Server        │───▶│   Queue         │───▶│  Bot (Official) │
-│                 │    │ (wgtechlabs/    │    │ unthread-events │    │                 │
-│   Agent Reply   │    │  unthread-      │    │                 │    │ Customer gets   │
-│                 │    │  webhook-server)│    │                 │    │ agent message   │
-└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
-```
-
-### **🔄 Event Flow**
-
-1. **Agent responds** in Unthread dashboard to a ticket
-2. **Unthread webhook** fires and sends event to the webhook server
-3. **Webhook server** processes the event and queues it in Redis with proper formatting
-4. **Telegram bot** polls the Redis queue and delivers the message to the appropriate group chat
-5. **User replies** in Telegram, and the bot sends it back to Unthread API
-6. **Status changes** (ticket closed/reopened) trigger real-time notifications to users
-
-### **⚙️ Configuration Requirements**
-
-- **Webhook Server**: Included in Docker Compose setup using [`wgtechlabs/unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server)
-- **Shared Redis**: The `redis-webhook` service is shared between webhook server and bot
-- **Queue Names**: Both webhook server and bot use the standard queue name `unthread-events`
-- **Network**: All services communicate via `unthread-integration-network`
-
-For standalone webhook server setup, see the [`wgtechlabs/unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server) repository.
-
 ## ✨ Key Features
 
-### **🎫 Seamless Ticket Management**
+- **🎫 Seamless Ticket Management** - Create support tickets directly from Telegram with `/support` command
+- **💬 Real-Time Communication** - Bidirectional messaging between agents and customers
+- **🏢 Smart Customer Detection** - Automatically extracts customer names from group chat titles
+- **💬 Natural Conversation Flow** - Customers reply normally, no special commands needed
+- **✅ Status Notifications** - Real-time alerts when tickets are opened or closed
+- **🔒 Enterprise-Ready** - Secure, scalable architecture with comprehensive logging
+- **⚡ Easy Deployment** - Quick setup with Docker or manual installation
 
-- Create support tickets directly from customer/partner Telegram chats with `/support` command
-- Interactive ticket creation with guided prompts for summary and email
-- Automatic ticket numbering and confirmation messages
-- Smart customer extraction from group chat names
+## � Quick Start
 
-### **💬 Real-Time Bidirectional Communication**
+### **🎯 Easy Setup**
 
-- Agent responses from Unthread dashboard delivered instantly to Telegram
-- Customers reply naturally to agent messages without special commands
-- Complete conversation history maintained across both platforms
-- Message reply chains preserve conversation context
-- **Status Notifications**: Real-time alerts when tickets are opened or closed with emoji-rich formatting
-- **Reaction-Based Feedback**: Customer messages are reacted to with ⏳ (sending) → ✅ (sent) or ❌ (error) for clean, non-intrusive status updates
+1. **Get Your Bot Token**
+   - Message [@BotFather](https://t.me/botfather) on Telegram
+   - Create new bot with `/newbot` command
+   - Save the bot token
 
-### **🏢 Enterprise-Ready Customer Management**
+2. **Setup Unthread**
+   - Log into your Unthread dashboard
+   - Navigate to Settings → API Keys
+   - Generate a new API key
+   - Find your channel ID in the dashboard URL
 
-- Automatic customer creation with `[Telegram]` platform identification
-- Smart company name extraction from group chat titles (e.g., "Acme Corp x Support" → "Acme Corp")
-- User profile mapping with automatic fallback email generation
-- Duplicate prevention for customers and users
+3. **Deploy Instantly**
 
-### **🚀 Production-Grade Architecture**
+   **Option A: Docker (Recommended)**
 
-- Multi-layer storage: Memory (24h) → Redis (3d) → PostgreSQL (permanent)
-- Webhook-based real-time event processing from Unthread via [`wgtechlabs/unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server)
-- Redis queue system for reliable webhook event processing and delivery
-- Graceful degradation when services are unavailable
-- Comprehensive error handling and recovery mechanisms
+   ```bash
+   # Clone and setup
+   git clone https://github.com/wgtechlabs/unthread-telegram-bot.git
+   cd unthread-telegram-bot
+   cp .env.example .env
+   
+   # Edit .env with your tokens
+   # Then start everything
+   docker compose up -d
+   ```
 
-### **⚡ Developer Experience**
+   **Option B: Manual Installation**
 
-- Built with modern ES6+ modules and async/await patterns
-- Structured logging with `@wgtechlabs/log-engine` integration
-- Auto-setup database schema on first run
-- Clean separation of concerns with SDK architecture
+   ```bash
+   # Clone and setup
+   git clone https://github.com/wgtechlabs/unthread-telegram-bot.git
+   cd unthread-telegram-bot
+   yarn install
+   cp .env.example .env
+   
+   # Edit .env with your tokens
+   # Then start the bot
+   yarn start
+   ```
 
-### **🔧 Flexible Configuration**
+4. **Test Your Bot**
+   - Add your bot to a Telegram group
+   - Send `/start` to see if it responds
+   - Try creating a ticket with `/support`
 
-- Environment variable based configuration
-- Support for both basic mode (ticket creation only) and full mode (with webhooks)
-- Configurable webhook polling intervals and queue names
-- Optional Redis caching with PostgreSQL fallback
+### **📋 Required Configuration**
 
-## 📥 Easy Deployment
-
-### **Quick Start (Recommended)**
-
-The bot is designed for easy deployment with minimal configuration. Here's the fastest way to get started:
-
-#### **1. Environment Setup**
-
-Create a `.env` file with the following required variables (you can copy from `.env.example`):
+Edit your `.env` file with these required values:
 
 ```bash
-# Required - Telegram Bot Configuration
+# Required - Get from BotFather
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 
-# Required - Database Configuration  
-POSTGRES_URL=postgresql://user:password@host:port/database
-
-# Required - Unthread API Configuration
+# Required - Get from Unthread dashboard
 UNTHREAD_API_KEY=your_unthread_api_key
 UNTHREAD_SLACK_CHANNEL_ID=your_unthread_slack_channel_id
-
-# Optional - Webhook Configuration (for real-time agent responses)
-# Requires wgtechlabs/unthread-webhook-server to be deployed and configured
-WEBHOOK_REDIS_URL=redis://user:password@host:port
-WEBHOOK_POLL_INTERVAL=1000
 UNTHREAD_WEBHOOK_SECRET=your_unthread_webhook_secret
 
-# Optional - Platform Redis (for advanced caching)
-PLATFORM_REDIS_URL=redis://user:password@host:port
+# Required - Database (Docker will handle this automatically)
+POSTGRES_URL=postgresql://postgres:postgres@postgres-platform:5432/unthread_telegram_bot
 
-# Optional - Company Configuration
-COMPANY_NAME=YourCompany
+# Optional - For enhanced performance
+WEBHOOK_REDIS_URL=redis://redis-webhook:6379
+PLATFORM_REDIS_URL=redis://redis-platform:6379
 ```
 
-#### **2. Install & Run**
+> **💡 Pro Tip**: The Docker setup includes PostgreSQL and Redis automatically - no separate installation needed!
 
-```bash
-# Install dependencies (Yarn required)
-yarn install
+### **🔧 Need Help?**
 
-# Start the bot
-yarn start
-```
-
-That's it! The database schema will be created automatically on first run.
-
-### **Deployment Options**
-
-#### **🚀 Railway (One-Click Deploy)**
-
-> [!NOTE]
-> This is not yet available.
-
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com/u/warengonzaga)
-
-### **Database Requirements**
-
-- **PostgreSQL 12+** (required)
-- **Redis 6+** (optional, for enhanced performance)
-- Automatic schema setup on first connection
+- **Quick Questions**: Check our [Community Discussions](https://github.com/wgtechlabs/unthread-telegram-bot/discussions)
+- **Technical Setup**: See our detailed [Contributing Guide](./CONTRIBUTING.md)
+- **Issues**: Report bugs in our [Issue Tracker](https://github.com/wgtechlabs/unthread-telegram-bot/issues)
 - No manual migration scripts needed
 
 ## 🕹️ Usage
 
 ### **Bot Commands**
 
-The bot provides several commands for users and administrators:
-
-#### **User Commands**
+**User Commands:**
 
 - `/start` - Welcome message and bot introduction
 - `/help` - Display available commands and usage instructions  
 - `/support` - Create a new support ticket (customer/partner group chats only)
 - `/version` - Show current bot version
 
-#### **Support Ticket Creation**
+### **Creating Support Tickets**
 
-1. **Initiate Ticket**: Use `/support` in a customer/partner group chat
-2. **Provide Summary**: Describe your issue when prompted
-3. **Email (Optional)**: Provide email or skip for auto-generated one
-4. **Confirmation**: Receive ticket number and confirmation message
+1. **Use `/support` in your group chat**
+2. **Describe your issue** when the bot asks
+3. **Provide email or skip** for auto-generated one
+4. **Get your ticket number** and confirmation
 
 ```text
 User: /support
@@ -233,313 +170,19 @@ Bot: 🎫 Support Ticket Created Successfully!
      Your issue has been submitted and our team will be in touch soon.
 ```
 
-### **Agent Workflow**
+### **For Agents (Unthread Dashboard)**
 
-#### **Receiving Tickets**
-
-- New tickets appear in your Unthread dashboard
-- Customer name shows as `[Telegram] GroupChatName`
-- User information includes Telegram username and ID
-
-#### **Responding to Customers**
-
-- Reply to tickets in Unthread dashboard as normal
-- Messages are automatically delivered to the original Telegram group
-- Customers receive agent responses in real-time
-
-#### **Ongoing Conversations**
-
-- Customers can reply directly to agent messages in Telegram
-- No special commands needed - natural conversation flow
-- All replies are automatically sent back to Unthread
-- **Status Updates**: Customers receive real-time notifications when tickets are closed (🔒) or reopened (📂)
-- **Reply Status**: Message reactions show reply status (⏳ sending → ✅ sent successfully / ❌ error)
-- Status notifications include clear messaging about next steps and reply to original ticket messages
+- **New tickets** appear in your Unthread dashboard automatically
+- **Reply normally** in Unthread - messages are delivered to Telegram instantly
+- **Close tickets** and customers get notified in Telegram with status updates
 
 ### **Group Chat Setup**
 
-#### **Adding the Bot**
-
-1. Add your bot to the desired customer/partner Telegram group chat
-2. Ensure the bot has permission to read and send messages
-3. Group chat title should ideally include customer company name
-
-#### **Best Practices**
-
-- Use descriptive group chat names (e.g., "Acme Corp Support", "ClientName x YourCompany")
-- The bot automatically extracts customer names from chat titles
-- Only group members can create support tickets (private chats are blocked)
-- Recommended for dedicated customer/partner support channels, not public community groups
-
-### **Admin Features**
-
-#### **Customer Management**
-
-- Customers are automatically created from group chat names
-- Duplicate prevention ensures one customer per chat
-- Customer names are prefixed with `[Telegram]` for easy identification
-
-#### **Conversation Tracking**
-
-- Each ticket maintains complete conversation history
-- Reply chains preserve context across platforms
-- Message metadata includes user information and timestamps
-
-## 📦 Manual Installation
-
-### **Prerequisites**
-
-- **Node.js 20+** (ES6 modules support required)
-- **Yarn 1.22.22+** (package manager - npm not supported)
-- **PostgreSQL 12+** (primary database)
-- **Redis 6+** (optional, for enhanced performance)
-
-> **⚠️ Package Manager Notice:** This project enforces the use of Yarn and will prevent npm installation attempts. If you try to use `npm install`, you'll receive an error message with instructions to use Yarn instead.
-
-### **Step-by-Step Installation**
-
-#### **1. Clone Repository**
-
-```bash
-git clone https://github.com/wgtechlabs/unthread-telegram-bot.git
-cd unthread-telegram-bot
-```
-
-#### **2. Install Dependencies**
-
-```bash
-# Use Yarn only (npm not supported)
-yarn install
-```
-
-#### **3. Create Telegram Bot**
-
-1. Message [@BotFather](https://t.me/botfather) on Telegram
-2. Create new bot with `/newbot` command
-3. Save the bot token for environment configuration
-
-#### **4. Setup Unthread Integration**
-
-1. Log into your Unthread dashboard
-2. Navigate to Settings → API Keys
-3. Generate a new API key
-4. Find your channel ID in the dashboard URL
-
-#### **5. Database Setup**
-
-```bash
-# PostgreSQL (required)
-createdb unthread_telegram_bot
-
-# Redis (optional - for enhanced performance)
-# Install Redis locally or use cloud service
-```
-
-#### **6. Environment Configuration**
-
-> **🎯 Unified Configuration Approach**  
-> This project uses a **single `.env` file** for both local development and Docker deployment, ensuring consistency across all environments.
-
-```bash
-# Copy example environment file
-cp .env.example .env
-
-# Edit .env with your configuration
-nano .env
-```
-
-**Required environment variables:**
-
-```bash
-TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
-POSTGRES_URL=postgresql://postgres:postgres@localhost:5432/unthread_telegram_bot
-UNTHREAD_API_KEY=your_unthread_api_key
-UNTHREAD_SLACK_CHANNEL_ID=your_unthread_slack_channel_id
-UNTHREAD_WEBHOOK_SECRET=your_unthread_webhook_secret
-PLATFORM_REDIS_URL=redis://localhost:6379
-WEBHOOK_REDIS_URL=redis://localhost:6379
-```
-
-**Optional environment variables:**
-
-```bash
-COMPANY_NAME=YourCompanyName
-WEBHOOK_POLL_INTERVAL=1000
-NODE_ENV=development
-DATABASE_SSL_VALIDATE=false
-```
-
-**📱 Environment Notes:**
-
-- **Local Development**: Use `localhost` for database and Redis URLs
-- **Docker Deployment**: Update URLs to use service names:
-  - Database: `postgres-platform:5432`
-  - Platform Redis: `redis-platform:6379`  
-  - Webhook Redis: `redis-webhook:6379`
-- **Production**: Set `NODE_ENV=production` and use secure connection strings
-- **Enterprise**: This same `.env` file works seamlessly across all deployment methods
-
-#### **7. Start the Bot**
-
-```bash
-# Development mode (with auto-restart)
-yarn dev
-
-# Production mode
-yarn start
-```
-
-### **Verification**
-
-#### **Check Bot Status**
-
-1. Look for successful startup logs:
-
-   ```text
-   [INFO] Database initialized successfully
-   [INFO] BotsStore initialized successfully  
-   [INFO] Bot initialized successfully
-   [INFO] Bot is running and listening for messages...
-   ```
-
-2. Test basic functionality:
-   - Add bot to a test group
-   - Send `/start` command
-   - Try creating a support ticket with `/support`
-
-#### **Troubleshooting**
-
-**Common Issues:**
-
-- **Import errors**: Ensure you're using Yarn, not npm
-- **Database connection**: Verify PostgreSQL is running and connection string is correct
-- **Bot not responding**: Check bot token and ensure bot is added to group with proper permissions
-- **Webhook issues**: Verify Redis connection if using webhook features
-
-**Debug Mode:**
-
-```bash
-# Enable detailed logging
-NODE_ENV=development yarn start
-```
-
-## 🐳 Docker Deployment
-
-The bot includes a production-ready Docker setup that uses the same `.env` configuration as local development.
-
-### **Docker Prerequisites**
-
-- Docker installed on your system
-- Docker Compose (comes with Docker Desktop)
-- Copy `.env.example` to `.env` and configure your environment variables
-
-### **Environment Configuration**
-
-Before building the Docker image, create a `.env` file from the example:
-
-```bash
-cp .env.example .env
-```
-
-Edit the `.env` file and configure the following required variables:
-
-- `TELEGRAM_BOT_TOKEN`: Your Telegram bot token from BotFather
-- `UNTHREAD_API_KEY`: Your Unthread API key
-- `UNTHREAD_SLACK_CHANNEL_ID`: Your Unthread Slack channel ID
-- `UNTHREAD_WEBHOOK_SECRET`: Webhook secret for security
-- Database and Redis URLs as needed
-
-### **Building and Running**
-
-#### **Method 1: Using Docker Compose (Recommended)**
-
-Start your application with all dependencies:
-
-```bash
-docker compose up -d
-```
-
-This will build and start:
-
-- **Bot server** (`server`) - The main Telegram bot application
-- **Webhook server** (`unthread-webhook-server`) - Handles Unthread webhooks on port 3000
-- **PostgreSQL** (`postgres-platform`) - Database for the bot on port 5432  
-- **Redis Platform** (`redis-platform`) - Redis for bot operations on port 6379
-- **Redis Webhook** (`redis-webhook`) - Shared Redis for webhook communication on port 6380
-
-All services run on the `unthread-integration-network` for seamless communication.
-
-#### **Method 2: Using Docker Commands**
-
-Build the Docker image:
-
-```bash
-docker build -t unthread-telegram-bot .
-# or use the yarn script
-yarn docker:build
-```
-
-Run the container:
-
-```bash
-docker run --env-file .env unthread-telegram-bot
-# or use the yarn script
-yarn docker:run
-```
-
-### **Production Deployment**
-
-#### **Building for Different Architectures**
-
-If deploying to a different CPU architecture (e.g., from Mac M1 to Linux amd64):
-
-```bash
-docker build --platform=linux/amd64 -t unthread-telegram-bot .
-```
-
-#### **Pushing to Registry**
-
-Tag and push your image to a container registry:
-
-```bash
-docker tag unthread-telegram-bot your-registry.com/unthread-telegram-bot:latest
-docker push your-registry.com/unthread-telegram-bot:latest
-```
-
-### **Docker Features**
-
-- **Multi-stage build** for optimized image size (217MB)
-- **Non-root user** for enhanced security  
-- **Alpine Linux** base for minimal attack surface
-- **Build caching** for faster subsequent builds
-- **Enterprise-ready** with best practices
-
-### **Development**
-
-For development with hot reload, use the local development setup instead of Docker:
-
-```bash
-yarn dev
-```
-
-### **Docker Troubleshooting**
-
-- Ensure all required environment variables are set in your `.env` file
-- Check service logs: `docker-compose logs <service-name>`
-  - Bot: `docker-compose logs server`
-  - Webhook: `docker-compose logs unthread-webhook-server`
-  - Database: `docker-compose logs postgres-platform`
-  - Redis: `docker-compose logs redis-platform redis-webhook`
-- Verify your Telegram bot token is valid
-- Test webhook server health: `curl http://localhost:3000/health`
-- Ensure the `unthread-integration-network` exists: `docker network ls`
-
-### **Docker Environment Notes**
-
-- Uses the **same `.env` file** as local development
-- No separate Docker-specific configuration needed
-- Update database/Redis URLs in `.env` for your Docker environment
-- Perfect for containerized deployments and CI/CD pipelines
+1. **Add your bot** to the customer/partner Telegram group
+2. **Give message permissions** to the bot
+3. **Use descriptive names** like "Acme Corp Support" for automatic customer detection
+
+> **💡 Best Practice**: Use this bot for dedicated customer/partner support channels, not public community groups.
 
 ## 💬 Community Discussions
 
@@ -574,9 +217,20 @@ Your contributions to improving this project are greatly appreciated! 🙏✨
 
 ## 🎯 Contributing
 
-Contributions are welcome, create a pull request to this repo and I will review your code. Please consider to submit your pull request to the `dev` branch. Thank you!
+Contributions are welcome! Create a pull request to this repo and I will review your code. Please consider submitting your pull request to the `dev` branch. Thank you!
 
-Read the project's [contributing guide](./CONTRIBUTING.md) for more info.
+For detailed setup instructions, technical documentation, architecture details, and development guidelines, see our comprehensive [Contributing Guide](./CONTRIBUTING.md).
+
+### **🛡️ Security & Supply Chain**
+
+This project implements comprehensive supply chain security measures including:
+
+- **SBOM generation** for all container images
+- **Build provenance attestations** for transparency
+- **Automated vulnerability scanning** with Trivy
+- **Multi-layer security** from development to production
+
+For complete security documentation, see the [Contributing Guide](./CONTRIBUTING.md#-supply-chain-security).
 
 ## 💖 Sponsors
 

@@ -4,45 +4,64 @@
 # For more help, visit the .dockerignore file reference guide at
 # https://docs.docker.com/go/build-context-dockerignore/
 
-**/.classpath
-**/.dockerignore
+# Version control
+**/.git
+**/.gitignore
+
+# Environment files
 **/.env
 **/.env.local
 **/.env.development
 **/.env.production
-**/.git
-**/.gitignore
+
+# IDE and editor files
+**/.classpath
 **/.project
 **/.settings
 **/.toolstarget
 **/.vs
 **/.vscode
+
+# Build artifacts and cache
+**/node_modules
+**/dist
+**/build
+**/coverage
+**/.nyc_output
 **/.next
 **/.cache
+
+# Logs
+**/*.log
+**/npm-debug.log
+
+# Docker related files
+**/.dockerignore
+**/docker-compose*
+**/compose.y*ml
+**/Dockerfile*
+
+# SBOM and security artifacts
+**/sbom
+
+# Documentation and metadata (already in image via COPY commands if needed)
+README.md
+LICENSE
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+SECURITY.md
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+
+# Development configurations
+**/secrets.dev.yaml
+**/values.dev.yaml
+
+# Miscellaneous
 **/*.*proj.user
 **/*.dbmdl
 **/*.jfm
 **/charts
-**/docker-compose*
-**/compose.y*ml
-**/Dockerfile*
-**/node_modules
-**/npm-debug.log
 **/obj
-**/secrets.dev.yaml
-**/values.dev.yaml
-**/dist
-**/*.log
-**/coverage
-**/.nyc_output
-**/README.md
-**/LICENSE
-**/CONTRIBUTING.md
-**/CODE_OF_CONDUCT.md
-**/SECURITY.md
-**/*.test.ts
-**/*.spec.ts
-**/build
-**/dist
-LICENSE
-README.md

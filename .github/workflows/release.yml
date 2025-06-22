@@ -93,9 +93,11 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.licenses=GPL-3.0
-          cache-from: type=gha
+            org.opencontainers.image.licenses=GPL-3.0          cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Generate SBOM and attestations for supply chain security
+          sbom: true
+          provenance: mode=max
           
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.28.0
