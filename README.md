@@ -79,7 +79,7 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
 
    **Option A: Railway (One-Click Deploy)**
 
-   [![deploy on railway](https://railway.com/button.svg)](https://railway.com/deploy/unthread-telegram-bo?referralCode=dTwT-i)
+   [![deploy on railway](https://railway.com/button.svg)](https://railway.com/deploy/unthread-telegram-bot?referralCode=dTwT-i)
 
    **Option B: Docker (Recommended)**
 
@@ -117,7 +117,7 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
 
 Deploy instantly to Railway with a single click:
 
-[![deploy on railway](https://railway.com/button.svg)](https://railway.com/deploy/unthread-telegram-bo?referralCode=dTwT-i)
+[![deploy on railway](https://railway.com/button.svg)](https://railway.com/deploy/unthread-telegram-bot?referralCode=dTwT-i)
 
 > [!TIP]
 > Deploying using Railway directly supports this project's ongoing development and maintenance! 🚀
@@ -254,7 +254,7 @@ There are several ways you can support this project:
 
 - [Become a sponsor](https://github.com/sponsors/wgtechlabs) and get some perks! 💖
 - [Buy me a coffee](https://buymeacoffee.com/wgtechlabs) if you just love what I do! ☕
-- Deploy using the [Railway Template](https://railway.com/deploy/unthread-telegram-bo?referralCode=dTwT-i) which directly supports the ongoing development! 🛠️
+- Deploy using the [Railway Template](https://railway.com/deploy/unthread-telegram-bot?referralCode=dTwT-i) which directly supports the ongoing development! 🛠️
 
 ## ⭐ GitHub Star Nomination
 
