@@ -272,7 +272,13 @@ COMPANY_NAME=YourCompany
 
 # Development/Production
 NODE_ENV=development
-DATABASE_SSL_VALIDATE=false
+
+# SSL Configuration (see SSL Configuration Logic section below for details)
+# DATABASE_SSL_VALIDATE=full    # Disable SSL completely (for Docker without SSL)
+# DATABASE_SSL_VALIDATE=true    # SSL enabled, no certificate validation (dev)
+# DATABASE_SSL_VALIDATE=false   # SSL enabled with certificate validation (secure)
+# DATABASE_SSL_VALIDATE=        # Default: SSL enabled with certificate validation (secure)
+DATABASE_SSL_VALIDATE=full
 ```
 
 #### **Environment Notes**
@@ -295,35 +301,60 @@ Railway's managed PostgreSQL uses self-signed SSL certificates. The bot automati
 - When Railway is detected, SSL encryption is maintained but certificate validation is relaxed
 - No manual configuration needed - works out-of-the-box
 
-**SSL Priority Logic:**
+**SSL Configuration Logic:**
+
+The SSL configuration follows this priority order:
 
 ```typescript
-// 1. Railway environment (highest priority)
+// 1. DATABASE_SSL_VALIDATE setting (highest priority - applies to ALL environments)
+if (sslValidate === 'full') {
+    return false; // Disable SSL completely + adds ?sslmode=disable
+}
+
+// 2. Railway environment detection
 if (isRailwayEnvironment()) {
     return { rejectUnauthorized: false }; // Accept Railway's self-signed certs
 }
 
-// 2. Production environment  
+// 3. Production environment  
 if (isProduction) {
     return { rejectUnauthorized: true }; // Strict SSL validation
 }
 
-// 3. Development environment
-// Uses DATABASE_SSL_VALIDATE environment variable
+// 4. Development environment specific settings
+if (sslValidate === 'true') {
+    return { rejectUnauthorized: false }; // SSL enabled, no cert validation
+}
+if (sslValidate === 'false') {
+    return { rejectUnauthorized: true }; // SSL enabled with cert validation
+}
+
+// 5. Default (secure by default)
+return { rejectUnauthorized: true }; // SSL enabled with cert validation
 ```
 
-**Railway SSL Behavior:**
+**DATABASE_SSL_VALIDATE Options:**
 
-- ✅ SSL encryption always enabled for secure data transmission
-- ✅ Accepts Railway's self-signed certificates automatically
-- ✅ Railway detection overrides `DATABASE_SSL_VALIDATE` environment variable
-- ✅ Maintains security while working with Railway's infrastructure
+| Setting | Description | Use Case |
+|---------|-------------|----------|
+| `full` | **Disables SSL completely** + adds `?sslmode=disable` | Local Docker, PostgreSQL without SSL |
+| `true` | SSL enabled, **no certificate validation** | Development with SSL-enabled DB |
+| `false` | SSL enabled, **with certificate validation** | Production with valid SSL certificates |
+| *undefined* | **Secure default**: SSL enabled with validation | Production environments |
 
-**Environment Variable Impact:**
+**Environment-Specific Behavior:**
 
-- `DATABASE_SSL_VALIDATE=false` is **ignored** on Railway (Railway-specific SSL is used)
-- `DATABASE_SSL_VALIDATE=true` is **ignored** on Railway (Railway-specific SSL is used)
-- Only affects non-Railway environments (local, other cloud providers)
+- **Railway**: Always uses `{ rejectUnauthorized: false }` (unless `DATABASE_SSL_VALIDATE=full`)
+- **Production**: Default to strict SSL validation (`{ rejectUnauthorized: true }`)
+- **Development**: Respects `DATABASE_SSL_VALIDATE` setting, defaults to secure
+- **Docker**: Use `DATABASE_SSL_VALIDATE=full` for PostgreSQL containers without SSL
+
+**Security Notes:**
+
+- ✅ **Secure by default**: SSL certificate validation is enabled when not explicitly configured
+- ✅ **Railway compatible**: Automatically handles Railway's self-signed certificates
+- ✅ **Docker friendly**: `DATABASE_SSL_VALIDATE=full` automatically adds `?sslmode=disable`
+- ✅ **Production ready**: Strict SSL validation in production environments
 
 ### 🔗 Webhook Server Integration
 

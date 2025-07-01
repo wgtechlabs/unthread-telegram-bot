@@ -26,7 +26,7 @@ services:
   # =============================================================================
   # Main Node.js application that handles Telegram bot interactions
   server:
-    image: wgtechlabs/unthread-telegram-bot:latest
+    build: .  # Build from local Dockerfile instead of pulling from Docker Hub
     environment:
       NODE_ENV: production
     env_file:
