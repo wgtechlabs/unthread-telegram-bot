@@ -26,7 +26,7 @@ services:
   # =============================================================================
   # Main Node.js application that handles Telegram bot interactions
   server:
-    image: wgtechlabs/unthread-telegram-bot:latest
+    build: .  # Build from local Dockerfile instead of pulling from Docker Hub
     environment:
       NODE_ENV: production
     env_file:
@@ -72,7 +72,7 @@ services:
     image: postgres:15-alpine  # Alpine for smaller image size
     restart: always
     environment:
-      POSTGRES_DB: unthread_telegram_bot    # Database name
+      POSTGRES_DB: ${POSTGRES_DB:-unthread_telegram_bot}    # Database name (with fallback)
       POSTGRES_USER: ${POSTGRES_USER}       # Username from .env file
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}  # Password from .env file (secure!)
     ports:

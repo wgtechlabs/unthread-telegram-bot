@@ -60,9 +60,22 @@ export class DatabaseConnection {
         const isProduction = process.env.NODE_ENV === 'production';
         const sslConfig = this.getSSLConfig(isProduction);
 
+        // Start with the base connection string
+        let connectionString = process.env.POSTGRES_URL;
+
+        // Auto-append sslmode=disable only when completely disabling SSL
+        if (sslConfig === false && !connectionString.includes('sslmode=')) {
+            const separator = connectionString.includes('?') ? '&' : '?';
+            connectionString += `${separator}sslmode=disable`;
+            LogEngine.debug('SSL disabled - added sslmode=disable to connection string', {
+                originalUrl: process.env.POSTGRES_URL,
+                modifiedUrl: connectionString.replace(/\/\/[^:]+:[^@]+@/, '//***:***@') // Mask credentials
+            });
+        }
+
         // Configure connection pool
         const poolConfig: any = {
-            connectionString: process.env.POSTGRES_URL,
+            connectionString,
             max: 10, // Maximum number of connections in pool
             idleTimeoutMillis: 30000, // Close idle connections after 30 seconds
             connectionTimeoutMillis: 10000, // Return error after 10 seconds if connection cannot be established
@@ -86,8 +99,9 @@ export class DatabaseConnection {
             sslEnabled: sslConfig !== false,
             sslValidation: this.isRailwayEnvironment() ? 'railway-compatible' : (
                 isProduction ? 'enabled' : (
-                    process.env.DATABASE_SSL_VALIDATE === 'false' ? 'disabled' :
-                    process.env.DATABASE_SSL_VALIDATE === 'true' ? 'enabled' : 'enabled-no-validation'
+                    process.env.DATABASE_SSL_VALIDATE === 'full' ? 'disabled' :
+                    process.env.DATABASE_SSL_VALIDATE === 'true' ? 'disabled-validation' :
+                    process.env.DATABASE_SSL_VALIDATE === 'false' ? 'enabled' : 'enabled-no-validation'
                 )
             ),
             environment: process.env.NODE_ENV || 'development',
@@ -288,6 +302,14 @@ export class DatabaseConnection {
      * @returns SSL configuration object, or false to disable SSL entirely
      */
     private getSSLConfig(isProduction: boolean): any {
+        // Check SSL validation setting first (applies to all environments)
+        const sslValidate = process.env.DATABASE_SSL_VALIDATE;
+        
+        // If set to 'full', disable SSL entirely (useful for local Docker with sslmode=disable)
+        if (sslValidate === 'full') {
+            return false;
+        }
+
         // Check if we're on Railway first - they use self-signed certificates
         if (this.isRailwayEnvironment()) {
             return {
@@ -297,7 +319,7 @@ export class DatabaseConnection {
             };
         }
 
-        // In production, always validate SSL certificates for security
+        // In production, validate SSL certificates for security (unless overridden above)
         if (isProduction) {
             return {
                 rejectUnauthorized: true,
@@ -306,25 +328,26 @@ export class DatabaseConnection {
             };
         }
 
-        // In development, check SSL validation setting
-        const sslValidate = process.env.DATABASE_SSL_VALIDATE;
-        
-        // If explicitly set to false, disable SSL entirely (useful for local Docker)
-        if (sslValidate === 'false') {
-            return false;
+        // In development, check remaining SSL validation settings
+        // If set to 'true', enable SSL but disable certificate validation (common for dev)
+        if (sslValidate === 'true') {
+            return {
+                rejectUnauthorized: false,
+                ca: process.env.DATABASE_SSL_CA || undefined
+            };
         }
         
-        // If explicitly set to true, enable SSL with validation
-        if (sslValidate === 'true') {
+        // If explicitly set to 'false', enable SSL with validation
+        if (sslValidate === 'false') {
             return {
                 rejectUnauthorized: true,
                 ca: process.env.DATABASE_SSL_CA || undefined
             };
         }
         
-        // Default for development: SSL enabled but without certificate validation
+        // Default for all environments: SSL enabled WITH certificate validation for security
         return {
-            rejectUnauthorized: false,
+            rejectUnauthorized: true,
             ca: process.env.DATABASE_SSL_CA || undefined
         };
     }
