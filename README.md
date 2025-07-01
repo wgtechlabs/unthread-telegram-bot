@@ -148,6 +148,7 @@ PLATFORM_REDIS_URL=redis://redis-platform:6379
 ### **🛤️ Railway Deployment**
 
 For detailed information about Railway's managed PostgreSQL and SSL handling, please refer to the [Railway Deployment section in the README](README.md#🛤️-railway-deployment).
+
 - ✅ **Environment Override**: Railway detection takes precedence over all other SSL settings
 - ✅ **No Configuration**: Works out-of-the-box without manual SSL setup
 
