@@ -60,9 +60,18 @@ export class DatabaseConnection {
         const isProduction = process.env.NODE_ENV === 'production';
         const sslConfig = this.getSSLConfig(isProduction);
 
+        // Start with the base connection string
+        let connectionString = process.env.POSTGRES_URL;
+
+        // Auto-append sslmode=disable only when completely disabling SSL
+        if (sslConfig === false && process.env.DATABASE_SSL_VALIDATE === 'full' && !connectionString.includes('sslmode=')) {
+            const separator = connectionString.includes('?') ? '&' : '?';
+            connectionString += `${separator}sslmode=disable`;
+        }
+
         // Configure connection pool
         const poolConfig: any = {
-            connectionString: process.env.POSTGRES_URL,
+            connectionString,
             max: 10, // Maximum number of connections in pool
             idleTimeoutMillis: 30000, // Close idle connections after 30 seconds
             connectionTimeoutMillis: 10000, // Return error after 10 seconds if connection cannot be established
@@ -86,8 +95,9 @@ export class DatabaseConnection {
             sslEnabled: sslConfig !== false,
             sslValidation: this.isRailwayEnvironment() ? 'railway-compatible' : (
                 isProduction ? 'enabled' : (
-                    process.env.DATABASE_SSL_VALIDATE === 'false' ? 'disabled' :
-                    process.env.DATABASE_SSL_VALIDATE === 'true' ? 'enabled' : 'enabled-no-validation'
+                    process.env.DATABASE_SSL_VALIDATE === 'full' ? 'disabled' :
+                    process.env.DATABASE_SSL_VALIDATE === 'true' ? 'disabled-validation' :
+                    process.env.DATABASE_SSL_VALIDATE === 'false' ? 'enabled' : 'enabled-no-validation'
                 )
             ),
             environment: process.env.NODE_ENV || 'development',
@@ -309,13 +319,21 @@ export class DatabaseConnection {
         // In development, check SSL validation setting
         const sslValidate = process.env.DATABASE_SSL_VALIDATE;
         
-        // If explicitly set to false, disable SSL entirely (useful for local Docker)
-        if (sslValidate === 'false') {
+        // If set to 'full', disable SSL entirely (useful for local Docker with sslmode=disable)
+        if (sslValidate === 'full') {
             return false;
         }
         
-        // If explicitly set to true, enable SSL with validation
+        // If set to 'true', enable SSL but disable certificate validation (common for dev)
         if (sslValidate === 'true') {
+            return {
+                rejectUnauthorized: false,
+                ca: process.env.DATABASE_SSL_CA || undefined
+            };
+        }
+        
+        // If explicitly set to 'false', enable SSL with validation
+        if (sslValidate === 'false') {
             return {
                 rejectUnauthorized: true,
                 ca: process.env.DATABASE_SSL_CA || undefined
