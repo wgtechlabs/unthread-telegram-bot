@@ -39,6 +39,7 @@ import fetch from 'node-fetch';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import { TicketData, AgentMessageData, UserData } from '../sdk/types.js';
+import { getDefaultTicketPriority } from '../config/env.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -302,7 +303,10 @@ export async function createTicket(params: CreateTicketParams): Promise<CreateTi
 async function createTicketJSON(params: CreateTicketJSONParams): Promise<CreateTicketResponse> {
     const { title, summary, customerId, onBehalfOf } = params;
     
-    const payload = {
+    // Get default priority from environment configuration
+    const defaultPriority = getDefaultTicketPriority();
+    
+    const payload: any = {
         type: "slack",
         title: title,
         markdown: summary,
@@ -311,6 +315,11 @@ async function createTicketJSON(params: CreateTicketJSONParams): Promise<CreateT
         customerId: customerId,
         onBehalfOf: onBehalfOf
     };
+    
+    // Add priority only if configured
+    if (defaultPriority !== undefined) {
+        payload.priority = defaultPriority;
+    }
 
     const response = await fetch(`${API_BASE_URL}/conversations`, {
         method: 'POST',
@@ -332,7 +341,8 @@ async function createTicketJSON(params: CreateTicketJSONParams): Promise<CreateT
         ticketTitle: title,
         ticketId: result.id,
         friendlyId: result.friendlyId,
-        customerId: customerId
+        customerId: customerId,
+        priority: defaultPriority || 'not set'
     });
 
     return result;

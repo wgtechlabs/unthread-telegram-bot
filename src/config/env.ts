@@ -87,3 +87,25 @@ export function isProduction(): boolean {
 export function isDevelopment(): boolean {
     return process.env.NODE_ENV === 'development';
 }
+
+/**
+ * Get default ticket priority from environment variable
+ * @returns Priority value (3, 5, 7, 9) or undefined if not set or invalid
+ */
+export function getDefaultTicketPriority(): 3 | 5 | 7 | 9 | undefined {
+    const priority = process.env.UNTHREAD_DEFAULT_PRIORITY;
+    
+    if (!priority) {
+        return undefined;
+    }
+    
+    const numPriority = parseInt(priority, 10);
+    
+    // Validate against allowed priority values from Unthread API
+    if (numPriority === 3 || numPriority === 5 || numPriority === 7 || numPriority === 9) {
+        return numPriority;
+    }
+    
+    console.warn(`⚠️  Invalid UNTHREAD_DEFAULT_PRIORITY value: ${priority}. Must be 3, 5, 7, or 9. Ignoring priority setting.`);
+    return undefined;
+}
