@@ -89,10 +89,25 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
    cd unthread-telegram-bot
    cp .env.example .env
    
+   # IMPORTANT: Create the external network first
+   docker network create unthread-integration-network
+   
    # Edit .env with your tokens
    # Then start everything
    docker compose up -d
    ```
+
+   > **⚠️ IMPORTANT**: If you don't create the external network first, Docker will fail with:
+   >
+   > `ERROR: Network unthread-integration-network declared as external, but could not be found`
+   >
+   > **For Local Development**: If you're running Docker on your local machine, add this to your `.env` file:
+   >
+   > ```bash
+   > DATABASE_SSL_VALIDATE=false
+   > ```
+   >
+   > This prevents SSL validation issues with local PostgreSQL connections.
 
    **Option C: Manual Installation**
 
