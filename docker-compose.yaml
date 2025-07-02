@@ -141,8 +141,9 @@ volumes:
 # =============================================================================
 # External network for communication between services
 # Create with: docker network create unthread-integration-network
+
+# ⚠️ IMPORTANT: If you don't create this network first, Docker will fail with:
+# "ERROR: Network unthread-integration-network declared as external, but could not be found"
 networks:
   unthread-integration-network:
     external: true
-
-
