@@ -28,6 +28,8 @@
  * @since 2025
  */
 
+import { LogEngine } from '@wgtechlabs/log-engine';
+
 /**
  * Required environment variables
  */
@@ -54,17 +56,20 @@ export function validateEnvironment(): void {
     }
     
     if (missingVars.length > 0) {
-        console.error('❌ Missing required environment variables:');
-        missingVars.forEach(varName => {
-            console.error(`   - ${varName}`);
+        LogEngine.error('❌ Missing required environment variables:', {
+            missingVariables: missingVars,
+            totalMissing: missingVars.length
         });
-        console.error('\n📝 Please copy .env.example to .env and fill in the required values.');
-        console.error('   This works for both local development and Docker deployment.\n');
+        missingVars.forEach(varName => {
+            LogEngine.error(`   - ${varName}`);
+        });
+        LogEngine.error('\n📝 Please copy .env.example to .env and fill in the required values.');
+        LogEngine.error('   This works for both local development and Docker deployment.\n');
         process.exit(1);
     }
     
-    console.log('✅ Environment configuration validated successfully');
-    console.log(`🚀 Running in ${process.env.NODE_ENV || 'development'} mode`);
+    LogEngine.info('✅ Environment configuration validated successfully');
+    LogEngine.info(`🚀 Running in ${process.env.NODE_ENV || 'development'} mode`);
 }
 
 /**
