@@ -39,6 +39,7 @@ import fetch from 'node-fetch';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import { TicketData, AgentMessageData, UserData } from '../sdk/types.js';
+import { getDefaultTicketPriority } from '../config/env.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -116,6 +117,20 @@ interface SendMessageJSONParams {
 interface CreateTicketResponse {
   id: string;
   friendlyId: string;
+}
+
+/**
+ * Ticket creation payload for API request
+ */
+interface CreateTicketPayload {
+  type: "slack";
+  title: string;
+  markdown: string;
+  status: "open";
+  channelId: string;
+  customerId: string;
+  onBehalfOf: OnBehalfOfUser;
+  priority?: 3 | 5 | 7 | 9;
 }
 
 /**
@@ -204,18 +219,8 @@ function capitalizeCompanyName(name: string): string {
 
 // API URLs and Auth Keys
 const API_BASE_URL = 'https://api.unthread.io/api';
-const UNTHREAD_API_KEY = process.env.UNTHREAD_API_KEY;
-const CHANNEL_ID = process.env.UNTHREAD_SLACK_CHANNEL_ID;
-
-// Validate required environment variables
-if (!UNTHREAD_API_KEY) {
-    LogEngine.error('UNTHREAD_API_KEY environment variable is required but not defined');
-    throw new Error('Missing required environment variable: UNTHREAD_API_KEY');
-}
-
-if (!CHANNEL_ID) {    LogEngine.error('UNTHREAD_SLACK_CHANNEL_ID environment variable is required but not defined');
-    throw new Error('Missing required environment variable: UNTHREAD_SLACK_CHANNEL_ID');
-}
+const UNTHREAD_API_KEY = process.env.UNTHREAD_API_KEY!;
+const CHANNEL_ID = process.env.UNTHREAD_SLACK_CHANNEL_ID!;
 
 // Customer ID cache to avoid creating duplicates
 const customerCache = new Map<string, Customer>();
@@ -291,26 +296,34 @@ export async function createTicket(params: CreateTicketParams): Promise<CreateTi
 }
 
 /**
- * Creates a new support ticket in Unthread with the specified details.
+ * Creates a new support ticket in Unthread using the provided details.
  *
- * Sends a POST request to the Unthread API to create a ticket using the provided title, summary, customer ID, and user information.
+ * Sends a POST request to the Unthread API to create a ticket with the specified title, summary, customer ID, user information, and optional priority.
  *
  * @param params - Ticket creation details including title, summary, customer ID, and user information
  * @returns An object containing the ticket's unique ID and friendly ID
- * @throws If the API request fails or returns a non-OK response
+ * @throws If the Unthread API request fails or returns a non-OK response
  */
 async function createTicketJSON(params: CreateTicketJSONParams): Promise<CreateTicketResponse> {
     const { title, summary, customerId, onBehalfOf } = params;
     
-    const payload = {
+    // Get default priority from environment configuration
+    const defaultPriority = getDefaultTicketPriority();
+    
+    const payload: CreateTicketPayload = {
         type: "slack",
         title: title,
         markdown: summary,
         status: "open",
-        channelId: CHANNEL_ID,
+        channelId: CHANNEL_ID!,
         customerId: customerId,
         onBehalfOf: onBehalfOf
     };
+    
+    // Add priority only if configured
+    if (defaultPriority !== undefined) {
+        payload.priority = defaultPriority;
+    }
 
     const response = await fetch(`${API_BASE_URL}/conversations`, {
         method: 'POST',
@@ -332,7 +345,8 @@ async function createTicketJSON(params: CreateTicketJSONParams): Promise<CreateT
         ticketTitle: title,
         ticketId: result.id,
         friendlyId: result.friendlyId,
-        customerId: customerId
+        customerId: customerId,
+        priority: defaultPriority || 'not set'
     });
 
     return result;

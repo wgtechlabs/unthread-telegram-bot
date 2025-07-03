@@ -28,6 +28,8 @@
  * @since 2025
  */
 
+import { LogEngine } from '@wgtechlabs/log-engine';
+
 /**
  * Required environment variables
  */
@@ -37,12 +39,13 @@ const REQUIRED_ENV_VARS = [
     'UNTHREAD_SLACK_CHANNEL_ID',
     'UNTHREAD_WEBHOOK_SECRET',
     'PLATFORM_REDIS_URL',
-    'WEBHOOK_REDIS_URL',
     'POSTGRES_URL'
 ] as const;
 
 /**
- * Validates that all required environment variables are present
+ * Ensures all required environment variables are set before application startup.
+ *
+ * Logs detailed error messages and terminates the process if any required variables are missing; otherwise, logs successful validation and the current runtime environment.
  */
 export function validateEnvironment(): void {
     const missingVars: string[] = [];
@@ -54,17 +57,20 @@ export function validateEnvironment(): void {
     }
     
     if (missingVars.length > 0) {
-        console.error('❌ Missing required environment variables:');
-        missingVars.forEach(varName => {
-            console.error(`   - ${varName}`);
+        LogEngine.error('❌ Missing required environment variables:', {
+            missingVariables: missingVars,
+            totalMissing: missingVars.length
         });
-        console.error('\n📝 Please copy .env.example to .env and fill in the required values.');
-        console.error('   This works for both local development and Docker deployment.\n');
+        missingVars.forEach(varName => {
+            LogEngine.error(`   - ${varName}`);
+        });
+        LogEngine.error('\n📝 Please copy .env.example to .env and fill in the required values.');
+        LogEngine.error('   This works for both local development and Docker deployment.\n');
         process.exit(1);
     }
     
-    console.log('✅ Environment configuration validated successfully');
-    console.log(`🚀 Running in ${process.env.NODE_ENV || 'development'} mode`);
+    LogEngine.info('✅ Environment configuration validated successfully');
+    LogEngine.info(`🚀 Running in ${process.env.NODE_ENV || 'development'} mode`);
 }
 
 /**
@@ -82,8 +88,35 @@ export function isProduction(): boolean {
 }
 
 /**
- * Check if running in development
+ * Determines whether the application is running in development mode.
+ *
+ * @returns `true` if the `NODE_ENV` environment variable is set to 'development'; otherwise, `false`.
  */
 export function isDevelopment(): boolean {
     return process.env.NODE_ENV === 'development';
+}
+
+/**
+ * Retrieves the default ticket priority from the `UNTHREAD_DEFAULT_PRIORITY` environment variable.
+ *
+ * Parses and validates the value against allowed priorities (3, 5, 7, 9). Returns the valid priority or `undefined` if the variable is unset or invalid.
+ *
+ * @returns The ticket priority (3, 5, 7, or 9), or `undefined` if not set or invalid.
+ */
+export function getDefaultTicketPriority(): 3 | 5 | 7 | 9 | undefined {
+    const priority = process.env.UNTHREAD_DEFAULT_PRIORITY;
+    
+    if (!priority) {
+        return undefined;
+    }
+    
+    const numPriority = parseInt(priority, 10);
+    
+    // Validate against allowed priority values from Unthread API
+    if (numPriority === 3 || numPriority === 5 || numPriority === 7 || numPriority === 9) {
+        return numPriority;
+    }
+    
+    LogEngine.warn(`⚠️  Invalid UNTHREAD_DEFAULT_PRIORITY value: ${priority}. Must be 3, 5, 7, or 9. Ignoring priority setting.`);
+    return undefined;
 }
