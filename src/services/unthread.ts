@@ -219,18 +219,8 @@ function capitalizeCompanyName(name: string): string {
 
 // API URLs and Auth Keys
 const API_BASE_URL = 'https://api.unthread.io/api';
-const UNTHREAD_API_KEY = process.env.UNTHREAD_API_KEY;
-const CHANNEL_ID = process.env.UNTHREAD_SLACK_CHANNEL_ID;
-
-// Validate required environment variables
-if (!UNTHREAD_API_KEY) {
-    LogEngine.error('UNTHREAD_API_KEY environment variable is required but not defined');
-    throw new Error('Missing required environment variable: UNTHREAD_API_KEY');
-}
-
-if (!CHANNEL_ID) {    LogEngine.error('UNTHREAD_SLACK_CHANNEL_ID environment variable is required but not defined');
-    throw new Error('Missing required environment variable: UNTHREAD_SLACK_CHANNEL_ID');
-}
+const UNTHREAD_API_KEY = process.env.UNTHREAD_API_KEY!;
+const CHANNEL_ID = process.env.UNTHREAD_SLACK_CHANNEL_ID!;
 
 // Customer ID cache to avoid creating duplicates
 const customerCache = new Map<string, Customer>();

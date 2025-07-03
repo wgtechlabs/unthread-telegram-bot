@@ -28,6 +28,10 @@ import dotenv from 'dotenv';
 // Load environment variables from .env file
 dotenv.config();
 
+// Validate environment configuration before proceeding
+import { validateEnvironment } from './config/env.js';
+validateEnvironment();
+
 import { createBot, startPolling, safeReply, cleanupBlockedUser } from './bot.js';
 import { 
     startCommand, 
@@ -51,12 +55,7 @@ import type { BotContext } from './types/index.js';
 /**
  * Initialize the bot with the token from environment variables
  */
-const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
-if (!telegramToken) {
-    LogEngine.error('TELEGRAM_BOT_TOKEN is required but not found in environment variables');
-    process.exit(1);
-}
-
+const telegramToken = process.env.TELEGRAM_BOT_TOKEN!;
 const bot = createBot(telegramToken);
 
 /**
@@ -291,7 +290,7 @@ try {
     // Initialize the BotsStore with retry logic
     await retryWithBackoff(
         async () => {
-            await BotsStore.initialize(db, process.env.PLATFORM_REDIS_URL);
+            await BotsStore.initialize(db, process.env.PLATFORM_REDIS_URL!);
             LogEngine.info('BotsStore connection established');
         },
         5, // max retries
