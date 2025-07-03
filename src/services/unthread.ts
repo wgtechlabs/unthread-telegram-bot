@@ -325,7 +325,7 @@ async function createTicketJSON(params: CreateTicketJSONParams): Promise<CreateT
         title: title,
         markdown: summary,
         status: "open",
-        channelId: CHANNEL_ID,
+        channelId: CHANNEL_ID!,
         customerId: customerId,
         onBehalfOf: onBehalfOf
     };
