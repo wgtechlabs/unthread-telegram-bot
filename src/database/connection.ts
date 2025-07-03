@@ -51,24 +51,19 @@ export class DatabaseConnection {
     private pool: PoolType;
 
     constructor() {
-        // Validate required environment variable
-        if (!process.env.POSTGRES_URL) {
-            const error = 'POSTGRES_URL environment variable is required but not defined';
-            LogEngine.error(error);
-            throw new Error(error);
-        }        // Configure SSL based on environment
+        // Configure SSL based on environment
         const isProduction = process.env.NODE_ENV === 'production';
         const sslConfig = this.getSSLConfig(isProduction);
 
         // Start with the base connection string
-        let connectionString = process.env.POSTGRES_URL;
+        let connectionString = process.env.POSTGRES_URL!;
 
         // Auto-append sslmode=disable only when completely disabling SSL
         if (sslConfig === false && !connectionString.includes('sslmode=')) {
             const separator = connectionString.includes('?') ? '&' : '?';
             connectionString += `${separator}sslmode=disable`;
             LogEngine.debug('SSL disabled - added sslmode=disable to connection string', {
-                originalUrl: process.env.POSTGRES_URL,
+                originalUrl: process.env.POSTGRES_URL!,
                 modifiedUrl: connectionString.replace(/\/\/[^:]+:[^@]+@/, '//***:***@') // Mask credentials
             });
         }
