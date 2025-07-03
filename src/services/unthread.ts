@@ -120,6 +120,20 @@ interface CreateTicketResponse {
 }
 
 /**
+ * Ticket creation payload for API request
+ */
+interface CreateTicketPayload {
+  type: "slack";
+  title: string;
+  markdown: string;
+  status: "open";
+  channelId: string;
+  customerId: string;
+  onBehalfOf: OnBehalfOfUser;
+  priority?: 3 | 5 | 7 | 9;
+}
+
+/**
  * Extracts and formats the customer company name from a Telegram group chat title by removing the bot's company name and handling various separators.
  *
  * @param groupChatTitle - The original group chat title
@@ -306,7 +320,7 @@ async function createTicketJSON(params: CreateTicketJSONParams): Promise<CreateT
     // Get default priority from environment configuration
     const defaultPriority = getDefaultTicketPriority();
     
-    const payload: any = {
+    const payload: CreateTicketPayload = {
         type: "slack",
         title: title,
         markdown: summary,

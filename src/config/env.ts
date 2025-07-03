@@ -28,6 +28,8 @@
  * @since 2025
  */
 
+import { LogEngine } from '@wgtechlabs/log-engine';
+
 /**
  * Required environment variables
  */
