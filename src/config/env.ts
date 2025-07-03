@@ -43,7 +43,9 @@ const REQUIRED_ENV_VARS = [
 ] as const;
 
 /**
- * Validates that all required environment variables are present
+ * Ensures all required environment variables are set before application startup.
+ *
+ * Logs detailed error messages and terminates the process if any required variables are missing; otherwise, logs successful validation and the current runtime environment.
  */
 export function validateEnvironment(): void {
     const missingVars: string[] = [];
@@ -86,15 +88,20 @@ export function isProduction(): boolean {
 }
 
 /**
- * Check if running in development
+ * Determines whether the application is running in development mode.
+ *
+ * @returns `true` if the `NODE_ENV` environment variable is set to 'development'; otherwise, `false`.
  */
 export function isDevelopment(): boolean {
     return process.env.NODE_ENV === 'development';
 }
 
 /**
- * Get default ticket priority from environment variable
- * @returns Priority value (3, 5, 7, 9) or undefined if not set or invalid
+ * Retrieves the default ticket priority from the `UNTHREAD_DEFAULT_PRIORITY` environment variable.
+ *
+ * Parses and validates the value against allowed priorities (3, 5, 7, 9). Returns the valid priority or `undefined` if the variable is unset or invalid.
+ *
+ * @returns The ticket priority (3, 5, 7, or 9), or `undefined` if not set or invalid.
  */
 export function getDefaultTicketPriority(): 3 | 5 | 7 | 9 | undefined {
     const priority = process.env.UNTHREAD_DEFAULT_PRIORITY;

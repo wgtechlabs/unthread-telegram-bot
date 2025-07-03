@@ -296,13 +296,13 @@ export async function createTicket(params: CreateTicketParams): Promise<CreateTi
 }
 
 /**
- * Creates a new support ticket in Unthread with the specified details.
+ * Creates a new support ticket in Unthread using the provided details.
  *
- * Sends a POST request to the Unthread API to create a ticket using the provided title, summary, customer ID, and user information.
+ * Sends a POST request to the Unthread API to create a ticket with the specified title, summary, customer ID, user information, and optional priority.
  *
  * @param params - Ticket creation details including title, summary, customer ID, and user information
  * @returns An object containing the ticket's unique ID and friendly ID
- * @throws If the API request fails or returns a non-OK response
+ * @throws If the Unthread API request fails or returns a non-OK response
  */
 async function createTicketJSON(params: CreateTicketJSONParams): Promise<CreateTicketResponse> {
     const { title, summary, customerId, onBehalfOf } = params;
