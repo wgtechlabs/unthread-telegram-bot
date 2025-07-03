@@ -106,6 +106,6 @@ export function getDefaultTicketPriority(): 3 | 5 | 7 | 9 | undefined {
         return numPriority;
     }
     
-    console.warn(`⚠️  Invalid UNTHREAD_DEFAULT_PRIORITY value: ${priority}. Must be 3, 5, 7, or 9. Ignoring priority setting.`);
+    LogEngine.warn(`⚠️  Invalid UNTHREAD_DEFAULT_PRIORITY value: ${priority}. Must be 3, 5, 7, or 9. Ignoring priority setting.`);
     return undefined;
 }
