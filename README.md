@@ -69,13 +69,18 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
    - Create new bot with `/newbot` command
    - Save the bot token
 
-2. **Setup Unthread**
+2. **Get Your Telegram User ID** *(NEW REQUIREMENT)*
+   - Message [@userinfobot](https://t.me/userinfobot) on Telegram
+   - Copy your numeric user ID (e.g., `123456789`)
+   - **IMPORTANT**: This is required for admin access to setup groups
+
+3. **Setup Unthread**
    - Log into your Unthread dashboard
    - Navigate to Settings → API Keys
    - Generate a new API key
    - Find your channel ID in the dashboard URL
 
-3. **Deploy Instantly**
+4. **Deploy Instantly**
 
    **Option A: Railway (One-Click Deploy)**
 
@@ -92,7 +97,8 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
    # IMPORTANT: Create the external network first
    docker network create unthread-integration-network
    
-   # Edit .env with your tokens
+   # Edit .env with your tokens AND your Telegram user ID
+   # ADMIN_USERS=your_telegram_user_id_here  # Replace with actual ID!
    # Then start everything
    docker compose up -d
    ```
@@ -118,12 +124,12 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
    yarn install
    cp .env.example .env
    
-   # Edit .env with your tokens
+   # Edit .env with ALL required values including ADMIN_USERS
    # Then start the bot
    yarn start
    ```
 
-4. **Test Your Bot**
+5. **Test Your Bot**
    - Add your bot to a Telegram group
    - Send `/start` to see if it responds
    - Try creating a ticket with `/support`
@@ -153,9 +159,9 @@ UNTHREAD_WEBHOOK_SECRET=your_unthread_webhook_secret
 # Required - Database (Docker will handle this automatically)
 POSTGRES_URL=postgresql://postgres:postgres@postgres-platform:5432/unthread_telegram_bot
 
-# Optional - For enhanced performance
-WEBHOOK_REDIS_URL=redis://redis-webhook:6379
-PLATFORM_REDIS_URL=redis://redis-platform:6379
+# Required - Redis for bot operations (Docker will handle this automatically)
+WEBHOOK_REDIS_URL=redis://redis-webhook:6379  # Critical for agent response delivery
+PLATFORM_REDIS_URL=redis://redis-platform:6379  # Required for bot state management
 ```
 
 > **💡 Pro Tip**: The Docker setup includes PostgreSQL and Redis automatically - no separate installation needed!
