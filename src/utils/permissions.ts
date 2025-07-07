@@ -170,17 +170,20 @@ export function getUserPermissionInfo(ctx: BotContext): {
  *
  * @param event - The type of permission event (e.g., 'admin_access_granted', 'unauthorized_attempt')
  * @param ctx - The Telegram bot context
+ * @param command - The command or action that triggered the permission check (e.g., '/setup', 'bot_admin_check')
  * @param additionalData - Any additional data to include in the log
  */
 export function logPermissionEvent(
     event: string,
     ctx: BotContext,
+    command: string,
     additionalData: Record<string, any> = {}
 ): void {
     const userInfo = getUserPermissionInfo(ctx);
     
     LogEngine.info(`Permission event: ${event}`, {
         event,
+        command,
         userInfo,
         chatId: ctx.chat?.id,
         chatType: ctx.chat?.type,

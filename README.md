@@ -99,6 +99,7 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
    
    # Edit .env with your tokens AND your Telegram user ID
    # ADMIN_USERS=your_telegram_user_id_here  # Replace with actual ID!
+   # For multiple admins: ADMIN_USERS=123456789,987654321,555666777
    # Then start everything
    docker compose up -d
    ```
@@ -125,6 +126,7 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
    cp .env.example .env
    
    # Edit .env with ALL required values including ADMIN_USERS
+   # ADMIN_USERS supports multiple user IDs: ADMIN_USERS=123456789,987654321
    # Then start the bot
    yarn start
    ```

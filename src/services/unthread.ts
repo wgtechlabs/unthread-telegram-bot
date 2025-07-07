@@ -570,57 +570,6 @@ export async function getOrCreateCustomer(groupChatName: string, chatId: number)
             'GROUP_NOT_CONFIGURED: This group has not been configured for support tickets. ' +
             'Please ask a group administrator to run /setup to link this group to a customer account.'
         );
-        
-        // Legacy auto-creation code commented out for Phase 8
-        // This ensures groups must be properly configured before ticket creation
-        /*
-        // Extract the actual customer company name from the group chat title
-        const customerName = extractCustomerCompanyName(groupChatName);
-        
-        // Create customer in Unthread API
-        const response = await fetch(`${API_BASE_URL}/customers`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-API-KEY': UNTHREAD_API_KEY!
-            },
-            body: JSON.stringify({
-                name: customerName
-            })
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to create customer: ${response.status} ${errorText}`);
-        }
-
-        const result = await response.json() as Customer;
-        
-        // Store customer in our database
-        await BotsStore.storeCustomer({
-            id: `customer_${chatId}`,
-            unthreadCustomerId: result.id,
-            telegramChatId: chatId,
-            chatId: chatId,
-            chatTitle: groupChatName,
-            customerName: customerName,
-            name: customerName,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-        });
-        
-        LogEngine.info('Created and stored new customer', {
-            originalGroupChatName: groupChatName,
-            extractedCustomerName: customerName,
-            customerId: result.id,
-            chatId: chatId
-        });
-
-        return {
-            id: result.id,
-            name: customerName
-        };
-        */
     } catch (error) {
         LogEngine.error('Error getting or creating customer', {
             error: (error as Error).message,

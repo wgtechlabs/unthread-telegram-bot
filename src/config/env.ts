@@ -186,11 +186,18 @@ function validateRequiredTokens(): void {
         }
 
         // Additional validation for token format
-        if (token.name === 'TELEGRAM_BOT_TOKEN' && !token.value.includes(':')) {
-            throw new Error(
-                'TELEGRAM_BOT_TOKEN appears to be invalid. Telegram bot tokens contain a colon (:).\n' +
-                'Get a valid token from @BotFather on Telegram.'
-            );
+        if (token.name === 'TELEGRAM_BOT_TOKEN') {
+            // Telegram bot tokens follow the pattern: numeric_bot_id:alphanumeric_string
+            // Example: 1234567890:ABCdefGHIjklMNOpqrsTUVwxyz-1234567890
+            const telegramTokenPattern = /^\d{8,10}:[A-Za-z0-9_-]{35}$/;
+            
+            if (!telegramTokenPattern.test(token.value)) {
+                throw new Error(
+                    'TELEGRAM_BOT_TOKEN format is invalid. Expected format: NNNNNNNNNN:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n' +
+                    'Where N is the bot ID (8-10 digits) and X is a 35-character alphanumeric string.\n' +
+                    'Get a valid token from @BotFather on Telegram.'
+                );
+            }
         }
     }
 }

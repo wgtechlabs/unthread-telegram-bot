@@ -229,9 +229,21 @@ export interface IBotsStore {
   updateGroupConfig(chatId: number, updates: Partial<GroupConfig>): Promise<boolean>;
   deleteGroupConfig(chatId: number): Promise<boolean>;
   
+  // Batch group configuration operations
+  storeGroupConfigs(configs: GroupConfig[]): Promise<boolean>;
+  getGroupConfigs(chatIds: number[]): Promise<(GroupConfig | null)[]>;
+  updateGroupConfigs(updates: {chatId: number, updates: Partial<GroupConfig>}[]): Promise<boolean>;
+  deleteGroupConfigs(chatIds: number[]): Promise<boolean>;
+  
   // Setup state operations
   storeSetupState(state: SetupState): Promise<boolean>;
   getSetupState(chatId: number): Promise<SetupState | null>;
   updateSetupState(chatId: number, updates: Partial<SetupState>): Promise<boolean>;
   clearSetupState(chatId: number): Promise<boolean>;
+  
+  // Batch setup state operations
+  storeSetupStates(states: SetupState[]): Promise<boolean>;
+  getSetupStates(chatIds: number[]): Promise<(SetupState | null)[]>;
+  updateSetupStates(updates: {chatId: number, updates: Partial<SetupState>}[]): Promise<boolean>;
+  clearSetupStates(chatIds: number[]): Promise<boolean>;
 }

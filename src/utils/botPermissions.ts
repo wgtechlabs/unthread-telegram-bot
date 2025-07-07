@@ -132,6 +132,11 @@ Once you've made me an admin, click the button below to continue setup.`;
  * @param ctx Telegram bot context
  */
 export async function sendBotAdminHelpMessage(ctx: BotContext): Promise<void> {
+  // Answer callback query if this was triggered by a callback
+  if ('answerCbQuery' in ctx) {
+    await safeAnswerCallbackQuery(ctx, 'Loading help information...', 3000);
+  }
+
   const chatTitle = 'title' in (ctx.chat || {}) ? (ctx.chat as any).title : 'this group';
   
   const helpMessage = `📋 **How to Make Me an Admin**
@@ -199,14 +204,70 @@ Need more help? Contact your Unthread administrator.`;
 }
 
 /**
+ * Safely answer a callback query with timeout and robust error handling
+ * @param ctx Telegram bot context
+ * @param text Text to show in the callback query answer
+ * @param timeoutMs Timeout in milliseconds (default: 5000ms)
+ * @returns Promise<boolean> - true if successful, false if failed
+ */
+async function safeAnswerCallbackQuery(
+  ctx: BotContext, 
+  text: string, 
+  timeoutMs: number = 5000
+): Promise<boolean> {
+  try {
+    // Check if context has answerCbQuery method
+    if (!('answerCbQuery' in ctx)) {
+      console.warn('[BotPermissions] Context does not support callback query answering');
+      return false;
+    }
+
+    // Create a timeout promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Callback query answer timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
+    // Race between the actual API call and timeout
+    await Promise.race([
+      ctx.answerCbQuery(text),
+      timeoutPromise
+    ]);
+
+    console.log(`[BotPermissions] Successfully answered callback query: "${text}"`);
+    return true;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[BotPermissions] Failed to answer callback query: ${errorMessage}`);
+    
+    // Log additional context for debugging
+    console.error('[BotPermissions] Callback query context:', {
+      chatId: ctx.chat?.id,
+      chatType: ctx.chat?.type,
+      hasAnswerMethod: 'answerCbQuery' in ctx,
+      text: text
+    });
+    
+    return false;
+  }
+}
+
+/**
  * Handle retry bot admin check callback
  * @param ctx Telegram bot context (from callback query)
  */
 export async function handleRetryBotAdminCheck(ctx: BotContext): Promise<void> {
   try {
-    // Answer the callback query first
-    if ('answerCbQuery' in ctx) {
-      await ctx.answerCbQuery('Checking bot admin status...');
+    // Answer the callback query first with robust error handling
+    const queryAnswered = await safeAnswerCallbackQuery(
+      ctx, 
+      'Checking bot admin status...',
+      3000 // 3 second timeout
+    );
+    
+    if (!queryAnswered) {
+      console.warn('[BotPermissions] Could not answer initial callback query, continuing anyway');
     }
 
     console.log(`[BotPermissions] Retrying bot admin check for chat ${ctx.chat?.id}`);
@@ -244,12 +305,22 @@ Setup can continue. Type /setup to proceed with linking this group to your Unthr
   } catch (error) {
     console.error('[BotPermissions] Error handling retry bot admin check:', error);
     
-    try {
-      if ('answerCbQuery' in ctx) {
-        await ctx.answerCbQuery('Error checking status. Please try again.');
+    // Enhanced error handling for the fallback callback query answer
+    const fallbackAnswered = await safeAnswerCallbackQuery(
+      ctx,
+      'Error checking status. Please try again.',
+      2000 // 2 second timeout for error case
+    );
+    
+    if (!fallbackAnswered) {
+      console.error('[BotPermissions] Failed to answer callback query in error handler');
+      
+      // Last resort: try a simple text response without callback query
+      try {
+        await ctx.reply('❌ Error checking admin status. Please try the setup command again or contact support.');
+      } catch (replyError) {
+        console.error('[BotPermissions] Failed to send fallback reply message:', replyError);
       }
-    } catch (cbError) {
-      console.error('[BotPermissions] Error answering callback query:', cbError);
     }
   }
 }
