@@ -890,4 +890,139 @@ export class BotsStore implements IBotsStore {
   static async clearSetupState(chatId: number): Promise<boolean> {
     return BotsStore.getInstance().clearSetupState(chatId);
   }
+
+  // Batch group configuration operations
+  async storeGroupConfigs(configs: GroupConfig[]): Promise<boolean> {
+    try {
+      for (const config of configs) {
+        await this.storeGroupConfig(config);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error storing group configs:', error);
+      return false;
+    }
+  }
+
+  async getGroupConfigs(chatIds: number[]): Promise<(GroupConfig | null)[]> {
+    try {
+      const results: (GroupConfig | null)[] = [];
+      for (const chatId of chatIds) {
+        const config = await this.getGroupConfig(chatId);
+        results.push(config);
+      }
+      return results;
+    } catch (error) {
+      console.error('Error getting group configs:', error);
+      return chatIds.map(() => null);
+    }
+  }
+
+  async updateGroupConfigs(updates: {chatId: number, updates: Partial<GroupConfig>}[]): Promise<boolean> {
+    try {
+      for (const update of updates) {
+        await this.updateGroupConfig(update.chatId, update.updates);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error updating group configs:', error);
+      return false;
+    }
+  }
+
+  async deleteGroupConfigs(chatIds: number[]): Promise<boolean> {
+    try {
+      for (const chatId of chatIds) {
+        await this.deleteGroupConfig(chatId);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error deleting group configs:', error);
+      return false;
+    }
+  }
+
+  // Batch setup state operations
+  async storeSetupStates(states: SetupState[]): Promise<boolean> {
+    try {
+      for (const state of states) {
+        await this.storeSetupState(state);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error storing setup states:', error);
+      return false;
+    }
+  }
+
+  async getSetupStates(chatIds: number[]): Promise<(SetupState | null)[]> {
+    try {
+      const results: (SetupState | null)[] = [];
+      for (const chatId of chatIds) {
+        const state = await this.getSetupState(chatId);
+        results.push(state);
+      }
+      return results;
+    } catch (error) {
+      console.error('Error getting setup states:', error);
+      return chatIds.map(() => null);
+    }
+  }
+
+  async updateSetupStates(updates: {chatId: number, updates: Partial<SetupState>}[]): Promise<boolean> {
+    try {
+      for (const update of updates) {
+        await this.updateSetupState(update.chatId, update.updates);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error updating setup states:', error);
+      return false;
+    }
+  }
+
+  async clearSetupStates(chatIds: number[]): Promise<boolean> {
+    try {
+      for (const chatId of chatIds) {
+        await this.clearSetupState(chatId);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error clearing setup states:', error);
+      return false;
+    }
+  }
+
+  // Static batch methods
+  static async storeGroupConfigs(configs: GroupConfig[]): Promise<boolean> {
+    return BotsStore.getInstance().storeGroupConfigs(configs);
+  }
+
+  static async getGroupConfigs(chatIds: number[]): Promise<(GroupConfig | null)[]> {
+    return BotsStore.getInstance().getGroupConfigs(chatIds);
+  }
+
+  static async updateGroupConfigs(updates: {chatId: number, updates: Partial<GroupConfig>}[]): Promise<boolean> {
+    return BotsStore.getInstance().updateGroupConfigs(updates);
+  }
+
+  static async deleteGroupConfigs(chatIds: number[]): Promise<boolean> {
+    return BotsStore.getInstance().deleteGroupConfigs(chatIds);
+  }
+
+  static async storeSetupStates(states: SetupState[]): Promise<boolean> {
+    return BotsStore.getInstance().storeSetupStates(states);
+  }
+
+  static async getSetupStates(chatIds: number[]): Promise<(SetupState | null)[]> {
+    return BotsStore.getInstance().getSetupStates(chatIds);
+  }
+
+  static async updateSetupStates(updates: {chatId: number, updates: Partial<SetupState>}[]): Promise<boolean> {
+    return BotsStore.getInstance().updateSetupStates(updates);
+  }
+
+  static async clearSetupStates(chatIds: number[]): Promise<boolean> {
+    return BotsStore.getInstance().clearSetupStates(chatIds);
+  }
 }

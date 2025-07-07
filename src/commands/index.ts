@@ -947,16 +947,16 @@ const setupCommand = async (ctx: BotContext): Promise<void> => {
         }
 
         // Log setup command attempt
-        logPermissionEvent('setup_command_attempted', ctx);
+        logPermissionEvent('setup_command_attempted', ctx, '/setup');
 
         // Phase 1: Validate admin access
         if (!await validateAdminAccess(ctx)) {
-            logPermissionEvent('setup_command_denied', ctx, { reason: 'not_admin' });
+            logPermissionEvent('setup_command_denied', ctx, '/setup', { reason: 'not_admin' });
             return;
         }
 
         // Phase 1 success - Admin validation passed
-        logPermissionEvent('setup_command_authorized', ctx);
+        logPermissionEvent('setup_command_authorized', ctx, '/setup');
 
         const chatTitle = (ctx.chat && 'title' in ctx.chat) ? ctx.chat.title : 'Group Chat';
         
