@@ -13,6 +13,7 @@
  * - /about: Display detailed bot information and capabilities
  * - /cancel: Cancel ongoing support form or operation
  * - /reset: Reset user conversation state and clear form data
+ * - /setup: Configure group chat for support tickets (admin only)
  * 
  * Support Flow:
  * - Multi-step form collection (summary, email)
@@ -35,6 +36,8 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 import { Markup } from 'telegraf';
 import * as unthreadService from '../services/unthread.js';
 import { safeReply, safeEditMessageText } from '../bot.js';
+import { validateAdminAccess, logPermissionEvent } from '../utils/permissions.js';
+import { checkAndPromptBotAdmin, isBotAdmin, handleRetryBotAdminCheck, sendBotAdminHelpMessage } from '../utils/botPermissions.js';
 import type { BotContext, SupportField, SupportFormState } from '../types/index.js';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 
@@ -100,12 +103,17 @@ const helpCommand = async (ctx: BotContext): Promise<void> => {
 • \`/support\` - Create a new support ticket
 • \`/cancel\` - Cancel ongoing support ticket creation
 • \`/reset\` - Reset your support conversation state
+• \`/setup\` - Configure group for support tickets (admin only)
 
 **How to create a support ticket:**
 1. Use \`/support\` command in a group chat
 2. Provide your issue summary when prompted
 3. Provide your email address when prompted
 4. The bot will create a ticket and notify you
+
+**For Administrators:**
+• Use \`/setup\` to configure group chat settings
+• Only authorized users can run admin commands
 
 **Note:** Support tickets can only be created in group chats.`;
 
@@ -340,6 +348,34 @@ export const processSupportConversation = async (ctx: BotContext): Promise<boole
             if ('data' in ctx.callbackQuery) {
                 const callbackData = ctx.callbackQuery.data;
                 
+                // Handle bot permission setup callbacks first (before support flow)
+                if (callbackData === 'retry_bot_admin_check') {
+                    await handleRetryBotAdminCheck(ctx);
+                    return true; // Mark as handled
+                } else if (callbackData === 'bot_admin_help') {
+                    await sendBotAdminHelpMessage(ctx);
+                    return true; // Mark as handled
+                } else if (callbackData === 'continue_setup') {
+                    // Answer the callback query
+                    if ('answerCbQuery' in ctx) {
+                        await ctx.answerCbQuery('Starting setup...');
+                    }
+                    
+                    // Simulate /setup command being called
+                    await setupCommand(ctx);
+                    return true; // Mark as handled
+                } else if (callbackData === 'back_to_setup') {
+                    // Answer the callback query
+                    if ('answerCbQuery' in ctx) {
+                        await ctx.answerCbQuery('Returning to setup...');
+                    }
+                    
+                    // Simulate /setup command being called
+                    await setupCommand(ctx);
+                    return true; // Mark as handled
+                }
+                
+                // Handle support flow callbacks
                 if (callbackData === 'skip_email') {
                     if ((userState.currentField || userState.field) === SupportFieldEnum.EMAIL) {
                         // Edit the message to remove buttons first
@@ -784,6 +820,109 @@ const resetCommand = async (ctx: BotContext): Promise<void> => {
     }
 };
 
+/**
+ * Handler for the /setup command (Phase 1 implementation)
+ * 
+ * This command allows authorized administrators to configure group chat settings
+ * for customer linking and ticket management. Currently implements admin validation
+ * with placeholder for full setup wizard to be implemented in later phases.
+ */
+const setupCommand = async (ctx: BotContext): Promise<void> => {
+    try {
+        // Only allow setup in group chats
+        if (ctx.chat?.type === 'private') {
+            await safeReply(ctx,
+                "❌ **Setup Command Not Available in Private Chats**\n\n" +
+                "The `/setup` command is only available in group chats where support tickets will be created.\n\n" +
+                "**To configure a group:**\n" +
+                "1. Add this bot to your support group chat\n" +
+                "2. Run `/setup` in the group chat\n" +
+                "3. Follow the configuration wizard"
+            );
+            return;
+        }
+
+        // Log setup command attempt
+        logPermissionEvent('setup_command_attempted', ctx);
+
+        // Phase 1: Validate admin access
+        if (!await validateAdminAccess(ctx)) {
+            logPermissionEvent('setup_command_denied', ctx, { reason: 'not_admin' });
+            return;
+        }
+
+        // Phase 1 success - Admin validation passed
+        logPermissionEvent('setup_command_authorized', ctx);
+
+        const chatTitle = (ctx.chat && 'title' in ctx.chat) ? ctx.chat.title : 'Group Chat';
+        
+        // Phase 2: Check bot admin permissions
+        const botIsAdmin = await isBotAdmin(ctx);
+        
+        if (!botIsAdmin) {
+            LogEngine.info('Setup command - Bot admin check failed', {
+                telegramUserId: ctx.from?.id,
+                username: ctx.from?.username,
+                chatId: ctx.chat?.id,
+                chatTitle: chatTitle,
+                phase: 'bot_permission_check'
+            });
+            
+            // This will handle the error message and retry mechanism
+            await checkAndPromptBotAdmin(ctx);
+            return;
+        }
+
+        // Phase 2 success - Bot has admin permissions
+        LogEngine.info('Setup command - Bot admin check passed', {
+            telegramUserId: ctx.from?.id,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id,
+            chatTitle: chatTitle,
+            phase: 'bot_permission_check'
+        });
+
+        await safeReply(ctx,
+            "🚀 **Setup Command - Phase 1 & 2 Implementation**\n\n" +
+            `✅ **Admin Access Verified**\n` +
+            `✅ **Bot Admin Permissions Verified**\n` +
+            `**Group:** ${chatTitle}\n` +
+            `**Admin:** ${ctx.from?.first_name || ctx.from?.username || 'Unknown'}\n\n` +
+            "🔧 **Status:** Ready for customer linking!\n\n" +
+            "**Next Steps (Coming Soon):**\n" +
+            "• Customer linking wizard\n" +
+            "• Group configuration storage\n" +
+            "• Support ticket integration\n\n" +
+            "💡 Both admin validation and bot permissions are working correctly."
+        );
+
+        LogEngine.info('Setup command - Phase 1 & 2 completed successfully', {
+            telegramUserId: ctx.from?.id,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id,
+            chatTitle: chatTitle,
+            phases: ['admin_validation', 'bot_permission_check']
+        });
+
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error in setupCommand', {
+            error: err.message,
+            stack: err.stack,
+            telegramUserId: ctx.from?.id,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id,
+            chatType: ctx.chat?.type
+        });
+        
+        await safeReply(ctx, 
+            "❌ **Setup Error**\n\n" +
+            "An error occurred while processing the setup command. Please try again later.\n\n" +
+            "If this error persists, contact your system administrator."
+        );
+    }
+};
+
 export {
     startCommand,
     helpCommand,
@@ -791,5 +930,6 @@ export {
     aboutCommand,
     supportCommand,
     cancelCommand,
-    resetCommand
+    resetCommand,
+    setupCommand
 };

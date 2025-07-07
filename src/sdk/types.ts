@@ -115,6 +115,33 @@ export interface UserState {
   [key: string]: any;
 }
 
+// Group configuration and setup state interfaces
+export interface GroupConfig {
+  chatId: number;
+  chatTitle?: string;
+  isConfigured: boolean;
+  customerId?: string;
+  customerName?: string;
+  setupBy?: number;
+  setupAt?: string;
+  botIsAdmin: boolean;
+  lastAdminCheck?: string;
+  setupVersion?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface SetupState {
+  chatId: number;
+  step: 'bot_admin_check' | 'customer_selection' | 'customer_creation' | 'customer_linking' | 'complete';
+  initiatedBy: number;
+  startedAt: string;
+  suggestedCustomerName?: string;
+  tempCustomerId?: string;
+  userInput?: string;
+  retryCount?: number;
+  metadata?: Record<string, any>;
+}
+
 // Agent message data
 export interface AgentMessageData {
   messageId: number;
@@ -195,4 +222,16 @@ export interface IBotsStore {
   // Agent message operations
   storeAgentMessage(messageData: AgentMessageData): Promise<boolean>;
   getAgentMessage(messageId: number): Promise<AgentMessageData | null>;
+  
+  // Group configuration operations
+  storeGroupConfig(config: GroupConfig): Promise<boolean>;
+  getGroupConfig(chatId: number): Promise<GroupConfig | null>;
+  updateGroupConfig(chatId: number, updates: Partial<GroupConfig>): Promise<boolean>;
+  deleteGroupConfig(chatId: number): Promise<boolean>;
+  
+  // Setup state operations
+  storeSetupState(state: SetupState): Promise<boolean>;
+  getSetupState(chatId: number): Promise<SetupState | null>;
+  updateSetupState(chatId: number, updates: Partial<SetupState>): Promise<boolean>;
+  clearSetupState(chatId: number): Promise<boolean>;
 }

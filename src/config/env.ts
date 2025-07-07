@@ -18,6 +18,7 @@
  * - NODE_ENV: Runtime environment (development/production)
  * - WEBHOOK_POLL_INTERVAL: Webhook polling interval in milliseconds
  * - COMPANY_NAME: Company name for ticket attribution
+ * - ADMIN_USERS: Comma-separated list of Telegram user IDs authorized to manage the bot
  * 
  * Security:
  * - Validates all critical environment variables at startup
@@ -119,4 +120,53 @@ export function getDefaultTicketPriority(): 3 | 5 | 7 | 9 | undefined {
     
     LogEngine.warn(`⚠️  Invalid UNTHREAD_DEFAULT_PRIORITY value: ${priority}. Must be 3, 5, 7, or 9. Ignoring priority setting.`);
     return undefined;
+}
+
+/**
+ * Retrieves the list of authorized bot administrator user IDs from the environment variable.
+ *
+ * Parses the ADMIN_USERS environment variable (comma-separated Telegram user IDs) and validates
+ * that all values are valid numbers. Invalid IDs are filtered out with warnings.
+ *
+ * @returns An array of Telegram user IDs that are authorized to manage the bot
+ */
+export function getAdminUsers(): number[] {
+    const adminUsers = process.env.ADMIN_USERS;
+    
+    if (!adminUsers || adminUsers.trim() === '') {
+        LogEngine.warn('⚠️  No ADMIN_USERS configured. Bot administration commands will be disabled.');
+        return [];
+    }
+    
+    const userIds = adminUsers.split(',')
+        .map(id => id.trim())
+        .filter(id => id.length > 0)
+        .map(id => {
+            const numId = parseInt(id, 10);
+            if (isNaN(numId) || numId <= 0) {
+                LogEngine.warn(`⚠️  Invalid admin user ID: ${id}. Skipping.`);
+                return null;
+            }
+            return numId;
+        })
+        .filter((id): id is number => id !== null);
+    
+    LogEngine.info(`✅ Configured ${userIds.length} bot administrator(s)`, {
+        adminCount: userIds.length,
+        // Don't log actual user IDs for security
+        hasAdmins: userIds.length > 0
+    });
+    
+    return userIds;
+}
+
+/**
+ * Checks if a given Telegram user ID is authorized to perform bot administration tasks.
+ *
+ * @param telegramUserId - The Telegram user ID to check
+ * @returns True if the user is an authorized bot administrator, false otherwise
+ */
+export function isAdminUser(telegramUserId: number): boolean {
+    const adminUsers = getAdminUsers();
+    return adminUsers.includes(telegramUserId);
 }
