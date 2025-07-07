@@ -35,8 +35,10 @@ import packageJSON from '../../package.json' with { type: 'json' };
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { Markup } from 'telegraf';
 import * as unthreadService from '../services/unthread.js';
+import { generateCustomerName } from '../services/unthread.js';
 import { safeReply, safeEditMessageText } from '../bot.js';
 import { validateAdminAccess, logPermissionEvent } from '../utils/permissions.js';
+import { isAdminUser } from '../config/env.js';
 import { checkAndPromptBotAdmin, isBotAdmin, handleRetryBotAdminCheck, sendBotAdminHelpMessage } from '../utils/botPermissions.js';
 import type { BotContext, SupportField, SupportFormState } from '../types/index.js';
 import { BotsStore } from '../sdk/bots-brain/index.js';
@@ -222,6 +224,66 @@ This bot is designed for team-based customer support workflows where multiple te
             await safeReply(ctx, "❌ Error: Unable to identify user or chat.");
             return;
         }
+
+        // Check if group is configured for support tickets
+        const chatId = ctx.chat.id;
+        const groupConfig = await BotsStore.getGroupConfig(chatId);
+        
+        if (!groupConfig || !groupConfig.isConfigured) {
+            // Group is not configured - show error message with different content for admins vs users
+            const isAdmin = await isAdminUser(ctx.from.id);
+            
+            if (isAdmin) {
+                // Admin user - show setup instructions
+                const adminMessage = `🔧 **Group Setup Required**
+
+This group needs to be configured before support tickets can be created.
+
+**To set up this group:**
+1. Run \`/setup\` command in this group
+2. Follow the setup wizard to link a customer
+3. Once setup is complete, users can create support tickets
+
+**Why is setup required?**
+The bot needs to know which customer account to associate with tickets from this group.
+
+**Need help?**
+• Type \`/help\` for more information
+• Refer to the setup documentation`;
+
+                await safeReply(ctx, adminMessage, { parse_mode: 'Markdown' });
+            } else {
+                // Regular user - show waiting message
+                const userMessage = `⏳ **Group Setup in Progress**
+
+This group is not yet configured for support tickets.
+
+**What's happening?**
+A group administrator needs to complete the setup process before support tickets can be created.
+
+**What can you do?**
+• Wait for an admin to complete the setup
+• Contact a group administrator for assistance
+• Use alternative support channels in the meantime
+
+**Note:** Only group administrators can configure the bot for support tickets.`;
+
+                await safeReply(ctx, userMessage, { parse_mode: 'Markdown' });
+            }
+            
+            LogEngine.info('Support command blocked - group not configured', {
+                chatId,
+                telegramUserId: ctx.from.id,
+                isAdmin,
+                groupTitle: 'title' in ctx.chat ? ctx.chat.title : 'Unknown Group'
+            });
+            return;
+        }
+        
+        if (!ctx.from || !ctx.chat) {
+            await safeReply(ctx, "❌ Error: Unable to identify user or chat.");
+            return;
+        }
         
         // Initialize state for this user using BotsStore
         const telegramUserId = ctx.from.id;
@@ -373,6 +435,11 @@ export const processSupportConversation = async (ctx: BotContext): Promise<boole
                     // Simulate /setup command being called
                     await setupCommand(ctx);
                     return true; // Mark as handled
+                }
+                
+                // Handle setup wizard callbacks
+                if (callbackData.startsWith('setup_')) {
+                    return await handleSetupCallbacks(ctx, callbackData);
                 }
                 
                 // Handle support flow callbacks
@@ -882,26 +949,80 @@ const setupCommand = async (ctx: BotContext): Promise<void> => {
             phase: 'bot_permission_check'
         });
 
-        await safeReply(ctx,
-            "🚀 **Setup Command - Phase 1 & 2 Implementation**\n\n" +
-            `✅ **Admin Access Verified**\n` +
-            `✅ **Bot Admin Permissions Verified**\n` +
-            `**Group:** ${chatTitle}\n` +
-            `**Admin:** ${ctx.from?.first_name || ctx.from?.username || 'Unknown'}\n\n` +
-            "🔧 **Status:** Ready for customer linking!\n\n" +
-            "**Next Steps (Coming Soon):**\n" +
-            "• Customer linking wizard\n" +
-            "• Group configuration storage\n" +
-            "• Support ticket integration\n\n" +
-            "💡 Both admin validation and bot permissions are working correctly."
-        );
+        // Phase 3: Check if group is already configured
+        const chatId = ctx.chat!.id;
+        const existingConfig = await BotsStore.getGroupConfig(chatId);
+        
+        if (existingConfig && existingConfig.isConfigured) {
+            await safeReply(ctx,
+                "✅ **Group Already Configured**\n\n" +
+                `**Customer:** ${existingConfig.customerName || 'Unknown'}\n` +
+                `**Customer ID:** ${existingConfig.customerId || 'Unknown'}\n` +
+                `**Setup by:** User ID ${existingConfig.setupBy}\n` +
+                `**Setup date:** ${existingConfig.setupAt || 'Unknown'}\n\n` +
+                "Support tickets are already enabled for this group.\n\n" +
+                "**Need to reconfigure?**\n" +
+                "Contact a developer to reset the group configuration.",
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
 
-        LogEngine.info('Setup command - Phase 1 & 2 completed successfully', {
+        // Phase 4: Initialize setup wizard
+        const setupInitiatedBy = ctx.from!.id;
+        const suggestedCustomerName = generateCustomerName(chatTitle);
+        
+        // Store setup state
+        const setupState = {
+            chatId: chatId,
+            step: 'customer_selection' as const,
+            initiatedBy: setupInitiatedBy,
+            startedAt: new Date().toISOString(),
+            suggestedCustomerName: suggestedCustomerName,
+            metadata: {
+                chatTitle: chatTitle,
+                botIsAdmin: true
+            }
+        };
+        
+        await BotsStore.storeSetupState(setupState);
+        
+        // Phase 5: Display setup wizard with customer name suggestion
+        const progressIndicator = getSetupProgressIndicator('customer_selection');
+        const setupMessage = `${progressIndicator}
+
+🎯 **Group Setup Wizard**
+
+**Group:** ${chatTitle}
+**Admin:** ${ctx.from?.first_name || ctx.from?.username || 'Unknown'}
+
+📋 **Customer Linking**
+We've suggested a customer name based on your group title:
+
+**Suggested Customer Name:**
+\`${suggestedCustomerName}\`
+
+**Choose an option:**`;
+
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('✅ Use Suggested Name', 'setup_use_suggested')],
+            [Markup.button.callback('✏️ Edit Customer Name', 'setup_edit_name')],
+            [Markup.button.callback('🔗 Link Existing Customer', 'setup_link_existing')],
+            [Markup.button.callback('❌ Cancel Setup', 'setup_cancel')]
+        ]);
+
+        await safeReply(ctx, setupMessage, { 
+            parse_mode: 'Markdown',
+            ...keyboard 
+        });
+
+        LogEngine.info('Setup wizard initialized', {
             telegramUserId: ctx.from?.id,
             username: ctx.from?.username,
-            chatId: ctx.chat?.id,
+            chatId: chatId,
             chatTitle: chatTitle,
-            phases: ['admin_validation', 'bot_permission_check']
+            suggestedCustomerName: suggestedCustomerName,
+            phase: 'wizard_initialization'
         });
 
     } catch (error) {
@@ -923,6 +1044,818 @@ const setupCommand = async (ctx: BotContext): Promise<void> => {
     }
 };
 
+/**
+ * Handles setup wizard callback queries
+ * Phase 6 enhancement with improved session validation and error handling
+ * 
+ * @param ctx - The bot context
+ * @param callbackData - The callback data from the inline keyboard
+ * @returns True if the callback was handled
+ */
+const handleSetupCallbacks = async (ctx: BotContext, callbackData: string): Promise<boolean> => {
+    try {
+        if (!ctx.chat || !ctx.from) {
+            return false;
+        }
+
+        const chatId = ctx.chat.id;
+        const setupState = await BotsStore.getSetupState(chatId);
+        
+        // Phase 6 enhancement: Enhanced session validation
+        const sessionValidation = await validateSetupSession(ctx, setupState);
+        if (!sessionValidation.isValid) {
+            await ctx.answerCbQuery('Session validation failed');
+            if (sessionValidation.message) {
+                await safeReply(ctx, sessionValidation.message, { parse_mode: 'Markdown' });
+            }
+            return true;
+        }
+
+        // At this point, setupState is guaranteed to be valid due to session validation
+        if (!setupState) {
+            await ctx.answerCbQuery('Setup session error. Please run /setup again.');
+            return true;
+        }
+
+        // Verify the user who started setup is the same one clicking buttons
+        if (setupState.initiatedBy !== ctx.from.id) {
+            await ctx.answerCbQuery('Only the admin who started setup can continue.');
+            await safeReply(ctx, 
+                '🔒 **Access Denied**\n\n' +
+                'Only the administrator who started the setup process can continue.\n\n' +
+                `**Setup initiated by:** User ID ${setupState.initiatedBy}\n` +
+                `**Current user:** User ID ${ctx.from.id}\n\n` +
+                'If you need to take over the setup, ask the original admin to cancel and restart the process.',
+                { parse_mode: 'Markdown' }
+            );
+            return true;
+        }
+
+        switch (callbackData) {
+            case 'setup_use_suggested':
+                return await handleUseSuggestedName(ctx, setupState);
+                
+            case 'setup_edit_name':
+                return await handleEditCustomerName(ctx, setupState);
+                
+            case 'setup_link_existing':
+                return await handleLinkExistingCustomer(ctx, setupState);
+                
+            case 'setup_cancel':
+                return await handleCancelSetup(ctx, setupState);
+                
+            default:
+                await ctx.answerCbQuery('Unknown setup option.');
+                return true;
+        }
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error in handleSetupCallbacks', {
+            error: err.message,
+            callbackData,
+            chatId: ctx.chat?.id,
+            userId: ctx.from?.id
+        });
+        await ctx.answerCbQuery('Setup error occurred. Please try again.');
+        return true;
+    }
+};
+
+/**
+ * Handle using the suggested customer name
+ */
+const handleUseSuggestedName = async (ctx: BotContext, setupState: any): Promise<boolean> => {
+    try {
+        await ctx.answerCbQuery('Creating customer with suggested name...');
+        
+        const customerName = setupState.suggestedCustomerName;
+        
+        // Store final group configuration
+        const groupConfig = {
+            chatId: setupState.chatId,
+            chatTitle: setupState.metadata?.chatTitle || 'Unknown Group',
+            isConfigured: true,
+            customerId: 'PENDING', // Will be updated when customer is created in Unthread
+            customerName: customerName,
+            setupBy: setupState.initiatedBy,
+            setupAt: new Date().toISOString(),
+            botIsAdmin: true,
+            lastAdminCheck: new Date().toISOString(),
+            setupVersion: '1.0',
+            metadata: {
+                setupMethod: 'suggested_name',
+                originalSuggestion: customerName
+            }
+        };
+
+        await BotsStore.storeGroupConfig(groupConfig);
+        await BotsStore.clearSetupState(setupState.chatId);
+
+        const successMessage = `${getSetupProgressIndicator('completion')}
+
+✅ **Setup Complete!**
+
+**Customer Created:** ${customerName}
+**Group:** ${setupState.metadata?.chatTitle || 'Unknown Group'}
+**Configuration:** Saved successfully
+
+🎫 **Support tickets are now enabled** for this group!
+
+Users can now use \`/support\` to create tickets that will be linked to this customer account.`;
+
+        // Edit the original message to show completion
+        if (ctx.callbackQuery && 'message' in ctx.callbackQuery && ctx.callbackQuery.message) {
+            await safeEditMessageText(
+                ctx,
+                ctx.chat!.id,
+                ctx.callbackQuery.message.message_id,
+                undefined,
+                successMessage,
+                { parse_mode: 'Markdown' }
+            );
+        } else {
+            await safeReply(ctx, successMessage, { parse_mode: 'Markdown' });
+        }
+
+        LogEngine.info('Setup completed with suggested name', {
+            chatId: setupState.chatId,
+            customerName: customerName,
+            setupBy: setupState.initiatedBy
+        });
+
+        return true;
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error in handleUseSuggestedName', {
+            error: err.message,
+            setupState
+        });
+        await ctx.answerCbQuery('Error completing setup. Please try again.');
+        return true;
+    }
+};
+
+/**
+ * Handle editing the customer name
+ */
+const handleEditCustomerName = async (ctx: BotContext, setupState: any): Promise<boolean> => {
+    try {
+        await ctx.answerCbQuery('Please enter the customer name...');
+        
+        // Update setup state to indicate we're waiting for text input
+        await BotsStore.updateSetupState(setupState.chatId, {
+            step: 'customer_creation',
+            metadata: {
+                ...setupState.metadata,
+                waitingForInput: 'customer_name'
+            }
+        });
+
+        const inputMessage = `${getSetupProgressIndicator('customer_creation')}
+
+✏️ **Edit Customer Name**
+
+**Current suggestion:** ${setupState.suggestedCustomerName}
+
+Please type the new customer name you'd like to use:
+
+**Examples:**
+• \`Acme Corporation\`
+• \`[Telegram] TechStart Inc\`
+• \`Global Solutions Ltd\`
+
+**Note:** You can include \`[Telegram]\` prefix to distinguish from other channels.
+
+💡 **Tip:** Type \`cancel\` to abort the setup process.`;
+
+        // Edit the original message
+        if (ctx.callbackQuery && 'message' in ctx.callbackQuery && ctx.callbackQuery.message) {
+            await safeEditMessageText(
+                ctx,
+                ctx.chat!.id,
+                ctx.callbackQuery.message.message_id,
+                undefined,
+                inputMessage,
+                { parse_mode: 'Markdown' }
+            );
+        } else {
+            await safeReply(ctx, inputMessage, { parse_mode: 'Markdown' });
+        }
+
+        return true;
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error in handleEditCustomerName', {
+            error: err.message,
+            setupState
+        });
+        await ctx.answerCbQuery('Error starting name edit. Please try again.');
+        return true;
+    }
+};
+
+/**
+ * Handle linking to an existing customer
+ */
+const handleLinkExistingCustomer = async (ctx: BotContext, setupState: any): Promise<boolean> => {
+    try {
+        await ctx.answerCbQuery('Enter existing customer ID...');
+        
+        // Update setup state to indicate we're waiting for customer ID input
+        await BotsStore.updateSetupState(setupState.chatId, {
+            step: 'customer_linking',
+            metadata: {
+                ...setupState.metadata,
+                waitingForInput: 'customer_id'
+            }
+        });
+
+        const inputMessage = `${getSetupProgressIndicator('customer_linking')}
+
+🔗 **Link Existing Customer**
+
+Please enter the **Customer ID** of an existing customer account:
+
+**Examples:**
+• \`cust_1234567890\`
+• \`customer-abc-123\`
+
+**Where to find Customer ID:**
+• Check your Unthread dashboard
+• Look in previous ticket emails
+• Contact your team administrator
+
+**Note:** The customer ID is case-sensitive.
+
+💡 **Tip:** Type \`cancel\` to abort the setup process.`;
+
+        // Edit the original message
+        if (ctx.callbackQuery && 'message' in ctx.callbackQuery && ctx.callbackQuery.message) {
+            await safeEditMessageText(
+                ctx,
+                ctx.chat!.id,
+                ctx.callbackQuery.message.message_id,
+                undefined,
+                inputMessage,
+                { parse_mode: 'Markdown' }
+            );
+        } else {
+            await safeReply(ctx, inputMessage, { parse_mode: 'Markdown' });
+        }
+
+        return true;
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error in handleLinkExistingCustomer', {
+            error: err.message,
+            setupState
+        });
+        await ctx.answerCbQuery('Error starting customer linking. Please try again.');
+        return true;
+    }
+};
+
+/**
+ * Handle canceling the setup
+ */
+const handleCancelSetup = async (ctx: BotContext, setupState: any): Promise<boolean> => {
+    try {
+        await ctx.answerCbQuery('Setup canceled.');
+        
+        // Clear the setup state
+        await BotsStore.clearSetupState(setupState.chatId);
+
+        const cancelMessage = `❌ **Setup Canceled**
+
+Group setup has been canceled. No changes were made.
+
+To configure this group for support tickets, run \`/setup\` again.`;
+
+        // Edit the original message
+        if (ctx.callbackQuery && 'message' in ctx.callbackQuery && ctx.callbackQuery.message) {
+            await safeEditMessageText(
+                ctx,
+                ctx.chat!.id,
+                ctx.callbackQuery.message.message_id,
+                undefined,
+                cancelMessage,
+                { parse_mode: 'Markdown' }
+            );
+        } else {
+            await safeReply(ctx, cancelMessage, { parse_mode: 'Markdown' });
+        }
+
+        LogEngine.info('Setup canceled by user', {
+            chatId: setupState.chatId,
+            canceledBy: setupState.initiatedBy
+        });
+
+        return true;
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error in handleCancelSetup', {
+            error: err.message,
+            setupState
+        });
+        await ctx.answerCbQuery('Error canceling setup.');
+        return true;
+    }
+};
+
+/**
+ * Processes text input for the setup wizard
+ * Phase 6 enhancement with improved session management and validation
+ * 
+ * @param ctx - The bot context
+ * @returns True if the message was processed as part of setup
+ */
+export const processSetupTextInput = async (ctx: BotContext): Promise<boolean> => {
+    try {
+        if (!ctx.from || !ctx.chat || !ctx.message || !('text' in ctx.message)) {
+            return false;
+        }
+
+        const chatId = ctx.chat.id;
+        const setupState = await BotsStore.getSetupState(chatId);
+        
+        if (!setupState || !setupState.metadata?.waitingForInput) {
+            return false; // Not waiting for setup input
+        }
+
+        // Phase 6 enhancement: Enhanced session validation
+        const sessionValidation = await validateSetupSession(ctx, setupState);
+        if (!sessionValidation.isValid) {
+            if (sessionValidation.message) {
+                await safeReply(ctx, sessionValidation.message, { parse_mode: 'Markdown' });
+            }
+            return true;
+        }
+
+        // Verify the user who started setup is the same one providing input
+        if (setupState.initiatedBy !== ctx.from.id) {
+            await safeReply(ctx, 
+                '🔒 **Setup Access Restricted**\n\n' +
+                'Only the administrator who started the setup process can provide input.\n\n' +
+                `**Setup initiated by:** User ID ${setupState.initiatedBy}\n` +
+                `**Current user:** User ID ${ctx.from.id}\n\n` +
+                'If you need to take over the setup, ask the original admin to cancel and restart the process.',
+                { parse_mode: 'Markdown' }
+            );
+            return true;
+        }
+
+        const userInput = ctx.message.text.trim();
+        const inputType = setupState.metadata.waitingForInput;
+
+        // Phase 6 enhancement: Check for special commands
+        if (userInput.toLowerCase() === '/cancel' || userInput.toLowerCase() === 'cancel') {
+            await BotsStore.clearSetupState(chatId);
+            await safeReply(ctx, 
+                '❌ **Setup Canceled**\n\n' +
+                'Setup process has been canceled by user request.\n\n' +
+                'To configure this group for support tickets, run `/setup` again.',
+                { parse_mode: 'Markdown' }
+            );
+            return true;
+        }
+
+        if (inputType === 'customer_name') {
+            return await processCustomerNameInput(ctx, setupState, userInput);
+        } else if (inputType === 'customer_id') {
+            return await processCustomerIdInput(ctx, setupState, userInput);
+        }
+
+        return false;
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error in processSetupTextInput', {
+            error: err.message,
+            chatId: ctx.chat?.id,
+            userId: ctx.from?.id
+        });
+        await safeReply(ctx, 
+            '❌ **Setup Processing Error**\n\n' +
+            'An error occurred while processing your input. Please try running `/setup` again.\n\n' +
+            'If this error persists, contact your system administrator.',
+            { parse_mode: 'Markdown' }
+        );
+        return true;
+    }
+};
+
+/**
+ * Process customer name input
+ * Phase 6 enhancement with improved validation and user feedback
+ */
+const processCustomerNameInput = async (ctx: BotContext, setupState: any, customerName: string): Promise<boolean> => {
+    try {
+        // Phase 6 enhancement: Enhanced validation with detailed feedback
+        const validation = validateCustomerName(customerName);
+        
+        if (!validation.isValid) {
+            let errorMessage = validation.message || '❌ Invalid customer name.';
+            
+            if (validation.suggestions && validation.suggestions.length > 0) {
+                errorMessage += '\n\n**Suggestions:**\n';
+                validation.suggestions.forEach((suggestion, index) => {
+                    errorMessage += `${index + 1}. ${suggestion}\n`;
+                });
+            }
+            
+            errorMessage += '\n💡 **Please try again with a different name.**';
+            await safeReply(ctx, errorMessage, { parse_mode: 'Markdown' });
+            return true;
+        }
+
+        // Show warning if validation passed but has suggestions
+        if (validation.message && validation.suggestions) {
+            let warningMessage = validation.message + '\n\n**Suggestions for improvement:**\n';
+            validation.suggestions.forEach((suggestion, index) => {
+                warningMessage += `${index + 1}. ${suggestion}\n`;
+            });
+            warningMessage += '\n**Continue anyway?** Reply with the same name to proceed, or provide a different name.';
+            
+            // Check if user is confirming the same name despite warning
+            if (setupState.metadata?.lastWarningName !== customerName) {
+                // First time showing warning for this name
+                await BotsStore.updateSetupState(setupState.chatId, {
+                    metadata: {
+                        ...setupState.metadata,
+                        lastWarningName: customerName
+                    }
+                });
+                
+                await safeReply(ctx, warningMessage, { parse_mode: 'Markdown' });
+                return true;
+            }
+            // User confirmed despite warning, proceed
+        }
+
+        const trimmedName = customerName.trim();
+
+        // Store final group configuration with custom name
+        const groupConfig = {
+            chatId: setupState.chatId,
+            chatTitle: setupState.metadata?.chatTitle || 'Unknown Group',
+            isConfigured: true,
+            customerId: 'PENDING', // Will be updated when customer is created in Unthread
+            customerName: trimmedName,
+            setupBy: setupState.initiatedBy,
+            setupAt: new Date().toISOString(),
+            botIsAdmin: true,
+            lastAdminCheck: new Date().toISOString(),
+            setupVersion: '1.0',
+            metadata: {
+                setupMethod: 'custom_name',
+                originalSuggestion: setupState.suggestedCustomerName,
+                customName: trimmedName,
+                validationWarnings: validation.message ? [validation.message] : []
+            }
+        };
+
+        await BotsStore.storeGroupConfig(groupConfig);
+        await BotsStore.clearSetupState(setupState.chatId);
+
+        // Phase 6 enhancement: Progress indicator in success message
+        const progressIndicator = getSetupProgressIndicator('completion');
+        const successMessage = `${progressIndicator}
+
+✅ **Setup Complete!**
+
+**Customer Created:** ${trimmedName}
+**Group:** ${setupState.metadata?.chatTitle || 'Unknown Group'}
+**Configuration:** Saved successfully
+
+🎫 **Support tickets are now enabled** for this group!
+
+Users can now use \`/support\` to create tickets that will be linked to this customer account.`;
+
+        await safeReply(ctx, successMessage, { parse_mode: 'Markdown' });
+
+        LogEngine.info('Setup completed with custom name', {
+            chatId: setupState.chatId,
+            customerName: trimmedName,
+            setupBy: setupState.initiatedBy,
+            originalSuggestion: setupState.suggestedCustomerName,
+            validationWarnings: validation.message ? [validation.message] : []
+        });
+
+        return true;
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error in processCustomerNameInput', {
+            error: err.message,
+            customerName,
+            setupState
+        });
+        await safeReply(ctx, '❌ **Setup Error**\n\nAn error occurred while saving the customer name. Please try running `/setup` again.', { parse_mode: 'Markdown' });
+        return true;
+    }
+};
+
+/**
+ * Process customer ID input for linking existing customers
+ * Phase 6 enhancement with improved validation and user feedback
+ */
+const processCustomerIdInput = async (ctx: BotContext, setupState: any, customerId: string): Promise<boolean> => {
+    try {
+        // Phase 6 enhancement: Enhanced validation with detailed feedback
+        const validation = validateCustomerId(customerId);
+        
+        if (!validation.isValid) {
+            let errorMessage = validation.message || '❌ Invalid customer ID.';
+            
+            if (validation.suggestions && validation.suggestions.length > 0) {
+                errorMessage += '\n\n**Suggestions:**\n';
+                validation.suggestions.forEach((suggestion, index) => {
+                    errorMessage += `${index + 1}. ${suggestion}\n`;
+                });
+            }
+            
+            errorMessage += '\n💡 **Please try again with a different ID.**';
+            await safeReply(ctx, errorMessage, { parse_mode: 'Markdown' });
+            return true;
+        }
+
+        // Show warning if validation passed but has suggestions
+        if (validation.message && validation.suggestions) {
+            let warningMessage = validation.message + '\n\n**Suggestions:**\n';
+            validation.suggestions.forEach((suggestion, index) => {
+                warningMessage += `${index + 1}. ${suggestion}\n`;
+            });
+            warningMessage += '\n**Continue anyway?** Reply with the same ID to proceed, or provide a different ID.';
+            
+            // Check if user is confirming the same ID despite warning
+            if (setupState.metadata?.lastWarningId !== customerId) {
+                // First time showing warning for this ID
+                await BotsStore.updateSetupState(setupState.chatId, {
+                    metadata: {
+                        ...setupState.metadata,
+                        lastWarningId: customerId
+                    }
+                });
+                
+                await safeReply(ctx, warningMessage, { parse_mode: 'Markdown' });
+                return true;
+            }
+            // User confirmed despite warning, proceed
+        }
+
+        const trimmedId = customerId.trim();
+
+        // TODO: Add customer validation with Unthread API in Phase 7
+        // For now, we'll accept any valid format and mark for validation later
+        
+        // Store final group configuration with existing customer ID
+        const groupConfig = {
+            chatId: setupState.chatId,
+            chatTitle: setupState.metadata?.chatTitle || 'Unknown Group',
+            isConfigured: true,
+            customerId: trimmedId,
+            customerName: `Customer ${trimmedId}`, // Will be updated when validated
+            setupBy: setupState.initiatedBy,
+            setupAt: new Date().toISOString(),
+            botIsAdmin: true,
+            lastAdminCheck: new Date().toISOString(),
+            setupVersion: '1.0',
+            metadata: {
+                setupMethod: 'existing_customer',
+                needsValidation: true, // Flag for Phase 7
+                originalSuggestion: setupState.suggestedCustomerName,
+                validationWarnings: validation.message ? [validation.message] : []
+            }
+        };
+
+        await BotsStore.storeGroupConfig(groupConfig);
+        await BotsStore.clearSetupState(setupState.chatId);
+
+        // Phase 6 enhancement: Progress indicator in success message
+        const progressIndicator = getSetupProgressIndicator('completion');
+        const successMessage = `${progressIndicator}
+
+✅ **Setup Complete!**
+
+**Linked Customer ID:** ${trimmedId}
+**Group:** ${setupState.metadata?.chatTitle || 'Unknown Group'}
+**Configuration:** Saved successfully
+
+🎫 **Support tickets are now enabled** for this group!
+
+Users can now use \`/support\` to create tickets that will be linked to this customer account.
+
+**Note:** Customer details will be validated when the first ticket is created.`;
+
+        await safeReply(ctx, successMessage, { parse_mode: 'Markdown' });
+
+        LogEngine.info('Setup completed with existing customer', {
+            chatId: setupState.chatId,
+            customerId: trimmedId,
+            setupBy: setupState.initiatedBy,
+            needsValidation: true,
+            validationWarnings: validation.message ? [validation.message] : []
+        });
+
+        return true;
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error in processCustomerIdInput', {
+            error: err.message,
+            customerId,
+            setupState
+        });
+        await safeReply(ctx, '❌ **Setup Error**\n\nAn error occurred while linking the customer. Please try running `/setup` again.', { parse_mode: 'Markdown' });
+        return true;
+    }
+};
+
+// Phase 6 Enhancement: Improved setup session timeout handling
+const SETUP_SESSION_TIMEOUT_MINUTES = 30;
+
+/**
+ * Enhanced setup session validation with timeout handling
+ * Phase 6 enhancement for better session management
+ */
+const validateSetupSession = async (ctx: BotContext, setupState: any): Promise<{ isValid: boolean; message?: string }> => {
+    try {
+        if (!setupState) {
+            return {
+                isValid: false,
+                message: '⏰ **Setup Session Expired**\n\nYour setup session has expired. Please run `/setup` again to start a new configuration session.'
+            };
+        }
+
+        // Check if session has timed out
+        const startedAt = new Date(setupState.startedAt);
+        const now = new Date();
+        const timeDiffMinutes = (now.getTime() - startedAt.getTime()) / (1000 * 60);
+
+        if (timeDiffMinutes > SETUP_SESSION_TIMEOUT_MINUTES) {
+            // Clean up expired session
+            await BotsStore.clearSetupState(setupState.chatId);
+            return {
+                isValid: false,
+                message: `⏰ **Setup Session Timed Out**\n\nYour setup session expired after ${SETUP_SESSION_TIMEOUT_MINUTES} minutes of inactivity.\n\nPlease run \`/setup\` again to start a new configuration session.`
+            };
+        }
+
+        // Verify user is still admin (security check)
+        if (!await isAdminUser(ctx.from?.id || 0)) {
+            await BotsStore.clearSetupState(setupState.chatId);
+            return {
+                isValid: false,
+                message: '🔒 **Admin Access Required**\n\nYour admin privileges may have changed. Only authorized administrators can complete group setup.\n\nIf you believe this is an error, please contact a system administrator.'
+            };
+        }
+
+        return { isValid: true };
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error in validateSetupSession', {
+            error: err.message,
+            chatId: ctx.chat?.id,
+            userId: ctx.from?.id
+        });
+        return {
+            isValid: false,
+            message: '❌ **Session Validation Error**\n\nAn error occurred while validating your setup session. Please try running `/setup` again.'
+        };
+    }
+};
+
+/**
+ * Enhanced customer name validation with detailed feedback
+ * Phase 6 enhancement for better input validation
+ */
+const validateCustomerName = (customerName: string): { isValid: boolean; message?: string; suggestions?: string[] } => {
+    const trimmedName = customerName.trim();
+    
+    if (!trimmedName) {
+        return {
+            isValid: false,
+            message: '❌ **Customer name cannot be empty**\n\nPlease provide a valid customer name.',
+            suggestions: ['Acme Corporation', '[Telegram] TechStart Inc', 'Global Solutions Ltd']
+        };
+    }
+
+    if (trimmedName.length < 2) {
+        return {
+            isValid: false,
+            message: '❌ **Customer name too short**\n\nCustomer name must be at least 2 characters long.',
+            suggestions: ['Add more descriptive text', 'Include company type (Inc, LLC, etc.)', 'Use full company name']
+        };
+    }
+
+    if (trimmedName.length > 100) {
+        return {
+            isValid: false,
+            message: '❌ **Customer name too long**\n\nCustomer name must be 100 characters or less.\n\n**Current length:** ' + trimmedName.length + ' characters',
+            suggestions: ['Use abbreviations', 'Remove unnecessary words', 'Use shorter company name']
+        };
+    }
+
+    // Check for potentially problematic characters
+    const problematicChars = /[<>{}[\]\\|`~!@#$%^&*()+=]/;
+    if (problematicChars.test(trimmedName)) {
+        return {
+            isValid: false,
+            message: '❌ **Invalid characters detected**\n\nCustomer name contains special characters that may cause issues.\n\n**Allowed:** Letters, numbers, spaces, hyphens, underscores, periods, and common punctuation.',
+            suggestions: ['Remove special characters', 'Use only letters and numbers', 'Replace symbols with words']
+        };
+    }
+
+    // Warning for very short names (but still valid)
+    if (trimmedName.length < 5) {
+        return {
+            isValid: true,
+            message: '⚠️ **Short customer name**\n\nThis name is quite short. Consider using a more descriptive name for better identification.',
+            suggestions: ['Add company type (Inc, Corp, LLC)', 'Include industry or service type', 'Use full business name']
+        };
+    }
+
+    return { isValid: true };
+};
+
+/**
+ * Enhanced customer ID validation with format checking
+ * Phase 6 enhancement for better ID validation
+ */
+const validateCustomerId = (customerId: string): { isValid: boolean; message?: string; suggestions?: string[] } => {
+    const trimmedId = customerId.trim();
+    
+    if (!trimmedId) {
+        return {
+            isValid: false,
+            message: '❌ **Customer ID cannot be empty**\n\nPlease provide a valid customer ID.',
+            suggestions: ['Check your Unthread dashboard', 'Look in previous ticket emails', 'Contact your team administrator']
+        };
+    }
+
+    if (trimmedId.length < 3) {
+        return {
+            isValid: false,
+            message: '❌ **Customer ID too short**\n\nCustomer ID must be at least 3 characters long.',
+            suggestions: ['Double-check the ID from your dashboard', 'Ensure you copied the complete ID', 'Contact support if unsure']
+        };
+    }
+
+    if (trimmedId.length > 50) {
+        return {
+            isValid: false,
+            message: '❌ **Customer ID too long**\n\nCustomer ID must be 50 characters or less.\n\n**Current length:** ' + trimmedId.length + ' characters',
+            suggestions: ['Verify you copied only the ID, not additional text', 'Check for extra spaces or characters', 'Use the shorter ID format if available']
+        };
+    }
+
+    // Enhanced format validation
+    if (!/^[a-zA-Z0-9_-]+$/.test(trimmedId)) {
+        return {
+            isValid: false,
+            message: '❌ **Invalid customer ID format**\n\nCustomer ID can only contain letters, numbers, underscores, and hyphens.\n\n**Invalid characters detected:** ' + trimmedId.replace(/[a-zA-Z0-9_-]/g, '').split('').join(', '),
+            suggestions: ['Remove spaces and special characters', 'Use only alphanumeric characters', 'Check for copy-paste errors']
+        };
+    }
+
+    // Common ID format validation
+    const commonFormats = [
+        /^cust_[a-zA-Z0-9]+$/,           // Stripe-like: cust_1234567890
+        /^customer-[a-zA-Z0-9-]+$/,     // Dash format: customer-abc-123
+        /^[a-zA-Z0-9]{8,}$/,            // Simple alphanumeric: abc123def456
+        /^[0-9]+$/,                     // Numeric only: 1234567890
+        /^[a-zA-Z]+[0-9]+$/             // Letters + numbers: customer123
+    ];
+
+    const isCommonFormat = commonFormats.some(format => format.test(trimmedId));
+    if (!isCommonFormat) {
+        return {
+            isValid: true, // Still valid, just warn about unusual format
+            message: '⚠️ **Unusual customer ID format**\n\nThis doesn\'t match common customer ID patterns. Please verify this is correct.',
+            suggestions: ['Double-check against your dashboard', 'Ensure this is the customer ID, not username', 'Contact support if uncertain']
+        };
+    }
+
+    return { isValid: true };
+};
+
+/**
+ * Enhanced progress indicator for setup steps
+ * Phase 6 enhancement for better UX feedback
+ */
+const getSetupProgressIndicator = (currentStep: string, totalSteps: number = 4): string => {
+    const steps = {
+        'admin_validation': { current: 1, name: 'Admin Verification' },
+        'bot_permissions': { current: 2, name: 'Bot Permissions' },
+        'customer_selection': { current: 3, name: 'Customer Selection' },
+        'customer_creation': { current: 3, name: 'Customer Creation' },
+        'customer_linking': { current: 3, name: 'Customer Linking' },
+        'completion': { current: 4, name: 'Completion' }
+    };
+
+    const step = steps[currentStep as keyof typeof steps] || { current: 1, name: 'Setup' };
+    const progress = '█'.repeat(step.current) + '░'.repeat(totalSteps - step.current);
+    
+    return `📊 **Setup Progress** ${step.current}/${totalSteps}\n${progress} ${step.name}`;
+};
+// Export all command functions for use in other modules
 export {
     startCommand,
     helpCommand,
@@ -931,5 +1864,6 @@ export {
     supportCommand,
     cancelCommand,
     resetCommand,
-    setupCommand
+    setupCommand,
+    handleSetupCallbacks
 };

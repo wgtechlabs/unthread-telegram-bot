@@ -667,5 +667,27 @@ export async function getOrCreateUser(telegramUserId: number, username?: string)
     }
 }
 
+/**
+ * Generates a customer name from a group chat title with [Telegram] prefix
+ * 
+ * This function takes a Telegram group chat title and creates a suitable customer name
+ * by extracting the company/customer portion and adding a [Telegram] prefix to distinguish
+ * it from other communication channels.
+ * 
+ * @param groupChatTitle - The Telegram group chat title
+ * @returns A formatted customer name with [Telegram] prefix
+ */
+export function generateCustomerName(groupChatTitle: string): string {
+    if (!groupChatTitle) {
+        return '[Telegram] Unknown Company';
+    }
+
+    // Use existing extraction logic to get the customer name
+    const extractedName = extractCustomerCompanyName(groupChatTitle);
+    
+    // Add [Telegram] prefix to distinguish from other channels
+    return `[Telegram] ${extractedName}`;
+}
+
 // Export the customer cache for potential use in other modules
 export { customerCache };
