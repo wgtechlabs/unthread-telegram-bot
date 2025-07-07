@@ -35,7 +35,7 @@ import packageJSON from '../../package.json' with { type: 'json' };
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { Markup } from 'telegraf';
 import * as unthreadService from '../services/unthread.js';
-import { generateCustomerName } from '../services/unthread.js';
+import { generateCustomerName, createCustomerWithName, handleUnthreadApiError, validateCustomerExists, getCustomerDetails } from '../services/unthread.js';
 import { safeReply, safeEditMessageText } from '../bot.js';
 import { validateAdminAccess, logPermissionEvent } from '../utils/permissions.js';
 import { isAdminUser } from '../config/env.js';
@@ -769,6 +769,43 @@ async function handleEmailField(ctx: BotContext, userState: any, messageText: st
             
         } catch (error) {
             const err = error as Error;
+            
+            // Phase 8 Enhancement: Handle group not configured error specifically
+            if (err.message.includes('GROUP_NOT_CONFIGURED')) {
+                LogEngine.info('Support ticket blocked - group not configured', {
+                    chatId: ctx.chat.id,
+                    groupChatName,
+                    telegramUserId,
+                    username
+                });
+                
+                // Show group-not-configured error with setup instructions
+                const configMessage = `🔧 **Group Setup Required**
+
+This group needs to be configured before support tickets can be created.
+
+**To set up this group:**
+1. Ask a group administrator to run \`/setup\`
+2. Follow the setup wizard to link a customer
+3. Once setup is complete, you can create support tickets
+
+**Why is setup required?**
+The bot needs to know which customer account to associate with tickets from this group.
+
+**Need help?**
+Contact a group administrator or refer to the bot documentation.`;
+
+                await safeEditMessageText(
+                    ctx,
+                    ctx.chat.id,
+                    waitingMsg.message_id,
+                    undefined,
+                    configMessage,
+                    { parse_mode: 'Markdown' }
+                );
+                return;
+            }
+            
             // Handle API errors
             LogEngine.error('Error creating support ticket', {
                 error: err.message,
@@ -1123,6 +1160,7 @@ const handleSetupCallbacks = async (ctx: BotContext, callbackData: string): Prom
 
 /**
  * Handle using the suggested customer name
+ * Phase 7 enhancement with real customer creation
  */
 const handleUseSuggestedName = async (ctx: BotContext, setupState: any): Promise<boolean> => {
     try {
@@ -1130,13 +1168,44 @@ const handleUseSuggestedName = async (ctx: BotContext, setupState: any): Promise
         
         const customerName = setupState.suggestedCustomerName;
         
-        // Store final group configuration
+        // Phase 7: Create customer in Unthread API
+        let customerId: string;
+        let actualCustomerName: string;
+        
+        try {
+            const customer = await createCustomerWithName(customerName);
+            customerId = customer.id;
+            actualCustomerName = customer.name;
+            
+            LogEngine.info('Customer created successfully in Unthread', {
+                customerId,
+                customerName: actualCustomerName,
+                chatId: setupState.chatId
+            });
+        } catch (error) {
+            const err = error as Error;
+            LogEngine.error('Failed to create customer in Unthread', {
+                error: err.message,
+                customerName,
+                chatId: setupState.chatId
+            });
+            
+            // Handle API error gracefully
+            const errorMessage = handleUnthreadApiError(error, 'Customer Creation');
+            await safeReply(ctx, errorMessage + '\n\n💡 **Try again:** Run `/setup` to retry the configuration.', { parse_mode: 'Markdown' });
+            
+            // Clear setup state on error
+            await BotsStore.clearSetupState(setupState.chatId);
+            return true;
+        }
+        
+        // Store final group configuration with real customer ID
         const groupConfig = {
             chatId: setupState.chatId,
             chatTitle: setupState.metadata?.chatTitle || 'Unknown Group',
             isConfigured: true,
-            customerId: 'PENDING', // Will be updated when customer is created in Unthread
-            customerName: customerName,
+            customerId: customerId, // Phase 7: Real customer ID from Unthread
+            customerName: actualCustomerName,
             setupBy: setupState.initiatedBy,
             setupAt: new Date().toISOString(),
             botIsAdmin: true,
@@ -1144,7 +1213,9 @@ const handleUseSuggestedName = async (ctx: BotContext, setupState: any): Promise
             setupVersion: '1.0',
             metadata: {
                 setupMethod: 'suggested_name',
-                originalSuggestion: customerName
+                originalSuggestion: customerName,
+                apiIntegration: true, // Phase 7: Mark as API integrated
+                unthreadCustomerId: customerId
             }
         };
 
@@ -1155,13 +1226,16 @@ const handleUseSuggestedName = async (ctx: BotContext, setupState: any): Promise
 
 ✅ **Setup Complete!**
 
-**Customer Created:** ${customerName}
+**Customer Created:** ${actualCustomerName}
+**Customer ID:** ${customerId}
 **Group:** ${setupState.metadata?.chatTitle || 'Unknown Group'}
 **Configuration:** Saved successfully
 
 🎫 **Support tickets are now enabled** for this group!
 
-Users can now use \`/support\` to create tickets that will be linked to this customer account.`;
+Users can now use \`/support\` to create tickets that will be linked to this customer account.
+
+🔗 **Integration:** Connected to Unthread API`;
 
         // Edit the original message to show completion
         if (ctx.callbackQuery && 'message' in ctx.callbackQuery && ctx.callbackQuery.message) {
@@ -1177,9 +1251,10 @@ Users can now use \`/support\` to create tickets that will be linked to this cus
             await safeReply(ctx, successMessage, { parse_mode: 'Markdown' });
         }
 
-        LogEngine.info('Setup completed with suggested name', {
+        LogEngine.info('Setup completed with suggested name and API integration', {
             chatId: setupState.chatId,
-            customerName: customerName,
+            customerName: actualCustomerName,
+            customerId: customerId,
             setupBy: setupState.initiatedBy
         });
 
@@ -1191,6 +1266,15 @@ Users can now use \`/support\` to create tickets that will be linked to this cus
             setupState
         });
         await ctx.answerCbQuery('Error completing setup. Please try again.');
+        await safeReply(ctx, 
+            '❌ **Setup Error**\n\n' +
+            'An unexpected error occurred during setup. Please try running `/setup` again.\n\n' +
+            'If this error persists, contact your system administrator.',
+            { parse_mode: 'Markdown' }
+        );
+        
+        // Clear setup state on error
+        await BotsStore.clearSetupState(setupState.chatId);
         return true;
     }
 };
@@ -1493,13 +1577,45 @@ const processCustomerNameInput = async (ctx: BotContext, setupState: any, custom
 
         const trimmedName = customerName.trim();
 
-        // Store final group configuration with custom name
+        // Phase 7: Create customer in Unthread API
+        let customerId: string;
+        let actualCustomerName: string;
+        
+        try {
+            const customer = await createCustomerWithName(trimmedName);
+            customerId = customer.id;
+            actualCustomerName = customer.name;
+            
+            LogEngine.info('Customer created successfully in Unthread', {
+                customerId,
+                customerName: actualCustomerName,
+                originalInput: trimmedName,
+                chatId: setupState.chatId
+            });
+        } catch (error) {
+            const err = error as Error;
+            LogEngine.error('Failed to create customer in Unthread', {
+                error: err.message,
+                customerName: trimmedName,
+                chatId: setupState.chatId
+            });
+            
+            // Handle API error gracefully
+            const errorMessage = handleUnthreadApiError(error, 'Customer Creation');
+            await safeReply(ctx, errorMessage + '\n\n💡 **Try again:** Run `/setup` to retry the configuration.', { parse_mode: 'Markdown' });
+            
+            // Clear setup state on error
+            await BotsStore.clearSetupState(setupState.chatId);
+            return true;
+        }
+
+        // Store final group configuration with real customer data
         const groupConfig = {
             chatId: setupState.chatId,
             chatTitle: setupState.metadata?.chatTitle || 'Unknown Group',
             isConfigured: true,
-            customerId: 'PENDING', // Will be updated when customer is created in Unthread
-            customerName: trimmedName,
+            customerId: customerId, // Phase 7: Real customer ID from Unthread
+            customerName: actualCustomerName,
             setupBy: setupState.initiatedBy,
             setupAt: new Date().toISOString(),
             botIsAdmin: true,
@@ -1509,6 +1625,9 @@ const processCustomerNameInput = async (ctx: BotContext, setupState: any, custom
                 setupMethod: 'custom_name',
                 originalSuggestion: setupState.suggestedCustomerName,
                 customName: trimmedName,
+                actualCustomerName: actualCustomerName,
+                apiIntegration: true, // Phase 7: Mark as API integrated
+                unthreadCustomerId: customerId,
                 validationWarnings: validation.message ? [validation.message] : []
             }
         };
@@ -1522,7 +1641,8 @@ const processCustomerNameInput = async (ctx: BotContext, setupState: any, custom
 
 ✅ **Setup Complete!**
 
-**Customer Created:** ${trimmedName}
+**Customer Created:** ${actualCustomerName}
+**Customer ID:** ${customerId}
 **Group:** ${setupState.metadata?.chatTitle || 'Unknown Group'}
 **Configuration:** Saved successfully
 
@@ -1534,7 +1654,9 @@ Users can now use \`/support\` to create tickets that will be linked to this cus
 
         LogEngine.info('Setup completed with custom name', {
             chatId: setupState.chatId,
-            customerName: trimmedName,
+            customerId: customerId,
+            customerName: actualCustomerName,
+            originalInput: trimmedName,
             setupBy: setupState.initiatedBy,
             originalSuggestion: setupState.suggestedCustomerName,
             validationWarnings: validation.message ? [validation.message] : []
@@ -1603,16 +1725,58 @@ const processCustomerIdInput = async (ctx: BotContext, setupState: any, customer
 
         const trimmedId = customerId.trim();
 
-        // TODO: Add customer validation with Unthread API in Phase 7
-        // For now, we'll accept any valid format and mark for validation later
+        // Phase 7: Validate customer exists in Unthread API
+        let customerDetails: any;
         
-        // Store final group configuration with existing customer ID
+        try {
+            // Check if customer exists
+            const exists = await validateCustomerExists(trimmedId);
+            if (!exists) {
+                await safeReply(ctx, 
+                    '❌ **Customer Not Found**\n\n' +
+                    `Customer ID \`${trimmedId}\` does not exist in Unthread.\n\n` +
+                    '**Please check:**\n' +
+                    '• Spelling and case sensitivity\n' +
+                    '• Complete Customer ID (no missing characters)\n' +
+                    '• Customer exists in your Unthread account\n\n' +
+                    '💡 **Try again with the correct Customer ID, or use a different setup option.**',
+                    { parse_mode: 'Markdown' }
+                );
+                return true;
+            }
+            
+            // Get customer details
+            customerDetails = await getCustomerDetails(trimmedId);
+            
+            LogEngine.info('Customer validated successfully in Unthread', {
+                customerId: trimmedId,
+                customerName: customerDetails.name,
+                chatId: setupState.chatId
+            });
+        } catch (error) {
+            const err = error as Error;
+            LogEngine.error('Failed to validate customer in Unthread', {
+                error: err.message,
+                customerId: trimmedId,
+                chatId: setupState.chatId
+            });
+            
+            // Handle API error gracefully
+            const errorMessage = handleUnthreadApiError(error, 'Customer Validation');
+            await safeReply(ctx, errorMessage + '\n\n💡 **Try again:** Run `/setup` to retry the configuration.', { parse_mode: 'Markdown' });
+            
+            // Clear setup state on error
+            await BotsStore.clearSetupState(setupState.chatId);
+            return true;
+        }
+        
+        // Store final group configuration with validated customer data
         const groupConfig = {
             chatId: setupState.chatId,
             chatTitle: setupState.metadata?.chatTitle || 'Unknown Group',
             isConfigured: true,
             customerId: trimmedId,
-            customerName: `Customer ${trimmedId}`, // Will be updated when validated
+            customerName: customerDetails.name || `Customer ${trimmedId}`,
             setupBy: setupState.initiatedBy,
             setupAt: new Date().toISOString(),
             botIsAdmin: true,
@@ -1620,8 +1784,10 @@ const processCustomerIdInput = async (ctx: BotContext, setupState: any, customer
             setupVersion: '1.0',
             metadata: {
                 setupMethod: 'existing_customer',
-                needsValidation: true, // Flag for Phase 7
                 originalSuggestion: setupState.suggestedCustomerName,
+                apiIntegration: true, // Phase 7: Mark as API integrated
+                unthreadCustomerId: trimmedId,
+                customerValidated: true,
                 validationWarnings: validation.message ? [validation.message] : []
             }
         };
@@ -1635,15 +1801,14 @@ const processCustomerIdInput = async (ctx: BotContext, setupState: any, customer
 
 ✅ **Setup Complete!**
 
-**Linked Customer ID:** ${trimmedId}
+**Linked Customer:** ${customerDetails.name || trimmedId}
+**Customer ID:** ${trimmedId}
 **Group:** ${setupState.metadata?.chatTitle || 'Unknown Group'}
-**Configuration:** Saved successfully
+**Configuration:** Saved and validated successfully
 
 🎫 **Support tickets are now enabled** for this group!
 
-Users can now use \`/support\` to create tickets that will be linked to this customer account.
-
-**Note:** Customer details will be validated when the first ticket is created.`;
+Users can now use \`/support\` to create tickets that will be linked to this customer account.`;
 
         await safeReply(ctx, successMessage, { parse_mode: 'Markdown' });
 
