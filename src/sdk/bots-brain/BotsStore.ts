@@ -894,50 +894,39 @@ export class BotsStore implements IBotsStore {
   // Batch group configuration operations
   async storeGroupConfigs(configs: GroupConfig[]): Promise<boolean> {
     try {
-      for (const config of configs) {
-        await this.storeGroupConfig(config);
-      }
+      await Promise.all(configs.map(config => this.storeGroupConfig(config)));
       return true;
     } catch (error) {
-      console.error('Error storing group configs:', error);
+      LogEngine.error('Error storing group configs:', error);
       return false;
     }
   }
 
   async getGroupConfigs(chatIds: number[]): Promise<(GroupConfig | null)[]> {
     try {
-      const results: (GroupConfig | null)[] = [];
-      for (const chatId of chatIds) {
-        const config = await this.getGroupConfig(chatId);
-        results.push(config);
-      }
-      return results;
+      return await Promise.all(chatIds.map(chatId => this.getGroupConfig(chatId)));
     } catch (error) {
-      console.error('Error getting group configs:', error);
+      LogEngine.error('Error getting group configs:', error);
       return chatIds.map(() => null);
     }
   }
 
   async updateGroupConfigs(updates: {chatId: number, updates: Partial<GroupConfig>}[]): Promise<boolean> {
     try {
-      for (const update of updates) {
-        await this.updateGroupConfig(update.chatId, update.updates);
-      }
+      await Promise.all(updates.map(update => this.updateGroupConfig(update.chatId, update.updates)));
       return true;
     } catch (error) {
-      console.error('Error updating group configs:', error);
+      LogEngine.error('Error updating group configs:', error);
       return false;
     }
   }
 
   async deleteGroupConfigs(chatIds: number[]): Promise<boolean> {
     try {
-      for (const chatId of chatIds) {
-        await this.deleteGroupConfig(chatId);
-      }
+      await Promise.all(chatIds.map(chatId => this.deleteGroupConfig(chatId)));
       return true;
     } catch (error) {
-      console.error('Error deleting group configs:', error);
+      LogEngine.error('Error deleting group configs:', error);
       return false;
     }
   }
@@ -945,50 +934,39 @@ export class BotsStore implements IBotsStore {
   // Batch setup state operations
   async storeSetupStates(states: SetupState[]): Promise<boolean> {
     try {
-      for (const state of states) {
-        await this.storeSetupState(state);
-      }
+      await Promise.all(states.map(state => this.storeSetupState(state)));
       return true;
     } catch (error) {
-      console.error('Error storing setup states:', error);
+      LogEngine.error('Error storing setup states:', error);
       return false;
     }
   }
 
   async getSetupStates(chatIds: number[]): Promise<(SetupState | null)[]> {
     try {
-      const results: (SetupState | null)[] = [];
-      for (const chatId of chatIds) {
-        const state = await this.getSetupState(chatId);
-        results.push(state);
-      }
-      return results;
+      return await Promise.all(chatIds.map(chatId => this.getSetupState(chatId)));
     } catch (error) {
-      console.error('Error getting setup states:', error);
+      LogEngine.error('Error getting setup states:', error);
       return chatIds.map(() => null);
     }
   }
 
   async updateSetupStates(updates: {chatId: number, updates: Partial<SetupState>}[]): Promise<boolean> {
     try {
-      for (const update of updates) {
-        await this.updateSetupState(update.chatId, update.updates);
-      }
+      await Promise.all(updates.map(update => this.updateSetupState(update.chatId, update.updates)));
       return true;
     } catch (error) {
-      console.error('Error updating setup states:', error);
+      LogEngine.error('Error updating setup states:', error);
       return false;
     }
   }
 
   async clearSetupStates(chatIds: number[]): Promise<boolean> {
     try {
-      for (const chatId of chatIds) {
-        await this.clearSetupState(chatId);
-      }
+      await Promise.all(chatIds.map(chatId => this.clearSetupState(chatId)));
       return true;
     } catch (error) {
-      console.error('Error clearing setup states:', error);
+      LogEngine.error('Error clearing setup states:', error);
       return false;
     }
   }

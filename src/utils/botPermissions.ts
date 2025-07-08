@@ -7,6 +7,7 @@
 
 import { Context as BotContext } from 'telegraf';
 import { InlineKeyboardMarkup } from 'telegraf/typings/core/types/typegram';
+import { LogEngine } from '@wgtechlabs/log-engine';
 
 /**
  * Check if the bot has admin permissions in the current chat
@@ -21,7 +22,7 @@ export async function isBotAdmin(ctx: BotContext): Promise<boolean> {
     }
 
     if (!ctx.chat) {
-      console.error('[BotPermissions] No chat context available');
+      LogEngine.error('[BotPermissions] No chat context available');
       return false;
     }
 
@@ -35,11 +36,11 @@ export async function isBotAdmin(ctx: BotContext): Promise<boolean> {
     // Check if bot has admin status
     const isAdmin = chatMember.status === 'administrator' || chatMember.status === 'creator';
     
-    console.log(`[BotPermissions] Bot admin status in chat ${ctx.chat.id}: ${isAdmin ? 'ADMIN' : 'NOT_ADMIN'} (status: ${chatMember.status})`);
+    LogEngine.info(`[BotPermissions] Bot admin status in chat ${ctx.chat.id}: ${isAdmin ? 'ADMIN' : 'NOT_ADMIN'} (status: ${chatMember.status})`);
     
     return isAdmin;
   } catch (error) {
-    console.error('[BotPermissions] Error checking bot admin status:', error);
+    LogEngine.error('[BotPermissions] Error checking bot admin status:', error);
     return false;
   }
 }
@@ -111,9 +112,9 @@ Once you've made me an admin, click the button below to continue setup.`;
       reply_markup: keyboard
     });
     
-    console.log(`[BotPermissions] Sent bot admin required message to chat ${ctx.chat?.id}`);
+    LogEngine.info(`[BotPermissions] Sent bot admin required message to chat ${ctx.chat?.id}`);
   } catch (error) {
-    console.error('[BotPermissions] Error sending bot admin message:', error);
+    LogEngine.error('[BotPermissions] Error sending bot admin message:', error);
     
     // Fallback message without markdown if parsing fails
     try {
@@ -122,7 +123,7 @@ Once you've made me an admin, click the button below to continue setup.`;
         { reply_markup: keyboard }
       );
     } catch (fallbackError) {
-      console.error('[BotPermissions] Error sending fallback bot admin message:', fallbackError);
+      LogEngine.error('[BotPermissions] Error sending fallback bot admin message:', fallbackError);
     }
   }
 }
@@ -193,7 +194,7 @@ Need more help? Contact your Unthread administrator.`;
       reply_markup: keyboard
     });
   } catch (error) {
-    console.error('[BotPermissions] Error sending bot admin help:', error);
+    LogEngine.error('[BotPermissions] Error sending bot admin help:', error);
     
     // Fallback without markdown
     await ctx.reply(
@@ -218,7 +219,7 @@ async function safeAnswerCallbackQuery(
   try {
     // Check if context has answerCbQuery method
     if (!('answerCbQuery' in ctx)) {
-      console.warn('[BotPermissions] Context does not support callback query answering');
+      LogEngine.warn('[BotPermissions] Context does not support callback query answering');
       return false;
     }
 
@@ -235,14 +236,14 @@ async function safeAnswerCallbackQuery(
       timeoutPromise
     ]);
 
-    console.log(`[BotPermissions] Successfully answered callback query: "${text}"`);
+    LogEngine.info(`[BotPermissions] Successfully answered callback query: "${text}"`);
     return true;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[BotPermissions] Failed to answer callback query: ${errorMessage}`);
+    LogEngine.error(`[BotPermissions] Failed to answer callback query: ${errorMessage}`);
     
     // Log additional context for debugging
-    console.error('[BotPermissions] Callback query context:', {
+    LogEngine.error('[BotPermissions] Callback query context:', {
       chatId: ctx.chat?.id,
       chatType: ctx.chat?.type,
       hasAnswerMethod: 'answerCbQuery' in ctx,
@@ -267,10 +268,10 @@ export async function handleRetryBotAdminCheck(ctx: BotContext): Promise<void> {
     );
     
     if (!queryAnswered) {
-      console.warn('[BotPermissions] Could not answer initial callback query, continuing anyway');
+      LogEngine.warn('[BotPermissions] Could not answer initial callback query, continuing anyway');
     }
 
-    console.log(`[BotPermissions] Retrying bot admin check for chat ${ctx.chat?.id}`);
+    LogEngine.info(`[BotPermissions] Retrying bot admin check for chat ${ctx.chat?.id}`);
 
     const isAdmin = await isBotAdmin(ctx);
     
@@ -296,14 +297,14 @@ Setup can continue. Type /setup to proceed with linking this group to your Unthr
         reply_markup: keyboard
       });
       
-      console.log(`[BotPermissions] Bot admin check passed for chat ${ctx.chat?.id}`);
+      LogEngine.info(`[BotPermissions] Bot admin check passed for chat ${ctx.chat?.id}`);
     } else {
       // Still not admin, send the prompt again
       await sendBotNotAdminMessage(ctx);
-      console.log(`[BotPermissions] Bot admin check still failing for chat ${ctx.chat?.id}`);
+      LogEngine.info(`[BotPermissions] Bot admin check still failing for chat ${ctx.chat?.id}`);
     }
   } catch (error) {
-    console.error('[BotPermissions] Error handling retry bot admin check:', error);
+    LogEngine.error('[BotPermissions] Error handling retry bot admin check:', error);
     
     // Enhanced error handling for the fallback callback query answer
     const fallbackAnswered = await safeAnswerCallbackQuery(
@@ -313,13 +314,13 @@ Setup can continue. Type /setup to proceed with linking this group to your Unthr
     );
     
     if (!fallbackAnswered) {
-      console.error('[BotPermissions] Failed to answer callback query in error handler');
+      LogEngine.error('[BotPermissions] Failed to answer callback query in error handler');
       
       // Last resort: try a simple text response without callback query
       try {
         await ctx.reply('❌ Error checking admin status. Please try the setup command again or contact support.');
       } catch (replyError) {
-        console.error('[BotPermissions] Failed to send fallback reply message:', replyError);
+        LogEngine.error('[BotPermissions] Failed to send fallback reply message:', replyError);
       }
     }
   }
@@ -358,7 +359,7 @@ export async function getBotPermissionSummary(ctx: BotContext): Promise<{
       permissions: 'permissions' in chatMember ? chatMember.permissions : undefined
     };
   } catch (error) {
-    console.error('[BotPermissions] Error getting permission summary:', error);
+    LogEngine.error('[BotPermissions] Error getting permission summary:', error);
     
     return {
       chatId: ctx.chat?.id || 0,
