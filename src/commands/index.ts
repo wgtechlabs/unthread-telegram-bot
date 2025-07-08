@@ -1001,7 +1001,7 @@ async function handleEmailField(ctx: BotContext, userState: any, messageText: st
         } catch (error) {
             const err = error as Error;
             
-            // Phase 8 Enhancement: Handle group not configured error specifically
+            // Handle group not configured error specifically
             if (err.message.includes('GROUP_NOT_CONFIGURED')) {
                 LogEngine.info('Support ticket blocked - group not configured', {
                     chatId: ctx.chat.id,
@@ -1236,11 +1236,11 @@ const resetCommand = async (ctx: BotContext): Promise<void> => {
 };
 
 /**
- * Handler for the /setup command (Phase 1 implementation)
+ * Handler for the /setup command
  * 
  * This command allows authorized administrators to configure group chat settings
- * for customer linking and ticket management. Currently implements admin validation
- * with placeholder for full setup wizard to be implemented in later phases.
+ * for customer linking and ticket management, including setting up customer
+ * information and linking with the Unthread API.
  */
 const setupCommand = async (ctx: BotContext): Promise<void> => {
     try {
@@ -1260,18 +1260,18 @@ const setupCommand = async (ctx: BotContext): Promise<void> => {
         // Log setup command attempt
         logPermissionEvent('setup_command_attempted', ctx, '/setup');
 
-        // Phase 1: Validate admin access
+        // Validate admin access
         if (!await validateAdminAccess(ctx)) {
             logPermissionEvent('setup_command_denied', ctx, '/setup', { reason: 'not_admin' });
             return;
         }
 
-        // Phase 1 success - Admin validation passed
+        // Admin validation passed
         logPermissionEvent('setup_command_authorized', ctx, '/setup');
 
         const chatTitle = (ctx.chat && 'title' in ctx.chat) ? ctx.chat.title : 'Group Chat';
         
-        // Phase 2: Check bot admin permissions
+        // Check bot admin permissions
         const botIsAdmin = await isBotAdmin(ctx);
         
         if (!botIsAdmin) {
@@ -1280,7 +1280,7 @@ const setupCommand = async (ctx: BotContext): Promise<void> => {
                 username: ctx.from?.username,
                 chatId: ctx.chat?.id,
                 chatTitle: chatTitle,
-                phase: 'bot_permission_check'
+                step: 'bot_permission_check'
             });
             
             // This will handle the error message and retry mechanism
@@ -1288,16 +1288,16 @@ const setupCommand = async (ctx: BotContext): Promise<void> => {
             return;
         }
 
-        // Phase 2 success - Bot has admin permissions
+        // Bot has admin permissions
         LogEngine.info('Setup command - Bot admin check passed', {
             telegramUserId: ctx.from?.id,
             username: ctx.from?.username,
             chatId: ctx.chat?.id,
             chatTitle: chatTitle,
-            phase: 'bot_permission_check'
+            step: 'bot_permission_check'
         });
 
-        // Phase 3: Check if group is already configured
+        // Check if group is already configured
         const chatId = ctx.chat!.id;
         const existingConfig = await BotsStore.getGroupConfig(chatId);
         
@@ -1316,7 +1316,7 @@ const setupCommand = async (ctx: BotContext): Promise<void> => {
             return;
         }
 
-        // Phase 4: Initialize setup wizard
+        // Initialize setup wizard
         const setupInitiatedBy = ctx.from!.id;
         const suggestedCustomerName = generateCustomerName(chatTitle);
         
@@ -1335,7 +1335,7 @@ const setupCommand = async (ctx: BotContext): Promise<void> => {
         
         await BotsStore.storeSetupState(setupState);
         
-        // Phase 5: Display setup wizard with customer name suggestion
+        // Display setup wizard with customer name suggestion
         const progressIndicator = getSetupProgressIndicator('customer_selection');
         const setupMessage = `${progressIndicator}
 
@@ -1370,7 +1370,7 @@ We've suggested a customer name based on your group title:
             chatId: chatId,
             chatTitle: chatTitle,
             suggestedCustomerName: suggestedCustomerName,
-            phase: 'wizard_initialization'
+            step: 'wizard_initialization'
         });
 
     } catch (error) {
@@ -1393,8 +1393,7 @@ We've suggested a customer name based on your group title:
 };
 
 /**
- * Handles setup wizard callback queries
- * Phase 6 enhancement with improved session validation and error handling
+ * Handles setup wizard callback queries with session validation and error handling
  * 
  * @param ctx - The bot context
  * @param callbackData - The callback data from the inline keyboard
@@ -1409,7 +1408,7 @@ const handleSetupCallbacks = async (ctx: BotContext, callbackData: string): Prom
         const chatId = ctx.chat.id;
         const setupState = await BotsStore.getSetupState(chatId);
         
-        // Phase 6 enhancement: Enhanced session validation
+        // Enhanced session validation
         const sessionValidation = await validateSetupSession(ctx, setupState);
         if (!sessionValidation.isValid) {
             await ctx.answerCbQuery('Session validation failed');
@@ -1472,8 +1471,7 @@ const handleSetupCallbacks = async (ctx: BotContext, callbackData: string): Prom
 };
 
 /**
- * Handle using the suggested customer name
- * Phase 7 enhancement with real customer creation
+ * Handle using the suggested customer name with real customer creation
  */
 const handleUseSuggestedName = async (ctx: BotContext, setupState: any): Promise<boolean> => {
     try {
@@ -1481,7 +1479,7 @@ const handleUseSuggestedName = async (ctx: BotContext, setupState: any): Promise
         
         const customerName = setupState.suggestedCustomerName;
         
-        // Phase 7: Create customer in Unthread API
+        // Create customer in Unthread API
         let customerId: string;
         let actualCustomerName: string;
         
@@ -1517,7 +1515,7 @@ const handleUseSuggestedName = async (ctx: BotContext, setupState: any): Promise
             chatId: setupState.chatId,
             chatTitle: setupState.metadata?.chatTitle || 'Unknown Group',
             isConfigured: true,
-            customerId: customerId, // Phase 7: Real customer ID from Unthread
+            customerId: customerId, // Real customer ID from Unthread
             customerName: actualCustomerName,
             setupBy: setupState.initiatedBy,
             setupAt: new Date().toISOString(),
@@ -1527,7 +1525,7 @@ const handleUseSuggestedName = async (ctx: BotContext, setupState: any): Promise
             metadata: {
                 setupMethod: 'suggested_name',
                 originalSuggestion: customerName,
-                apiIntegration: true, // Phase 7: Mark as API integrated
+                apiIntegration: true, // Mark as API integrated
                 unthreadCustomerId: customerId
             }
         };
@@ -1760,8 +1758,7 @@ To configure this group for support tickets, run \`/setup\` again.`;
 };
 
 /**
- * Processes text input for the setup wizard
- * Phase 6 enhancement with improved session management and validation
+ * Processes text input for the setup wizard with session management and validation
  * 
  * @param ctx - The bot context
  * @returns True if the message was processed as part of setup
@@ -1778,8 +1775,8 @@ export const processSetupTextInput = async (ctx: BotContext): Promise<boolean> =
         if (!setupState || !setupState.metadata?.waitingForInput) {
             return false; // Not waiting for setup input
         }
-
-        // Phase 6 enhancement: Enhanced session validation
+        
+        // Enhanced session validation
         const sessionValidation = await validateSetupSession(ctx, setupState);
         if (!sessionValidation.isValid) {
             if (sessionValidation.message) {
@@ -1804,7 +1801,7 @@ export const processSetupTextInput = async (ctx: BotContext): Promise<boolean> =
         const userInput = ctx.message.text.trim();
         const inputType = setupState.metadata.waitingForInput;
 
-        // Phase 6 enhancement: Check for special commands
+        // Check for special commands
         if (userInput.toLowerCase() === '/cancel' || userInput.toLowerCase() === 'cancel') {
             await BotsStore.clearSetupState(chatId);
             await safeReply(ctx, 
@@ -1841,12 +1838,11 @@ export const processSetupTextInput = async (ctx: BotContext): Promise<boolean> =
 };
 
 /**
- * Process customer name input
- * Phase 6 enhancement with improved validation and user feedback
+ * Process customer name input with validation and user feedback
  */
 const processCustomerNameInput = async (ctx: BotContext, setupState: any, customerName: string): Promise<boolean> => {
     try {
-        // Phase 6 enhancement: Enhanced validation with detailed feedback
+        // Enhanced validation with detailed feedback
         const validation = validateCustomerName(customerName);
         
         if (!validation.isValid) {
@@ -1890,7 +1886,7 @@ const processCustomerNameInput = async (ctx: BotContext, setupState: any, custom
 
         const trimmedName = customerName.trim();
 
-        // Phase 7: Create customer in Unthread API
+        // Create customer in Unthread API
         let customerId: string;
         let actualCustomerName: string;
         
@@ -1927,7 +1923,7 @@ const processCustomerNameInput = async (ctx: BotContext, setupState: any, custom
             chatId: setupState.chatId,
             chatTitle: setupState.metadata?.chatTitle || 'Unknown Group',
             isConfigured: true,
-            customerId: customerId, // Phase 7: Real customer ID from Unthread
+            customerId: customerId, // Real customer ID from Unthread
             customerName: actualCustomerName,
             setupBy: setupState.initiatedBy,
             setupAt: new Date().toISOString(),
@@ -1939,7 +1935,7 @@ const processCustomerNameInput = async (ctx: BotContext, setupState: any, custom
                 originalSuggestion: setupState.suggestedCustomerName,
                 customName: trimmedName,
                 actualCustomerName: actualCustomerName,
-                apiIntegration: true, // Phase 7: Mark as API integrated
+                apiIntegration: true, // Mark as API integrated
                 unthreadCustomerId: customerId,
                 validationWarnings: validation.message ? [validation.message] : []
             }
@@ -1948,7 +1944,7 @@ const processCustomerNameInput = async (ctx: BotContext, setupState: any, custom
         await BotsStore.storeGroupConfig(groupConfig);
         await BotsStore.clearSetupState(setupState.chatId);
 
-        // Phase 6 enhancement: Progress indicator in success message
+        // Progress indicator in success message
         const progressIndicator = getSetupProgressIndicator('completion');
         const successMessage = `${progressIndicator}
 
@@ -1989,12 +1985,11 @@ Users can now use \`/support\` to create tickets that will be linked to this cus
 };
 
 /**
- * Process customer ID input for linking existing customers
- * Phase 6 enhancement with improved validation and user feedback
+ * Process customer ID input for linking existing customers with validation and user feedback
  */
 const processCustomerIdInput = async (ctx: BotContext, setupState: any, customerId: string): Promise<boolean> => {
     try {
-        // Phase 6 enhancement: Enhanced validation with detailed feedback
+        // Enhanced validation with detailed feedback
         const validation = validateCustomerId(customerId);
         
         if (!validation.isValid) {
@@ -2038,7 +2033,7 @@ const processCustomerIdInput = async (ctx: BotContext, setupState: any, customer
 
         const trimmedId = customerId.trim();
 
-        // Phase 7: Validate customer exists in Unthread API
+        // Validate customer exists in Unthread API
         let customerDetails: Awaited<ReturnType<typeof getCustomerDetails>>;
         
         try {
@@ -2118,7 +2113,7 @@ const processCustomerIdInput = async (ctx: BotContext, setupState: any, customer
             metadata: {
                 setupMethod: 'existing_customer',
                 originalSuggestion: setupState.suggestedCustomerName,
-                apiIntegration: true, // Phase 7: Mark as API integrated
+                apiIntegration: true, // Mark as API integrated
                 unthreadCustomerId: trimmedId,
                 customerValidated: true,
                 validationWarnings: validation.message ? [validation.message] : []
@@ -2128,7 +2123,7 @@ const processCustomerIdInput = async (ctx: BotContext, setupState: any, customer
         await BotsStore.storeGroupConfig(groupConfig);
         await BotsStore.clearSetupState(setupState.chatId);
 
-        // Phase 6 enhancement: Progress indicator in success message
+        // Progress indicator in success message
         const progressIndicator = getSetupProgressIndicator('completion');
         const successMessage = `${progressIndicator}
 
@@ -2166,12 +2161,12 @@ Users can now use \`/support\` to create tickets that will be linked to this cus
     }
 };
 
-// Phase 6 Enhancement: Improved setup session timeout handling
+// Improved setup session timeout handling
 const SETUP_SESSION_TIMEOUT_MINUTES = 30;
 
 /**
  * Enhanced setup session validation with timeout handling
- * Phase 6 enhancement for better session management
+ * Better session management
  */
 const validateSetupSession = async (ctx: BotContext, setupState: any): Promise<{ isValid: boolean; message?: string }> => {
     try {
@@ -2230,7 +2225,7 @@ const validateSetupSession = async (ctx: BotContext, setupState: any): Promise<{
 
 /**
  * Enhanced customer name validation with detailed feedback
- * Phase 6 enhancement for better input validation
+ * Better input validation
  */
 const validateCustomerName = (customerName: string): { isValid: boolean; message?: string; suggestions?: string[] } => {
     const trimmedName = customerName.trim();
@@ -2283,7 +2278,7 @@ const validateCustomerName = (customerName: string): { isValid: boolean; message
 
 /**
  * Enhanced customer ID validation with format checking
- * Phase 6 enhancement for better ID validation
+ * Better ID validation
  */
 const validateCustomerId = (customerId: string): { isValid: boolean; message?: string; suggestions?: string[] } => {
     const trimmedId = customerId.trim();
@@ -2344,7 +2339,7 @@ const validateCustomerId = (customerId: string): { isValid: boolean; message?: s
 
 /**
  * Enhanced progress indicator for setup steps
- * Phase 6 enhancement for better UX feedback
+ * Better UX feedback
  */
 const getSetupProgressIndicator = (currentStep: string, totalSteps: number = 4): string => {
     const steps = {

@@ -525,7 +525,7 @@ export async function getTicketsForChat(chatId: number): Promise<TicketData[]> {
  */
 export async function getOrCreateCustomer(groupChatName: string, chatId: number): Promise<Customer> {
     try {
-        // Phase 8 Enhancement: Check if group is configured first
+        // Check if group is configured first
         const groupConfig = await BotsStore.getGroupConfig(chatId);
         
         if (groupConfig && groupConfig.isConfigured && groupConfig.customerId) {
@@ -558,7 +558,7 @@ export async function getOrCreateCustomer(groupChatName: string, chatId: number)
             };
         }
 
-        // Phase 8 Enhancement: Prevent auto-creation for unconfigured groups
+        // Prevent auto-creation for unconfigured groups
         // This encourages proper setup through the /setup command
         LogEngine.warn('Attempted ticket creation in unconfigured group', {
             groupChatName,
@@ -679,12 +679,11 @@ export function generateCustomerName(groupChatTitle: string): string {
 }
 
 /**
- * Phase 7: Customer Operations - API Integration Functions
+ * Customer Operations - API Integration Functions
  */
 
 /**
  * Validates if a customer exists in Unthread by customer ID
- * Phase 7 implementation for customer validation
  * 
  * @param customerId - The customer ID to validate
  * @returns Object with validation result and customer details if found
@@ -758,7 +757,6 @@ export async function validateCustomerExists(customerId: string): Promise<{
 
 /**
  * Gets detailed customer information from Unthread
- * Phase 7 implementation for customer details retrieval
  * 
  * @param customerId - The customer ID to get details for
  * @returns Customer details or null if not found
@@ -784,7 +782,6 @@ export async function getCustomerDetails(customerId: string): Promise<Customer |
 
 /**
  * Creates a customer in Unthread with the specified name
- * Phase 7 enhancement of existing createCustomer function
  * 
  * @param customerName - The name for the new customer
  * @returns The created customer object
@@ -836,7 +833,6 @@ export async function createCustomerWithName(customerName: string): Promise<Cust
 
 /**
  * Handles API errors gracefully with user-friendly messages
- * Phase 7 implementation for better error handling
  * 
  * @param error - The error to handle
  * @param operation - The operation that failed

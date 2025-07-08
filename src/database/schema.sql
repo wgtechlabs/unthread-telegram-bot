@@ -1,4 +1,4 @@
--- Unthread Telegram Bot Database Schema - Alpha Phase (Simplified)
+-- Unthread Telegram Bot Database Schema
 
 -- Enable UUID extension for generating UUIDs
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
