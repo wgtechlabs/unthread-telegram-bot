@@ -91,21 +91,47 @@ Use \`/help\` to see all available commands.`, { parse_mode: 'Markdown' });
 };
 
 /**
- * Handler for the /help command
- * 
- * This command shows available commands and usage information for both private and group chats.
+ * Generate help text for regular users (non-admin)
  */
-const helpCommand = async (ctx: BotContext): Promise<void> => {
-    const helpText = `🤖 **Available Commands:**
+const generateRegularUserHelp = (): string => {
+    return `🤖 **Available Commands:**
 
-• \`/start\` - Welcome message and instructions
-• \`/help\` - Show this help message  
-• \`/version\` - Show bot version information
-• \`/about\` - Show comprehensive bot information
+**Create Support Tickets:**
 • \`/support\` - Create a new support ticket
-• \`/cancel\` - Cancel ongoing support ticket creation
+• \`/cancel\` - Cancel ongoing ticket creation
+
+**Information:**
+• \`/help\` - Show this help message
+• \`/about\` - Show detailed bot information
+
+**How to create a support ticket:**
+1. Use \`/support\` command in a group chat
+2. Provide your issue summary when prompted
+3. Provide your email address when prompted
+4. The bot will create a ticket and notify you
+
+**Note:** Support tickets can only be created in group chats.`;
+};
+
+/**
+ * Generate help text for admin users (all commands)
+ */
+const generateAdminUserHelp = (): string => {
+    return `🤖 **Available Commands:**
+
+**Create Support Tickets:**
+• \`/support\` - Create a new support ticket
+• \`/cancel\` - Cancel ongoing ticket creation
 • \`/reset\` - Reset your support conversation state
-• \`/setup\` - Configure group for support tickets (admin only)
+
+**Administration:**
+• \`/setup\` - Configure group for support tickets
+
+**Information:**
+• \`/help\` - Show this help message
+• \`/version\` - Show bot version information
+• \`/about\` - Show detailed bot information
+• \`/start\` - Welcome message and instructions
 
 **How to create a support ticket:**
 1. Use \`/support\` command in a group chat
@@ -118,7 +144,41 @@ const helpCommand = async (ctx: BotContext): Promise<void> => {
 • Only authorized users can run admin commands
 
 **Note:** Support tickets can only be created in group chats.`;
+};
 
+/**
+ * Handler for the /help command
+ * 
+ * This command shows available commands and usage information based on user permissions.
+ * Regular users see essential commands only, while admins see all commands.
+ */
+const helpCommand = async (ctx: BotContext): Promise<void> => {
+    const telegramUserId = ctx.from?.id;
+    
+    if (!telegramUserId) {
+        LogEngine.warn('Help command: No user ID in context', {
+            chatId: ctx.chat?.id,
+            chatType: ctx.chat?.type
+        });
+        await safeReply(ctx, '❌ Unable to determine user permissions. Please try again.', { parse_mode: 'Markdown' });
+        return;
+    }
+    
+    // Check if user is admin
+    const isAdmin = isAdminUser(telegramUserId);
+    
+    // Generate appropriate help text based on user role
+    const helpText = isAdmin ? generateAdminUserHelp() : generateRegularUserHelp();
+    
+    // Log help command usage with user role
+    LogEngine.info('Help command executed', {
+        userId: telegramUserId,
+        chatId: ctx.chat?.id,
+        chatType: ctx.chat?.type,
+        userRole: isAdmin ? 'admin' : 'regular',
+        username: ctx.from?.username
+    });
+    
     await safeReply(ctx, helpText, { parse_mode: 'Markdown' });
 };
 
