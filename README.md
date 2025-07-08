@@ -53,6 +53,8 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
 ## ✨ Key Features
 
 - **🎫 Seamless Ticket Management** - Create support tickets directly from Telegram with `/support` command
+- **👤 One-Time Email Setup** - Collect email once, automatically use for all future tickets
+- **📧 Profile Management** - View and update email preferences with `/profile` command
 - **💬 Real-Time Communication** - Bidirectional messaging between agents and customers
 - **🏢 Smart Customer Detection** - Automatically extracts customer names from group chat titles
 - **💬 Natural Conversation Flow** - Customers reply normally, no special commands needed
@@ -186,13 +188,14 @@ For detailed information about Railway's managed PostgreSQL and SSL handling, pl
 - `/start` - Welcome message and bot introduction
 - `/help` - Display available commands and usage instructions  
 - `/support` - Create a new support ticket (customer/partner group chats only)
+- `/profile` - View and update your email preferences
 - `/version` - Show current bot version
 
 ### **Creating Support Tickets**
 
 1. **Use `/support` in your group chat**
 2. **Describe your issue** when the bot asks
-3. **Provide email or skip** for auto-generated one
+3. **Provide email (first-time users only)** - returning users automatically use their stored email
 4. **Get your ticket number** and confirmation
 
 ```text
@@ -207,6 +210,36 @@ Bot: 🎫 Support Ticket Created Successfully!
      Ticket #TKT-001
      Your issue has been submitted and our team will be in touch soon.
 ```
+
+**Note**: After your first ticket, the bot remembers your email and skips the email prompt for future tickets. You can update your email anytime using the `/profile` command.
+
+### **Managing Your Profile**
+
+Use the `/profile` command to view and update your email preferences:
+
+```text
+User: /profile
+Bot: 👤 Your Profile
+     Email: john@example.com
+     
+     What would you like to do?
+     [📧 Update Email] [ℹ️ About]
+
+User: [clicks Update Email]
+Bot: Please enter your new email address:
+
+User: john.doe@company.com
+Bot: ✅ Email Updated Successfully!
+     Your email has been updated to: john.doe@company.com
+     This email will be used for all future support tickets.
+```
+
+**Profile Features:**
+
+- **View current email** - See the email associated with your profile
+- **Update email** - Change your email for future support tickets
+- **Auto-generated email detection** - Get notified if you're using an auto-generated email
+- **Seamless integration** - Email updates apply to all future support tickets
 
 ### **For Agents (Unthread Dashboard)**
 

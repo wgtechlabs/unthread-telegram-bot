@@ -218,6 +218,7 @@ export interface IBotsStore {
   // User operations
   storeUser(userData: UserData): Promise<boolean>;
   getUserByTelegramId(telegramUserId: number): Promise<UserData | null>;
+  updateUser(telegramUserId: number, updates: Partial<UserData>): Promise<boolean>;
   
   // Agent message operations
   storeAgentMessage(messageData: AgentMessageData): Promise<boolean>;
