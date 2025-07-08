@@ -30,7 +30,7 @@
  */
 
 import { LogEngine } from '@wgtechlabs/log-engine';
-import { processSupportConversation, aboutCommand } from '../commands/index.js';
+import { processSupportConversation, aboutCommand, processSetupTextInput } from '../commands/index.js';
 import * as unthreadService from '../services/unthread.js';
 import { safeReply, safeEditMessageText } from '../bot.js';
 import type { BotContext } from '../types/index.js';
@@ -83,6 +83,15 @@ export async function handleMessage(ctx: BotContext, next: () => Promise<void>):
                 chatType: ctx.chat.type
             });
             return;  // Don't call next() for commands, let Telegraf handle them
+        }
+        
+        // Check if this is part of setup wizard text input (BEFORE support conversation)
+        const isSetupInput = await processSetupTextInput(ctx);
+        
+        if (isSetupInput) {
+            // Skip other handlers if this was setup input
+            LogEngine.debug('Message processed as setup wizard input');
+            return;  // Don't call next() for setup input, we're done
         }
         
         // Check if this is part of a support conversation (BEFORE handling different chat types)
