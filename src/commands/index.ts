@@ -2039,7 +2039,7 @@ const processCustomerIdInput = async (ctx: BotContext, setupState: any, customer
         const trimmedId = customerId.trim();
 
         // Phase 7: Validate customer exists in Unthread API
-        let customerDetails: any;
+        let customerDetails: Awaited<ReturnType<typeof getCustomerDetails>>;
         
         try {
             // Check if customer exists
@@ -2060,6 +2060,25 @@ const processCustomerIdInput = async (ctx: BotContext, setupState: any, customer
             
             // Get customer details
             customerDetails = await getCustomerDetails(trimmedId);
+            
+            // Validate that customer details were successfully retrieved
+            if (!customerDetails) {
+                LogEngine.error('Customer details could not be retrieved despite validation success', {
+                    customerId: trimmedId,
+                    chatId: setupState.chatId
+                });
+                
+                await safeReply(ctx, 
+                    '❌ **Error Retrieving Customer Details**\n\n' +
+                    'Customer validation passed, but detailed information could not be retrieved.\n\n' +
+                    '**This might be due to:**\n' +
+                    '• Temporary API connectivity issues\n' +
+                    '• Data synchronization delays\n\n' +
+                    '💡 **Try again:** Wait a moment and retry the setup process.',
+                    { parse_mode: 'Markdown' }
+                );
+                return true;
+            }
             
             LogEngine.info('Customer validated successfully in Unthread', {
                 customerId: trimmedId,
@@ -2178,7 +2197,15 @@ const validateSetupSession = async (ctx: BotContext, setupState: any): Promise<{
         }
 
         // Verify user is still admin (security check)
-        if (!await isAdminUser(ctx.from?.id || 0)) {
+        if (!ctx.from?.id) {
+            await BotsStore.clearSetupState(setupState.chatId);
+            return {
+                isValid: false,
+                message: '🔒 **Authentication Error**\n\nUnable to verify user identity. Setup session has been terminated for security reasons.\n\nPlease run `/setup` again to start a new configuration session.'
+            };
+        }
+
+        if (!await isAdminUser(ctx.from.id)) {
             await BotsStore.clearSetupState(setupState.chatId);
             return {
                 isValid: false,

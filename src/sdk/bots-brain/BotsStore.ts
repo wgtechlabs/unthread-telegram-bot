@@ -31,6 +31,7 @@
  */
 import { UnifiedStorage } from './UnifiedStorage.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
+import { z } from 'zod';
 import type { 
   TicketData, 
   UserState, 
@@ -44,6 +45,39 @@ import type {
   StorageConfig
 } from '../types.js';
 import type { DatabaseConnection } from '../../database/connection.js';
+
+// Zod schemas for runtime validation
+const GroupConfigSchema = z.object({
+  chatId: z.number(),
+  chatTitle: z.string().optional(),
+  isConfigured: z.boolean(),
+  customerId: z.string().optional(),
+  customerName: z.string().optional(),
+  setupBy: z.number().optional(),
+  setupAt: z.string().optional(),
+  botIsAdmin: z.boolean(),
+  lastAdminCheck: z.string().optional(),
+  setupVersion: z.string().optional(),
+  metadata: z.record(z.any()).optional(),
+  // Additional fields that might be added during storage
+  lastUpdatedAt: z.string().optional(),
+  version: z.string().optional()
+});
+
+const SetupStateSchema = z.object({
+  chatId: z.number(),
+  step: z.enum(['bot_admin_check', 'customer_selection', 'customer_creation', 'customer_linking', 'complete']),
+  initiatedBy: z.number(),
+  startedAt: z.string(),
+  suggestedCustomerName: z.string().optional(),
+  tempCustomerId: z.string().optional(),
+  userInput: z.string().optional(),
+  retryCount: z.number().optional(),
+  metadata: z.record(z.any()).optional(),
+  // Additional fields that might be added during storage
+  lastUpdatedAt: z.string().optional(),
+  version: z.string().optional()
+});
 
 export class BotsStore implements IBotsStore {
   private static instance: BotsStore | null = null;
@@ -166,18 +200,18 @@ export class BotsStore implements IBotsStore {
       // Store with multiple keys for different lookup patterns
       const promises = [
         // Primary lookup by Telegram message ID
-        this.storage.set(`ticket:telegram:${messageId}`, enrichedTicketData),
+        this.storage.set(`ticket:telegram:${messageId}`, JSON.stringify(enrichedTicketData)),
         
         // Lookup by Unthread conversation ID
-        this.storage.set(`ticket:unthread:${conversationId}`, enrichedTicketData),
+        this.storage.set(`ticket:unthread:${conversationId}`, JSON.stringify(enrichedTicketData)),
         
         // Lookup by Unthread ticket ID (if different from conversation ID)
         ticketId !== conversationId ? 
-          this.storage.set(`ticket:unthread:${ticketId}`, enrichedTicketData) : 
+          this.storage.set(`ticket:unthread:${ticketId}`, JSON.stringify(enrichedTicketData)) : 
           Promise.resolve(),
         
         // Lookup by friendly ID
-        this.storage.set(`ticket:friendly:${friendlyId}`, enrichedTicketData),
+        this.storage.set(`ticket:friendly:${friendlyId}`, JSON.stringify(enrichedTicketData)),
         
         // Chat-specific mapping for listing tickets in a chat
         this.addToChatTickets(chatId, messageId, conversationId)
@@ -200,35 +234,40 @@ export class BotsStore implements IBotsStore {
    * Get ticket by Unthread conversation ID
    */
   async getTicketByConversationId(conversationId: string): Promise<TicketData | null> {
-    return await this.storage.get(`ticket:unthread:${conversationId}`);
+    const data = await this.storage.get(`ticket:unthread:${conversationId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
   }
   
   /**
    * Get ticket by Telegram message ID
    */
   async getTicketByMessageId(messageId: number): Promise<TicketData | null> {
-    return await this.storage.get(`ticket:telegram:${messageId}`);
+    const data = await this.storage.get(`ticket:telegram:${messageId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
   }
   
   /**
    * Get ticket by friendly ID
    */
   async getTicketByFriendlyId(friendlyId: string): Promise<TicketData | null> {
-    return await this.storage.get(`ticket:friendly:${friendlyId}`);
+    const data = await this.storage.get(`ticket:friendly:${friendlyId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
   }
   
   /**
    * Get ticket by Unthread ticket ID
    */
   async getTicketByTicketId(ticketId: string): Promise<TicketData | null> {
-    return await this.storage.get(`ticket:unthread:${ticketId}`);
+    const data = await this.storage.get(`ticket:unthread:${ticketId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
   }
   
   /**
    * Get all tickets for a specific chat
    */
   async getTicketsForChat(chatId: number): Promise<TicketData[]> {
-    const chatTickets: TicketInfo[] = await this.storage.get(`chat:tickets:${chatId}`) || [];
+    const data = await this.storage.get(`chat:tickets:${chatId}`);
+    const chatTickets: TicketInfo[] = data ? (typeof data === 'string' ? JSON.parse(data) : data) : [];
     
     // Get full ticket data for each ticket
     const ticketPromises = chatTickets.map(ticketInfo => 
@@ -255,7 +294,7 @@ export class BotsStore implements IBotsStore {
         state: JSON.stringify(stateData)
       });
       
-      await this.storage.set(`user:state:${telegramUserId}`, stateData);
+      await this.storage.set(`user:state:${telegramUserId}`, JSON.stringify(stateData));
       
       LogEngine.debug('User state stored successfully', { telegramUserId });
       return true;
@@ -281,14 +320,15 @@ export class BotsStore implements IBotsStore {
       });
       
       const state = await this.storage.get(`user:state:${telegramUserId}`);
+      const parsedState = state ? (typeof state === 'string' ? JSON.parse(state) : state) : null;
       
       LogEngine.debug('User state retrieved', {
         telegramUserId,
-        found: !!state,
-        state: state ? JSON.stringify(state) : 'null'
+        found: !!parsedState,
+        state: parsedState ? JSON.stringify(parsedState) : 'null'
       });
       
-      return state;
+      return parsedState;
     } catch (error) {
       const err = error as Error;
       LogEngine.error('Failed to get user state', {
@@ -332,10 +372,10 @@ export class BotsStore implements IBotsStore {
     try {
       await Promise.all([
         // Primary lookup by customer ID
-        this.storage.set(`customer:id:${unthreadCustomerId}`, enrichedCustomerData),
+        this.storage.set(`customer:id:${unthreadCustomerId}`, JSON.stringify(enrichedCustomerData)),
         
         // Lookup by chat ID for quick access
-        this.storage.set(`customer:telegram:${telegramChatId}`, enrichedCustomerData)
+        this.storage.set(`customer:telegram:${telegramChatId}`, JSON.stringify(enrichedCustomerData))
       ]);
       
       LogEngine.info(`Customer stored: ${name || company} (${unthreadCustomerId})`);
@@ -354,14 +394,16 @@ export class BotsStore implements IBotsStore {
    * Get customer by Unthread customer ID (primary identifier)
    */
   async getCustomerById(customerId: string): Promise<CustomerData | null> {
-    return await this.storage.get(`customer:id:${customerId}`);
+    const data = await this.storage.get(`customer:id:${customerId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
   }
 
   /**
    * Get customer by Telegram chat ID
    */
   async getCustomerByChatId(chatId: number): Promise<CustomerData | null> {
-    return await this.storage.get(`customer:telegram:${chatId}`);
+    const data = await this.storage.get(`customer:telegram:${chatId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
   }
 
   /**
@@ -378,7 +420,7 @@ export class BotsStore implements IBotsStore {
     
     try {
       // Primary lookup by Telegram user ID
-      await this.storage.set(`user:telegram:${telegramUserId}`, enrichedUserData);
+      await this.storage.set(`user:telegram:${telegramUserId}`, JSON.stringify(enrichedUserData));
       
       LogEngine.info(`User stored: ${firstName} ${lastName || ''} (${telegramUserId})`);
       return true;
@@ -396,7 +438,8 @@ export class BotsStore implements IBotsStore {
    * Get user by Telegram user ID (primary identifier)
    */
   async getUserByTelegramId(telegramUserId: number): Promise<UserData | null> {
-    return await this.storage.get(`user:telegram:${telegramUserId}`);
+    const data = await this.storage.get(`user:telegram:${telegramUserId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
   }
 
   /**
@@ -419,7 +462,7 @@ export class BotsStore implements IBotsStore {
       };
 
       // Store updated user data
-      await this.storage.set(`user:telegram:${telegramUserId}`, updatedUserData);
+      await this.storage.set(`user:telegram:${telegramUserId}`, JSON.stringify(updatedUserData));
       
       LogEngine.info('User updated successfully', {
         telegramUserId,
@@ -445,9 +488,12 @@ export class BotsStore implements IBotsStore {
   async getCustomerByUnthreadId(unthreadCustomerId: string): Promise<CustomerData | null> {
     // Try new format first, then fall back to old format
     const customer = await this.storage.get(`customer:id:${unthreadCustomerId}`);
-    if (customer) return customer;
+    if (customer) {
+      return typeof customer === 'string' ? JSON.parse(customer) : customer;
+    }
     
-    return await this.storage.get(`customer:unthread:${unthreadCustomerId}`);
+    const fallbackData = await this.storage.get(`customer:unthread:${unthreadCustomerId}`);
+    return fallbackData ? (typeof fallbackData === 'string' ? JSON.parse(fallbackData) : fallbackData) : null;
   }
 
   /**
@@ -519,7 +565,8 @@ export class BotsStore implements IBotsStore {
    */
   private async addToChatTickets(chatId: number, messageId: number, conversationId: string): Promise<void> {
     const key = `chat:tickets:${chatId}`;
-    const existingTickets: TicketInfo[] = await this.storage.get(key) || [];
+    const data = await this.storage.get(key);
+    const existingTickets: TicketInfo[] = data ? (typeof data === 'string' ? JSON.parse(data) : data) : [];
     
     // Check if ticket already exists
     const ticketExists = existingTickets.some(t => t.conversationId === conversationId);
@@ -530,7 +577,7 @@ export class BotsStore implements IBotsStore {
         friendlyId: '', // Will be filled from ticket data if needed
       });
       
-      await this.storage.set(key, existingTickets);
+      await this.storage.set(key, JSON.stringify(existingTickets));
     }
   }
   
@@ -575,10 +622,11 @@ export class BotsStore implements IBotsStore {
    */
   private async removeFromChatTickets(chatId: number, conversationId: string): Promise<void> {
     const key = `chat:tickets:${chatId}`;
-    const existingTickets: TicketInfo[] = await this.storage.get(key) || [];
+    const data = await this.storage.get(key);
+    const existingTickets: TicketInfo[] = data ? (typeof data === 'string' ? JSON.parse(data) : data) : [];
     
     const filteredTickets = existingTickets.filter(t => t.conversationId !== conversationId);
-    await this.storage.set(key, filteredTickets);
+    await this.storage.set(key, JSON.stringify(filteredTickets));
   }
   
   /**
@@ -602,7 +650,7 @@ export class BotsStore implements IBotsStore {
     
     try {
       // Store agent message for reply lookup
-      await this.storage.set(`agent_message:telegram:${messageId}`, enrichedData);
+      await this.storage.set(`agent_message:telegram:${messageId}`, JSON.stringify(enrichedData));
       
       LogEngine.info(`Agent message stored: ${messageId} for conversation ${conversationId}`);
       return true;
@@ -622,7 +670,8 @@ export class BotsStore implements IBotsStore {
    * Get agent message data by Telegram message ID
    */
   async getAgentMessage(messageId: number): Promise<AgentMessageData | null> {
-    return await this.storage.get(`agent_message:telegram:${messageId}`);
+    const data = await this.storage.get(`agent_message:telegram:${messageId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
   }
   
   /**
@@ -688,13 +737,24 @@ export class BotsStore implements IBotsStore {
 
       const config = typeof data === 'string' ? JSON.parse(data) : data;
       
+      // Validate the data structure using zod schema
+      const validationResult = GroupConfigSchema.safeParse(config);
+      if (!validationResult.success) {
+        LogEngine.error('Invalid group configuration data structure', {
+          chatId,
+          errors: validationResult.error.issues,
+          rawData: config
+        });
+        return null;
+      }
+      
       LogEngine.debug('Group configuration retrieved successfully', {
         chatId,
-        isConfigured: config.isConfigured,
-        customerId: config.customerId
+        isConfigured: validationResult.data.isConfigured,
+        customerId: validationResult.data.customerId
       });
 
-      return config as GroupConfig;
+      return validationResult.data as GroupConfig;
     } catch (error) {
       const err = error as Error;
       LogEngine.error('Failed to retrieve group configuration', {
@@ -816,13 +876,24 @@ export class BotsStore implements IBotsStore {
 
       const state = typeof data === 'string' ? JSON.parse(data) : data;
       
+      // Validate the data structure using zod schema
+      const validationResult = SetupStateSchema.safeParse(state);
+      if (!validationResult.success) {
+        LogEngine.error('Invalid setup state data structure', {
+          chatId,
+          errors: validationResult.error.issues,
+          rawData: state
+        });
+        return null;
+      }
+      
       LogEngine.debug('Setup state retrieved successfully', {
         chatId,
-        step: state.step,
-        initiatedBy: state.initiatedBy
+        step: validationResult.data.step,
+        initiatedBy: validationResult.data.initiatedBy
       });
 
-      return state as SetupState;
+      return validationResult.data as SetupState;
     } catch (error) {
       const err = error as Error;
       LogEngine.error('Failed to retrieve setup state', {

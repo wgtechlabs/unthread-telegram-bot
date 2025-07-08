@@ -5,9 +5,28 @@
  * which is required for proper setup and operation.
  */
 
-import { Context as BotContext } from 'telegraf';
+import type { BotContext } from '../types/index.js';
 import { InlineKeyboardMarkup } from 'telegraf/typings/core/types/typegram';
 import { LogEngine } from '@wgtechlabs/log-engine';
+
+/**
+ * Type guard to check if a chat has a title property (group/supergroup chats)
+ * @param chat - The chat object to check
+ * @returns True if the chat has a title property
+ */
+function chatHasTitle(chat: any): chat is { title: string } {
+  return chat && typeof chat === 'object' && 'title' in chat && typeof chat.title === 'string';
+}
+
+/**
+ * Safely get chat title with fallback
+ * @param ctx - Bot context
+ * @param fallback - Fallback title if chat doesn't have a title
+ * @returns Chat title or fallback
+ */
+function getChatTitle(ctx: BotContext, fallback: string = 'this chat'): string {
+  return chatHasTitle(ctx.chat) ? ctx.chat.title : fallback;
+}
 
 /**
  * Check if the bot has admin permissions in the current chat
@@ -67,7 +86,7 @@ export async function checkAndPromptBotAdmin(ctx: BotContext): Promise<boolean> 
  */
 async function sendBotNotAdminMessage(ctx: BotContext): Promise<void> {
   const chatType = ctx.chat?.type || 'unknown';
-  const chatTitle = 'title' in (ctx.chat || {}) ? (ctx.chat as any).title : 'this chat';
+  const chatTitle = getChatTitle(ctx, 'this chat');
   
   const message = `🔐 **Bot Admin Required**
 
@@ -138,7 +157,7 @@ export async function sendBotAdminHelpMessage(ctx: BotContext): Promise<void> {
     await safeAnswerCallbackQuery(ctx, 'Loading help information...', 3000);
   }
 
-  const chatTitle = 'title' in (ctx.chat || {}) ? (ctx.chat as any).title : 'this group';
+  const chatTitle = getChatTitle(ctx, 'this group');
   
   const helpMessage = `📋 **How to Make Me an Admin**
 

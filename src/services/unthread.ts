@@ -571,14 +571,18 @@ export async function getOrCreateCustomer(groupChatName: string, chatId: number)
             'Please ask a group administrator to run /setup to link this group to a customer account.'
         );
     } catch (error) {
+        const err = error as Error;
         LogEngine.error('Error getting or creating customer', {
-            error: (error as Error).message,
-            stack: (error as Error).stack,
+            error: err.message,
+            stack: err.stack,
             groupChatName,
             chatId,
             apiUrl: `${API_BASE_URL}/customers`
         });
-        throw error;
+        
+        // Ensure we always throw the error to maintain Promise<Customer> contract
+        // The function should either resolve with a Customer or reject with an error
+        throw err;
     }
 }
 

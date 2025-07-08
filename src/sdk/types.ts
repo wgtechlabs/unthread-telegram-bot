@@ -127,6 +127,8 @@ export interface GroupConfig {
   botIsAdmin: boolean;
   lastAdminCheck?: string;
   setupVersion?: string;
+  lastUpdatedAt?: string;  // Metadata field for tracking updates
+  version?: string;        // Version field for schema versioning
   metadata?: Record<string, any>;
 }
 
