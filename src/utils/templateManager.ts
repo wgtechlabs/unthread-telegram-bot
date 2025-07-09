@@ -1,6 +1,7 @@
 import { MessageTemplate, MessageTemplateType } from '../sdk/types';
 import { BotsStore } from '../sdk/bots-brain/BotsStore';
 import { MessageFormatter } from './messageFormatter';
+import { LogEngine } from '@wgtechlabs/log-engine';
 
 export interface TemplateCreationOptions {
   name: string;
@@ -22,6 +23,10 @@ export interface TemplateListOptions {
 export interface TemplateNotificationOptions {
   bot?: any;
   groupTitle?: string;
+}
+
+interface TemplateUpdateWithVariables extends Partial<Pick<MessageTemplate, 'name' | 'content' | 'isActive' | 'isDefault'>> {
+  variables?: string[];
 }
 
 export class TemplateManager {
@@ -88,7 +93,14 @@ export class TemplateManager {
         );
       } catch (notificationError) {
         // Don't fail template creation if notifications fail
-        console.warn('Failed to send template creation notifications:', notificationError);
+        LogEngine.warn('Failed to send template creation notifications', {
+          error: notificationError instanceof Error ? notificationError.message : String(notificationError),
+          groupChatId: options.groupChatId,
+          templateType: options.templateType,
+          templateName: options.name,
+          createdBy: options.createdBy,
+          operation: 'template_creation'
+        });
       }
     }
 
@@ -101,7 +113,7 @@ export class TemplateManager {
   async updateTemplate(
     groupChatId: number,
     templateId: string,
-    updates: Partial<Pick<MessageTemplate, 'name' | 'content' | 'isActive' | 'isDefault'>>,
+    updates: TemplateUpdateWithVariables,
     updatedBy: number,
     notificationOptions?: TemplateNotificationOptions
   ): Promise<{ success: boolean; template?: MessageTemplate; errors?: string[] }> {
@@ -118,11 +130,12 @@ export class TemplateManager {
         return { success: false, errors: validation.errors };
       }
       
-      // Update variables if content changed
-      updates = {
+      // Update variables if content changed - type-safe approach
+      const updatesWithVariables: TemplateUpdateWithVariables = {
         ...updates,
         variables: this.extractVariablesFromContent(updates.content)
-      } as any;
+      };
+      updates = updatesWithVariables;
     }
 
     // If setting as default, unset existing defaults
@@ -152,7 +165,14 @@ export class TemplateManager {
         );
       } catch (notificationError) {
         // Don't fail template update if notifications fail
-        console.warn('Failed to send template update notifications:', notificationError);
+        LogEngine.warn('Failed to send template update notifications', {
+          error: notificationError instanceof Error ? notificationError.message : String(notificationError),
+          groupChatId,
+          templateType: existing.templateType,
+          templateName: existing.name,
+          updatedBy,
+          operation: 'template_update'
+        });
       }
     }
 
@@ -195,7 +215,14 @@ export class TemplateManager {
         );
       } catch (notificationError) {
         // Don't fail template deletion if notifications fail
-        console.warn('Failed to send template deletion notifications:', notificationError);
+        LogEngine.warn('Failed to send template deletion notifications', {
+          error: notificationError instanceof Error ? notificationError.message : String(notificationError),
+          groupChatId,
+          templateType: existing.templateType,
+          templateName: existing.name,
+          deletedBy,
+          operation: 'template_deletion'
+        });
       }
     }
 
@@ -432,13 +459,7 @@ export class TemplateManager {
   }
 
   private async getBuiltInTemplate(templateType: MessageTemplateType): Promise<string | null> {
-    // Use MessageFormatter to get built-in templates
-    const formatter = new MessageFormatter(this.botsStore);
-    try {
-      const template = await (formatter as any).getDefaultTemplate(templateType);
-      return template?.content || null;
-    } catch {
-      return null;
-    }
+    // Use MessageFormatter's public method to get built-in template content
+    return this.messageFormatter.getBuiltInTemplateContent(templateType);
   }
 }

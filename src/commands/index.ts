@@ -55,8 +55,254 @@ const SupportFieldEnum = {
 };
 
 // ================================
+// Error Handling Utilities
+// ================================
+
+/**
+ * Enhanced error handling utility that preserves error type hierarchy
+ * and provides comprehensive error information for logging and debugging
+ */
+interface ErrorDetails {
+    message: string;
+    name: string;
+    stack?: string | undefined;
+    code?: string | number | undefined;
+    statusCode?: number | undefined;
+    cause?: unknown;
+    isOperational?: boolean | undefined;
+    timestamp: string;
+}
+
+/**
+ * Extract detailed error information while preserving original error types
+ */
+function getErrorDetails(error: unknown, context?: string): ErrorDetails {
+    const timestamp = new Date().toISOString();
+    
+    // Handle Error instances (most common case)
+    if (error instanceof Error) {
+        const details: ErrorDetails = {
+            message: error.message,
+            name: error.name,
+            stack: error.stack,
+            timestamp
+        };
+        
+        // Handle specific error types with additional properties
+        if ('code' in error) {
+            details.code = (error as any).code;
+        }
+        
+        if ('statusCode' in error) {
+            details.statusCode = (error as any).statusCode;
+        }
+        
+        if ('cause' in error) {
+            details.cause = (error as any).cause;
+        }
+        
+        // Check for operational errors (user-facing vs system errors)
+        if ('isOperational' in error) {
+            details.isOperational = (error as any).isOperational;
+        }
+        
+        return details;
+    }
+    
+    // Handle string errors
+    if (typeof error === 'string') {
+        return {
+            message: error,
+            name: 'StringError',
+            timestamp
+        };
+    }
+    
+    // Handle object errors with message property
+    if (error && typeof error === 'object' && 'message' in error) {
+        return {
+            message: String((error as any).message),
+            name: (error as any).name || 'UnknownObjectError',
+            timestamp
+        };
+    }
+    
+    // Handle null, undefined, or other primitive types
+    if (error === null) {
+        return {
+            message: 'Null error occurred',
+            name: 'NullError',
+            timestamp
+        };
+    }
+    
+    if (error === undefined) {
+        return {
+            message: 'Undefined error occurred',
+            name: 'UndefinedError',
+            timestamp
+        };
+    }
+    
+    // Fallback for any other type
+    return {
+        message: `Unknown error type: ${typeof error}. Value: ${String(error)}`,
+        name: 'UnknownError',
+        timestamp
+    };
+}
+
+/**
+ * Log error with enhanced details and optional context
+ */
+function logError(error: unknown, context: string, additionalData?: Record<string, any>): ErrorDetails {
+    const errorDetails = getErrorDetails(error, context);
+    
+    const logData = {
+        ...errorDetails,
+        context,
+        ...additionalData
+    };
+    
+    // Use appropriate log level based on error type
+    if (errorDetails.isOperational === false || errorDetails.name.includes('System')) {
+        LogEngine.error(`System error in ${context}`, logData);
+    } else if (errorDetails.statusCode && errorDetails.statusCode >= 500) {
+        LogEngine.error(`Server error in ${context}`, logData);
+    } else if (errorDetails.statusCode && errorDetails.statusCode >= 400) {
+        LogEngine.warn(`Client error in ${context}`, logData);
+    } else {
+        LogEngine.error(`Error in ${context}`, logData);
+    }
+    
+    return errorDetails;
+}
+
+// ================================
 // Helper Functions
 // ================================
+
+/**
+ * Validate and sanitize customer name input
+ */
+interface CustomerNameValidationResult {
+    isValid: boolean;
+    sanitizedName?: string;
+    error?: string;
+    details?: string;
+}
+
+function validateAndSanitizeCustomerName(input: string): CustomerNameValidationResult {
+    // Step 1: Basic null/undefined checks
+    if (!input || typeof input !== 'string') {
+        return {
+            isValid: false,
+            error: 'Customer name is required',
+            details: 'Please provide a valid customer name.'
+        };
+    }
+
+    // Step 2: Trim whitespace and normalize
+    const trimmed = input.trim();
+    
+    // Step 3: Length validation
+    if (trimmed.length < 2) {
+        return {
+            isValid: false,
+            error: 'Customer name too short',
+            details: 'Customer name must be at least 2 characters long.'
+        };
+    }
+    
+    if (trimmed.length > 100) {
+        return {
+            isValid: false,
+            error: 'Customer name too long',
+            details: 'Customer name must not exceed 100 characters.'
+        };
+    }
+
+    // Step 4: Character validation - Allow letters, numbers, spaces, hyphens, apostrophes, periods
+    // Disallow special characters that could be used for injection attacks
+    const allowedCharRegex = /^[a-zA-Z0-9\s\-'.&()]+$/;
+    if (!allowedCharRegex.test(trimmed)) {
+        return {
+            isValid: false,
+            error: 'Invalid characters in name',
+            details: 'Customer name can only contain letters, numbers, spaces, hyphens, apostrophes, periods, ampersands, and parentheses.'
+        };
+    }
+
+    // Step 5: Pattern validation - Prevent suspicious patterns
+    const suspiciousPatterns = [
+        // SQL injection patterns
+        /('|('')|;|--|\/\*|\*\/)/i,
+        // Script injection patterns
+        /<script|<\/script>|javascript:|vbscript:|onload=|onerror=/i,
+        // Command injection patterns
+        /(\||&|;|\$\(|\`|>|<)/,
+        // Path traversal patterns
+        /(\.\.\/|\.\.\\)/,
+        // Excessive repeating characters (potential DoS)
+        /(.)\1{10,}/,
+        // Only special characters (suspicious)
+        /^[\s\-'.&()]+$/
+    ];
+
+    for (const pattern of suspiciousPatterns) {
+        if (pattern.test(trimmed)) {
+            return {
+                isValid: false,
+                error: 'Invalid name pattern',
+                details: 'Customer name contains characters or patterns that are not allowed.'
+            };
+        }
+    }
+
+    // Step 6: Word validation - Ensure it's not just spaces or special characters
+    const wordsOnly = trimmed.replace(/[\s\-'.&()]/g, '');
+    if (wordsOnly.length < 2) {
+        return {
+            isValid: false,
+            error: 'Insufficient content',
+            details: 'Customer name must contain at least 2 letters or numbers.'
+        };
+    }
+
+    // Step 7: Additional sanitization
+    let sanitized = trimmed
+        // Normalize multiple spaces to single space
+        .replace(/\s+/g, ' ')
+        // Remove leading/trailing special characters
+        .replace(/^[\s\-'.&()]+|[\s\-'.&()]+$/g, '')
+        // Limit consecutive special characters
+        .replace(/[\-'.&()]{3,}/g, (match) => match.substring(0, 2));
+
+    // Step 8: Final length check after sanitization
+    if (sanitized.length < 2) {
+        return {
+            isValid: false,
+            error: 'Invalid name after sanitization',
+            details: 'Customer name does not meet requirements after processing.'
+        };
+    }
+
+    // Step 9: Prevent common abuse patterns
+    const lowercased = sanitized.toLowerCase();
+    const forbiddenWords = ['admin', 'administrator', 'root', 'system', 'null', 'undefined', 'test', 'demo'];
+    if (forbiddenWords.some(word => lowercased === word || lowercased.startsWith(word + ' ') || lowercased.endsWith(' ' + word))) {
+        return {
+            isValid: false,
+            error: 'Reserved name',
+            details: 'This name is reserved and cannot be used.'
+        };
+    }
+
+    return {
+        isValid: true,
+        sanitizedName: sanitized
+    };
+}
 
 /**
  * Generate setup progress indicator
@@ -263,12 +509,19 @@ const versionCommand = async (ctx: BotContext): Promise<void> => {
 
         await safeReply(ctx, versionInfo, { parse_mode: 'Markdown' });
     } catch (error) {
-        const err = error as Error;
-        await safeReply(ctx, 'Error retrieving version information.');
-        LogEngine.error('Error in versionCommand', {
-            error: err.message,
-            stack: err.stack
+        const errorDetails = logError(error, 'versionCommand', {
+            chatId: ctx.chat?.id,
+            chatType: ctx.chat?.type,
+            userId: ctx.from?.id,
+            username: ctx.from?.username
         });
+        
+        // Provide user-friendly error message
+        const userMessage = errorDetails.isOperational 
+            ? `Error retrieving version information: ${errorDetails.message}`
+            : 'Error retrieving version information. Please try again later.';
+            
+        await safeReply(ctx, userMessage);
     }
 };
 
@@ -303,13 +556,20 @@ Enable customers and business partners to open support tickets directly within T
 
         await safeReply(ctx, aboutText, { parse_mode: 'Markdown' });
     } catch (error) {
-        const err = error as Error;
-        LogEngine.error('Error in aboutCommand', {
-            error: err.message,
+        const errorDetails = logError(error, 'aboutCommand', {
+            chatId: ctx.chat?.id,
+            chatType: ctx.chat?.type,
             telegramUserId: ctx.from?.id,
             username: ctx.from?.username
         });
-        await safeReply(ctx, 'An error occurred while fetching bot information.');
+        
+        // Provide appropriate user message based on error type
+        let userMessage = 'An error occurred while fetching bot information.';
+        if (errorDetails.isOperational && errorDetails.message) {
+            userMessage = `Unable to fetch bot information: ${errorDetails.message}`;
+        }
+        
+        await safeReply(ctx, userMessage);
     }
 };
 
@@ -415,10 +675,10 @@ const activateCommand = async (ctx: BotContext): Promise<void> => {
                     try {
                         await ctx.telegram.sendMessage(chatId, message, { parse_mode: 'Markdown' });
                     } catch (error) {
-                        LogEngine.error('Failed to send admin notification', {
-                            error: (error as Error).message,
+                        logError(error, 'notifyOtherAdmins', {
                             targetChatId: chatId,
-                            newAdminId: telegramUserId
+                            newAdminId: telegramUserId,
+                            notificationType: 'admin_activation'
                         });
                     }
                 }
@@ -439,18 +699,35 @@ const activateCommand = async (ctx: BotContext): Promise<void> => {
         }
 
     } catch (error) {
-        const err = error as Error;
-        LogEngine.error('Error in activateCommand', {
-            error: err.message,
+        const errorDetails = logError(error, 'activateCommand', {
+            chatId: ctx.chat?.id,
+            chatType: ctx.chat?.type,
             telegramUserId: ctx.from?.id,
-            username: ctx.from?.username
+            username: ctx.from?.username,
+            activationAttempt: true
         });
-        await safeReply(ctx,
-            "❌ **Activation Error**\n\n" +
+        
+        // Provide context-appropriate error message
+        let userMessage = "❌ **Activation Error**\n\n" +
             "An unexpected error occurred during activation. Please try again later.\n\n" +
-            "If this error persists, contact your system administrator.",
-            { parse_mode: 'Markdown' }
-        );
+            "If this error persists, contact your system administrator.";
+        
+        // Handle specific error types
+        if (errorDetails.code === 'ENOTFOUND' || errorDetails.code === 'ECONNREFUSED') {
+            userMessage = "❌ **Connection Error**\n\n" +
+                "Unable to connect to the activation service. Please check your connection and try again.\n\n" +
+                "If this error persists, contact your system administrator.";
+        } else if (errorDetails.statusCode === 401 || errorDetails.statusCode === 403) {
+            userMessage = "❌ **Authorization Error**\n\n" +
+                "There was an authentication issue during activation. Please try again.\n\n" +
+                "If this error persists, contact your system administrator.";
+        } else if (errorDetails.isOperational && errorDetails.message.includes('timeout')) {
+            userMessage = "❌ **Timeout Error**\n\n" +
+                "The activation process timed out. Please try again.\n\n" +
+                "If this error persists, contact your system administrator.";
+        }
+        
+        await safeReply(ctx, userMessage, { parse_mode: 'Markdown' });
     }
 };
 
@@ -492,10 +769,12 @@ const processSetupTextInput = async (ctx: BotContext): Promise<boolean> => {
 
         return false;
     } catch (error) {
-        LogEngine.error('Error in processSetupTextInput', {
-            error: (error as Error).message,
+        logError(error, 'processSetupTextInput', {
             chatId: ctx.chat?.id,
-            userId: ctx.from?.id
+            userId: ctx.from?.id,
+            chatType: ctx.chat?.type,
+            hasMessage: !!(ctx.message && 'text' in ctx.message),
+            messageType: ctx.message && 'text' in ctx.message ? 'text' : typeof ctx.message
         });
         return false;
     }
@@ -505,35 +784,67 @@ const processSetupTextInput = async (ctx: BotContext): Promise<boolean> => {
  * Handle custom customer name input
  */
 const handleCustomerNameInput = async (ctx: BotContext, setupState: any, customerName: string): Promise<void> => {
+    let sanitizedName = customerName; // Initialize with original input for error logging
+    
     try {
-        if (!customerName || customerName.length < 2) {
-            await safeReply(ctx,
-                "❌ **Invalid Customer Name**\n\n" +
-                "Customer name must be at least 2 characters long. Please try again:",
-                { parse_mode: 'Markdown' }
-            );
+        // Validate and sanitize the customer name input
+        const validation = validateAndSanitizeCustomerName(customerName);
+        
+        if (!validation.isValid) {
+            const errorMessage = `❌ **${validation.error}**\n\n` +
+                `${validation.details}\n\n` +
+                `**Requirements:**\n` +
+                `• Length: 2-100 characters\n` +
+                `• Allowed: Letters, numbers, spaces, hyphens, apostrophes, periods, ampersands, parentheses\n` +
+                `• No special patterns or reserved words\n\n` +
+                `Please try again with a valid customer name:`;
+            
+            await safeReply(ctx, errorMessage, { parse_mode: 'Markdown' });
+            
+            LogEngine.warn('Customer name validation failed', {
+                chatId: setupState.chatId,
+                originalInput: customerName,
+                error: validation.error,
+                details: validation.details,
+                inputLength: customerName?.length || 0
+            });
+            
             return;
         }
 
-        // Create customer with custom name
+        // Use the sanitized name for processing
+        sanitizedName = validation.sanitizedName!;
+        
+        // Log successful validation
+        LogEngine.info('Customer name validated and sanitized', {
+            chatId: setupState.chatId,
+            originalInput: customerName,
+            sanitizedName: sanitizedName,
+            sanitizationApplied: customerName !== sanitizedName
+        });
+
+        // Create customer with sanitized name
         let customerId: string;
         let actualCustomerName: string;
         
         try {
-            const customer = await createCustomerWithName(customerName);
+            const customer = await createCustomerWithName(sanitizedName);
             customerId = customer.id;
             actualCustomerName = customer.name;
             
-            LogEngine.info('Customer created with custom name', {
+            LogEngine.info('Customer created with sanitized name', {
                 customerId,
                 customerName: actualCustomerName,
+                originalInput: customerName,
+                sanitizedInput: sanitizedName,
                 chatId: setupState.chatId
             });
         } catch (error) {
             const err = error as Error;
-            LogEngine.error('Failed to create customer with custom name', {
+            LogEngine.error('Failed to create customer with sanitized name', {
                 error: err.message,
-                customerName,
+                originalInput: customerName,
+                sanitizedInput: sanitizedName,
                 chatId: setupState.chatId
             });
             
@@ -560,6 +871,8 @@ const handleCustomerNameInput = async (ctx: BotContext, setupState: any, custome
             metadata: {
                 setupMethod: 'custom_name',
                 originalInput: customerName,
+                sanitizedInput: sanitizedName,
+                inputSanitized: customerName !== sanitizedName,
                 apiIntegration: true,
                 unthreadCustomerId: customerId
             }
@@ -623,25 +936,43 @@ Users can now use \`/support\` to create tickets that will be linked to this cus
             // Don't fail setup if notifications fail
         }
 
-        LogEngine.info('Setup completed with custom customer name', {
+        LogEngine.info('Setup completed with sanitized customer name', {
             chatId: setupState.chatId,
             customerName: actualCustomerName,
             customerId: customerId,
+            originalInput: customerName,
+            sanitizedInput: sanitizedName,
             setupBy: setupState.initiatedBy
         });
 
     } catch (error) {
-        const err = error as Error;
-        LogEngine.error('Error handling customer name input', {
-            error: err.message,
-            customerName,
-            chatId: setupState.chatId
+        const errorDetails = logError(error, 'handleCustomerNameInput', {
+            originalInput: customerName,
+            sanitizedInput: sanitizedName,
+            chatId: setupState.chatId,
+            setupBy: setupState.initiatedBy,
+            setupStep: 'customer_name_input'
         });
-        await safeReply(ctx,
-            "❌ **Setup Error**\n\n" +
-            "An error occurred while processing your input. Please try running `/setup` again.",
-            { parse_mode: 'Markdown' }
-        );
+        
+        // Provide specific error messages based on error type
+        let userMessage = "❌ **Setup Error**\n\n" +
+            "An error occurred while processing your input. Please try running `/setup` again.";
+        
+        if (errorDetails.code === 'ENOTFOUND' || errorDetails.code === 'ECONNREFUSED') {
+            userMessage = "❌ **Connection Error**\n\n" +
+                "Unable to connect to the customer service. Please check your connection and try running `/setup` again.";
+        } else if (errorDetails.statusCode === 400) {
+            userMessage = "❌ **Invalid Input**\n\n" +
+                "The customer name format is invalid. Please try running `/setup` again with a different name.";
+        } else if (errorDetails.statusCode === 409) {
+            userMessage = "❌ **Customer Exists**\n\n" +
+                "A customer with this name already exists. Please try running `/setup` again with a different name.";
+        } else if (errorDetails.isOperational && errorDetails.message.includes('timeout')) {
+            userMessage = "❌ **Timeout Error**\n\n" +
+                "The setup process timed out. Please try running `/setup` again.";
+        }
+        
+        await safeReply(ctx, userMessage, { parse_mode: 'Markdown' });
     }
 };
 
@@ -729,18 +1060,30 @@ Send me \`/setup\` in this group and choose "Advanced Setup" to configure templa
         });
 
     } catch (error) {
-        const err = error as Error;
-        LogEngine.error('Error in templatesCommand', {
-            error: err.message,
+        const errorDetails = logError(error, 'templatesCommand', {
             chatId,
-            userId: telegramUserId
+            userId: telegramUserId,
+            chatType: ctx.chat?.type,
+            username: ctx.from?.username,
+            isAdmin: isAdminUser(telegramUserId)
         });
 
-        await safeReply(ctx,
-            "❌ **Templates Error**\n\n" +
-            "An error occurred while loading template information. Please try again later.",
-            { parse_mode: 'Markdown' }
-        );
+        // Provide specific error messages based on error type
+        let userMessage = "❌ **Templates Error**\n\n" +
+            "An error occurred while loading template information. Please try again later.";
+        
+        if (errorDetails.code === 'ENOTFOUND' || errorDetails.code === 'ECONNREFUSED') {
+            userMessage = "❌ **Connection Error**\n\n" +
+                "Unable to connect to the template service. Please check your connection and try again.";
+        } else if (errorDetails.statusCode === 404) {
+            userMessage = "❌ **Templates Not Found**\n\n" +
+                "No template configuration found for this group. Please run `/setup` to configure the group first.";
+        } else if (errorDetails.isOperational && errorDetails.message.includes('permission')) {
+            userMessage = "❌ **Permission Error**\n\n" +
+                "Insufficient permissions to access template information. Please ensure you're activated with `/activate`.";
+        }
+
+        await safeReply(ctx, userMessage, { parse_mode: 'Markdown' });
     }
 };
 
@@ -749,24 +1092,251 @@ Send me \`/setup\` in this group and choose "Advanced Setup" to configure templa
  */
 
 const supportCommand = async (ctx: BotContext): Promise<void> => {
-    await safeReply(ctx, 'Support command not yet implemented.');
+    const chatType = ctx.chat?.type;
+    
+    if (chatType === 'private') {
+        await safeReply(ctx,
+            "🎫 **Support Ticket Creation**\n\n" +
+            "Support tickets can only be created in group chats where this bot is configured.\n\n" +
+            "**To create a support ticket:**\n" +
+            "1. Go to a group chat where this bot is added\n" +
+            "2. Ensure the group is configured (admins: use `/setup`)\n" +
+            "3. Use `/support` in the group chat\n" +
+            "4. Follow the guided prompts\n\n" +
+            "**Need help?** Contact your group administrator or use `/help` for more information.",
+            { parse_mode: 'Markdown' }
+        );
+    } else {
+        // Check if group is configured
+        const groupConfig = await BotsStore.getGroupConfig(ctx.chat!.id);
+        
+        if (!groupConfig?.isConfigured) {
+            await safeReply(ctx,
+                "⚙️ **Group Not Configured**\n\n" +
+                "This group is not yet configured for support tickets.\n\n" +
+                "**For Administrators:**\n" +
+                "• Use `/setup` to configure this group\n" +
+                "• Ensure you're activated with `/activate` (in private chat)\n\n" +
+                "**For Users:**\n" +
+                "• Ask your group administrator to configure the bot\n" +
+                "• Check `/help` for available commands while waiting\n\n" +
+                "Once configured, you'll be able to create support tickets with `/support`.",
+                { parse_mode: 'Markdown' }
+            );
+        } else {
+            await safeReply(ctx,
+                "🚧 **Feature Coming Soon**\n\n" +
+                "Support ticket creation is currently under development and will be available in the next release.\n\n" +
+                "**What's ready:**\n" +
+                "✅ Group configuration\n" +
+                "✅ Admin management\n" +
+                "✅ Template system\n" +
+                "🔄 Ticket creation (in progress)\n\n" +
+                "**Expected availability:** Within the next few updates\n\n" +
+                "**Meanwhile:**\n" +
+                "• Admins can use `/templates` to prepare message templates\n" +
+                "• Use `/help` to see available features\n" +
+                "• Check `/about` for project updates",
+                { parse_mode: 'Markdown' }
+            );
+        }
+    }
 };
 
 const cancelCommand = async (ctx: BotContext): Promise<void> => {
-    await safeReply(ctx, 'Cancel command not yet implemented.');
+    const chatType = ctx.chat?.type;
+    const userId = ctx.from?.id;
+    
+    if (!userId) {
+        await safeReply(ctx, "❌ Unable to identify user for cancel operation.");
+        return;
+    }
+    
+    // Check for active sessions that could be cancelled
+    const hasActiveSetup = chatType !== 'private' ? await BotsStore.getSetupState(ctx.chat!.id) : null;
+    const hasActiveDmSession = chatType === 'private' ? await BotsStore.getActiveDmSetupSessionByAdmin(userId) : null;
+    
+    if (hasActiveSetup || hasActiveDmSession) {
+        // There are active sessions - indicate functionality coming soon
+        await safeReply(ctx,
+            "🛑 **Cancel Operation**\n\n" +
+            "Session cancellation is being developed and will be available soon.\n\n" +
+            "**Current workaround:**\n" +
+            "• Active sessions will timeout automatically (3-5 minutes)\n" +
+            "• You can wait for timeout or start a new session\n" +
+            "• New sessions will override existing ones\n\n" +
+            "**Coming soon:**\n" +
+            "• Immediate session cancellation\n" +
+            "• Cleanup of temporary data\n" +
+            "• Confirmation prompts\n\n" +
+            "**Need immediate help?** Contact your administrator or use `/help` for available commands.",
+            { parse_mode: 'Markdown' }
+        );
+    } else {
+        await safeReply(ctx,
+            "✅ **No Active Operations**\n\n" +
+            "You don't have any active operations to cancel right now.\n\n" +
+            "**The `/cancel` command can stop:**\n" +
+            "• Support ticket creation flows\n" +
+            "• Setup configuration processes\n" +
+            "• Template editing sessions\n" +
+            "• Profile update processes\n\n" +
+            "**Start something to cancel:**\n" +
+            "• Use `/support` to create a ticket\n" +
+            "• Use `/setup` to configure group (admins)\n" +
+            "• Use `/templates` to manage templates\n\n" +
+            "**Need help?** Use `/help` to see available commands.",
+            { parse_mode: 'Markdown' }
+        );
+    }
 };
 
 const resetCommand = async (ctx: BotContext): Promise<void> => {
-    await safeReply(ctx, 'Reset command not yet implemented.');
+    const chatType = ctx.chat?.type;
+    const userId = ctx.from?.id;
+    
+    if (!userId) {
+        await safeReply(ctx, "❌ Unable to identify user for reset operation.");
+        return;
+    }
+    
+    await safeReply(ctx,
+        "🔄 **Reset User State**\n\n" +
+        "The reset functionality is being developed to help you start fresh.\n\n" +
+        "**What reset will do:**\n" +
+        "• Clear your conversation state\n" +
+        "• Cancel any active support flows\n" +
+        "• Reset form data and temporary sessions\n" +
+        "• Preserve your profile and group settings\n\n" +
+        "**Current alternatives:**\n" +
+        "• Sessions auto-expire after 3-5 minutes\n" +
+        "• Starting new commands overrides old sessions\n" +
+        "• Use `/cancel` to stop current operations\n\n" +
+        "**Coming soon:**\n" +
+        "• Immediate state reset\n" +
+        "• Selective data clearing options\n" +
+        "• Reset confirmation prompts\n\n" +
+        "**Need help now?** Use `/help` to see available commands or contact your administrator.",
+        { parse_mode: 'Markdown' }
+    );
 };
 
 const setupCommand = async (ctx: BotContext): Promise<void> => {
-    await safeReply(ctx, 'Setup command not yet implemented.');
+    const chatType = ctx.chat?.type;
+    const userId = ctx.from?.id;
+    
+    if (!userId) {
+        await safeReply(ctx, "❌ Unable to identify user.");
+        return;
+    }
+    
+    if (chatType === 'private') {
+        await safeReply(ctx,
+            "⚙️ **Group Setup Configuration**\n\n" +
+            "Group setup can only be performed in group chats.\n\n" +
+            "**To configure a group:**\n" +
+            "1. Go to the group chat you want to configure\n" +
+            "2. Ensure you're an authorized administrator\n" +
+            "3. Make sure you've activated your admin profile (`/activate` here in DM)\n" +
+            "4. Use `/setup` in the group chat\n\n" +
+            "**Prerequisites for admins:**\n" +
+            "• Must be in the authorized admin list\n" +
+            "• Must have activated admin profile (use `/activate` here)\n" +
+            "• Bot must be added to the target group\n\n" +
+            "**Need activation?** Send `/activate` here to enable your admin access.",
+            { parse_mode: 'Markdown' }
+        );
+        return;
+    }
+    
+    // Check admin permissions
+    if (!isAdminUser(userId)) {
+        await safeReply(ctx,
+            "❌ **Access Denied**\n\n" +
+            "Only authorized administrators can configure group settings.\n\n" +
+            "**For non-admin users:**\n" +
+            "• Ask your group administrator to run `/setup`\n" +
+            "• Use `/help` to see available user commands\n" +
+            "• Once configured, you'll be able to create support tickets\n\n" +
+            "**For potential admins:**\n" +
+            "Contact your system administrator to be added to the admin list.",
+            { parse_mode: 'Markdown' }
+        );
+        return;
+    }
+    
+    if (!await isActivatedAdmin(userId)) {
+        await safeReply(ctx,
+            "❌ **Admin Not Activated**\n\n" +
+            "You must activate your admin profile before configuring groups.\n\n" +
+            "**To activate:**\n" +
+            "1. Start a private chat with me\n" +
+            "2. Send `/activate` in the private chat\n" +
+            "3. Complete the activation process\n" +
+            "4. Return here and use `/setup` again\n\n" +
+            "**Why activation is required:**\n" +
+            "• Enables secure DM notifications\n" +
+            "• Unlocks advanced admin features\n" +
+            "• Ensures proper session management\n\n" +
+            "Once activated, you'll have full access to group configuration tools.",
+            { parse_mode: 'Markdown' }
+        );
+        return;
+    }
+    
+    await safeReply(ctx,
+        "🚧 **Setup Wizard Coming Soon**\n\n" +
+        "The full setup wizard is currently under development and will provide:\n\n" +
+        "**Planned Features:**\n" +
+        "• Interactive group configuration\n" +
+        "• Customer account linking\n" +
+        "• Unthread integration setup\n" +
+        "• DM-based guided setup\n" +
+        "• Template initialization\n\n" +
+        "**Current Status:**\n" +
+        "✅ Admin activation system\n" +
+        "✅ Session management\n" +
+        "✅ Template system\n" +
+        "🔄 Setup wizard (in development)\n\n" +
+        "**Expected availability:** Next major release\n\n" +
+        "**Meanwhile:**\n" +
+        "• Use `/templates` to prepare message templates\n" +
+        "• Check `/help` for available admin commands\n" +
+        "• Your activation is ready for when setup launches",
+        { parse_mode: 'Markdown' }
+    );
 };
 
 const processSupportConversation = async (ctx: BotContext): Promise<boolean> => {
-    // Placeholder for support conversation processing
-    return false; // Return false indicating no message was handled
+    // This function will handle ongoing support conversations and ticket creation flows
+    // Currently returns false to indicate no conversation was processed
+    
+    // Future implementation will include:
+    // 1. Check for active support sessions in the current chat
+    // 2. Process form input (ticket summary, customer email, priority, etc.)
+    // 3. Validate user responses and provide real-time feedback
+    // 4. Create tickets in Unthread via API integration
+    // 5. Handle conversation state management and transitions
+    // 6. Send confirmation messages using templates
+    // 7. Notify admins of new ticket creation
+    // 8. Handle error states and retry mechanisms
+    
+    const chatId = ctx.chat?.id;
+    const userId = ctx.from?.id;
+    
+    if (!chatId || !userId) {
+        return false;
+    }
+    
+    // TODO: Implement support conversation processing
+    // - Check BotsStore for active support sessions
+    // - Process input based on current conversation state
+    // - Validate and format user input
+    // - Create Unthread tickets when form is complete
+    // - Use MessageFormatter for template-based responses
+    // - Notify admins via AdminManager
+    
+    return false; // No conversation processed yet - feature under development
 };
 
 // ================================

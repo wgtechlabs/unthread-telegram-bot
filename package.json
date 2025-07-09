@@ -34,7 +34,6 @@
     "sbom:generate": "bash scripts/generate-sbom.sh unthread-telegram-bot:latest"
   },
   "dependencies": {
-    "@types/uuid": "10.0.0",
     "@wgtechlabs/log-engine": "^2.0.0",
     "dotenv": "^16.5.0",
     "global": "4.4.0",

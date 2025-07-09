@@ -66,6 +66,12 @@ export class MessageFormatter {
    * Process template content with variable substitution
    */
   private processTemplate(content: string, context: TemplateContext): string {
+    // Prevent ReDoS attacks by limiting template content size
+    const MAX_TEMPLATE_SIZE = 10000;
+    if (content.length > MAX_TEMPLATE_SIZE) {
+      throw new Error(`Template content too large: ${content.length} characters exceeds limit of ${MAX_TEMPLATE_SIZE}`);
+    }
+
     let processed = content;
     
     // Replace variables in the format {{variable_name}}
@@ -194,6 +200,15 @@ export class MessageFormatter {
       lastModifiedAt: new Date().toISOString(),
       version: 1
     };
+  }
+
+  /**
+   * Get built-in template content for a specific template type
+   * This is a public method that safely exposes default template content
+   */
+  public getBuiltInTemplateContent(templateType: MessageTemplateType): string | null {
+    const defaultTemplates = this.getBuiltInTemplates();
+    return defaultTemplates[templateType] || null;
   }
 
   /**

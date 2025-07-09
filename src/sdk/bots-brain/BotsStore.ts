@@ -781,10 +781,12 @@ export class BotsStore implements IBotsStore {
         return false;
       }
 
+      // Exclude immutable fields from updates
+      const safeUpdates = BotsStore.excludeImmutableFields(updates, ['chatId', 'customerId']);
+
       const updatedConfig: GroupConfig = {
         ...existingConfig,
-        ...updates,
-        chatId // Ensure chatId cannot be overridden
+        ...safeUpdates
       };
 
       const success = await this.storeGroupConfig(updatedConfig);
@@ -960,10 +962,12 @@ export class BotsStore implements IBotsStore {
         return false;
       }
 
+      // Exclude immutable fields from updates
+      const safeUpdates = BotsStore.excludeImmutableFields(updates, ['chatId']);
+
       const updatedState: SetupState = {
         ...existingState,
-        ...updates,
-        chatId, // Ensure chatId cannot be overridden
+        ...safeUpdates
       } as SetupState;
 
       const success = await this.storeSetupState(updatedState);
@@ -1069,7 +1073,7 @@ export class BotsStore implements IBotsStore {
       
       // Track admin ID in list for retrieval
       const adminIdsKey = 'admin_profile_ids';
-      const existingIds = await this.storage.get(adminIdsKey) || [];
+      const existingIds = await this.getArrayFromStorage(adminIdsKey);
       if (!existingIds.includes(adminData.telegramUserId)) {
         existingIds.push(adminData.telegramUserId);
         await this.storage.set(adminIdsKey, existingIds);
@@ -1129,7 +1133,7 @@ export class BotsStore implements IBotsStore {
       
       // Remove from admin IDs list
       const adminIdsKey = 'admin_profile_ids';
-      const existingIds = await this.storage.get(adminIdsKey) || [];
+      const existingIds = await this.getArrayFromStorage(adminIdsKey);
       const updatedIds = existingIds.filter((id: number) => id !== telegramUserId);
       await this.storage.set(adminIdsKey, updatedIds);
       
@@ -1152,7 +1156,7 @@ export class BotsStore implements IBotsStore {
     try {
       // Since there's no listKeys method, we'll track admin IDs separately
       const adminIdsKey = 'admin_profile_ids';
-      const adminIds = await this.storage.get(adminIdsKey) || [];
+      const adminIds = await this.getArrayFromStorage(adminIdsKey);
       
       const profiles: AdminProfile[] = [];
       for (const adminId of adminIds) {
@@ -1561,7 +1565,7 @@ export class BotsStore implements IBotsStore {
     
     // Also store the template ID in the list for retrieval
     const templateIdsKey = `template_ids:${template.groupChatId}`;
-    const existingIds = await this.storage.get(templateIdsKey) || [];
+    const existingIds = await this.getArrayFromStorage(templateIdsKey);
     if (!existingIds.includes(template.id)) {
       existingIds.push(template.id);
       await this.storage.set(templateIdsKey, existingIds);
@@ -1584,7 +1588,7 @@ export class BotsStore implements IBotsStore {
     // Since there's no listKeys method, we need to store template IDs separately
     // For now, let's return an empty array and implement this differently
     const templateIdsKey = `template_ids:${groupChatId}`;
-    const templateIds = await this.storage.get(templateIdsKey) || [];
+    const templateIds = await this.getArrayFromStorage(templateIdsKey);
     
     const templates: MessageTemplate[] = [];
     for (const templateId of templateIds) {
@@ -1613,7 +1617,7 @@ export class BotsStore implements IBotsStore {
     
     // Also remove from the template IDs list
     const templateIdsKey = `template_ids:${groupChatId}`;
-    const existingIds = await this.storage.get(templateIdsKey) || [];
+    const existingIds = await this.getArrayFromStorage(templateIdsKey);
     const updatedIds = existingIds.filter((id: string) => id !== templateId);
     await this.storage.set(templateIdsKey, updatedIds);
   }
@@ -1658,6 +1662,65 @@ export class BotsStore implements IBotsStore {
   static generateTemplateId(templateType: MessageTemplateType, groupChatId: number): string {
     const timestamp = Date.now();
     return `${templateType}_${groupChatId}_${timestamp}`;
+  }
+
+  // =====================================================================
+  // Helper Methods for Immutable Field Protection
+  // =====================================================================
+
+  /**
+   * Create a safe update object that excludes immutable fields
+   * This ensures certain fields cannot be overridden during updates
+   */
+  private static excludeImmutableFields<T extends Record<string, any>>(
+    updates: Partial<T>, 
+    immutableFields: (keyof T)[]
+  ): Partial<T> {
+    const safeUpdates = { ...updates };
+    
+    // Remove any immutable fields from the updates object
+    for (const field of immutableFields) {
+      if (field in safeUpdates) {
+        delete safeUpdates[field];
+        LogEngine.warn(`Attempted to update immutable field '${String(field)}' - ignoring`, {
+          field: String(field),
+          attemptedValue: updates[field]
+        });
+      }
+    }
+    
+    return safeUpdates;
+  }
+
+  /**
+   * Validate that critical immutable fields match expected values
+   */
+  private static validateImmutableFields<T extends Record<string, any>>(
+    existingData: T,
+    updates: Partial<T>,
+    fieldValidations: { field: keyof T; expectedValue: any }[]
+  ): boolean {
+    for (const { field, expectedValue } of fieldValidations) {
+      if (field in updates && updates[field] !== expectedValue) {
+        LogEngine.error(`Immutable field validation failed for '${String(field)}'`, {
+          field: String(field),
+          expectedValue,
+          attemptedValue: updates[field],
+          existingValue: existingData[field]
+        });
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Safely retrieve an array from storage, ensuring it's always an array
+   * This prevents runtime errors when storage returns unexpected types
+   */
+  private async getArrayFromStorage(key: string): Promise<any[]> {
+    const data = await this.storage.get(key);
+    return Array.isArray(data) ? data : [];
   }
 }
 
