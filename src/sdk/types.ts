@@ -107,6 +107,75 @@ export interface UserData {
   updatedAt: string;
 }
 
+// Admin profile data structures
+export interface AdminProfile {
+  telegramUserId: number;
+  telegramUsername?: string;
+  dmChatId: number; // DM chat ID for notifications
+  isActivated: boolean;
+  activatedAt: string;
+  lastActiveAt: string;
+}
+
+// Setup session data structures
+export interface SetupSession {
+  groupChatId: number;
+  groupChatName: string;
+  initiatingAdminId: number;
+  sessionId: string;
+  status: 'in_progress' | 'completed' | 'cancelled';
+  startedAt: string;
+  expiresAt: string; // startedAt + 3 minutes
+  currentStep: string;
+}
+
+// DM Setup Wizard interfaces
+export interface DmSetupSession {
+  sessionId: string;
+  adminId: number;
+  groupChatId: number;
+  groupChatName: string;
+  status: 'active' | 'completed' | 'cancelled';
+  startedAt: string;
+  expiresAt: string; // Extended timeout for DM sessions (10 minutes)
+  currentStep: string;
+  stepData?: Record<string, any>;
+  messageIds?: number[]; // Track wizard messages for cleanup
+}
+
+// Message template interfaces
+export interface MessageTemplate {
+  id: string;
+  groupChatId: number;
+  templateType: MessageTemplateType;
+  name: string;
+  content: string;
+  variables: string[]; // Available variables for this template
+  isDefault: boolean;
+  isActive: boolean;
+  createdBy: number;
+  createdAt: string;
+  lastModifiedAt: string;
+  version: number;
+}
+
+export type MessageTemplateType = 
+  | 'ticket_created'
+  | 'ticket_updated'
+  | 'agent_response'
+  | 'ticket_closed'
+  | 'welcome_message'
+  | 'error_message'
+  | 'setup_complete';
+
+export interface TemplateVariable {
+  name: string;
+  description: string;
+  category: 'core' | 'ticket' | 'user' | 'group' | 'time';
+  example: string;
+  required: boolean;
+}
+
 // User state for conversations
 export interface UserState {
   currentField?: string;
@@ -221,6 +290,28 @@ export interface IBotsStore {
   storeUser(userData: UserData): Promise<boolean>;
   getUserByTelegramId(telegramUserId: number): Promise<UserData | null>;
   updateUser(telegramUserId: number, updates: Partial<UserData>): Promise<boolean>;
+  
+  // Admin profile operations
+  storeAdminProfile(adminData: AdminProfile): Promise<boolean>;
+  getAdminProfile(telegramUserId: number): Promise<AdminProfile | null>;
+  updateAdminProfile(telegramUserId: number, updates: Partial<AdminProfile>): Promise<boolean>;
+  deleteAdminProfile(telegramUserId: number): Promise<boolean>;
+  
+  // Setup session operations
+  storeSetupSession(sessionData: SetupSession): Promise<boolean>;
+  getSetupSession(sessionId: string): Promise<SetupSession | null>;
+  getActiveSetupSessionByAdmin(adminId: number): Promise<SetupSession | null>;
+  updateSetupSession(sessionId: string, updates: Partial<SetupSession>): Promise<boolean>;
+  deleteSetupSession(sessionId: string): Promise<boolean>;
+  cleanupExpiredSessions(): Promise<number>; // Returns count of cleaned sessions
+  
+  // DM setup session operations
+  storeDmSetupSession(sessionData: DmSetupSession): Promise<boolean>;
+  getDmSetupSession(sessionId: string): Promise<DmSetupSession | null>;
+  getActiveDmSetupSessionByAdmin(adminId: number): Promise<DmSetupSession | null>;
+  updateDmSetupSession(sessionId: string, updates: Partial<DmSetupSession>): Promise<boolean>;
+  deleteDmSetupSession(sessionId: string): Promise<boolean>;
+  cleanupExpiredDmSessions(): Promise<number>; // Returns count of cleaned sessions
   
   // Agent message operations
   storeAgentMessage(messageData: AgentMessageData): Promise<boolean>;

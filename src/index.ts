@@ -1,5 +1,7 @@
 /**
- * Unthread Telegram Bot - Main Application Entry Point
+ * Unthread Telegram Bot - Main Application Enimport { TelegramWebhookHandler } from './handlers/webhookMessage.js';
+import { startSessionCleanupTask, stopSessionCleanupTask } from './utils/sessionTasks.js';
+import packageJSON from '../package.json' with { type: 'json';y Point
  * 
  * This is the main entry point for the Unthread Telegram Bot application that bridges
  * Telegram conversations with the Unthread customer support platform. The bot enables
@@ -42,6 +44,7 @@ import {
     cancelCommand, 
     resetCommand,
     setupCommand,
+    activateCommand,
     processSupportConversation 
 } from './commands/index.js';
 import { handleMessage } from './events/message.js';
@@ -49,6 +52,7 @@ import { db } from './database/connection.js';
 import { BotsStore } from './sdk/bots-brain/index.js';
 import { WebhookConsumer } from './sdk/unthread-webhook/index.js';
 import { TelegramWebhookHandler } from './handlers/webhookMessage.js';
+import { startSessionCleanupTask, stopSessionCleanupTask } from './utils/sessionTasks.js';
 import packageJSON from '../package.json' with { type: 'json' };
 import { LogEngine } from '@wgtechlabs/log-engine';
 import type { BotContext } from './types/index.js';
@@ -163,6 +167,7 @@ bot.command('support', commandMiddleware, wrapCommandHandler(supportCommand, 'su
 bot.command('cancel', commandMiddleware, wrapCommandHandler(cancelCommand, 'cancel'));
 bot.command('reset', commandMiddleware, wrapCommandHandler(resetCommand, 'reset'));
 bot.command('setup', commandMiddleware, wrapCommandHandler(setupCommand, 'setup'));
+bot.command('activate', commandMiddleware, wrapCommandHandler(activateCommand, 'activate'));
 
 // Register message handlers with middleware
 bot.on('text', async (ctx, next) => {
@@ -400,6 +405,11 @@ LogEngine.info('Bot is running and listening for messages...');
 startPolling(bot);
 
 /**
+ * Start session cleanup task
+ */
+const sessionCleanupTask = startSessionCleanupTask();
+
+/**
  * Global error handling middleware for Telegram API errors
  * 
  * Catches and handles common Telegram API errors like:
@@ -469,6 +479,10 @@ bot.catch(async (error: any, ctx?: BotContext) => {
  */
 async function gracefulShutdown(): Promise<void> {
     try {
+        // Stop session cleanup task
+        stopSessionCleanupTask(sessionCleanupTask);
+        LogEngine.info('Session cleanup task stopped');
+        
         if (webhookConsumer) {
             await webhookConsumer.stop();
             LogEngine.info('Webhook consumer stopped');
