@@ -1,7 +1,5 @@
 /**
- * Unthread Telegram Bot - Main Application Enimport { TelegramWebhookHandler } from './handlers/webhookMessage.js';
-import { startSessionCleanupTask, stopSessionCleanupTask } from './utils/sessionTasks.js';
-import packageJSON from '../package.json' with { type: 'json';y Point
+ * Unthread Telegram Bot - Main Application Entry Point
  * 
  * This is the main entry point for the Unthread Telegram Bot application that bridges
  * Telegram conversations with the Unthread customer support platform. The bot enables
@@ -45,7 +43,8 @@ import {
     resetCommand,
     setupCommand,
     activateCommand,
-    processSupportConversation 
+    processSupportConversation,
+    templatesCommand
 } from './commands/index.js';
 import { handleMessage } from './events/message.js';
 import { db } from './database/connection.js';
@@ -168,6 +167,7 @@ bot.command('cancel', commandMiddleware, wrapCommandHandler(cancelCommand, 'canc
 bot.command('reset', commandMiddleware, wrapCommandHandler(resetCommand, 'reset'));
 bot.command('setup', commandMiddleware, wrapCommandHandler(setupCommand, 'setup'));
 bot.command('activate', commandMiddleware, wrapCommandHandler(activateCommand, 'activate'));
+bot.command('templates', commandMiddleware, wrapCommandHandler(templatesCommand, 'templates'));
 
 // Register message handlers with middleware
 bot.on('text', async (ctx, next) => {

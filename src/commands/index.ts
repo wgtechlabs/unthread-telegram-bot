@@ -40,7 +40,8 @@ import { safeReply, safeEditMessageText } from '../bot.js';
 import { validateAdminAccess, logPermissionEvent } from '../utils/permissions.js';
 import { isAdminUser } from '../config/env.js';
 import { checkAndPromptBotAdmin, isBotAdmin, handleRetryBotAdminCheck, sendBotAdminHelpMessage } from '../utils/botPermissions.js';
-import { isValidAdmin, isActivatedAdmin, createAdminProfile, updateAdminLastActive, createSetupSession, canStartSetup, notifyOtherAdmins, isSessionExpired, getSessionTimeRemaining, createDmSetupSession, canStartDmSetup } from '../utils/adminManager.js';
+import { isValidAdmin, isActivatedAdmin, createAdminProfile, updateAdminLastActive, createSetupSession, canStartSetup, notifyOtherAdmins, isSessionExpired, getSessionTimeRemaining, createDmSetupSession, canStartDmSetup, notifyAdminsOfSetupCompletion, notifyAdminsOfTemplateChange } from '../utils/adminManager.js';
+import { TemplateManager } from '../utils/templateManager.js';
 import type { BotContext, SupportField, SupportFormState, ProfileUpdateState } from '../types/index.js';
 import type { SetupSession } from '../sdk/types.js';
 import { BotsStore } from '../sdk/bots-brain/index.js';
@@ -180,6 +181,7 @@ const generateAdminUserHelp = (): string => {
 **Administration:**
 • \`/setup\` - Configure group for support tickets
 • \`/activate\` - Activate admin profile for DM access (private chat only)
+• \`/templates\` - Manage message templates (group chat only)
 
 **Information:**
 • \`/help\` - Show this help message
@@ -455,7 +457,7 @@ const activateCommand = async (ctx: BotContext): Promise<void> => {
 /**
  * Process text input for setup wizard
  */
-export const processSetupTextInput = async (ctx: BotContext): Promise<boolean> => {
+const processSetupTextInput = async (ctx: BotContext): Promise<boolean> => {
     try {
         if (!ctx.message || !('text' in ctx.message) || !ctx.from) {
             return false;
@@ -566,6 +568,25 @@ const handleCustomerNameInput = async (ctx: BotContext, setupState: any, custome
         await BotsStore.storeGroupConfig(groupConfig);
         await BotsStore.clearSetupState(setupState.chatId);
 
+        // Initialize default message templates for the group
+        try {
+            const templateManager = new TemplateManager(BotsStore.getInstance());
+            await templateManager.initializeDefaultTemplates(
+                setupState.chatId,
+                setupState.initiatedBy
+            );
+            LogEngine.info('Default templates initialized for group', {
+                chatId: setupState.chatId,
+                customerId: customerId
+            });
+        } catch (templateError) {
+            LogEngine.warn('Failed to initialize default templates', {
+                chatId: setupState.chatId,
+                error: templateError instanceof Error ? templateError.message : 'Unknown error'
+            });
+            // Don't fail setup if template initialization fails
+        }
+
         const successMessage = `✅ **Setup Complete!**
 
 **Customer Created:** ${actualCustomerName}
@@ -577,6 +598,30 @@ const handleCustomerNameInput = async (ctx: BotContext, setupState: any, custome
 Users can now use \`/support\` to create tickets that will be linked to this customer account.`;
 
         await safeReply(ctx, successMessage, { parse_mode: 'Markdown' });
+
+        // Notify other admins about setup completion
+        try {
+            const notificationResult = await notifyAdminsOfSetupCompletion(
+                setupState.chatId,
+                setupState.initiatedBy,
+                ctx.telegram,
+                setupState.metadata?.chatTitle
+            );
+            
+            LogEngine.info('Admin notification completed', {
+                chatId: setupState.chatId,
+                success: notificationResult.success,
+                failed: notificationResult.failed,
+                skipped: notificationResult.skipped
+            });
+        } catch (notificationError) {
+            LogEngine.error('Failed to send admin notifications', {
+                error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
+                chatId: setupState.chatId,
+                setupBy: setupState.initiatedBy
+            });
+            // Don't fail setup if notifications fail
+        }
 
         LogEngine.info('Setup completed with custom customer name', {
             chatId: setupState.chatId,
@@ -600,6 +645,130 @@ Users can now use \`/support\` to create tickets that will be linked to this cus
     }
 };
 
+/**
+ * Handler for the /templates command (admin only, group chats only)
+ * 
+ * This command allows admins to manage message templates for the group.
+ */
+const templatesCommand = async (ctx: BotContext): Promise<void> => {
+    const chatId = ctx.chat?.id;
+    const telegramUserId = ctx.from?.id;
+    const chatType = ctx.chat?.type;
+
+    if (!chatId || !telegramUserId) {
+        await safeReply(ctx, '❌ Unable to determine chat or user information.');
+        return;
+    }
+
+    // Only allow in group chats
+    if (chatType === 'private') {
+        await safeReply(ctx,
+            "❌ **Templates Management**\n\n" +
+            "Template management is only available in group chats where the bot is configured.\n\n" +
+            "Please use this command in a group chat.",
+            { parse_mode: 'Markdown' }
+        );
+        return;
+    }
+
+    // Check if user is admin
+    if (!isAdminUser(telegramUserId)) {
+        await safeReply(ctx,
+            "❌ **Access Denied**\n\n" +
+            "Only authorized administrators can manage message templates.\n\n" +
+            "Contact your system administrator if you need access.",
+            { parse_mode: 'Markdown' }
+        );
+        return;
+    }
+
+    // Check if admin is activated
+    if (!await isActivatedAdmin(telegramUserId)) {
+        await safeReply(ctx,
+            "❌ **Admin Not Activated**\n\n" +
+            "You must activate your admin profile first.\n\n" +
+            "Send `/activate` to me in a private chat to get started.",
+            { parse_mode: 'Markdown' }
+        );
+        return;
+    }
+
+    try {
+        // Get template statistics for the group
+        const templateManager = new TemplateManager(BotsStore.getInstance());
+        const stats = await templateManager.getTemplateStats(chatId);
+
+        const templatesInfo = `📝 **Message Templates**
+
+**Current Statistics:**
+• Total Templates: ${stats.totalTemplates}
+• Active Templates: ${stats.activeTemplates}
+• Last Modified: ${stats.lastModified ? new Date(stats.lastModified).toLocaleString() : 'Never'}
+
+**Template Types:**${Object.entries(stats.templatesByType).map(([type, count]) => 
+    `\n• ${type.replace(/_/g, ' ')}: ${count}`
+).join('')}
+
+**Available Actions:**
+• \`/templates list\` - View all templates
+• \`/templates create\` - Create new template
+• \`/templates edit <id>\` - Edit template
+• \`/templates preview <id>\` - Preview template
+
+**Advanced:**
+For advanced template management and customization, use the DM setup wizard:
+Send me \`/setup\` in this group and choose "Advanced Setup" to configure templates with a guided interface.`;
+
+        await safeReply(ctx, templatesInfo, { parse_mode: 'Markdown' });
+
+        LogEngine.info('Templates command executed', {
+            userId: telegramUserId,
+            chatId: chatId,
+            username: ctx.from?.username,
+            templateStats: stats
+        });
+
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error in templatesCommand', {
+            error: err.message,
+            chatId,
+            userId: telegramUserId
+        });
+
+        await safeReply(ctx,
+            "❌ **Templates Error**\n\n" +
+            "An error occurred while loading template information. Please try again later.",
+            { parse_mode: 'Markdown' }
+        );
+    }
+};
+
+/**
+ * Placeholder command handlers - TODO: Implement full functionality
+ */
+
+const supportCommand = async (ctx: BotContext): Promise<void> => {
+    await safeReply(ctx, 'Support command not yet implemented.');
+};
+
+const cancelCommand = async (ctx: BotContext): Promise<void> => {
+    await safeReply(ctx, 'Cancel command not yet implemented.');
+};
+
+const resetCommand = async (ctx: BotContext): Promise<void> => {
+    await safeReply(ctx, 'Reset command not yet implemented.');
+};
+
+const setupCommand = async (ctx: BotContext): Promise<void> => {
+    await safeReply(ctx, 'Setup command not yet implemented.');
+};
+
+const processSupportConversation = async (ctx: BotContext): Promise<boolean> => {
+    // Placeholder for support conversation processing
+    return false; // Return false indicating no message was handled
+};
+
 // ================================
 // Exports
 // ================================
@@ -610,5 +779,11 @@ export {
     versionCommand,
     aboutCommand,
     activateCommand,
-    processSetupTextInput
+    supportCommand,
+    cancelCommand,
+    resetCommand,
+    setupCommand,
+    processSupportConversation,
+    processSetupTextInput,
+    templatesCommand
 };

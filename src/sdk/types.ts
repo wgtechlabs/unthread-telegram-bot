@@ -166,7 +166,11 @@ export type MessageTemplateType =
   | 'ticket_closed'
   | 'welcome_message'
   | 'error_message'
-  | 'setup_complete';
+  | 'setup_complete'
+  | 'admin_config_changed'
+  | 'admin_template_changed'
+  | 'admin_setup_completed'
+  | 'admin_notification_failed';
 
 export interface TemplateVariable {
   name: string;

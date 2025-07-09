@@ -157,33 +157,6 @@ export async function createSetupSession(
 }
 
 /**
- * Get all activated admin profiles (for notifications)
- */
-export async function getActivatedAdmins(): Promise<AdminProfile[]> {
-  try {
-    // Note: This is a simplified implementation
-    // In a real system, you'd want to iterate through all admin user IDs
-    // from the environment variable and check their activation status
-    const adminUserIds = process.env.ADMIN_USERS?.split(',').map(Number) || [];
-    const activatedAdmins: AdminProfile[] = [];
-
-    for (const userId of adminUserIds) {
-      const profile = await BotsStore.getAdminProfile(userId);
-      if (profile && profile.isActivated) {
-        activatedAdmins.push(profile);
-      }
-    }
-
-    return activatedAdmins;
-  } catch (error) {
-    LogEngine.error('Error getting activated admins', {
-      error: (error as Error).message
-    });
-    return [];
-  }
-}
-
-/**
  * Send notification to other admins (excluding the initiator)
  */
 export async function notifyOtherAdmins(
@@ -441,5 +414,270 @@ export async function cancelDmSetupSession(sessionId: string): Promise<boolean> 
       sessionId
     });
     return false;
+  }
+}
+
+/**
+ * Admin Notification System
+ * 
+ * Functions to notify all activated admins of configuration changes,
+ * template updates, and other important events.
+ */
+
+import { MessageFormatter } from './messageFormatter.js';
+
+interface NotificationContext {
+  groupId: number;
+  groupTitle?: string;
+  adminName?: string;
+  changeType: string;
+  changeDetails?: string;
+  timestamp: string;
+}
+
+/**
+ * Get all activated admin profiles for a group
+ */
+export async function getActivatedAdmins(groupChatId?: number): Promise<AdminProfile[]> {
+  try {
+    const allAdmins = await BotsStore.getAllAdminProfiles();
+    return allAdmins.filter(admin => admin.isActivated);
+  } catch (error) {
+    LogEngine.error('Error fetching activated admins', {
+      error: (error as Error).message,
+      groupChatId
+    });
+    return [];
+  }
+}
+
+/**
+ * Send notification to a single admin
+ */
+async function sendNotificationToAdmin(
+  adminProfile: AdminProfile, 
+  messageText: string,
+  bot: any
+): Promise<boolean> {
+  try {
+    if (!adminProfile.dmChatId) {
+      LogEngine.warn('Admin has no DM chat ID, skipping notification', {
+        adminId: adminProfile.telegramUserId
+      });
+      return false;
+    }
+
+    await bot.sendMessage(adminProfile.dmChatId, messageText, { 
+      parse_mode: 'HTML',
+      disable_web_page_preview: true 
+    });
+    
+    LogEngine.info('Notification sent to admin', {
+      adminId: adminProfile.telegramUserId,
+      dmChatId: adminProfile.dmChatId
+    });
+    return true;
+  } catch (error) {
+    LogEngine.error('Failed to send notification to admin', {
+      error: (error as Error).message,
+      adminId: adminProfile.telegramUserId,
+      dmChatId: adminProfile.dmChatId
+    });
+    return false;
+  }
+}
+
+/**
+ * Notify all admins except the initiating admin about a configuration change
+ */
+export async function notifyAdminsOfConfigChange(
+  groupChatId: number,
+  initiatingAdminId: number,
+  changeType: string,
+  changeDetails: string,
+  bot: any,
+  groupTitle?: string
+): Promise<{ success: number; failed: number; skipped: number }> {
+  try {
+    const admins = await getActivatedAdmins(groupChatId);
+    const filteredAdmins = admins.filter(admin => admin.telegramUserId !== initiatingAdminId);
+    
+    if (filteredAdmins.length === 0) {
+      LogEngine.info('No admins to notify (excluding initiator)', {
+        groupChatId,
+        initiatingAdminId,
+        totalAdmins: admins.length
+      });
+      return { success: 0, failed: 0, skipped: admins.length };
+    }
+
+    const context: NotificationContext = {
+      groupId: groupChatId,
+      groupTitle: groupTitle || `Group ${groupChatId}`,
+      changeType,
+      changeDetails,
+      timestamp: new Date().toISOString()
+    };
+
+    const formatter = new MessageFormatter(BotsStore.getInstance());
+    const messageText = await formatter.formatMessage(
+      groupChatId,
+      'admin_config_changed',
+      context
+    );
+
+    let successCount = 0;
+    let failedCount = 0;
+
+    // Send notifications to all filtered admins
+    for (const admin of filteredAdmins) {
+      const success = await sendNotificationToAdmin(admin, messageText, bot);
+      if (success) {
+        successCount++;
+      } else {
+        failedCount++;
+      }
+      
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    LogEngine.info('Admin notification batch completed', {
+      groupChatId,
+      changeType,
+      success: successCount,
+      failed: failedCount,
+      skipped: admins.length - filteredAdmins.length
+    });
+
+    return { 
+      success: successCount, 
+      failed: failedCount, 
+      skipped: admins.length - filteredAdmins.length 
+    };
+  } catch (error) {
+    LogEngine.error('Error in admin notification system', {
+      error: (error as Error).message,
+      groupChatId,
+      changeType
+    });
+    return { success: 0, failed: 0, skipped: 0 };
+  }
+}
+
+/**
+ * Notify all admins about template changes
+ */
+export async function notifyAdminsOfTemplateChange(
+  groupChatId: number,
+  initiatingAdminId: number,
+  templateType: string,
+  action: 'created' | 'updated' | 'deleted' | 'activated',
+  templateName: string,
+  bot: any,
+  groupTitle?: string
+): Promise<{ success: number; failed: number; skipped: number }> {
+  const changeDetails = `Template "${templateName}" (${templateType}) was ${action}`;
+  
+  return await notifyAdminsOfConfigChange(
+    groupChatId,
+    initiatingAdminId,
+    'Template Change',
+    changeDetails,
+    bot,
+    groupTitle
+  );
+}
+
+/**
+ * Notify all admins about setup completion
+ */
+export async function notifyAdminsOfSetupCompletion(
+  groupChatId: number,
+  completingAdminId: number,
+  bot: any,
+  groupTitle?: string
+): Promise<{ success: number; failed: number; skipped: number }> {
+  const changeDetails = 'Group setup and configuration completed';
+  
+  return await notifyAdminsOfConfigChange(
+    groupChatId,
+    completingAdminId,
+    'Setup Completed',
+    changeDetails,
+    bot,
+    groupTitle
+  );
+}
+
+/**
+ * Report notification failures to admins who can receive them
+ */
+export async function reportNotificationFailures(
+  groupChatId: number,
+  failedCount: number,
+  changeType: string,
+  bot: any
+): Promise<void> {
+  if (failedCount === 0) return;
+
+  try {
+    const admins = await getActivatedAdmins(groupChatId);
+    const workingAdmins: AdminProfile[] = [];
+
+    // Find admins who can receive notifications
+    for (const admin of admins) {
+      if (admin.dmChatId) {
+        try {
+          // Test if we can send to this admin
+          await bot.sendMessage(admin.dmChatId, '🔍 Testing notification delivery...', { 
+            parse_mode: 'HTML' 
+          });
+          workingAdmins.push(admin);
+        } catch (error) {
+          // Admin's DM is not working
+          LogEngine.warn('Admin DM not accessible for failure report', {
+            adminId: admin.telegramUserId
+          });
+        }
+      }
+    }
+
+    if (workingAdmins.length === 0) {
+      LogEngine.error('No admins available to report notification failures', {
+        groupChatId,
+        failedCount,
+        changeType
+      });
+      return;
+    }
+
+    const context = {
+      groupId: groupChatId,
+      failedCount,
+      changeType,
+      timestamp: new Date().toISOString()
+    };
+
+    const formatter = new MessageFormatter(BotsStore.getInstance());
+    const messageText = await formatter.formatMessage(
+      groupChatId,
+      'admin_notification_failed',
+      context
+    );
+
+    // Send failure report to working admins
+    for (const admin of workingAdmins) {
+      await sendNotificationToAdmin(admin, messageText, bot);
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+  } catch (error) {
+    LogEngine.error('Error reporting notification failures', {
+      error: (error as Error).message,
+      groupChatId,
+      failedCount,
+      changeType
+    });
   }
 }

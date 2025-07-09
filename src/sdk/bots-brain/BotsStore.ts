@@ -45,7 +45,9 @@ import type {
   SetupSession,
   DmSetupSession,
   IBotsStore,
-  StorageConfig
+  StorageConfig,
+  MessageTemplate,
+  MessageTemplateType
 } from '../types.js';
 import type { DatabaseConnection } from '../../database/connection.js';
 
@@ -1051,7 +1053,7 @@ export class BotsStore implements IBotsStore {
   // =====================================================================
 
   /**
-   * Store admin profile data
+   * Store admin profile data with ID tracking
    */
   async storeAdminProfile(adminData: AdminProfile): Promise<boolean> {
     try {
@@ -1064,6 +1066,15 @@ export class BotsStore implements IBotsStore {
       };
 
       await this.storage.set(`admin:profile:${adminData.telegramUserId}`, JSON.stringify(enrichedData));
+      
+      // Track admin ID in list for retrieval
+      const adminIdsKey = 'admin_profile_ids';
+      const existingIds = await this.storage.get(adminIdsKey) || [];
+      if (!existingIds.includes(adminData.telegramUserId)) {
+        existingIds.push(adminData.telegramUserId);
+        await this.storage.set(adminIdsKey, existingIds);
+      }
+      
       LogEngine.info(`Admin profile stored: ${adminData.telegramUserId}`);
       return true;
     } catch (error) {
@@ -1115,6 +1126,13 @@ export class BotsStore implements IBotsStore {
   async deleteAdminProfile(telegramUserId: number): Promise<boolean> {
     try {
       await this.storage.delete(`admin:profile:${telegramUserId}`);
+      
+      // Remove from admin IDs list
+      const adminIdsKey = 'admin_profile_ids';
+      const existingIds = await this.storage.get(adminIdsKey) || [];
+      const updatedIds = existingIds.filter((id: number) => id !== telegramUserId);
+      await this.storage.set(adminIdsKey, updatedIds);
+      
       LogEngine.info(`Admin profile deleted: ${telegramUserId}`);
       return true;
     } catch (error) {
@@ -1124,6 +1142,33 @@ export class BotsStore implements IBotsStore {
         telegramUserId
       });
       return false;
+    }
+  }
+
+  /**
+   * Get all admin profiles
+   */
+  async getAllAdminProfiles(): Promise<AdminProfile[]> {
+    try {
+      // Since there's no listKeys method, we'll track admin IDs separately
+      const adminIdsKey = 'admin_profile_ids';
+      const adminIds = await this.storage.get(adminIdsKey) || [];
+      
+      const profiles: AdminProfile[] = [];
+      for (const adminId of adminIds) {
+        const profile = await this.getAdminProfile(adminId);
+        if (profile) {
+          profiles.push(profile);
+        }
+      }
+      
+      return profiles;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to get all admin profiles', {
+        error: err.message
+      });
+      return [];
     }
   }
 
@@ -1439,6 +1484,10 @@ export class BotsStore implements IBotsStore {
     return BotsStore.getInstance().deleteAdminProfile(telegramUserId);
   }
 
+  static async getAllAdminProfiles(): Promise<AdminProfile[]> {
+    return BotsStore.getInstance().getAllAdminProfiles();
+  }
+
   static async storeSetupSession(sessionData: SetupSession): Promise<boolean> {
     return BotsStore.getInstance().storeSetupSession(sessionData);
   }
@@ -1503,6 +1552,112 @@ export class BotsStore implements IBotsStore {
 
   static async updateGroupConfig(chatId: number, updates: Partial<GroupConfig>): Promise<boolean> {
     return BotsStore.getInstance().updateGroupConfig(chatId, updates);
+  }
+
+  // Message template storage methods
+  async saveMessageTemplate(template: MessageTemplate): Promise<void> {
+    const key = BotsStore.getMessageTemplateKey(template.groupChatId, template.id);
+    await this.storage.set(key, template);
+    
+    // Also store the template ID in the list for retrieval
+    const templateIdsKey = `template_ids:${template.groupChatId}`;
+    const existingIds = await this.storage.get(templateIdsKey) || [];
+    if (!existingIds.includes(template.id)) {
+      existingIds.push(template.id);
+      await this.storage.set(templateIdsKey, existingIds);
+    }
+  }
+
+  async getMessageTemplate(groupChatId: number, templateId: string): Promise<MessageTemplate | null> {
+    const key = BotsStore.getMessageTemplateKey(groupChatId, templateId);
+    return await this.storage.get(key);
+  }
+
+  async getMessageTemplatesByType(groupChatId: number, templateType: MessageTemplateType): Promise<MessageTemplate[]> {
+    const allTemplates = await this.getAllMessageTemplates(groupChatId);
+    return allTemplates.filter(template => 
+      template.templateType === templateType && template.isActive
+    );
+  }
+
+  async getAllMessageTemplates(groupChatId: number): Promise<MessageTemplate[]> {
+    // Since there's no listKeys method, we need to store template IDs separately
+    // For now, let's return an empty array and implement this differently
+    const templateIdsKey = `template_ids:${groupChatId}`;
+    const templateIds = await this.storage.get(templateIdsKey) || [];
+    
+    const templates: MessageTemplate[] = [];
+    for (const templateId of templateIds) {
+      const template = await this.getMessageTemplate(groupChatId, templateId);
+      if (template) {
+        templates.push(template);
+      }
+    }
+    
+    return templates.sort((a, b) => b.version - a.version);
+  }
+
+  async getDefaultMessageTemplate(groupChatId: number, templateType: MessageTemplateType): Promise<MessageTemplate | null> {
+    const templates = await this.getMessageTemplatesByType(groupChatId, templateType);
+    return templates.find(template => template.isDefault) || null;
+  }
+
+  async getActiveMessageTemplate(groupChatId: number, templateType: MessageTemplateType): Promise<MessageTemplate | null> {
+    const templates = await this.getMessageTemplatesByType(groupChatId, templateType);
+    return templates.find(template => template.isActive) || null;
+  }
+
+  async deleteMessageTemplate(groupChatId: number, templateId: string): Promise<void> {
+    const key = BotsStore.getMessageTemplateKey(groupChatId, templateId);
+    await this.storage.delete(key);
+    
+    // Also remove from the template IDs list
+    const templateIdsKey = `template_ids:${groupChatId}`;
+    const existingIds = await this.storage.get(templateIdsKey) || [];
+    const updatedIds = existingIds.filter((id: string) => id !== templateId);
+    await this.storage.set(templateIdsKey, updatedIds);
+  }
+
+  async updateMessageTemplate(groupChatId: number, templateId: string, updates: Partial<MessageTemplate>): Promise<MessageTemplate | null> {
+    const existing = await this.getMessageTemplate(groupChatId, templateId);
+    if (!existing) return null;
+
+    const updated: MessageTemplate = {
+      ...existing,
+      ...updates,
+      lastModifiedAt: new Date().toISOString(),
+      version: existing.version + 1
+    };
+
+    await this.saveMessageTemplate(updated);
+    return updated;
+  }
+
+  async setDefaultTemplate(groupChatId: number, templateType: MessageTemplateType, templateId: string): Promise<boolean> {
+    // First, unset any existing default
+    const allTemplates = await this.getMessageTemplatesByType(groupChatId, templateType);
+    for (const template of allTemplates) {
+      if (template.isDefault) {
+        await this.updateMessageTemplate(groupChatId, template.id, { isDefault: false });
+      }
+    }
+
+    // Set the new default
+    const updated = await this.updateMessageTemplate(groupChatId, templateId, { 
+      isDefault: true,
+      isActive: true 
+    });
+    return updated !== null;
+  }
+
+  // Static helpers for templates
+  static getMessageTemplateKey(groupChatId: number, templateId: string): string {
+    return `template:${groupChatId}:${templateId}`;
+  }
+
+  static generateTemplateId(templateType: MessageTemplateType, groupChatId: number): string {
+    const timestamp = Date.now();
+    return `${templateType}_${groupChatId}_${timestamp}`;
   }
 }
 

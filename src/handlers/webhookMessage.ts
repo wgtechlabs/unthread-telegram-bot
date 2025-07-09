@@ -30,6 +30,8 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 import type { Telegraf } from 'telegraf';
 import type { BotContext } from '../types/index.js';
 import type { IBotsStore } from '../sdk/types.js';
+import { MessageFormatter, TemplateContext } from '../utils/messageFormatter';
+import { BotsStore } from '../sdk/bots-brain/BotsStore';
 
 /**
  * Handles incoming webhook messages from Unthread agents
@@ -38,10 +40,12 @@ import type { IBotsStore } from '../sdk/types.js';
 export class TelegramWebhookHandler {
   private bot: Telegraf<BotContext>;
   private botsStore: IBotsStore; // SDK type, properly typed with IBotsStore interface
+  private messageFormatter: MessageFormatter;
 
   constructor(bot: Telegraf<BotContext>, botsStore: IBotsStore) {
     this.bot = bot;
     this.botsStore = botsStore;
+    this.messageFormatter = new MessageFormatter(botsStore as BotsStore);
   }
 
   /**
@@ -146,8 +150,12 @@ export class TelegramWebhookHandler {
         messagePreview: messageText.substring(0, 100) + (messageText.length > 100 ? '...' : '')
       });
 
-      // 4. Format agent message for Telegram
-      const formattedMessage = this.formatAgentMessage(messageText, ticketData.friendlyId);
+      // 4. Format agent message using template system
+      const formattedMessage = await this.formatAgentMessageWithTemplate(
+        messageText, 
+        ticketData, 
+        event.data
+      );
       
       LogEngine.info('✅ Message formatted for Telegram', { 
         conversationId,
@@ -354,8 +362,12 @@ export class TelegramWebhookHandler {
         newStatus
       });
 
-      // 3. Format status update message for Telegram
-      const statusMessage = this.formatStatusUpdateMessage(newStatus, ticketData.friendlyId);
+      // 3. Format status update message using template system
+      const statusMessage = await this.formatStatusUpdateWithTemplate(
+        ticketData, 
+        newStatus, 
+        event.data
+      );
       
       LogEngine.info('✅ Status message formatted for Telegram', { 
         conversationId,
@@ -480,6 +492,105 @@ export class TelegramWebhookHandler {
     }
 
     return message;
+  }
+
+  /**
+   * Format agent message using template system
+   * @param text - The agent message text
+   * @param ticketData - The ticket data from storage
+   * @param eventData - The webhook event data
+   * @returns Formatted message
+   */
+  async formatAgentMessageWithTemplate(text: string, ticketData: any, eventData: any): Promise<string> {
+    try {
+      // Build template context
+      const context: TemplateContext = {
+        botName: 'Support Bot',
+        groupName: 'Support Team',
+        timestamp: new Date().toLocaleString(),
+        ticketId: ticketData.friendlyId,
+        ticketTitle: eventData.subject || 'Support Request',
+        ticketDescription: text,
+        ticketStatus: 'Open',
+        ticketUrl: eventData.url || undefined,
+        agentName: eventData.userName || eventData.agentName || 'Support Agent',
+        agentEmail: eventData.userEmail || eventData.agentEmail || undefined,
+        userName: ticketData.userName || undefined,
+        userEmail: ticketData.userEmail || undefined
+      };
+
+      // Get group chat ID for template lookup
+      const groupChatId = ticketData.chatId;
+
+      // Format using template system
+      const formatted = await this.messageFormatter.formatMessage(
+        groupChatId,
+        'agent_response',
+        context
+      );
+
+      return formatted;
+    } catch (error) {
+      LogEngine.warn('Failed to format message with template, using fallback', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        ticketId: ticketData.friendlyId
+      });
+      
+      // Fallback to original formatting
+      return this.formatAgentMessage(text, ticketData.friendlyId);
+    }
+  }
+
+  /**
+   * Format ticket status update using template system
+   * @param ticketData - The ticket data from storage
+   * @param status - The new status
+   * @param eventData - The webhook event data
+   * @returns Formatted message
+   */
+  async formatStatusUpdateWithTemplate(ticketData: any, status: string, eventData: any): Promise<string> {
+    try {
+      // Build template context
+      const context: TemplateContext = {
+        botName: 'Support Bot',
+        groupName: 'Support Team',
+        timestamp: new Date().toLocaleString(),
+        ticketId: ticketData.friendlyId,
+        ticketTitle: eventData.subject || 'Support Request',
+        ticketStatus: status === 'closed' ? 'Closed' : 'Updated',
+        ticketUrl: eventData.url || undefined,
+        agentName: eventData.userName || eventData.agentName || 'Support Agent',
+        agentEmail: eventData.userEmail || eventData.agentEmail || undefined,
+        userName: ticketData.userName || undefined,
+        userEmail: ticketData.userEmail || undefined
+      };
+
+      // Get group chat ID for template lookup
+      const groupChatId = ticketData.chatId;
+
+      // Choose template type based on status
+      const templateType = status === 'closed' ? 'ticket_closed' : 'ticket_updated';
+
+      // Format using template system
+      const formatted = await this.messageFormatter.formatMessage(
+        groupChatId,
+        templateType,
+        context
+      );
+
+      return formatted;
+    } catch (error) {
+      LogEngine.warn('Failed to format status update with template, using fallback', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        ticketId: ticketData.friendlyId,
+        status
+      });
+      
+      // Fallback to simple status message
+      const statusIcon = status === 'closed' ? '✅' : '📝';
+      const statusText = status === 'closed' ? 'Closed' : 'Updated';
+      return `${statusIcon} **Ticket ${statusText}**\n\nTicket #${ticketData.friendlyId} has been ${status}.`;
+    }
   }
 
   /**
