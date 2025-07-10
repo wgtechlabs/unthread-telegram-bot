@@ -422,7 +422,8 @@ export class TemplateManager {
       groupName: 'Customer Support',
       timestamp: new Date().toLocaleString(),
       userName: 'John Doe',
-      userEmail: 'john@example.com'
+      userEmail: 'john@example.com',
+      customerName: 'Acme Corporation'
     };
 
     switch (templateType) {

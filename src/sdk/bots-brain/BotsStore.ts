@@ -1585,18 +1585,29 @@ export class BotsStore implements IBotsStore {
   }
 
   async getAllMessageTemplates(groupChatId: number): Promise<MessageTemplate[]> {
-    // Since there's no listKeys method, we need to store template IDs separately
-    // For now, let's return an empty array and implement this differently
     const templateIdsKey = `template_ids:${groupChatId}`;
     const templateIds = await this.getArrayFromStorage(templateIdsKey);
     
-    const templates: MessageTemplate[] = [];
-    for (const templateId of templateIds) {
-      const template = await this.getMessageTemplate(groupChatId, templateId);
-      if (template) {
-        templates.push(template);
-      }
+    if (templateIds.length === 0) {
+      return [];
     }
+
+    // Use Promise.all for concurrent retrieval to reduce latency
+    const templatePromises = templateIds.map(async (templateId: string) => {
+      try {
+        return await this.getMessageTemplate(groupChatId, templateId);
+      } catch (error) {
+        LogEngine.warn('Failed to retrieve template', {
+          templateId,
+          groupChatId,
+          error: (error as Error).message
+        });
+        return null;
+      }
+    });
+    
+    const templateResults = await Promise.all(templatePromises);
+    const templates = templateResults.filter((template): template is MessageTemplate => template !== null);
     
     return templates.sort((a, b) => b.version - a.version);
   }
