@@ -28,8 +28,8 @@
  * @version 1.0.0
  * @since 2025
  */
-import { MessageTemplate, MessageTemplateType, TemplateVariable } from '../sdk/types';
-import { BotsStore } from '../sdk/bots-brain/BotsStore';
+import { MessageTemplate, MessageTemplateType, TemplateVariable } from '../sdk/types.js';
+import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
 
 export interface TemplateContext {
   // Core variables

@@ -30,8 +30,8 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 import type { Telegraf } from 'telegraf';
 import type { BotContext } from '../types/index.js';
 import type { IBotsStore } from '../sdk/types.js';
-import { MessageFormatter, TemplateContext } from '../utils/messageFormatter';
-import { BotsStore } from '../sdk/bots-brain/BotsStore';
+import { MessageFormatter, TemplateContext } from '../utils/messageFormatter.js';
+import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
 
 /**
  * Handles incoming webhook messages from Unthread agents

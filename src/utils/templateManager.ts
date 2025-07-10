@@ -30,9 +30,9 @@
  * @version 1.0.0
  * @since 2025
  */
-import { MessageTemplate, MessageTemplateType } from '../sdk/types';
-import { BotsStore } from '../sdk/bots-brain/BotsStore';
-import { MessageFormatter } from './messageFormatter';
+import { MessageTemplate, MessageTemplateType } from '../sdk/types.js';
+import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
+import { MessageFormatter } from './messageFormatter.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 
 export interface TemplateCreationOptions {
