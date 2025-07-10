@@ -4,9 +4,9 @@
 
 [![banner](https://raw.githubusercontent.com/wgtechlabs/unthread-telegram-bot/main/.github/assets/repo_banner.jpg)](https://github.com/wgtechlabs/unthread-telegram-bot)
 
-**Official Unthread Extension** - The Unthread Telegram Bot is the official integration that connects your customer and partner Telegram chats with Unthread's ticket management system. Create and manage support tickets directly within dedicated Telegram groups, with real-time bidirectional communication between your team and clients.
+**Official Unthread Extension** - The Unthread Telegram Bot is the official integration that connects your customer and partner Telegram chats with Unthread's comprehensive ticket management system. Create and manage support tickets directly within dedicated Telegram groups, with real-time bidirectional communication between your team and clients.
 
-Perfect for businesses managing customer support through private Telegram groups or partner channels - not for public community groups.
+This bot is designed for businesses managing customer support through private Telegram groups or dedicated partner channels - optimized for professional support workflows rather than public community groups.
 
 ## 🤗 Special Thanks
 
@@ -61,6 +61,7 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
 - **✅ Status Notifications** - Real-time alerts when tickets are opened or closed
 - **🔒 Enterprise-Ready** - Secure, scalable architecture with comprehensive logging
 - **⚡ Easy Deployment** - Quick setup with Docker or manual installation
+- **🛠️ Template System** - Customizable message templates for consistent communication
 
 ## 🚀 Quick Start
 

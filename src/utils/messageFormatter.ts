@@ -1,3 +1,33 @@
+/**
+ * Unthread Telegram Bot - Message Formatter Module
+ * 
+ * Provides comprehensive message templating and formatting capabilities for the bot.
+ * This module handles dynamic message generation, template processing with variable
+ * substitution, conditional rendering, and multi-language support.
+ * 
+ * Core Features:
+ * - Dynamic template processing with variable substitution
+ * - Conditional blocks and loops within templates
+ * - Default template fallbacks for all message types
+ * - Nested property access in template variables
+ * - ReDoS attack prevention with content size limits
+ * - Multi-language template support
+ * 
+ * Template Syntax:
+ * - Variables: {{variable_name}} or {{object.property}}
+ * - Conditionals: {{#if condition}}...{{/if}}
+ * - Loops: {{#each array}}...{{/each}}
+ * - Comments: {{!-- comment --}}
+ * 
+ * Security:
+ * - Template content size limits to prevent ReDoS attacks
+ * - Safe variable substitution with fallbacks
+ * - Input sanitization for dynamic content
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ * @version 1.0.0
+ * @since 2025
+ */
 import { MessageTemplate, MessageTemplateType, TemplateVariable } from '../sdk/types';
 import { BotsStore } from '../sdk/bots-brain/BotsStore';
 

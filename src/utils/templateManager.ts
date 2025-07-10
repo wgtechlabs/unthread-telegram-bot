@@ -1,3 +1,35 @@
+/**
+ * Unthread Telegram Bot - Template Management Module
+ * 
+ * Provides comprehensive template management capabilities for the bot's messaging system.
+ * This module handles creation, updating, activation, and management of message templates
+ * used throughout the bot's communication workflows.
+ * 
+ * Core Features:
+ * - Template creation with validation and variable extraction
+ * - Template activation and deactivation management
+ * - Default template handling and fallbacks
+ * - Template content validation and syntax checking
+ * - Integration with MessageFormatter for template processing
+ * - Admin notification system for template changes
+ * 
+ * Template Types:
+ * - Support ticket confirmations
+ * - Agent response notifications
+ * - Status update messages
+ * - Error and information messages
+ * - Custom communication templates
+ * 
+ * Security:
+ * - Template content validation to prevent injection attacks
+ * - Variable syntax verification
+ * - Access control for template management operations
+ * - Comprehensive logging for audit trails
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ * @version 1.0.0
+ * @since 2025
+ */
 import { MessageTemplate, MessageTemplateType } from '../sdk/types';
 import { BotsStore } from '../sdk/bots-brain/BotsStore';
 import { MessageFormatter } from './messageFormatter';

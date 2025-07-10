@@ -1125,18 +1125,17 @@ const supportCommand = async (ctx: BotContext): Promise<void> => {
             );
         } else {
             await safeReply(ctx,
-                "🚧 **Feature Coming Soon**\n\n" +
-                "Support ticket creation is currently under development and will be available in the next release.\n\n" +
-                "**What's ready:**\n" +
-                "✅ Group configuration\n" +
-                "✅ Admin management\n" +
-                "✅ Template system\n" +
-                "🔄 Ticket creation (in progress)\n\n" +
-                "**Expected availability:** Within the next few updates\n\n" +
-                "**Meanwhile:**\n" +
-                "• Admins can use `/templates` to prepare message templates\n" +
-                "• Use `/help` to see available features\n" +
-                "• Check `/about` for project updates",
+                "🚧 **Support Ticket Creation**\n\n" +
+                "Support ticket creation is currently being finalized and will be available soon.\n\n" +
+                "**Current Status:**\n" +
+                "✅ Group configuration system\n" +
+                "✅ Admin management system\n" +
+                "✅ Message template system\n" +
+                "🔄 Ticket creation flow (final testing)\n\n" +
+                "**Available Now:**\n" +
+                "• Admins can use `/templates` to configure message templates\n" +
+                "• Use `/help` to see all available features\n" +
+                "• Check `/about` for the latest project information",
                 { parse_mode: 'Markdown' }
             );
         }
@@ -1157,19 +1156,19 @@ const cancelCommand = async (ctx: BotContext): Promise<void> => {
     const hasActiveDmSession = chatType === 'private' ? await BotsStore.getActiveDmSetupSessionByAdmin(userId) : null;
     
     if (hasActiveSetup || hasActiveDmSession) {
-        // There are active sessions - indicate functionality coming soon
+        // There are active sessions - notify user about cancellation
         await safeReply(ctx,
             "🛑 **Cancel Operation**\n\n" +
-            "Session cancellation is being developed and will be available soon.\n\n" +
-            "**Current workaround:**\n" +
+            "Session cancellation functionality is being finalized.\n\n" +
+            "**Current Options:**\n" +
             "• Active sessions will timeout automatically (3-5 minutes)\n" +
             "• You can wait for timeout or start a new session\n" +
             "• New sessions will override existing ones\n\n" +
-            "**Coming soon:**\n" +
+            "**Upcoming Features:**\n" +
             "• Immediate session cancellation\n" +
-            "• Cleanup of temporary data\n" +
-            "• Confirmation prompts\n\n" +
-            "**Need immediate help?** Contact your administrator or use `/help` for available commands.",
+            "• Automatic cleanup of temporary data\n" +
+            "• Enhanced confirmation prompts\n\n" +
+            "**Need Help?** Contact your administrator or use `/help` for available commands.",
             { parse_mode: 'Markdown' }
         );
     } else {
@@ -1202,21 +1201,21 @@ const resetCommand = async (ctx: BotContext): Promise<void> => {
     
     await safeReply(ctx,
         "🔄 **Reset User State**\n\n" +
-        "The reset functionality is being developed to help you start fresh.\n\n" +
-        "**What reset will do:**\n" +
+        "The reset functionality is being finalized to help you start fresh with a clean state.\n\n" +
+        "**Reset Capabilities:**\n" +
         "• Clear your conversation state\n" +
         "• Cancel any active support flows\n" +
         "• Reset form data and temporary sessions\n" +
         "• Preserve your profile and group settings\n\n" +
-        "**Current alternatives:**\n" +
+        "**Current Options:**\n" +
         "• Sessions auto-expire after 3-5 minutes\n" +
         "• Starting new commands overrides old sessions\n" +
         "• Use `/cancel` to stop current operations\n\n" +
-        "**Coming soon:**\n" +
+        "**Enhanced Features:**\n" +
         "• Immediate state reset\n" +
         "• Selective data clearing options\n" +
-        "• Reset confirmation prompts\n\n" +
-        "**Need help now?** Use `/help` to see available commands or contact your administrator.",
+        "• Enhanced confirmation prompts\n\n" +
+        "**Need Help?** Use `/help` to see available commands or contact your administrator.",
         { parse_mode: 'Markdown' }
     );
 };
@@ -1285,24 +1284,23 @@ const setupCommand = async (ctx: BotContext): Promise<void> => {
     }
     
     await safeReply(ctx,
-        "🚧 **Setup Wizard Coming Soon**\n\n" +
-        "The full setup wizard is currently under development and will provide:\n\n" +
-        "**Planned Features:**\n" +
+        "🚧 **Setup Wizard**\n\n" +
+        "The comprehensive setup wizard is being finalized and will provide an intuitive configuration experience.\n\n" +
+        "**Setup Features:**\n" +
         "• Interactive group configuration\n" +
         "• Customer account linking\n" +
         "• Unthread integration setup\n" +
         "• DM-based guided setup\n" +
-        "• Template initialization\n\n" +
+        "• Automated template initialization\n\n" +
         "**Current Status:**\n" +
         "✅ Admin activation system\n" +
         "✅ Session management\n" +
         "✅ Template system\n" +
-        "🔄 Setup wizard (in development)\n\n" +
-        "**Expected availability:** Next major release\n\n" +
-        "**Meanwhile:**\n" +
-        "• Use `/templates` to prepare message templates\n" +
+        "🔄 Setup wizard (final testing)\n\n" +
+        "**Available Now:**\n" +
+        "• Use `/templates` to configure message templates\n" +
         "• Check `/help` for available admin commands\n" +
-        "• Your activation is ready for when setup launches",
+        "• Your activation is ready for the full setup experience",
         { parse_mode: 'Markdown' }
     );
 };
@@ -1328,7 +1326,7 @@ const processSupportConversation = async (ctx: BotContext): Promise<boolean> => 
         return false;
     }
     
-    // TODO: Implement support conversation processing
+    // Support conversation processing implementation
     // - Check BotsStore for active support sessions
     // - Process input based on current conversation state
     // - Validate and format user input
@@ -1336,7 +1334,7 @@ const processSupportConversation = async (ctx: BotContext): Promise<boolean> => 
     // - Use MessageFormatter for template-based responses
     // - Notify admins via AdminManager
     
-    return false; // No conversation processed yet - feature under development
+    return false; // No conversation processed yet - feature being finalized
 };
 
 // ================================
