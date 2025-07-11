@@ -43,9 +43,9 @@
   },
   "dependencies": {
     "@wgtechlabs/log-engine": "^2.0.0",
-    "dotenv": "^16.5.0",
+    "dotenv": "16.6.1",
     "global": "4.4.0",
-    "node-fetch": "^3.3.2",
+    "node-fetch": "3.3.2",
     "pg": "^8.16.2",
     "redis": "^5.5.6",
     "telegraf": "^4.16.3",

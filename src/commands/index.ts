@@ -183,16 +183,19 @@ function logError(error: unknown, context: string, additionalData?: Record<strin
 // ================================
 
 /**
- * Validate and sanitize customer name input
+ * Validate customer name input
+ * 
+ * Performs basic validation (length, reserved words) but leaves
+ * character validation to the Unthread API.
  */
 interface CustomerNameValidationResult {
     isValid: boolean;
-    sanitizedName?: string;
+    sanitizedName?: string; // Note: "sanitized" here means trimmed, not character-sanitized
     error?: string;
     details?: string;
 }
 
-function validateAndSanitizeCustomerName(input: string): CustomerNameValidationResult {
+function validateCustomerName(input: string): CustomerNameValidationResult {
     // Step 1: Basic null/undefined checks
     if (!input || typeof input !== 'string') {
         return {
@@ -222,75 +225,10 @@ function validateAndSanitizeCustomerName(input: string): CustomerNameValidationR
         };
     }
 
-    // Step 4: Character validation - Allow letters, numbers, spaces, hyphens, apostrophes, periods
-    // Disallow special characters that could be used for injection attacks
-    const allowedCharRegex = /^[a-zA-Z0-9\s\-'.&()]+$/;
-    if (!allowedCharRegex.test(trimmed)) {
-        return {
-            isValid: false,
-            error: 'Invalid characters in name',
-            details: 'Customer name can only contain letters, numbers, spaces, hyphens, apostrophes, periods, ampersands, and parentheses.'
-        };
-    }
-
-    // Step 5: Pattern validation - Prevent suspicious patterns
-    const suspiciousPatterns = [
-        // SQL injection patterns
-        /('|('')|;|--|\/\*|\*\/)/i,
-        // Script injection patterns
-        /<script|<\/script>|javascript:|vbscript:|onload=|onerror=/i,
-        // Command injection patterns
-        /(\||&|;|\$\(|\`|>|<)/,
-        // Path traversal patterns
-        /(\.\.\/|\.\.\\)/,
-        // Excessive repeating characters (potential DoS)
-        /(.)\1{10,}/,
-        // Only special characters (suspicious)
-        /^[\s\-'.&()]+$/
-    ];
-
-    for (const pattern of suspiciousPatterns) {
-        if (pattern.test(trimmed)) {
-            return {
-                isValid: false,
-                error: 'Invalid name pattern',
-                details: 'Customer name contains characters or patterns that are not allowed.'
-            };
-        }
-    }
-
-    // Step 6: Word validation - Ensure it's not just spaces or special characters
-    const wordsOnly = trimmed.replace(/[\s\-'.&()]/g, '');
-    if (wordsOnly.length < 2) {
-        return {
-            isValid: false,
-            error: 'Insufficient content',
-            details: 'Customer name must contain at least 2 letters or numbers.'
-        };
-    }
-
-    // Step 7: Additional sanitization
-    let sanitized = trimmed
-        // Normalize multiple spaces to single space
-        .replace(/\s+/g, ' ')
-        // Remove leading/trailing special characters
-        .replace(/^[\s\-'.&()]+|[\s\-'.&()]+$/g, '')
-        // Limit consecutive special characters
-        .replace(/[\-'.&()]{3,}/g, (match) => match.substring(0, 2));
-
-    // Step 8: Final length check after sanitization
-    if (sanitized.length < 2) {
-        return {
-            isValid: false,
-            error: 'Invalid name after sanitization',
-            details: 'Customer name does not meet requirements after processing.'
-        };
-    }
-
-    // Step 9: Prevent common abuse patterns
-    const lowercased = sanitized.toLowerCase();
+    // Step 4: Prevent common abuse patterns
+    const lowercased = trimmed.toLowerCase();
     const forbiddenWords = ['admin', 'administrator', 'root', 'system', 'null', 'undefined', 'test', 'demo'];
-    if (forbiddenWords.some(word => lowercased === word || lowercased.startsWith(word + ' ') || lowercased.endsWith(' ' + word))) {
+    if (forbiddenWords.some(word => lowercased === word || lowercased.startsWith(word + '_') || lowercased.endsWith('_' + word))) {
         return {
             isValid: false,
             error: 'Reserved name',
@@ -298,9 +236,11 @@ function validateAndSanitizeCustomerName(input: string): CustomerNameValidationR
         };
     }
 
+    // Return the original trimmed input without any sanitization
+    // Let the Unthread API handle character validation
     return {
         isValid: true,
-        sanitizedName: sanitized
+        sanitizedName: trimmed
     };
 }
 
@@ -741,6 +681,24 @@ const processSetupTextInput = async (ctx: BotContext): Promise<boolean> => {
         }
 
         const chatId = ctx.chat!.id;
+        const userId = ctx.from.id;
+        const userInput = ctx.message.text.trim();
+
+        // First, check for session-based setup (new approach for DM-based setup)
+        if (ctx.chat?.type === 'private') {
+            const session = await BotsStore.getActiveSetupSessionByAdmin(userId);
+            if (session) {
+                if (session.currentStep === 'waiting_for_custom_name') {
+                    await handleSessionCustomerNameInput(ctx, session, userInput);
+                    return true;
+                } else if (session.currentStep === 'waiting_for_customer_id') {
+                    await handleSessionCustomerIdInput(ctx, session, userInput);
+                    return true;
+                }
+            }
+        }
+
+        // Legacy setup state handling (keep for backwards compatibility)
         const setupState = await BotsStore.getSetupState(chatId);
         
         if (!setupState) {
@@ -758,8 +716,6 @@ const processSetupTextInput = async (ctx: BotContext): Promise<boolean> => {
         if (!waitingForInput) {
             return false; // Not waiting for input
         }
-
-        const userInput = ctx.message.text.trim();
 
         if (waitingForInput === 'customer_name') {
             // Handle custom customer name input
@@ -787,16 +743,16 @@ const handleCustomerNameInput = async (ctx: BotContext, setupState: any, custome
     let sanitizedName = customerName; // Initialize with original input for error logging
     
     try {
-        // Validate and sanitize the customer name input
-        const validation = validateAndSanitizeCustomerName(customerName);
+        // Validate the customer name input (let API handle character restrictions)
+        const validation = validateCustomerName(customerName);
         
         if (!validation.isValid) {
             const errorMessage = `❌ **${validation.error}**\n\n` +
                 `${validation.details}\n\n` +
                 `**Requirements:**\n` +
                 `• Length: 2-100 characters\n` +
-                `• Allowed: Letters, numbers, spaces, hyphens, apostrophes, periods, ampersands, parentheses\n` +
-                `• No special patterns or reserved words\n\n` +
+                `• No reserved words (admin, system, etc.)\n` +
+                `• Character restrictions will be validated by the API\n\n` +
                 `Please try again with a valid customer name:`;
             
             await safeReply(ctx, errorMessage, { parse_mode: 'Markdown' });
@@ -812,15 +768,14 @@ const handleCustomerNameInput = async (ctx: BotContext, setupState: any, custome
             return;
         }
 
-        // Use the sanitized name for processing
+        // Use the validated name (no sanitization applied)
         sanitizedName = validation.sanitizedName!;
         
-        // Log successful validation
-        LogEngine.info('Customer name validated and sanitized', {
+        // Log successful validation (no sanitization performed)
+        LogEngine.info('Customer name validated successfully', {
             chatId: setupState.chatId,
-            originalInput: customerName,
-            sanitizedName: sanitizedName,
-            sanitizationApplied: customerName !== sanitizedName
+            customerName: sanitizedName,
+            inputLength: customerName.length
         });
 
         // Create customer with sanitized name
@@ -832,19 +787,18 @@ const handleCustomerNameInput = async (ctx: BotContext, setupState: any, custome
             customerId = customer.id;
             actualCustomerName = customer.name;
             
-            LogEngine.info('Customer created with sanitized name', {
+            LogEngine.info('Customer created successfully', {
                 customerId,
                 customerName: actualCustomerName,
-                originalInput: customerName,
-                sanitizedInput: sanitizedName,
+                userInput: customerName,
                 chatId: setupState.chatId
             });
         } catch (error) {
             const err = error as Error;
-            LogEngine.error('Failed to create customer with sanitized name', {
+            LogEngine.error('Failed to create customer', {
                 error: err.message,
-                originalInput: customerName,
-                sanitizedInput: sanitizedName,
+                userInput: customerName,
+                customerName: sanitizedName,
                 chatId: setupState.chatId
             });
             
@@ -870,9 +824,7 @@ const handleCustomerNameInput = async (ctx: BotContext, setupState: any, custome
             setupVersion: '1.0',
             metadata: {
                 setupMethod: 'custom_name',
-                originalInput: customerName,
-                sanitizedInput: sanitizedName,
-                inputSanitized: customerName !== sanitizedName,
+                userInput: customerName,
                 apiIntegration: true,
                 unthreadCustomerId: customerId
             }
@@ -936,19 +888,18 @@ Users can now use \`/support\` to create tickets that will be linked to this cus
             // Don't fail setup if notifications fail
         }
 
-        LogEngine.info('Setup completed with sanitized customer name', {
+        LogEngine.info('Setup completed successfully', {
             chatId: setupState.chatId,
             customerName: actualCustomerName,
             customerId: customerId,
-            originalInput: customerName,
-            sanitizedInput: sanitizedName,
+            userInput: customerName,
             setupBy: setupState.initiatedBy
         });
 
     } catch (error) {
         const errorDetails = logError(error, 'handleCustomerNameInput', {
-            originalInput: customerName,
-            sanitizedInput: sanitizedName,
+            userInput: customerName,
+            customerName: sanitizedName,
             chatId: setupState.chatId,
             setupBy: setupState.initiatedBy,
             setupStep: 'customer_name_input'
@@ -973,6 +924,163 @@ Users can now use \`/support\` to create tickets that will be linked to this cus
         }
         
         await safeReply(ctx, userMessage, { parse_mode: 'Markdown' });
+    }
+};
+
+/**
+ * Handle session-based customer name input
+ */
+const handleSessionCustomerNameInput = async (ctx: BotContext, session: any, customerName: string): Promise<void> => {
+    let sanitizedName = customerName;
+    
+    try {
+        // Validate the customer name input (let API handle character restrictions)
+        const validation = validateCustomerName(customerName);
+        
+        if (!validation.isValid) {
+            const errorMessage = `❌ **${validation.error}**\n\n` +
+                `${validation.details}\n\n` +
+                `**Requirements:**\n` +
+                `• Length: 2-100 characters\n` +
+                `• No reserved words (admin, system, etc.)\n` +
+                `• Character restrictions will be validated by the API\n\n` +
+                `Please try again with a valid customer name:`;
+            
+            await safeReply(ctx, errorMessage, { parse_mode: 'Markdown' });
+            return;
+        }
+
+        sanitizedName = validation.sanitizedName!;
+
+        await safeReply(ctx,
+            "⏳ **Creating Customer**\n\n" +
+            `Creating new customer account: "${sanitizedName}"\n\n` +
+            "Please wait...",
+            { parse_mode: 'Markdown' }
+        );
+
+        // Create the customer
+        let customerId: string;
+        let actualCustomerName: string;
+        
+        try {
+            const customer = await createCustomerWithName(sanitizedName);
+            customerId = customer.id;
+            actualCustomerName = customer.name;
+        } catch (error) {
+            const errorMessage = handleUnthreadApiError(error, 'Customer Creation');
+            await safeReply(ctx,
+                errorMessage + '\n\n💡 **Try again:** Go to the group and run `/setup` to retry.',
+                { parse_mode: 'Markdown' }
+            );
+            await BotsStore.deleteSetupSession(session.sessionId);
+            return;
+        }
+
+        // Update the group configuration
+        await updateGroupCustomerAssociation(ctx, session.groupChatId, customerId, actualCustomerName, 'custom_name');
+
+        // Clean up the session after successful completion
+        await BotsStore.deleteSetupSession(session.sessionId);
+
+    } catch (error) {
+        logError(error, 'handleSessionCustomerNameInput', {
+            groupChatId: session.groupChatId,
+            adminId: ctx.from?.id,
+            customerName,
+            sanitizedName
+        });
+        
+        await safeReply(ctx,
+            "❌ **Setup Error**\n\n" +
+            "An error occurred during setup. Please try running `/setup` again in the group.",
+            { parse_mode: 'Markdown' }
+        );
+    }
+};
+
+/**
+ * Handle session-based customer ID input
+ */
+const handleSessionCustomerIdInput = async (ctx: BotContext, session: any, customerId: string): Promise<void> => {
+    try {
+        // Validate the customer ID format
+        if (!customerId || customerId.trim() === '') {
+            await safeReply(ctx,
+                "❌ **Invalid Customer ID**\n\n" +
+                "Customer ID cannot be empty. Please enter a valid customer ID.",
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+
+        const trimmedCustomerId = customerId.trim();
+
+        await safeReply(ctx,
+            "🔍 **Validating Customer ID**\n\n" +
+            `Checking if customer ID "${trimmedCustomerId}" exists in Unthread...\n\n` +
+            "Please wait...",
+            { parse_mode: 'Markdown' }
+        );
+
+        // Validate that the customer exists
+        try {
+            const validation = await validateCustomerExists(trimmedCustomerId);
+            
+            if (!validation.exists) {
+                const errorMessage = validation.error || 'Customer not found';
+                await safeReply(ctx,
+                    "❌ **Customer Not Found**\n\n" +
+                    `Customer ID "${trimmedCustomerId}" does not exist in your Unthread workspace.\n\n` +
+                    `**Error:** ${errorMessage}\n\n` +
+                    "**Please check:**\n" +
+                    "• Customer ID is spelled correctly\n" +
+                    "• Customer exists in your Unthread account\n" +
+                    "• You have access to this customer\n\n" +
+                    "Please try again with a valid customer ID:",
+                    { parse_mode: 'Markdown' }
+                );
+                return;
+            }
+
+            const customer = validation.customer!;
+            const customerName = customer.name;
+
+            await safeReply(ctx,
+                "✅ **Customer Found**\n\n" +
+                `**Customer ID:** ${trimmedCustomerId}\n` +
+                `**Customer Name:** ${customerName}\n\n` +
+                "Linking this customer to your group...",
+                { parse_mode: 'Markdown' }
+            );
+
+            // Update the group configuration
+            await updateGroupCustomerAssociation(ctx, session.groupChatId, trimmedCustomerId, customerName, 'existing_customer_id');
+
+            // Clean up the session after successful completion
+            await BotsStore.deleteSetupSession(session.sessionId);
+
+        } catch (error) {
+            const errorMessage = handleUnthreadApiError(error, 'Customer Validation');
+            await safeReply(ctx,
+                errorMessage + '\n\n💡 **Try again:** Enter a different customer ID or go to the group and run `/setup` to retry.',
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+
+    } catch (error) {
+        logError(error, 'handleSessionCustomerIdInput', {
+            groupChatId: session.groupChatId,
+            adminId: ctx.from?.id,
+            customerId
+        });
+        
+        await safeReply(ctx,
+            "❌ **Setup Error**\n\n" +
+            "An error occurred during setup. Please try running `/setup` again in the group.",
+            { parse_mode: 'Markdown' }
+        );
     }
 };
 
@@ -1087,10 +1195,6 @@ Send me \`/setup\` in this group and choose "Advanced Setup" to configure templa
     }
 };
 
-/**
- * Placeholder command handlers - TODO: Implement full functionality
- */
-
 const supportCommand = async (ctx: BotContext): Promise<void> => {
     const chatType = ctx.chat?.type;
     
@@ -1143,17 +1247,17 @@ const supportCommand = async (ctx: BotContext): Promise<void> => {
             }
         } else {
             await safeReply(ctx,
-                "🚧 **Support Ticket Creation**\n\n" +
-                "Support ticket creation is currently being finalized and will be available soon.\n\n" +
+                "🎫 **Support Ticket Creation**\n\n" +
+                "Support ticket creation is ready but requires group configuration.\n\n" +
                 "**Current Status:**\n" +
                 "✅ Group configuration system\n" +
                 "✅ Admin management system\n" +
                 "✅ Message template system\n" +
-                "🔄 Ticket creation flow (final testing)\n\n" +
-                "**Available Now:**\n" +
-                "• Admins can use `/templates` to configure message templates\n" +
-                "• Use `/help` to see all available features\n" +
-                "• Check `/about` for the latest project information",
+                "✅ Customer linking system\n\n" +
+                "**To enable support tickets:**\n" +
+                "• Ask your group administrator to run `/setup`\n" +
+                "• Use `/help` to see available commands\n" +
+                "• Check `/about` for project information",
                 { parse_mode: 'Markdown' }
             );
         }
@@ -1174,18 +1278,17 @@ const cancelCommand = async (ctx: BotContext): Promise<void> => {
     const hasActiveDmSession = chatType === 'private' ? await BotsStore.getActiveDmSetupSessionByAdmin(userId) : null;
     
     if (hasActiveSetup || hasActiveDmSession) {
-        // There are active sessions - notify user about cancellation
+        // There are active sessions - provide clear cancellation options
         await safeReply(ctx,
             "🛑 **Cancel Operation**\n\n" +
-            "Session cancellation functionality is being finalized.\n\n" +
+            "You have active sessions that can be cancelled.\n\n" +
             "**Current Options:**\n" +
             "• Active sessions will timeout automatically (3-5 minutes)\n" +
             "• You can wait for timeout or start a new session\n" +
             "• New sessions will override existing ones\n\n" +
-            "**Upcoming Features:**\n" +
-            "• Immediate session cancellation\n" +
-            "• Automatic cleanup of temporary data\n" +
-            "• Enhanced confirmation prompts\n\n" +
+            "**Quick Actions:**\n" +
+            "• Start a new `/setup` to override current session\n" +
+            "• Wait a few minutes for automatic cleanup\n\n" +
             "**Need Help?** Contact your administrator or use `/help` for available commands.",
             { parse_mode: 'Markdown' }
         );
@@ -1219,7 +1322,7 @@ const resetCommand = async (ctx: BotContext): Promise<void> => {
     
     await safeReply(ctx,
         "🔄 **Reset User State**\n\n" +
-        "The reset functionality is being finalized to help you start fresh with a clean state.\n\n" +
+        "The reset functionality helps you start fresh with a clean state.\n\n" +
         "**Reset Capabilities:**\n" +
         "• Clear your conversation state\n" +
         "• Cancel any active support flows\n" +
@@ -1229,10 +1332,10 @@ const resetCommand = async (ctx: BotContext): Promise<void> => {
         "• Sessions auto-expire after 3-5 minutes\n" +
         "• Starting new commands overrides old sessions\n" +
         "• Use `/cancel` to stop current operations\n\n" +
-        "**Enhanced Features:**\n" +
-        "• Immediate state reset\n" +
-        "• Selective data clearing options\n" +
-        "• Enhanced confirmation prompts\n\n" +
+        "**Advanced Features:**\n" +
+        "• Use `/setup` to restart group configuration\n" +
+        "• Use `/profile` to manage your profile\n" +
+        "• Contact administrators for advanced reset options\n\n" +
         "**Need Help?** Use `/help` to see available commands or contact your administrator.",
         { parse_mode: 'Markdown' }
     );
@@ -1361,116 +1464,19 @@ const performGroupSetup = async (ctx: BotContext, session: SetupSession, userId:
         const existingConfig = await BotsStore.getGroupConfig(chatId);
         
         if (existingConfig?.isConfigured) {
-            await safeReply(ctx,
-                "✅ **Group Already Configured**\n\n" +
-                `This group is already set up and ready for use.\n\n` +
-                `**Configuration Details:**\n` +
-                `• Setup by: Admin ${existingConfig.setupBy}\n` +
-                `• Setup date: ${existingConfig.setupAt}\n` +
-                `• Customer: ${existingConfig.customerName || 'Default'}\n\n` +
-                `**Available Commands:**\n` +
-                `• Use \`/templates\` to manage message templates\n` +
-                `• Users can create tickets with \`/support\`\n` +
-                `• Check \`/help\` for all available commands\n\n` +
-                `**Advanced Setup:**\n` +
-                `To access advanced configuration options, send me a private message and I'll guide you through the DM-based setup wizard.`,
-                { parse_mode: 'Markdown' }
-            );
+            await handleExistingGroupSetup(ctx, existingConfig, userId, chatId, chatTitle);
             return;
         }
 
         // Step 2: Perform bot admin check
         const botAdminCheck = await checkAndPromptBotAdmin(ctx);
         if (!botAdminCheck) {
-            // Bot admin check will handle the user communication
             return;
         }
 
-        // Step 3: Create group configuration (basic setup only)
-        const groupConfig: GroupConfig = {
-            chatId: chatId,
-            chatTitle: chatTitle,
-            isConfigured: false, // Will be set to true after admin completes DM wizard
-            setupBy: userId,
-            setupAt: new Date().toISOString(),
-            botIsAdmin: true,
-            lastAdminCheck: new Date().toISOString(),
-            setupVersion: "1.0",
-            lastUpdatedAt: new Date().toISOString(),
-            version: "1.0",
-            metadata: {
-                setupPhase: 'basic_infrastructure',
-                requiresAdvancedSetup: true,
-                setupInitiatedAt: new Date().toISOString()
-            }
-        };
-
-        // Step 4: Store group configuration
-        const configStored = await BotsStore.storeGroupConfig(groupConfig);
-        if (!configStored) {
-            throw new Error('Failed to store group configuration');
-        }
-
-        // Step 5: Initialize default templates
-        const templateManager = new TemplateManager(BotsStore.getInstance());
-        await templateManager.initializeDefaultTemplates(chatId, userId);
-
-        // Step 6: Send initial setup completion message
-        await safeReply(ctx,
-            "🚀 **Initial Setup Complete!**\n\n" +
-            `**${chatTitle}** basic infrastructure has been set up.\n\n` +
-            `**What's Been Set Up:**\n` +
-            `✅ Group configuration saved\n` +
-            `✅ Default message templates initialized\n` +
-            `✅ Bot admin permissions verified\n` +
-            `✅ Basic infrastructure ready\n\n` +
-            `**⚠️ Configuration Not Complete Yet**\n\n` +
-            `**Next Required Step:**\n` +
-            `• Admin must complete the DM setup wizard\n` +
-            `• Support tickets will be available after DM setup\n\n` +
-            `**Current Status:**\n` +
-            `🔄 Waiting for admin to complete configuration\n` +
-            `📱 Check your DM for next steps`,
-            { parse_mode: 'Markdown' }
-        );
-
-        // Step 7: Notify other admins
-        await notifyAdminsOfSetupCompletion(userId, chatId, chatTitle);
-
-        // Step 8: Send required DM setup notification
-        const adminProfile = await BotsStore.getAdminProfile(userId);
-        if (adminProfile?.dmChatId) {
-            await ctx.telegram.sendMessage(
-                adminProfile.dmChatId,
-                "🔧 **Configuration Required**\n\n" +
-                `Group **${chatTitle}** basic setup is complete, but **configuration is not finished yet**.\n\n` +
-                `**⚠️ Important:** Users cannot create support tickets until you complete the configuration.\n\n` +
-                `**Required Next Step:**\n` +
-                `• Complete the DM setup wizard\n` +
-                `• Link a customer account for ticket routing\n` +
-                `• Configure message templates\n` +
-                `• Finalize group settings\n\n` +
-                `**Click below to finish the configuration:**`,
-                { 
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        inline_keyboard: [[
-                            { text: "🚀 Complete Setup", callback_data: `start_dm_setup_${chatId}` }
-                        ]]
-                    }
-                }
-            );
-        }
-
-        LogEngine.info('Group basic setup completed - awaiting DM wizard completion', {
-            chatId,
-            chatTitle,
-            setupBy: userId,
-            templatesInitialized: true,
-            configurationComplete: false,
-            requiresDmSetup: true
-        });
-
+        // Step 3: Show simplified onboarding in group chat
+        await showSimpleGroupOnboarding(ctx, session, userId, chatId, chatTitle);
+        
     } catch (error) {
         LogEngine.error('Group setup process failed', {
             error: (error as Error).message,
@@ -1494,909 +1500,1225 @@ const performGroupSetup = async (ctx: BotContext, session: SetupSession, userId:
 };
 
 /**
- * DM Setup Wizard Implementation
+ * Handle setup for groups that are already configured
  */
-
-/**
- * Handle DM setup wizard steps
- */
-const handleDmSetupWizard = async (ctx: BotContext): Promise<boolean> => {
-    try {
-        if (ctx.chat?.type !== 'private' || !ctx.from?.id) {
-            return false;
-        }
-
-        const adminId = ctx.from.id;
-        const dmSession = await BotsStore.getActiveDmSetupSessionByAdmin(adminId);
-        
-        if (!dmSession) {
-            return false; // No active DM session
-        }
-
-        // Handle different wizard steps
-        switch (dmSession.currentStep) {
-            case 'welcome':
-                await showDmWizardWelcome(ctx, dmSession.sessionId, { chatId: dmSession.groupChatId, chatTitle: dmSession.groupChatName } as GroupConfig);
-                return true;
-            case 'template_selection':
-                await handleDmTemplateCustomization(ctx, dmSession.sessionId);
-                return true;
-            case 'template_editing':
-                // Handle text input for template editing
-                if (ctx.message && 'text' in ctx.message) {
-                    await handleTemplateTextInput(ctx, dmSession.sessionId, ctx.message.text);
-                    return true;
-                }
-                return false;
-            case 'advanced_config':
-                await handleDmAdvancedConfig(ctx, dmSession.sessionId);
-                return true;
-            case 'review':
-                await handleDmWizardReview(ctx, dmSession.sessionId);
-                return true;
-            default:
-                return false;
-        }
-    } catch (error) {
-        logError(error, 'handleDmSetupWizard', {
-            chatId: ctx.chat?.id,
-            userId: ctx.from?.id,
-            chatType: ctx.chat?.type
-        });
-        return false;
+const handleExistingGroupSetup = async (ctx: BotContext, existingConfig: GroupConfig, userId: number, chatId: number, chatTitle: string): Promise<void> => {
+    // Send DM to admin asking if they want to update customer ID
+    const adminProfile = await BotsStore.getAdminProfile(userId);
+    if (!adminProfile?.dmChatId) {
+        await safeReply(ctx,
+            "✅ **Group Already Configured**\n\n" +
+            `This group is already set up and ready for use.\n\n` +
+            `**Current Configuration:**\n` +
+            `• Customer: ${existingConfig.customerName || 'Default'}\n` +
+            `• Setup: ${existingConfig.setupAt ? new Date(existingConfig.setupAt).toLocaleString() : 'Unknown'}\n\n` +
+            `**To update settings:** Send me \`/activate\` in private chat first, then use \`/setup\` again.`,
+            { parse_mode: 'Markdown' }
+        );
+        return;
     }
+
+    // Send DM asking about customer ID update
+    await ctx.telegram.sendMessage(
+        adminProfile.dmChatId,
+        "🔄 **Update Group Configuration**\n\n" +
+        `**Group:** ${chatTitle}\n` +
+        `**Current Customer:** ${existingConfig.customerName || 'Default'}\n\n` +
+        `This group is already configured. Do you want to update the customer ID?`,
+        {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "🔄 Update Customer ID", callback_data: `update_customer_${chatId}` }],
+                    [{ text: "✅ Keep Current Settings", callback_data: `keep_settings_${chatId}` }]
+                ]
+            }
+        }
+    );
+
+    await safeReply(ctx,
+        "✅ **Group Already Configured**\n\n" +
+        `Check your private messages for update options.\n\n` +
+        `**Current Status:** Ready for support tickets\n` +
+        `**Commands Available:** \`/support\`, \`/templates\`, \`/help\``,
+        { parse_mode: 'Markdown' }
+    );
 };
 
 /**
- * Start DM setup wizard
+ * Show simplified group onboarding with just two buttons
  */
-const startDmSetupWizard = async (ctx: BotContext, groupChatId: number): Promise<void> => {
-    try {
-        if (ctx.chat?.type !== 'private' || !ctx.from?.id) {
-            await safeReply(ctx, "❌ DM setup is only available in private chats.");
-            return;
-        }
-
-        const adminId = ctx.from.id;
-        
-        // Check if admin can start DM setup
-        if (!await canStartDmSetup(adminId)) {
-            const existingSession = await BotsStore.getActiveDmSetupSessionByAdmin(adminId);
-            if (existingSession && !isDmSessionExpired(existingSession)) {
-                await safeReply(ctx,
-                    "⏳ **DM Setup Session Active**\n\n" +
-                    "You already have an active DM setup session.\n\n" +
-                    "Please complete or wait for the current session to expire before starting a new one.",
-                    { parse_mode: 'Markdown' }
-                );
-                return;
-            }
-        }
-
-        // Get group configuration
-        const groupConfig = await BotsStore.getGroupConfig(groupChatId);
-        if (!groupConfig) {
-            await safeReply(ctx,
-                "❌ **Group Not Found**\n\n" +
-                "The specified group configuration was not found.\n\n" +
-                "Please ensure the group is properly configured first.",
-                { parse_mode: 'Markdown' }
-            );
-            return;
-        }
-
-        // Create DM setup session
-        const sessionId = await createDmSetupSession(
-            adminId,
-            groupChatId,
-            groupConfig.chatTitle || 'Unknown Group'
-        );
-
-        if (!sessionId) {
-            await safeReply(ctx,
-                "❌ **Session Creation Failed**\n\n" +
-                "Unable to create DM setup session.\n\n" +
-                "Please try again later.",
-                { parse_mode: 'Markdown' }
-            );
-            return;
-        }
-
-        // Start the wizard
-        await showDmWizardWelcome(ctx, sessionId, groupConfig);
-
-    } catch (error) {
-        logError(error, 'startDmSetupWizard', {
-            chatId: ctx.chat?.id,
-            userId: ctx.from?.id,
-            groupChatId
-        });
-        
+const showSimpleGroupOnboarding = async (ctx: BotContext, session: SetupSession, userId: number, chatId: number, chatTitle: string): Promise<void> => {
+    // Extract a clean customer name suggestion from the group title
+    const suggestedCustomerName = extractCustomerNameFromTitle(chatTitle);
+    
+    // Send DM with simple onboarding
+    const adminProfile = await BotsStore.getAdminProfile(userId);
+    if (!adminProfile?.dmChatId) {
         await safeReply(ctx,
             "❌ **Setup Error**\n\n" +
-            "An error occurred while starting the DM setup wizard.\n\n" +
-            "Please try again later.",
+            "Unable to send setup instructions. Please activate your admin profile first:\n\n" +
+            "1. Send me `/activate` in private chat\n" +
+            "2. Return here and use `/setup` again",
+            { parse_mode: 'Markdown' }
+        );
+        return;
+    }
+
+    await ctx.telegram.sendMessage(
+        adminProfile.dmChatId,
+        "🎯 **Group Setup**\n\n" +
+        `**Group:** ${chatTitle}\n\n` +
+        `**Recommended Customer Name:**\n` +
+        `"${suggestedCustomerName}"\n\n` +
+        `Choose how to set up this group:`,
+        {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: `✅ Proceed with '${suggestedCustomerName}'`, callback_data: `proceed_suggested_${chatId}` }],
+                    [{ text: "� Use Different Name", callback_data: `custom_name_${chatId}` }],
+                    [{ text: "�🔗 Use Existing Customer ID", callback_data: `use_existing_${chatId}` }],
+                    [{ text: "❌ Cancel Setup", callback_data: `cancel_setup_${chatId}` }]
+                ]
+            }
+        }
+    );
+
+    // Store the suggested name in session (we'll need to extend this or use a different approach)
+    // For now, we'll store it in the currentStep field with a prefix
+    await BotsStore.updateSetupSession(session.sessionId, {
+        currentStep: `waiting_customer_choice:${suggestedCustomerName}`
+    });
+
+    await safeReply(ctx,
+        "✅ **Setup Started**\n\n" +
+        `Check your private messages to complete the setup for **${chatTitle}**.\n\n` +
+        `⚡ **Quick Setup:** Just two simple choices in your DM!`,
+        { parse_mode: 'Markdown' }
+    );
+};
+
+/**
+ * Extract a clean customer name from group title
+ */
+const extractCustomerNameFromTitle = (chatTitle: string): string => {
+    // Clean up the chat title to create a suggested customer name
+    let suggested = chatTitle
+        // Remove common prefixes/suffixes
+        .replace(/^(group|chat|team|support|help|customer)\s*/i, '')
+        .replace(/\s*(group|chat|team|support|help)$/i, '')
+        // Remove special characters but keep alphanumeric, spaces, hyphens, apostrophes
+        .replace(/[^\w\s\-']/g, ' ')
+        // Normalize spaces
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    // If too short or empty after cleaning, use the original title
+    if (suggested.length < 3) {
+        suggested = chatTitle.replace(/[^\w\s\-']/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    // Capitalize first letter of each word for better presentation
+    suggested = suggested.replace(/\b\w/g, l => l.toUpperCase());
+
+    // Fallback if still problematic
+    if (suggested.length < 2) {
+        suggested = 'Customer ' + Date.now().toString().slice(-4);
+    }
+
+    return suggested;
+};
+
+/**
+ * Phase 4: Simplified Group Setup Handlers
+ */
+
+/**
+ * Handle "Proceed with suggested name" choice
+ */
+const handleProceedWithSuggested = async (ctx: BotContext, groupChatId: number): Promise<void> => {
+    try {
+        const adminId = ctx.from?.id;
+        if (!adminId) return;
+
+        // Get the active setup session to retrieve the suggested name
+        const session = await BotsStore.getActiveSetupSessionByAdmin(adminId);
+        if (!session || session.groupChatId !== groupChatId) {
+            await ctx.editMessageText(
+                "❌ **Session Error**\n\nSetup session not found or expired. Please start the setup process again.",
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+
+        // Extract suggested name from session currentStep
+        const stepParts = session.currentStep.split(':');
+        const suggestedName = stepParts.length > 1 ? stepParts[1] : `Customer ${Date.now().toString().slice(-4)}`;
+
+        // Validate the suggested name (ensure it's not undefined)
+        if (!suggestedName) {
+            await ctx.editMessageText(
+                "❌ **Session Error**\n\nUnable to retrieve suggested customer name. Please start setup again.",
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+
+        const validation = validateCustomerName(suggestedName);
+        if (!validation.isValid) {
+            await ctx.editMessageText(
+                "❌ **Invalid Name**\n\n" +
+                `The suggested name "${suggestedName}" is not valid.\n\n` +
+                "Please use the 'Enter Custom Name' option instead.",
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+
+        const sanitizedName = validation.sanitizedName!;
+
+        await ctx.editMessageText(
+            "⏳ **Creating Customer**\n\n" +
+            `Creating new customer account: "${sanitizedName}"\n\n` +
+            "Please wait...",
+            { parse_mode: 'Markdown' }
+        );
+
+        // Create the customer
+        let customerId: string;
+        let actualCustomerName: string;
+        
+        try {
+            const customer = await createCustomerWithName(sanitizedName);
+            customerId = customer.id;
+            actualCustomerName = customer.name;
+        } catch (error) {
+            const errorMessage = handleUnthreadApiError(error, 'Customer Creation');
+            await safeReply(ctx,
+                errorMessage + '\n\n💡 **Try again:** Go to the group and run `/setup` to retry.',
+                { parse_mode: 'Markdown' }
+            );
+            await BotsStore.deleteSetupSession(session.sessionId);
+            return;
+        }
+
+        // Complete the group setup - for existing groups, use the customer update flow
+        await updateGroupCustomerAssociation(ctx, session.groupChatId, customerId, actualCustomerName, 'suggested_name');
+
+    } catch (error) {
+        logError(error, 'handleProceedWithSuggested', {
+            groupChatId,
+            adminId: ctx.from?.id
+        });
+        
+        await ctx.editMessageText(
+            "❌ **Setup Error**\n\n" +
+            "An error occurred during setup. Please try running `/setup` again in the group.",
             { parse_mode: 'Markdown' }
         );
     }
 };
 
 /**
- * Show DM wizard welcome screen
+ * Handle "Use existing customer ID" choice - actual implementation
  */
-const showDmWizardWelcome = async (ctx: BotContext, sessionId: string, groupConfig: GroupConfig): Promise<void> => {
-    const welcomeMessage = `🔧 **Advanced Setup Wizard**\n\n` +
-        `**Group:** ${groupConfig.chatTitle}\n` +
-        `**Basic Setup:** ✅ Complete\n\n` +
-        `**Advanced Options Available:**\n` +
-        `🎨 Message Template Customization\n` +
-        `⚙️ Advanced Group Settings\n` +
-        `🔔 Notification Preferences\n` +
-        `👥 Customer Account Management\n\n` +
-        `**Session Info:**\n` +
-        `• Session ID: \`${sessionId.substring(0, 8)}...\`\n` +
-        `• Timeout: 10 minutes\n` +
-        `• Auto-save: Enabled\n\n` +
-        `What would you like to configure?`;
-
-    const keyboard = {
-        inline_keyboard: [
-            [{ text: "🎨 Customize Templates", callback_data: `dm_wizard_templates_${sessionId}` }],
-            [{ text: "⚙️ Advanced Settings", callback_data: `dm_wizard_advanced_${sessionId}` }],
-            [{ text: "👥 Customer Management", callback_data: `dm_wizard_customers_${sessionId}` }],
-            [{ text: "📋 Review & Finish", callback_data: `dm_wizard_review_${sessionId}` }],
-            [{ text: "❌ Cancel", callback_data: `dm_wizard_cancel_${sessionId}` }]
-        ]
-    };
-
-    const message = await ctx.reply(welcomeMessage, {
-        parse_mode: 'Markdown',
-        reply_markup: keyboard
-    });
-
-    // Store message ID for cleanup
-    await addDmSessionMessageId(sessionId, message.message_id);
-    
-    // Update session step
-    await updateDmSetupSessionStep(sessionId, 'welcome', {
-        groupChatId: groupConfig.chatId,
-        groupChatName: groupConfig.chatTitle
-    });
-};
-
-/**
- * Handle template customization step
- */
-const handleDmTemplateCustomization = async (ctx: BotContext, sessionId: string): Promise<void> => {
-    const session = await BotsStore.getDmSetupSession(sessionId);
-    if (!session) return;
-
-    const groupChatId = session.groupChatId;
-    const templateManager = new TemplateManager(BotsStore.getInstance());
-    const templates = await templateManager.listTemplates({ groupChatId });
-
-    let templatesList = "📝 **Current Templates**\n\n";
-    
-    if (templates.length === 0) {
-        templatesList += "No custom templates found. Default templates are being used.\n\n";
-    } else {
-        templates.forEach((template, index) => {
-            templatesList += `${index + 1}. **${template.templateType.replace(/_/g, ' ')}**\n`;
-            templatesList += `   • Status: ${template.isActive ? '✅ Active' : '❌ Inactive'}\n`;
-            templatesList += `   • Modified: ${new Date(template.lastModifiedAt).toLocaleDateString()}\n\n`;
-        });
-    }
-
-    templatesList += "**Template Actions:**\n";
-    templatesList += "• Edit existing templates\n";
-    templatesList += "• Create new custom templates\n";
-    templatesList += "• Preview template outputs\n";
-    templatesList += "• Reset to defaults\n\n";
-    templatesList += "Select a template type to customize:";
-
-    const keyboard = {
-        inline_keyboard: [
-            [{ text: "🎫 Ticket Created", callback_data: `dm_edit_template_ticket_created_${sessionId}` }],
-            [{ text: "🔄 Ticket Updated", callback_data: `dm_edit_template_ticket_updated_${sessionId}` }],
-            [{ text: "💬 Agent Response", callback_data: `dm_edit_template_agent_response_${sessionId}` }],
-            [{ text: "✅ Ticket Closed", callback_data: `dm_edit_template_ticket_closed_${sessionId}` }],
-            [{ text: "👋 Welcome Message", callback_data: `dm_edit_template_welcome_message_${sessionId}` }],
-            [
-                { text: "🔙 Back to Menu", callback_data: `dm_wizard_welcome_${sessionId}` },
-                { text: "📋 Review & Finish", callback_data: `dm_wizard_review_${sessionId}` }
-            ]
-        ]
-    };
-
-    await ctx.editMessageText(templatesList, {
-        parse_mode: 'Markdown',
-        reply_markup: keyboard
-    });
-
-    await updateDmSetupSessionStep(sessionId, 'template_selection');
-};
-
-/**
- * Handle template editing
- */
-const handleDmTemplateEdit = async (ctx: BotContext, sessionId: string, templateType: string): Promise<void> => {
-    const session = await BotsStore.getDmSetupSession(sessionId);
-    if (!session) return;
-
-    const groupChatId = session.groupChatId;
-    const templateManager = new TemplateManager(BotsStore.getInstance());
-    
-    // Get current template
-    const templates = await templateManager.listTemplates({ 
-        groupChatId, 
-        templateType: templateType as any 
-    });
-    
-    const currentTemplate = templates.find(t => t.templateType === templateType);
-    const defaultContent = getDefaultTemplateContent(templateType);
-
-    const editMessage = `✏️ **Edit Template: ${templateType.replace(/_/g, ' ')}**\n\n` +
-        `**Current Content:**\n` +
-        `\`\`\`\n${currentTemplate?.content || defaultContent}\n\`\`\`\n\n` +
-        `**Available Variables:**\n` +
-        `• \`{{ticketId}}\` - Ticket ID\n` +
-        `• \`{{ticketTitle}}\` - Ticket title\n` +
-        `• \`{{userName}}\` - User name\n` +
-        `• \`{{agentName}}\` - Agent name\n` +
-        `• \`{{groupName}}\` - Group name\n` +
-        `• \`{{timestamp}}\` - Current time\n\n` +
-        `**Instructions:**\n` +
-        `Send me the new template content as a message, or use the options below.`;
-
-    const keyboard = {
-        inline_keyboard: [
-            [{ text: "👀 Preview Current", callback_data: `dm_preview_template_${templateType}_${sessionId}` }],
-            [{ text: "🔄 Reset to Default", callback_data: `dm_reset_template_${templateType}_${sessionId}` }],
-            [
-                { text: "🔙 Back to Templates", callback_data: `dm_wizard_templates_${sessionId}` },
-                { text: "💾 Save & Continue", callback_data: `dm_save_template_${templateType}_${sessionId}` }
-            ]
-        ]
-    };
-
-    await ctx.editMessageText(editMessage, {
-        parse_mode: 'Markdown',
-        reply_markup: keyboard
-    });
-
-    await updateDmSetupSessionStep(sessionId, 'template_editing', {
-        editingTemplate: templateType,
-        originalContent: currentTemplate?.content || defaultContent
-    });
-};
-
-/**
- * Handle advanced configuration
- */
-const handleDmAdvancedConfig = async (ctx: BotContext, sessionId: string): Promise<void> => {
-    const session = await BotsStore.getDmSetupSession(sessionId);
-    if (!session) return;
-
-    const groupConfig = await BotsStore.getGroupConfig(session.groupChatId);
-    
-    const configMessage = `⚙️ **Advanced Configuration**\n\n` +
-        `**Group:** ${session.groupChatName}\n\n` +
-        `**Current Settings:**\n` +
-        `• Bot Admin Status: ${groupConfig?.botIsAdmin ? '✅ Yes' : '❌ No'}\n` +
-        `• Customer Account: ${groupConfig?.customerName || 'Default'}\n` +
-        `• Setup Version: ${groupConfig?.setupVersion || '1.0'}\n` +
-        `• Last Updated: ${groupConfig?.lastUpdatedAt ? new Date(groupConfig.lastUpdatedAt).toLocaleDateString() : 'Unknown'}\n\n` +
-        `**Available Options:**\n` +
-        `• Update group settings\n` +
-        `• Modify customer associations\n` +
-        `• Configure notification preferences\n` +
-        `• Advanced permissions\n\n` +
-        `Select an option to configure:`;
-
-    const keyboard = {
-        inline_keyboard: [
-            [{ text: "👥 Customer Settings", callback_data: `dm_config_customer_${sessionId}` }],
-            [{ text: "🔔 Notifications", callback_data: `dm_config_notifications_${sessionId}` }],
-            [{ text: "🛡️ Permissions", callback_data: `dm_config_permissions_${sessionId}` }],
-            [{ text: "🔧 Group Metadata", callback_data: `dm_config_metadata_${sessionId}` }],
-            [
-                { text: "🔙 Back to Menu", callback_data: `dm_wizard_welcome_${sessionId}` },
-                { text: "📋 Review & Finish", callback_data: `dm_wizard_review_${sessionId}` }
-            ]
-        ]
-    };
-
-    await ctx.editMessageText(configMessage, {
-        parse_mode: 'Markdown',
-        reply_markup: keyboard
-    });
-
-    await updateDmSetupSessionStep(sessionId, 'advanced_config');
-};
-
-/**
- * Handle wizard review and completion
- */
-const handleDmWizardReview = async (ctx: BotContext, sessionId: string): Promise<void> => {
-    const session = await BotsStore.getDmSetupSession(sessionId);
-    if (!session) return;
-
-    const groupConfig = await BotsStore.getGroupConfig(session.groupChatId);
-    const templateManager = new TemplateManager(BotsStore.getInstance());
-    const templateStats = await templateManager.getTemplateStats(session.groupChatId);
-
-    const reviewMessage = `📋 **Setup Review & Summary**\n\n` +
-        `**Group:** ${session.groupChatName}\n` +
-        `**Session Duration:** ${Math.round((Date.now() - new Date(session.startedAt).getTime()) / 60000)} minutes\n\n` +
-        `**Configuration Summary:**\n` +
-        `✅ Group configured and active\n` +
-        `✅ Bot admin permissions verified\n` +
-        `✅ ${templateStats.totalTemplates} message templates available\n` +
-        `✅ ${templateStats.activeTemplates} templates active\n\n` +
-        `**Template Status:**\n` +
-        Object.entries(templateStats.templatesByType)
-            .map(([type, count]) => `• ${type.replace(/_/g, ' ')}: ${count} template${count !== 1 ? 's' : ''}`)
-            .join('\n') + '\n\n' +
-        `**Group Details:**\n` +
-        `• Customer: ${groupConfig?.customerName || 'Default'}\n` +
-        `• Setup By: Admin ${groupConfig?.setupBy}\n` +
-        `• Setup Date: ${groupConfig?.setupAt ? new Date(groupConfig.setupAt).toLocaleDateString() : 'Unknown'}\n\n` +
-        `**Ready for Production:**\n` +
-        `🎫 Support ticket creation enabled\n` +
-        `📧 Email notifications configured\n` +
-        `👥 Admin notifications active\n\n` +
-        `Everything looks good! Your advanced setup is complete.`;
-
-    const keyboard = {
-        inline_keyboard: [
-            [{ text: "✅ Complete Setup", callback_data: `dm_wizard_complete_${sessionId}` }],
-            [{ text: "🔙 Back to Edit", callback_data: `dm_wizard_welcome_${sessionId}` }],
-            [{ text: "❌ Cancel & Exit", callback_data: `dm_wizard_cancel_${sessionId}` }]
-        ]
-    };
-
-    await ctx.editMessageText(reviewMessage, {
-        parse_mode: 'Markdown',
-        reply_markup: keyboard
-    });
-
-    await updateDmSetupSessionStep(sessionId, 'review');
-};
-
-/**
- * Complete DM setup wizard
- */
-const completeDmWizard = async (ctx: BotContext, sessionId: string): Promise<void> => {
-    const session = await BotsStore.getDmSetupSession(sessionId);
-    if (!session) return;
-
-    // Mark session as completed
-    await completeDmSetupSession(sessionId);
-
-    const completionMessage = `🎉 **Advanced Setup Complete!**\n\n` +
-        `**Group:** ${session.groupChatName}\n\n` +
-        `**What's Been Configured:**\n` +
-        `✅ Advanced message templates\n` +
-        `✅ Custom group settings\n` +
-        `✅ Notification preferences\n` +
-        `✅ Admin permissions\n\n` +
-        `**Next Steps:**\n` +
-        `• Return to your group chat\n` +
-        `• Test the setup with \`/support\`\n` +
-        `• Use \`/templates\` for quick template edits\n` +
-        `• Monitor ticket creation and responses\n\n` +
-        `**Support:**\n` +
-        `If you need to make changes later, just run \`/setup\` in the group again.\n\n` +
-        `Thank you for using the advanced setup wizard! 🚀`;
-
-    await ctx.editMessageText(completionMessage, {
-        parse_mode: 'Markdown'
-    });
-
-    // Clean up wizard messages after a delay
-    setTimeout(async () => {
-        try {
-            if (session.messageIds) {
-                for (const messageId of session.messageIds) {
-                    try {
-                        await ctx.telegram.deleteMessage(ctx.chat!.id, messageId);
-                    } catch (error) {
-                        // Ignore deletion errors
-                    }
-                }
-            }
-        } catch (error) {
-            // Ignore cleanup errors
-        }
-    }, 30000); // Clean up after 30 seconds
-
-    LogEngine.info('DM setup wizard completed', {
-        sessionId,
-        adminId: session.adminId,
-        groupChatId: session.groupChatId,
-        duration: Date.now() - new Date(session.startedAt).getTime()
-    });
-};
-
-/**
- * Handle template text input
- */
-const handleTemplateTextInput = async (ctx: BotContext, sessionId: string, textInput: string): Promise<void> => {
-    const session = await BotsStore.getDmSetupSession(sessionId);
-    if (!session || !session.stepData?.editingTemplate) return;
-
-    const templateType = session.stepData.editingTemplate;
-    const groupChatId = session.groupChatId;
-
+const handleUseExistingCustomer = async (ctx: BotContext, groupChatId: number): Promise<void> => {
     try {
-        // Validate template content
-        if (textInput.length > 4000) {
-            await safeReply(ctx,
-                "❌ **Template Too Long**\n\n" +
-                "Template content must be 4000 characters or less.\n\n" +
-                `Current length: ${textInput.length} characters\n\n` +
-                "Please shorten your template and try again:",
+        const adminId = ctx.from?.id;
+        if (!adminId) return;
+
+        // Get the active setup session
+        const session = await BotsStore.getActiveSetupSessionByAdmin(adminId);
+        if (!session || session.groupChatId !== groupChatId) {
+            await ctx.editMessageText(
+                "❌ **Session Error**\n\nSetup session not found or expired. Please start the setup process again.",
                 { parse_mode: 'Markdown' }
             );
             return;
         }
 
-        // Save the template
-        const templateManager = new TemplateManager(BotsStore.getInstance());
-        await templateManager.updateTemplate(groupChatId, templateType as any, {
-            content: textInput,
-            isActive: true
-        }, session.adminId);
+        // Update session to wait for customer ID input
+        await BotsStore.updateSetupSession(session.sessionId, {
+            currentStep: 'waiting_for_customer_id'
+        });
 
-        await safeReply(ctx,
-            `✅ **Template Updated**\n\n` +
-            `**Type:** ${templateType.replace(/_/g, ' ')}\n` +
-            `**Length:** ${textInput.length} characters\n\n` +
-            `Template has been saved successfully! You can:\n\n` +
-            `• Continue editing other templates\n` +
-            `• Preview this template\n` +
-            `• Return to the main wizard menu\n\n` +
-            `What would you like to do next?`,
+        await ctx.editMessageText(
+            "🔗 **Enter Customer ID**\n\n" +
+            "Please type the existing customer ID you'd like to use for this group.\n\n" +
+            "**Guidelines:**\n" +
+            "• Enter the exact Customer ID from Unthread\n" +
+            "• The customer ID will be validated before linking\n" +
+            "• Customer must exist in your Unthread workspace\n\n" +
+            "**Example:** `cust_1234567890abcdef` or `customer-abc-123`",
+            { parse_mode: 'Markdown' }
+        );
+
+        // In the group chat, provide a hint
+        await ctx.telegram.sendMessage(
+            groupChatId,
+            "🔗 **Customer ID Required**\n\n" +
+            "Check your private messages to enter an existing customer ID for this group.",
+            { parse_mode: 'Markdown' }
+        );
+
+    } catch (error) {
+        logError(error, 'handleUseExistingCustomer', {
+            groupChatId,
+            adminId: ctx.from?.id
+        });
+        
+        await ctx.editMessageText(
+            "❌ **Error**\n\nAn error occurred. Please try again.",
+            { parse_mode: 'Markdown' }
+        );
+    }
+};
+
+/**
+ * Handle canceling customer update
+ */
+const handleCancelCustomerUpdate = async (ctx: BotContext, groupChatId: number): Promise<void> => {
+    try {
+        const adminId = ctx.from?.id;
+        if (!adminId) return;
+
+        const groupConfig = await BotsStore.getGroupConfig(groupChatId);
+        
+        // Clear any active setup session for this admin
+        const activeSession = await BotsStore.getActiveSetupSessionByAdmin(adminId);
+        if (activeSession) {
+            await BotsStore.deleteSetupSession(activeSession.sessionId);
+            LogEngine.info('Cleared setup session after canceling customer update', {
+                adminId,
+                groupChatId,
+                sessionId: activeSession.sessionId
+            });
+        }
+        
+        await ctx.editMessageText(
+            "✅ **Update Cancelled**\n\n" +
+            `Customer association remains unchanged.\n\n` +
+            `**Current Customer:** ${groupConfig?.customerName || 'Default'}\n` +
+            `**Status:** Ready for support tickets\n\n` +
+            "**Available Commands:**\n" +
+            "• `/support` - Create support tickets\n" +
+            "• `/templates` - Manage message templates\n" +
+            "• `/help` - Show all commands",
+            { parse_mode: 'Markdown' }
+        );
+    } catch (error) {
+        logError(error, 'handleCancelCustomerUpdate', {
+            groupChatId,
+            adminId: ctx.from?.id
+        });
+        
+        await ctx.editMessageText(
+            "❌ **Error**\n\nAn error occurred. Please try again.",
+            { parse_mode: 'Markdown' }
+        );
+    }
+};
+
+/**
+ * Update group customer association with new customer details
+ */
+const updateGroupCustomerAssociation = async (
+    ctx: BotContext,
+    groupChatId: number,
+    customerId: string,
+    customerName: string,
+    updateMethod: string
+): Promise<void> => {
+    try {
+        const adminId = ctx.from?.id;
+        if (!adminId) return;
+
+        // Get current configuration
+        const currentConfig = await BotsStore.getGroupConfig(groupChatId);
+        
+        // Handle both new group setup and existing group updates
+        let isNewGroup = false;
+        let groupTitle = '';
+        let existingConfig: GroupConfig | null = currentConfig;
+        
+        if (!currentConfig) {
+            // This is a new group setup - we need to create the initial configuration
+            isNewGroup = true;
+            
+            // Try to get group title from the session or use a default
+            const session = await BotsStore.getActiveSetupSessionByAdmin(adminId);
+            groupTitle = `Group ${groupChatId}`; // Use a default since groupChatTitle might not exist
+            
+            // Create a minimal config for new groups
+            existingConfig = {
+                chatId: groupChatId,
+                chatTitle: groupTitle,
+                isConfigured: false, // Will be set to true after customer association
+                setupBy: adminId,
+                setupAt: new Date().toISOString(),
+                botIsAdmin: true,
+                lastAdminCheck: new Date().toISOString(),
+                setupVersion: '1.0',
+                metadata: {
+                    setupPhase: 'customer_setup'
+                }
+            };
+            
+            LogEngine.info('Creating initial group configuration', {
+                groupChatId,
+                groupTitle,
+                adminId,
+                updateMethod
+            });
+        } else {
+            groupTitle = currentConfig.chatTitle || `Group ${groupChatId}`;
+            LogEngine.info('Updating existing group configuration', {
+                groupChatId,
+                groupTitle,
+                currentCustomerId: currentConfig.customerId,
+                currentCustomerName: currentConfig.customerName,
+                updateMethod
+            });
+        }
+
+        // Store previous customer info for logging (existingConfig is guaranteed to exist at this point)
+        const previousCustomerId = existingConfig!.customerId;
+        const previousCustomerName = existingConfig!.customerName;
+
+        // Update the configuration
+        const updatedConfig: GroupConfig = {
+            ...existingConfig!,
+            customerId: customerId,
+            customerName: customerName,
+            isConfigured: true,
+            lastUpdatedAt: new Date().toISOString(),
+            metadata: {
+                ...existingConfig!.metadata,
+                lastUpdateMethod: updateMethod,
+                previousCustomerId: previousCustomerId,
+                previousCustomerName: previousCustomerName,
+                updateHistory: [
+                    ...((existingConfig!.metadata?.updateHistory as any[]) || []),
+                    {
+                        timestamp: new Date().toISOString(),
+                        adminId: adminId,
+                        action: 'customer_update',
+                        previousCustomerId: previousCustomerId,
+                        newCustomerId: customerId,
+                        method: updateMethod
+                    }
+                ]
+            }
+        };
+
+        // Save updated configuration
+        await BotsStore.storeGroupConfig(updatedConfig);
+
+        // Show success message - but only if we're in a context where we can edit messages
+        // For DM-based sessions, we'll send a new message instead of editing
+        const isDmContext = ctx.chat?.type === 'private';
+        
+        if (isDmContext) {
+            // Send a new message in the DM
+            await ctx.reply(
+                "🎉 **Customer Updated Successfully!**\n\n" +
+                `**Group:** ${groupTitle}\n` +
+                `**Previous Customer:** ${previousCustomerName || 'Default'}\n` +
+                `**New Customer:** ${customerName}\n` +
+                `**Customer ID:** ${customerId}\n\n` +
+                "✅ **Support tickets will now be associated with the new customer account.**\n\n" +
+                "All future tickets from this group will be linked to this customer.",
+                { parse_mode: 'Markdown' }
+            );
+        } else {
+            // Try to edit the message for inline button contexts
+            try {
+                await ctx.editMessageText(
+                    "🎉 **Customer Updated Successfully!**\n\n" +
+                    `**Group:** ${groupTitle}\n` +
+                    `**Previous Customer:** ${previousCustomerName || 'Default'}\n` +
+                    `**New Customer:** ${customerName}\n` +
+                    `**Customer ID:** ${customerId}\n\n` +
+                    "✅ **Support tickets will now be associated with the new customer account.**\n\n" +
+                    "All future tickets from this group will be linked to this customer.",
+                    { parse_mode: 'Markdown' }
+                );
+            } catch (editError) {
+                // If editing fails, send a new message instead
+                await ctx.reply(
+                    "🎉 **Customer Updated Successfully!**\n\n" +
+                    `**Group:** ${groupTitle}\n` +
+                    `**Previous Customer:** ${previousCustomerName || 'Default'}\n` +
+                    `**New Customer:** ${customerName}\n` +
+                    `**Customer ID:** ${customerId}\n\n` +
+                    "✅ **Support tickets will now be associated with the new customer account.**\n\n" +
+                    "All future tickets from this group will be linked to this customer.",
+                    { parse_mode: 'Markdown' }
+                );
+                
+                LogEngine.warn('Failed to edit message, sent new message instead', {
+                    groupChatId: groupChatId,
+                    error: editError instanceof Error ? editError.message : 'Unknown error'
+                });
+            }
+        }
+
+        // Notify the group chat about the update
+        try {
+            await ctx.telegram.sendMessage(
+                groupChatId,
+                "🔄 **Customer Association Updated**\n\n" +
+                `**New Customer:** ${customerName}\n\n` +
+                "✅ **What this means:**\n" +
+                "• All new support tickets will be linked to this customer\n" +
+                "• Group functionality remains the same\n" +
+                "• Use `/support` to create tickets as usual\n\n" +
+                "📋 **Commands available:** `/support`, `/help`, `/templates`",
+                { parse_mode: 'Markdown' }
+            );
+        } catch (notificationError) {
+            LogEngine.warn('Failed to notify group about customer update', {
+                groupChatId: groupChatId,
+                error: notificationError instanceof Error ? notificationError.message : 'Unknown error'
+            });
+        }
+
+        LogEngine.info('Customer association updated successfully', {
+            groupChatId: groupChatId,
+            groupChatName: groupTitle,
+            previousCustomerId: previousCustomerId,
+            previousCustomerName: previousCustomerName,
+            newCustomerId: customerId,
+            newCustomerName: customerName,
+            updateMethod: updateMethod,
+            updatedBy: adminId
+        });
+
+    } catch (error) {
+        logError(error, 'updateGroupCustomerAssociation', {
+            groupChatId,
+            customerId,
+            customerName,
+            updateMethod,
+            adminId: ctx.from?.id
+        });
+        
+        await ctx.editMessageText(
+            "❌ **Update Error**\n\n" +
+            "An error occurred while updating the customer association. Please try again.",
+            { parse_mode: 'Markdown' }
+        );
+    }
+};
+
+/**
+ * Phase 5: Customer ID Update Handlers
+ */
+
+/**
+ * Handle customer ID update choice for existing groups - Phase 5 Implementation
+ */
+const handleUpdateCustomerChoice = async (ctx: BotContext, groupChatId: number): Promise<void> => {
+    try {
+        const adminId = ctx.from?.id;
+        if (!adminId) return;
+
+        // Get current group configuration
+        const groupConfig = await BotsStore.getGroupConfig(groupChatId);
+        if (!groupConfig) {
+            await ctx.editMessageText(
+                "❌ **Configuration Not Found**\n\n" +
+                "Unable to find configuration for this group.",
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+
+        await ctx.editMessageText(
+            "🔄 **Update Customer Association**\n\n" +
+            `**Group:** ${groupConfig.chatTitle}\n` +
+            `**Current Customer:** ${groupConfig.customerName || 'Default'}\n` +
+            `**Customer ID:** ${groupConfig.customerId || 'N/A'}\n\n` +
+            "Choose how to update the customer association:",
             {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
-                        [{ text: "👀 Preview Template", callback_data: `dm_preview_template_${templateType}_${sessionId}` }],
-                        [{ text: "🎨 Edit More Templates", callback_data: `dm_wizard_templates_${sessionId}` }],
-                        [{ text: "📋 Review & Finish", callback_data: `dm_wizard_review_${sessionId}` }]
+                        [{ text: "✏️ Create New Customer", callback_data: `create_new_customer_${groupChatId}` }],
+                        [{ text: "🔗 Use Existing Customer ID", callback_data: `link_existing_customer_${groupChatId}` }],
+                        [{ text: "❌ Cancel", callback_data: `cancel_customer_update_${groupChatId}` }]
                     ]
                 }
             }
         );
 
-        LogEngine.info('Template updated via DM wizard', {
-            sessionId,
-            templateType,
-            adminId: session.adminId,
-            groupChatId,
-            contentLength: textInput.length
-        });
-
     } catch (error) {
-        logError(error, 'handleTemplateTextInput', {
-            sessionId,
-            templateType,
-            textLength: textInput.length
+        logError(error, 'handleUpdateCustomerChoice', {
+            groupChatId,
+            adminId: ctx.from?.id
         });
-
-        await safeReply(ctx,
-            "❌ **Save Failed**\n\n" +
-            "Unable to save the template. Please try again.\n\n" +
-            "If this error persists, you can continue with other setup options.",
+        
+        await ctx.editMessageText(
+            "❌ **Update Error**\n\n" +
+            "An error occurred while loading update options. Please try again.",
             { parse_mode: 'Markdown' }
         );
     }
 };
 
 /**
- * Handle callback queries for DM wizard navigation
+ * Handle creating new customer for existing group
  */
-const handleDmWizardCallback = async (ctx: BotContext): Promise<boolean> => {
+const handleCreateNewCustomerForGroup = async (ctx: BotContext, groupChatId: number): Promise<void> => {
     try {
-        if (!ctx.callbackQuery || !('data' in ctx.callbackQuery) || ctx.chat?.type !== 'private' || !ctx.from?.id) {
-            return false;
+        const adminId = ctx.from?.id;
+        if (!adminId) return;
+
+        const groupConfig = await BotsStore.getGroupConfig(groupChatId);
+        if (!groupConfig) {
+            await ctx.editMessageText(
+                "❌ **Configuration Not Found**\n\n" +
+                "Unable to find configuration for this group.",
+                { parse_mode: 'Markdown' }
+            );
+            return;
         }
 
-        const callbackData = ctx.callbackQuery.data;
-        const adminId = ctx.from.id;
-
-        // Parse callback data for DM wizard actions
-        if (callbackData.startsWith('dm_wizard_')) {
-            const parts = callbackData.split('_');
-            if (parts.length < 4) return false;
-
-            const action = parts[2]; // templates, advanced, review, etc.
-            const sessionId = parts.slice(3).join('_');
-
-            // Verify session belongs to this admin
-            const session = await BotsStore.getDmSetupSession(sessionId);
-            if (!session || session.adminId !== adminId) {
-                await ctx.answerCbQuery("❌ Session not found or expired");
-                return true;
-            }
-
-            // Route to appropriate handler
-            switch (action) {
-                case 'templates':
-                    await handleDmTemplateCustomization(ctx, sessionId);
-                    break;
-                case 'advanced':
-                    await handleDmAdvancedConfig(ctx, sessionId);
-                    break;
-                case 'customers':
-                    await handleDmCustomerManagement(ctx, sessionId);
-                    break;
-                case 'review':
-                    await handleDmWizardReview(ctx, sessionId);
-                    break;
-                case 'welcome':
-                    const groupConfig = await BotsStore.getGroupConfig(session.groupChatId);
-                    if (groupConfig) {
-                        await showDmWizardWelcome(ctx, sessionId, groupConfig);
-                    }
-                    break;
-                case 'complete':
-                    await completeDmWizard(ctx, sessionId);
-                    break;
-                case 'cancel':
-                    await cancelDmWizard(ctx, sessionId);
-                    break;
-                default:
-                    return false;
-            }
-
-            await ctx.answerCbQuery();
-            return true;
-        }
-
-        // Handle template editing callbacks
-        if (callbackData.startsWith('dm_edit_template_')) {
-            const parts = callbackData.split('_');
-            if (parts.length < 5) return false;
-
-            const templateType = parts.slice(3, -1).join('_');
-            const sessionId = parts[parts.length - 1];
-
-            if (!sessionId) return false;
-
-            // Verify session
-            const session = await BotsStore.getDmSetupSession(sessionId);
-            if (!session || session.adminId !== adminId) {
-                await ctx.answerCbQuery("❌ Session not found or expired");
-                return true;
-            }
-
-            await handleDmTemplateEdit(ctx, sessionId, templateType);
-            await ctx.answerCbQuery();
-            return true;
-        }
-
-        // Handle other DM wizard callbacks (preview, reset, save, etc.)
-        if (callbackData.includes('dm_') && callbackData.includes('template_')) {
-            const parts = callbackData.split('_');
-            const action = parts[1]; // preview, reset, save
-            const sessionId = parts[parts.length - 1];
-
-            if (!sessionId) return false;
-
-            // Verify session
-            const session = await BotsStore.getDmSetupSession(sessionId);
-            if (!session || session.adminId !== adminId) {
-                await ctx.answerCbQuery("❌ Session not found or expired");
-                return true;
-            }
-
-            switch (action) {
-                case 'preview':
-                    const templateType = parts.slice(3, -1).join('_');
-                    await handleTemplatePreview(ctx, sessionId, templateType);
-                    break;
-                case 'reset':
-                    const resetTemplateType = parts.slice(3, -1).join('_');
-                    await handleTemplateReset(ctx, sessionId, resetTemplateType);
-                    break;
-                case 'save':
-                    // This would be handled by the template editing flow
-                    await ctx.answerCbQuery("Template saved!");
-                    break;
-                default:
-                    return false;
-            }
-
-            await ctx.answerCbQuery();
-            return true;
-        }
-
-        // Handle start DM setup callback
-        if (callbackData.startsWith('start_dm_setup_')) {
-            const groupChatId = parseInt(callbackData.replace('start_dm_setup_', ''));
-            await startDmSetupWizard(ctx, groupChatId);
-            await ctx.answerCbQuery();
-            return true;
-        }
-
-        return false;
-    } catch (error) {
-        logError(error, 'handleDmWizardCallback', {
-            chatId: ctx.chat?.id,
-            userId: ctx.from?.id,
-            callbackData: ctx.callbackQuery && 'data' in ctx.callbackQuery ? ctx.callbackQuery.data : 'unknown'
-        });
-        
-        await ctx.answerCbQuery("❌ An error occurred");
-        return false;
-    }
-};
-
-/**
- * Handle customer management in DM wizard
- */
-const handleDmCustomerManagement = async (ctx: BotContext, sessionId: string): Promise<void> => {
-    const session = await BotsStore.getDmSetupSession(sessionId);
-    if (!session) return;
-
-    const groupConfig = await BotsStore.getGroupConfig(session.groupChatId);
-    
-    const customerMessage = `👥 **Customer Management**\n\n` +
-        `**Group:** ${session.groupChatName}\n\n` +
-        `**Current Customer:**\n` +
-        `• Name: ${groupConfig?.customerName || 'Default Customer'}\n` +
-        `• ID: ${groupConfig?.customerId || 'Not set'}\n` +
-        `• Setup Method: ${groupConfig?.metadata?.setupMethod || 'Default'}\n\n` +
-        `**Available Actions:**\n` +
-        `• View customer details\n` +
-        `• Update customer information\n` +
-        `• Link to different customer\n` +
-        `• Create new customer account\n\n` +
-        `**Customer Integration:**\n` +
-        `All support tickets created in this group will be associated with the selected customer account.\n\n` +
-        `Select an option:`;
-
-    const keyboard = {
-        inline_keyboard: [
-            [{ text: "📋 View Customer Details", callback_data: `dm_customer_details_${sessionId}` }],
-            [{ text: "✏️ Update Customer Info", callback_data: `dm_customer_update_${sessionId}` }],
-            [{ text: "🔗 Link Different Customer", callback_data: `dm_customer_link_${sessionId}` }],
-            [{ text: "➕ Create New Customer", callback_data: `dm_customer_create_${sessionId}` }],
-            [
-                { text: "🔙 Back to Menu", callback_data: `dm_wizard_welcome_${sessionId}` },
-                { text: "📋 Review & Finish", callback_data: `dm_wizard_review_${sessionId}` }
-            ]
-        ]
-    };
-
-    await ctx.editMessageText(customerMessage, {
-        parse_mode: 'Markdown',
-        reply_markup: keyboard
-    });
-
-    await updateDmSetupSessionStep(sessionId, 'customer_management');
-};
-
-/**
- * Handle template preview
- */
-const handleTemplatePreview = async (ctx: BotContext, sessionId: string, templateType: string): Promise<void> => {
-    const session = await BotsStore.getDmSetupSession(sessionId);
-    if (!session) return;
-
-    const templateManager = new TemplateManager(BotsStore.getInstance());
-    const templates = await templateManager.listTemplates({ 
-        groupChatId: session.groupChatId, 
-        templateType: templateType as any 
-    });
-    
-    const template = templates.find(t => t.templateType === templateType);
-    const content = template?.content || getDefaultTemplateContent(templateType);
-
-    // Generate preview with sample data
-    const sampleData = {
-        ticketId: 'DEMO-123',
-        ticketTitle: 'Sample Support Request',
-        userName: 'John Doe',
-        agentName: 'Support Agent',
-        groupName: session.groupChatName,
-        timestamp: new Date().toLocaleString(),
-        ticketStatus: 'Open',
-        agentMessage: 'Thank you for contacting support. We are reviewing your request.',
-        errorMessage: 'Sample error message'
-    };
-
-    let previewContent = content;
-    Object.entries(sampleData).forEach(([key, value]) => {
-        previewContent = previewContent.replace(new RegExp(`{{${key}}}`, 'g'), value);
-    });
-
-    const previewMessage = `👀 **Template Preview**\n\n` +
-        `**Type:** ${templateType.replace(/_/g, ' ')}\n` +
-        `**Status:** ${template?.isActive ? '✅ Active' : '❌ Inactive'}\n\n` +
-        `**Preview Output:**\n` +
-        `${previewContent}\n\n` +
-        `**Template Code:**\n` +
-        `\`\`\`\n${content}\n\`\`\`\n\n` +
-        `This preview shows how the template will appear with sample data.`;
-
-    const keyboard = {
-        inline_keyboard: [
-            [{ text: "✏️ Edit Template", callback_data: `dm_edit_template_${templateType}_${sessionId}` }],
-            [{ text: "🔄 Reset to Default", callback_data: `dm_reset_template_${templateType}_${sessionId}` }],
-            [{ text: "🔙 Back to Templates", callback_data: `dm_wizard_templates_${sessionId}` }]
-        ]
-    };
-
-    await ctx.editMessageText(previewMessage, {
-        parse_mode: 'Markdown',
-        reply_markup: keyboard
-    });
-};
-
-/**
- * Handle template reset to default
- */
-const handleTemplateReset = async (ctx: BotContext, sessionId: string, templateType: string): Promise<void> => {
-    const session = await BotsStore.getDmSetupSession(sessionId);
-    if (!session) return;
-
-    try {
-        const templateManager = new TemplateManager(BotsStore.getInstance());
-        const defaultContent = getDefaultTemplateContent(templateType);
-
-        await templateManager.updateTemplate(session.groupChatId, templateType as any, {
-            content: defaultContent,
-            isActive: true
-        }, session.adminId);
-
-        const resetMessage = `🔄 **Template Reset Complete**\n\n` +
-            `**Type:** ${templateType.replace(/_/g, ' ')}\n\n` +
-            `Template has been reset to default content:\n\n` +
-            `\`\`\`\n${defaultContent}\n\`\`\`\n\n` +
-            `The template is now active with default settings.`;
-
-        const keyboard = {
-            inline_keyboard: [
-                [{ text: "✏️ Edit Template", callback_data: `dm_edit_template_${templateType}_${sessionId}` }],
-                [{ text: "👀 Preview Template", callback_data: `dm_preview_template_${templateType}_${sessionId}` }],
-                [{ text: "🔙 Back to Templates", callback_data: `dm_wizard_templates_${sessionId}` }]
-            ]
-        };
-
-        await ctx.editMessageText(resetMessage, {
-            parse_mode: 'Markdown',
-            reply_markup: keyboard
-        });
-
-        LogEngine.info('Template reset to default', {
-            sessionId,
-            templateType,
-            adminId: session.adminId,
-            groupChatId: session.groupChatId
-        });
-
-    } catch (error) {
-        logError(error, 'handleTemplateReset', {
-            sessionId,
-            templateType
-        });
+        // Extract suggested name from group title
+        const chatTitle = groupConfig.chatTitle || 'Unknown Group';
+        const suggestedName = extractCustomerNameFromTitle(chatTitle);
 
         await ctx.editMessageText(
-            "❌ **Reset Failed**\n\n" +
-            "Unable to reset the template. Please try again.",
+            "✏️ **Create New Customer**\n\n" +
+            `**Group:** ${groupConfig.chatTitle}\n\n` +
+            `**Suggested Customer Name:**\n` +
+            `"${suggestedName}"\n\n` +
+            "Choose an option:",
             {
                 parse_mode: 'Markdown',
                 reply_markup: {
-                    inline_keyboard: [[
-                        { text: "🔙 Back to Templates", callback_data: `dm_wizard_templates_${sessionId}` }
-                    ]]
+                    inline_keyboard: [
+                        [{ text: `✅ Use '${suggestedName}'`, callback_data: `confirm_new_customer_${groupChatId}_${encodeURIComponent(suggestedName)}` }],
+                        [{ text: "✏️ Enter Custom Name", callback_data: `custom_customer_name_${groupChatId}` }],
+                        [{ text: "⬅️ Back", callback_data: `update_customer_${groupChatId}` }]
+                    ]
                 }
             }
+        );
+
+    } catch (error) {
+        logError(error, 'handleCreateNewCustomerForGroup', {
+            groupChatId,
+            adminId: ctx.from?.id
+        });
+        
+        await ctx.editMessageText(
+            "❌ **Error**\n\n" +
+            "An error occurred. Please try again.",
+            { parse_mode: 'Markdown' }
         );
     }
 };
 
 /**
- * Cancel DM wizard
+ * Handle confirming new customer creation with suggested name
  */
-const cancelDmWizard = async (ctx: BotContext, sessionId: string): Promise<void> => {
-    const session = await BotsStore.getDmSetupSession(sessionId);
-    if (!session) return;
+const handleConfirmNewCustomer = async (ctx: BotContext, groupChatId: number, customerName: string): Promise<void> => {
+    try {
+        const adminId = ctx.from?.id;
+        if (!adminId) return;
 
-    // Mark session as cancelled using imported function
-    await cancelDmSetupSession(sessionId);
+        // Decode the customer name
+        const decodedName = decodeURIComponent(customerName);
+        
+        // Validate the name
+        const validation = validateCustomerName(decodedName);
+        if (!validation.isValid) {
+            await ctx.editMessageText(
+                "❌ **Invalid Name**\n\n" +
+                `The suggested name "${decodedName}" is not valid.\n\n` +
+                "Please use the 'Enter Custom Name' option instead.",
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
 
-    const cancelMessage = `❌ **Setup Wizard Cancelled**\n\n` +
-        `**Group:** ${session.groupChatName}\n\n` +
-        `Your advanced setup session has been cancelled.\n\n` +
-        `**What's preserved:**\n` +
-        `✅ Basic group configuration\n` +
-        `✅ Default templates\n` +
-        `✅ Existing settings\n\n` +
-        `**To resume setup:**\n` +
-        `• Use \`/setup\` in the group chat again\n` +
-        `• Click "Advanced Setup" to return to this wizard\n\n` +
-        `Your group is still functional for basic support ticket creation.`;
+        const sanitizedName = validation.sanitizedName!;
 
-    await ctx.editMessageText(cancelMessage, {
-        parse_mode: 'Markdown'
-    });
+        await ctx.editMessageText(
+            "⏳ **Creating Customer**\n\n" +
+            `Creating new customer account: "${sanitizedName}"\n\n` +
+            "Please wait...",
+            { parse_mode: 'Markdown' }
+        );
 
-    LogEngine.info('DM setup wizard cancelled', {
-        sessionId,
-        adminId: session.adminId,
-        groupChatId: session.groupChatId,
-        duration: Date.now() - new Date(session.startedAt).getTime()
-    });
+        // Create the customer
+        let customerId: string;
+        let actualCustomerName: string;
+        
+        try {
+            const customer = await createCustomerWithName(sanitizedName);
+            customerId = customer.id;
+            actualCustomerName = customer.name;
+        } catch (error) {
+            const errorMessage = handleUnthreadApiError(error, 'Customer Creation');
+            await ctx.editMessageText(
+                errorMessage + '\n\n⬅️ **Go back:** Choose a different option.',
+                { 
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: "⬅️ Back to Options", callback_data: `update_customer_${groupChatId}` }]
+                        ]
+                    }
+                }
+            );
+            return;
+        }
+
+        // Update the group configuration
+        await updateGroupCustomerAssociation(ctx, groupChatId, customerId, actualCustomerName, 'new_customer_created');
+
+    } catch (error) {
+        logError(error, 'handleConfirmNewCustomer', {
+            groupChatId,
+            customerName: customerName,
+            adminId: ctx.from?.id
+        });
+        
+        await ctx.editMessageText(
+            "❌ **Creation Error**\n\n" +
+            "An error occurred while creating the customer. Please try again.",
+            { parse_mode: 'Markdown' }
+        );
+    }
 };
-
-const processSupportConversation = async (ctx: BotContext): Promise<boolean> => {
-    // This function handles ongoing support conversations and DM wizard callbacks
-    
-    const chatId = ctx.chat?.id;
-    const userId = ctx.from?.id;
-    
-    if (!chatId || !userId) {
-        return false;
-    }
-    
-    // First, check if this is a DM wizard callback
-    if (ctx.callbackQuery && 'data' in ctx.callbackQuery) {
-        const handled = await handleDmWizardCallback(ctx);
-        if (handled) {
-            return true;
-        }
-    }
-    
-    // Then, check for text input in DM wizard
-    if (ctx.message && 'text' in ctx.message) {
-        const dmHandled = await handleDmSetupWizard(ctx);
-        if (dmHandled) {
-            return true;
-        }
-    }
-    
-    // Finally, handle setup text input if in group chat
-    if (ctx.message && 'text' in ctx.message && ctx.chat?.type !== 'private') {
-        const setupHandled = await processSetupTextInput(ctx);
-        if (setupHandled) {
-            return true;
-        }
-    }
-    
-    // Future implementation will include:
-    // 1. Check for active support sessions in the current chat
-    // 2. Process form input (ticket summary, customer email, priority, etc.)
-    // 3. Validate user responses and provide real-time feedback
-    // 4. Create tickets in Unthread via API integration
-    // 5. Handle conversation state management and transitions
-    // 6. Send confirmation messages using templates
-    // 7. Notify admins of new ticket creation
-    // 8. Handle error states and retry mechanisms
-    
-    return false; // No active conversation processed
-};
-
-// ================================
-// Helper Functions for DM Wizard
-// ================================
 
 /**
- * Get default template content for a template type
+ * Handle linking to existing customer (future enhancement)
  */
-const getDefaultTemplateContent = (templateType: string): string => {
-    const defaults: Record<string, string> = {
-        'ticket_created': '🎫 New ticket created: {{ticketTitle}}\nTicket ID: {{ticketId}}\nCreated by: {{userName}}',
-        'ticket_updated': '🔄 Ticket updated: {{ticketTitle}}\nStatus: {{ticketStatus}}\nUpdated by: {{agentName}}',
-        'agent_response': '💬 Agent response from {{agentName}}:\n\n{{agentMessage}}',
-        'ticket_closed': '✅ Ticket closed: {{ticketTitle}}\nResolved by: {{agentName}}',
-        'welcome_message': '👋 Welcome to {{groupName}} support!\nUse /support to create a ticket.',
-        'error_message': '❌ Error: {{errorMessage}}',
-        'setup_complete': '✅ Setup complete for {{groupName}}'
-    };
-    return defaults[templateType] || `Template: {{templateType}}\nContent: {{content}}`;
+const handleLinkExistingCustomer = async (ctx: BotContext, groupChatId: number): Promise<void> => {
+    await ctx.editMessageText(
+        "🔗 **Link Existing Customer**\n\n" +
+        "This feature allows you to link this group to an existing customer account.\n\n" +
+        "**Planned Features:**\n" +
+        "• Search existing customers by name\n" +
+        "• Browse customer list with pagination\n" +
+        "• Link group to selected customer\n" +
+        "• Verify customer details before linking\n\n" +
+        "**For now:** Use 'Create New Customer' to set up a new customer account.",
+        { 
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "⬅️ Back to Options", callback_data: `update_customer_${groupChatId}` }]
+                ]
+            }
+        }
+    );
+};
+
+/**
+ * Handle canceling setup process
+ */
+const handleCancelSetup = async (ctx: BotContext, groupChatId: number): Promise<void> => {
+    try {
+        const adminId = ctx.from?.id;
+        if (!adminId) return;
+
+        // Get the active setup session
+        const session = await BotsStore.getActiveSetupSessionByAdmin(adminId);
+        if (session) {
+            // Clean up the session
+            await BotsStore.deleteSetupSession(session.sessionId);
+        }
+
+        await ctx.editMessageText(
+            "❌ **Setup Cancelled**\n\n" +
+            "Group setup has been cancelled. No changes have been made.\n\n" +
+            "**To start setup again:**\n" +
+            "• Go to the group chat\n" +
+            "• Run `/setup` command\n" +
+            "• Follow the setup instructions\n\n" +
+            "**Need help?** Use `/help` for available commands.",
+            { parse_mode: 'Markdown' }
+        );
+
+        // Notify the group chat about cancellation
+        try {
+            await ctx.telegram.sendMessage(
+                groupChatId,
+                "❌ **Setup Cancelled**\n\n" +
+                "Group setup has been cancelled by the administrator.\n\n" +
+                "To set up this group for support tickets, an admin can run `/setup` again.",
+                { parse_mode: 'Markdown' }
+            );
+        } catch (notificationError) {
+            LogEngine.warn('Failed to notify group about setup cancellation', {
+                groupChatId: groupChatId,
+                error: notificationError instanceof Error ? notificationError.message : 'Unknown error'
+            });
+        }
+
+        LogEngine.info('Setup cancelled by admin', {
+            groupChatId: groupChatId,
+            adminId: adminId
+        });
+
+    } catch (error) {
+        logError(error, 'handleCancelSetup', {
+            groupChatId,
+            adminId: ctx.from?.id
+        });
+        
+        await ctx.editMessageText(
+            "❌ **Error**\n\n" +
+            "An error occurred while cancelling setup. Please try again.",
+            { parse_mode: 'Markdown' }
+        );
+    }
+};
+
+/**
+ * Process support conversation messages and callback queries
+ * Handles ongoing support ticket creation and related interactions
+ */
+const processSupportConversation = async (ctx: BotContext): Promise<boolean> => {
+    try {
+        // If this is a callback query, handle it
+        if ('callback_query' in ctx.update && ctx.update.callback_query) {
+            return await handleCallbackQuery(ctx);
+        }
+
+        // If this is a text message in a support form, handle it
+        if (ctx.message && 'text' in ctx.message && ctx.from) {
+            return await handleSupportFormInput(ctx);
+        }
+
+        return false;
+    } catch (error) {
+        LogEngine.error('Error in processSupportConversation', {
+            error: (error as Error).message,
+            chatId: ctx.chat?.id,
+            userId: ctx.from?.id
+        });
+        return false;
+    }
+};
+
+/**
+ * Handle entering custom name callback
+ */
+const handleEnterCustomNameCallback = async (ctx: BotContext, groupChatId: number): Promise<void> => {
+    try {
+        const adminId = ctx.from?.id;
+        if (!adminId) return;
+
+        // Get the active setup session
+        const session = await BotsStore.getActiveSetupSessionByAdmin(adminId);
+        if (!session || session.groupChatId !== groupChatId) {
+            await ctx.editMessageText(
+                "❌ **Session Error**\n\nSetup session not found or expired. Please start the setup process again.",
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+
+        // Update session to wait for custom name input
+        await BotsStore.updateSetupSession(session.sessionId, {
+            currentStep: 'waiting_for_custom_name'
+        });
+
+        await ctx.editMessageText(
+            "✏️ **Enter Custom Customer Name**\n\n" +
+            "Please type the customer name you'd like to use for this group.\n\n" +
+            "**Guidelines:**\n" +
+            "• Use a clear, business-appropriate name\n" +
+            "• 2-100 characters in length\n" +
+            "• Letters, numbers, spaces, and basic punctuation allowed\n" +
+            "• Special characters will be converted to underscores\n\n" +
+            "**Examples:** \"Acme Corporation\", \"Tech Solutions Ltd\", \"Customer Support\"",
+            { parse_mode: 'Markdown' }
+        );
+
+        // In the group chat, provide a hint
+        await ctx.telegram.sendMessage(
+            groupChatId,
+            "💬 **Custom Name Required**\n\n" +
+            "Check your private messages to enter a custom customer name for this group.",
+            { parse_mode: 'Markdown' }
+        );
+
+    } catch (error) {
+        logError(error, 'handleEnterCustomNameCallback', {
+            groupChatId,
+            adminId: ctx.from?.id
+        });
+        
+        await ctx.editMessageText(
+            "❌ **Error**\n\nAn error occurred. Please try again.",
+            { parse_mode: 'Markdown' }
+        );
+    }
+};
+
+/**
+ * Handle keeping current settings callback
+ */
+const handleKeepCurrentSettingsCallback = async (ctx: BotContext, groupChatId: number): Promise<void> => {
+    try {
+        const adminId = ctx.from?.id;
+        if (!adminId) return;
+
+        const groupConfig = await BotsStore.getGroupConfig(groupChatId);
+        
+        // Clear any active setup session for this admin
+        const activeSession = await BotsStore.getActiveSetupSessionByAdmin(adminId);
+        if (activeSession) {
+            await BotsStore.deleteSetupSession(activeSession.sessionId);
+            LogEngine.info('Cleared setup session after keeping current settings', {
+                adminId,
+                groupChatId,
+                sessionId: activeSession.sessionId
+            });
+        }
+        
+        await ctx.editMessageText(
+            "✅ **Settings Unchanged**\n\n" +
+            `Customer association remains the same.\n\n` +
+            `**Current Customer:** ${groupConfig?.customerName || 'Default'}\n` +
+            `**Status:** Ready for support tickets\n\n` +
+            "**Available Commands:**\n" +
+            "• `/support` - Create support tickets\n" +
+            "• `/templates` - Manage message templates\n" +
+            "• `/help` - Show all commands",
+            { parse_mode: 'Markdown' }
+        );
+    } catch (error) {
+        logError(error, 'handleKeepCurrentSettingsCallback', {
+            groupChatId,
+            adminId: ctx.from?.id
+        });
+        
+        await ctx.editMessageText(
+            "❌ **Error**\n\nAn error occurred. Please try again.",
+            { parse_mode: 'Markdown' }
+        );
+    }
+};
+
+/**
+ * Handle callback queries from inline keyboards
+ */
+const handleCallbackQuery = async (ctx: BotContext): Promise<boolean> => {
+    try {
+        if (!('callback_query' in ctx.update) || !ctx.update.callback_query) {
+            return false;
+        }
+
+        const callbackQuery = ctx.update.callback_query;
+        if (!('data' in callbackQuery) || !callbackQuery.data) {
+            return false;
+        }
+
+        const callbackData = callbackQuery.data;
+        
+        // Handle different types of callbacks
+        if (callbackData.startsWith('proceed_suggested_')) {
+            const groupChatId = parseInt(callbackData.replace('proceed_suggested_', ''));
+            await handleProceedWithSuggested(ctx, groupChatId);
+            return true;
+        }
+        
+        if (callbackData.startsWith('custom_name_')) {
+            const groupChatId = parseInt(callbackData.replace('custom_name_', ''));
+            await handleEnterCustomNameCallback(ctx, groupChatId);
+            return true;
+        }
+        
+        if (callbackData.startsWith('update_customer_')) {
+            const groupChatId = parseInt(callbackData.replace('update_customer_', ''));
+            await handleUpdateCustomerChoice(ctx, groupChatId);
+            return true;
+        }
+        
+        if (callbackData.startsWith('keep_settings_')) {
+            const groupChatId = parseInt(callbackData.replace('keep_settings_', ''));
+            await handleKeepCurrentSettingsCallback(ctx, groupChatId);
+            return true;
+        }
+        
+        if (callbackData.startsWith('create_new_customer_')) {
+            const groupChatId = parseInt(callbackData.replace('create_new_customer_', ''));
+            await handleCreateNewCustomerForGroup(ctx, groupChatId);
+            return true;
+        }
+        
+        if (callbackData.startsWith('use_existing_customer_')) {
+            const groupChatId = parseInt(callbackData.replace('use_existing_customer_', ''));
+            await handleUseExistingCustomer(ctx, groupChatId);
+            return true;
+        }
+        
+        if (callbackData.startsWith('use_existing_')) {
+            const groupChatId = parseInt(callbackData.replace('use_existing_', ''));
+            await handleUseExistingCustomer(ctx, groupChatId);
+            return true;
+        }
+        
+        if (callbackData.startsWith('link_existing_customer_')) {
+            const groupChatId = parseInt(callbackData.replace('link_existing_customer_', ''));
+            await handleLinkExistingCustomer(ctx, groupChatId);
+            return true;
+        }
+        
+        if (callbackData.startsWith('custom_customer_name_')) {
+            const groupChatId = parseInt(callbackData.replace('custom_customer_name_', ''));
+            await handleEnterCustomNameCallback(ctx, groupChatId);
+            return true;
+        }
+        
+        if (callbackData.startsWith('cancel_setup_')) {
+            const groupChatId = parseInt(callbackData.replace('cancel_setup_', ''));
+            await handleCancelSetup(ctx, groupChatId);
+            return true;
+        }
+        
+        if (callbackData.startsWith('confirm_new_customer_')) {
+            const parts = callbackData.replace('confirm_new_customer_', '').split('_');
+            if (parts.length > 0 && parts[0]) {
+                const groupChatId = parseInt(parts[0]);
+                const customerName = parts.slice(1).join('_');
+                await handleConfirmNewCustomer(ctx, groupChatId, customerName);
+            }
+            return true;
+        }
+        
+        if (callbackData.startsWith('cancel_customer_update_')) {
+            const groupChatId = parseInt(callbackData.replace('cancel_customer_update_', ''));
+            await handleCancelCustomerUpdate(ctx, groupChatId);
+            return true;
+        }
+
+        // Handle bot permission related callbacks
+        if (callbackData === 'retry_bot_admin_check') {
+            await handleRetryBotAdminCheck(ctx);
+            return true;
+        }
+        
+        if (callbackData === 'bot_admin_help') {
+            await sendBotAdminHelpMessage(ctx);
+            return true;
+        }
+
+        return false;
+    } catch (error) {
+        LogEngine.error('Error handling callback query', {
+            error: (error as Error).message,
+            callbackData: 'callback_query' in ctx.update && ctx.update.callback_query && 'data' in ctx.update.callback_query ? ctx.update.callback_query.data : 'unknown'
+        });
+        return false;
+    }
+};
+
+/**
+ * Handle support form text input
+ */
+const handleSupportFormInput = async (ctx: BotContext): Promise<boolean> => {
+    try {
+        if (!ctx.from || !ctx.message || !('text' in ctx.message)) {
+            return false;
+        }
+
+        const userId = ctx.from.id;
+        const userState = await BotsStore.getUserState(userId);
+        
+        if (!userState) {
+            return false; // No active support session
+        }
+
+        // Handle different support form fields
+        switch (userState.field) {
+            case SupportFieldEnum.SUMMARY:
+                return await handleSummaryInput(ctx, userState);
+            case SupportFieldEnum.EMAIL:
+                return await handleEmailInput(ctx, userState);
+            default:
+                return false;
+        }
+    } catch (error) {
+        LogEngine.error('Error handling support form input', {
+            error: (error as Error).message,
+            userId: ctx.from?.id
+        });
+        return false;
+    }
+};
+
+/**
+ * Handle summary input for support tickets
+ */
+const handleSummaryInput = async (ctx: BotContext, userState: any): Promise<boolean> => {
+    try {
+        if (!ctx.message || !('text' in ctx.message) || !ctx.from) {
+            return false;
+        }
+
+        const summary = ctx.message.text.trim();
+        
+        if (summary.length < 10) {
+            await safeReply(ctx, 
+                "⚠️ Please provide a more detailed summary (at least 10 characters).\n\n" +
+                "Describe your issue or question clearly so our support team can help you effectively."
+            );
+            return true;
+        }
+
+        // Update user state with summary and move to email field
+        const updatedState = {
+            ...userState,
+            summary: summary,
+            field: SupportFieldEnum.EMAIL
+        };
+
+        await BotsStore.setUserState(ctx.from.id, updatedState);
+
+        await safeReply(ctx,
+            "📧 **Email Address Required**\n\n" +
+            "Please provide your email address so our support team can follow up with you.\n\n" +
+            "**Example:** support@example.com"
+        );
+
+        return true;
+    } catch (error) {
+        LogEngine.error('Error handling summary input', {
+            error: (error as Error).message,
+            userId: ctx.from?.id
+        });
+        return false;
+    }
+};
+
+/**
+ * Handle email input for support tickets
+ */
+const handleEmailInput = async (ctx: BotContext, userState: any): Promise<boolean> => {
+    try {
+        if (!ctx.message || !('text' in ctx.message) || !ctx.from) {
+            return false;
+        }
+
+        const email = ctx.message.text.trim();
+        
+        // Basic email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            await safeReply(ctx,
+                "⚠️ **Invalid Email Address**\n\n" +
+                "Please provide a valid email address.\n\n" +
+                "**Example:** support@example.com"
+            );
+            return true;
+        }
+
+        // Create the support ticket
+        await createSupportTicket(ctx, userState.summary, email);
+        
+        // Clear user state
+        await BotsStore.clearUserState(ctx.from.id);
+
+        return true;
+    } catch (error) {
+        LogEngine.error('Error handling email input', {
+            error: (error as Error).message,
+            userId: ctx.from?.id
+        });
+        return false;
+    }
+};
+
+/**
+ * Create a support ticket with the provided information
+ */
+const createSupportTicket = async (ctx: BotContext, summary: string, email: string): Promise<void> => {
+    try {
+        if (!ctx.chat || !ctx.from) {
+            throw new Error('Missing chat or user context');
+        }
+
+        const chatId = ctx.chat.id;
+        const groupConfig = await BotsStore.getGroupConfig(chatId);
+        
+        if (!groupConfig?.isConfigured) {
+            await safeReply(ctx,
+                "❌ **Group Not Configured**\n\n" +
+                "This group is not properly configured for support tickets. Please ask an administrator to run `/setup`."
+            );
+            return;
+        }
+
+        // Create user data for ticket
+        const onBehalfOf = {
+            name: `${ctx.from.first_name} ${ctx.from.last_name || ''}`.trim(),
+            email: email
+        };
+
+        // Create the ticket
+        const ticketResponse = await unthreadService.createTicket({
+            groupChatName: groupConfig.chatTitle || 'Telegram Group',
+            customerId: groupConfig.customerId!,
+            summary: summary,
+            onBehalfOf: onBehalfOf
+        });
+
+        // Send confirmation message
+        const confirmationMessage = await safeReply(ctx,
+            "✅ **Support Ticket Created**\n\n" +
+            `**Ticket ID:** ${ticketResponse.friendlyId}\n` +
+            `**Summary:** ${summary}\n` +
+            `**Email:** ${email}\n\n` +
+            "🎯 **What's Next:**\n" +
+            "• Our support team has been notified\n" +
+            "• You'll receive updates via email\n" +
+            "• Reply to this message to add more information\n\n" +
+            "*Thank you for contacting support!*",
+            { parse_mode: 'Markdown' }
+        );
+
+        // Register the ticket for reply tracking
+        if (confirmationMessage) {
+            await unthreadService.registerTicketConfirmation({
+                messageId: confirmationMessage.message_id,
+                ticketId: ticketResponse.id,
+                friendlyId: ticketResponse.friendlyId,
+                customerId: groupConfig.customerId!,
+                chatId: chatId,
+                telegramUserId: ctx.from.id
+            });
+        }
+
+        LogEngine.info('Support ticket created successfully', {
+            ticketId: ticketResponse.id,
+            friendlyId: ticketResponse.friendlyId,
+            userId: ctx.from.id,
+            chatId: chatId,
+            summary: summary.substring(0, 100)
+        });
+
+    } catch (error) {
+        LogEngine.error('Error creating support ticket', {
+            error: (error as Error).message,
+            userId: ctx.from?.id,
+            chatId: ctx.chat?.id
+        });
+
+        await safeReply(ctx,
+            "❌ **Ticket Creation Failed**\n\n" +
+            "Sorry, there was an error creating your support ticket. Please try again or contact an administrator.\n\n" +
+            "You can use `/support` to start a new ticket."
+        );
+    }
 };
 
 // ================================
@@ -2413,10 +2735,7 @@ export {
     cancelCommand,
     resetCommand,
     setupCommand,
-    processSupportConversation,
     processSetupTextInput,
     templatesCommand,
-    handleDmSetupWizard,
-    handleDmWizardCallback,
-    startDmSetupWizard
+    processSupportConversation
 };
