@@ -40,7 +40,8 @@ import {
     aboutCommand,
     supportCommand, 
     cancelCommand, 
-    resetCommand, 
+    resetCommand,
+    setupCommand,
     processSupportConversation 
 } from './commands/index.js';
 import { handleMessage } from './events/message.js';
@@ -161,6 +162,7 @@ bot.command('about', commandMiddleware, wrapCommandHandler(aboutCommand, 'about'
 bot.command('support', commandMiddleware, wrapCommandHandler(supportCommand, 'support'));
 bot.command('cancel', commandMiddleware, wrapCommandHandler(cancelCommand, 'cancel'));
 bot.command('reset', commandMiddleware, wrapCommandHandler(resetCommand, 'reset'));
+bot.command('setup', commandMiddleware, wrapCommandHandler(setupCommand, 'setup'));
 
 // Register message handlers with middleware
 bot.on('text', async (ctx, next) => {
@@ -378,7 +380,8 @@ await bot.telegram.setMyCommands([
     { command: 'about', description: 'Show comprehensive bot information' },
     { command: 'support', description: 'Create a support ticket (group chats only)' },
     { command: 'cancel', description: 'Cancel ongoing support ticket creation' },
-    { command: 'reset', description: 'Reset your support conversation state' }
+    { command: 'reset', description: 'Reset your support conversation state' },
+    { command: 'setup', description: 'Configure group for support (admin only)' }
 ]);
 
 LogEngine.info('Bot initialized successfully', {

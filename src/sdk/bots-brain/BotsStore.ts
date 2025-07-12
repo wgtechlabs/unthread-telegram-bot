@@ -31,6 +31,7 @@
  */
 import { UnifiedStorage } from './UnifiedStorage.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
+import { z } from 'zod';
 import type { 
   TicketData, 
   UserState, 
@@ -38,10 +39,45 @@ import type {
   UserData, 
   AgentMessageData, 
   TicketInfo,
+  GroupConfig,
+  SetupState,
   IBotsStore,
   StorageConfig
 } from '../types.js';
 import type { DatabaseConnection } from '../../database/connection.js';
+
+// Zod schemas for runtime validation
+const GroupConfigSchema = z.object({
+  chatId: z.number(),
+  chatTitle: z.string().optional(),
+  isConfigured: z.boolean(),
+  customerId: z.string().optional(),
+  customerName: z.string().optional(),
+  setupBy: z.number().optional(),
+  setupAt: z.string().optional(),
+  botIsAdmin: z.boolean(),
+  lastAdminCheck: z.string().optional(),
+  setupVersion: z.string().optional(),
+  metadata: z.record(z.any()).optional(),
+  // Additional fields that might be added during storage
+  lastUpdatedAt: z.string().optional(),
+  version: z.string().optional()
+});
+
+const SetupStateSchema = z.object({
+  chatId: z.number(),
+  step: z.enum(['bot_admin_check', 'customer_selection', 'customer_creation', 'customer_linking', 'complete']),
+  initiatedBy: z.number(),
+  startedAt: z.string(),
+  suggestedCustomerName: z.string().optional(),
+  tempCustomerId: z.string().optional(),
+  userInput: z.string().optional(),
+  retryCount: z.number().optional(),
+  metadata: z.record(z.any()).optional(),
+  // Additional fields that might be added during storage
+  lastUpdatedAt: z.string().optional(),
+  version: z.string().optional()
+});
 
 export class BotsStore implements IBotsStore {
   private static instance: BotsStore | null = null;
@@ -125,6 +161,10 @@ export class BotsStore implements IBotsStore {
   static async getUserByTelegramId(telegramUserId: number): Promise<UserData | null> {
     return BotsStore.getInstance().getUserByTelegramId(telegramUserId);
   }
+
+  static async updateUser(telegramUserId: number, updates: Partial<UserData>): Promise<boolean> {
+    return BotsStore.getInstance().updateUser(telegramUserId, updates);
+  }
   
   static async shutdown(): Promise<void> {
     if (BotsStore.instance) {
@@ -160,18 +200,18 @@ export class BotsStore implements IBotsStore {
       // Store with multiple keys for different lookup patterns
       const promises = [
         // Primary lookup by Telegram message ID
-        this.storage.set(`ticket:telegram:${messageId}`, enrichedTicketData),
+        this.storage.set(`ticket:telegram:${messageId}`, JSON.stringify(enrichedTicketData)),
         
         // Lookup by Unthread conversation ID
-        this.storage.set(`ticket:unthread:${conversationId}`, enrichedTicketData),
+        this.storage.set(`ticket:unthread:${conversationId}`, JSON.stringify(enrichedTicketData)),
         
         // Lookup by Unthread ticket ID (if different from conversation ID)
         ticketId !== conversationId ? 
-          this.storage.set(`ticket:unthread:${ticketId}`, enrichedTicketData) : 
+          this.storage.set(`ticket:unthread:${ticketId}`, JSON.stringify(enrichedTicketData)) : 
           Promise.resolve(),
         
         // Lookup by friendly ID
-        this.storage.set(`ticket:friendly:${friendlyId}`, enrichedTicketData),
+        this.storage.set(`ticket:friendly:${friendlyId}`, JSON.stringify(enrichedTicketData)),
         
         // Chat-specific mapping for listing tickets in a chat
         this.addToChatTickets(chatId, messageId, conversationId)
@@ -194,35 +234,40 @@ export class BotsStore implements IBotsStore {
    * Get ticket by Unthread conversation ID
    */
   async getTicketByConversationId(conversationId: string): Promise<TicketData | null> {
-    return await this.storage.get(`ticket:unthread:${conversationId}`);
+    const data = await this.storage.get(`ticket:unthread:${conversationId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
   }
   
   /**
    * Get ticket by Telegram message ID
    */
   async getTicketByMessageId(messageId: number): Promise<TicketData | null> {
-    return await this.storage.get(`ticket:telegram:${messageId}`);
+    const data = await this.storage.get(`ticket:telegram:${messageId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
   }
   
   /**
    * Get ticket by friendly ID
    */
   async getTicketByFriendlyId(friendlyId: string): Promise<TicketData | null> {
-    return await this.storage.get(`ticket:friendly:${friendlyId}`);
+    const data = await this.storage.get(`ticket:friendly:${friendlyId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
   }
   
   /**
    * Get ticket by Unthread ticket ID
    */
   async getTicketByTicketId(ticketId: string): Promise<TicketData | null> {
-    return await this.storage.get(`ticket:unthread:${ticketId}`);
+    const data = await this.storage.get(`ticket:unthread:${ticketId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
   }
   
   /**
    * Get all tickets for a specific chat
    */
   async getTicketsForChat(chatId: number): Promise<TicketData[]> {
-    const chatTickets: TicketInfo[] = await this.storage.get(`chat:tickets:${chatId}`) || [];
+    const data = await this.storage.get(`chat:tickets:${chatId}`);
+    const chatTickets: TicketInfo[] = data ? (typeof data === 'string' ? JSON.parse(data) : data) : [];
     
     // Get full ticket data for each ticket
     const ticketPromises = chatTickets.map(ticketInfo => 
@@ -249,7 +294,7 @@ export class BotsStore implements IBotsStore {
         state: JSON.stringify(stateData)
       });
       
-      await this.storage.set(`user:state:${telegramUserId}`, stateData);
+      await this.storage.set(`user:state:${telegramUserId}`, JSON.stringify(stateData));
       
       LogEngine.debug('User state stored successfully', { telegramUserId });
       return true;
@@ -275,14 +320,15 @@ export class BotsStore implements IBotsStore {
       });
       
       const state = await this.storage.get(`user:state:${telegramUserId}`);
+      const parsedState = state ? (typeof state === 'string' ? JSON.parse(state) : state) : null;
       
       LogEngine.debug('User state retrieved', {
         telegramUserId,
-        found: !!state,
-        state: state ? JSON.stringify(state) : 'null'
+        found: !!parsedState,
+        state: parsedState ? JSON.stringify(parsedState) : 'null'
       });
       
-      return state;
+      return parsedState;
     } catch (error) {
       const err = error as Error;
       LogEngine.error('Failed to get user state', {
@@ -326,10 +372,10 @@ export class BotsStore implements IBotsStore {
     try {
       await Promise.all([
         // Primary lookup by customer ID
-        this.storage.set(`customer:id:${unthreadCustomerId}`, enrichedCustomerData),
+        this.storage.set(`customer:id:${unthreadCustomerId}`, JSON.stringify(enrichedCustomerData)),
         
         // Lookup by chat ID for quick access
-        this.storage.set(`customer:telegram:${telegramChatId}`, enrichedCustomerData)
+        this.storage.set(`customer:telegram:${telegramChatId}`, JSON.stringify(enrichedCustomerData))
       ]);
       
       LogEngine.info(`Customer stored: ${name || company} (${unthreadCustomerId})`);
@@ -348,14 +394,16 @@ export class BotsStore implements IBotsStore {
    * Get customer by Unthread customer ID (primary identifier)
    */
   async getCustomerById(customerId: string): Promise<CustomerData | null> {
-    return await this.storage.get(`customer:id:${customerId}`);
+    const data = await this.storage.get(`customer:id:${customerId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
   }
 
   /**
    * Get customer by Telegram chat ID
    */
   async getCustomerByChatId(chatId: number): Promise<CustomerData | null> {
-    return await this.storage.get(`customer:telegram:${chatId}`);
+    const data = await this.storage.get(`customer:telegram:${chatId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
   }
 
   /**
@@ -372,7 +420,7 @@ export class BotsStore implements IBotsStore {
     
     try {
       // Primary lookup by Telegram user ID
-      await this.storage.set(`user:telegram:${telegramUserId}`, enrichedUserData);
+      await this.storage.set(`user:telegram:${telegramUserId}`, JSON.stringify(enrichedUserData));
       
       LogEngine.info(`User stored: ${firstName} ${lastName || ''} (${telegramUserId})`);
       return true;
@@ -390,7 +438,48 @@ export class BotsStore implements IBotsStore {
    * Get user by Telegram user ID (primary identifier)
    */
   async getUserByTelegramId(telegramUserId: number): Promise<UserData | null> {
-    return await this.storage.get(`user:telegram:${telegramUserId}`);
+    const data = await this.storage.get(`user:telegram:${telegramUserId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
+  }
+
+  /**
+   * Update user data for a specific Telegram user ID
+   */
+  async updateUser(telegramUserId: number, updates: Partial<UserData>): Promise<boolean> {
+    try {
+      // Get existing user data
+      const existingUser = await this.getUserByTelegramId(telegramUserId);
+      if (!existingUser) {
+        LogEngine.warn('Cannot update non-existent user', { telegramUserId });
+        return false;
+      }
+
+      // Merge updates with existing data
+      const updatedUserData: UserData = {
+        ...existingUser,
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+
+      // Store updated user data
+      await this.storage.set(`user:telegram:${telegramUserId}`, JSON.stringify(updatedUserData));
+      
+      LogEngine.info('User updated successfully', {
+        telegramUserId,
+        updatedFields: Object.keys(updates),
+        unthreadEmail: updatedUserData.unthreadEmail
+      });
+      
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to update user', {
+        error: err.message,
+        telegramUserId,
+        updates
+      });
+      return false;
+    }
   }
 
   /**
@@ -399,9 +488,12 @@ export class BotsStore implements IBotsStore {
   async getCustomerByUnthreadId(unthreadCustomerId: string): Promise<CustomerData | null> {
     // Try new format first, then fall back to old format
     const customer = await this.storage.get(`customer:id:${unthreadCustomerId}`);
-    if (customer) return customer;
+    if (customer) {
+      return typeof customer === 'string' ? JSON.parse(customer) : customer;
+    }
     
-    return await this.storage.get(`customer:unthread:${unthreadCustomerId}`);
+    const fallbackData = await this.storage.get(`customer:unthread:${unthreadCustomerId}`);
+    return fallbackData ? (typeof fallbackData === 'string' ? JSON.parse(fallbackData) : fallbackData) : null;
   }
 
   /**
@@ -473,7 +565,8 @@ export class BotsStore implements IBotsStore {
    */
   private async addToChatTickets(chatId: number, messageId: number, conversationId: string): Promise<void> {
     const key = `chat:tickets:${chatId}`;
-    const existingTickets: TicketInfo[] = await this.storage.get(key) || [];
+    const data = await this.storage.get(key);
+    const existingTickets: TicketInfo[] = data ? (typeof data === 'string' ? JSON.parse(data) : data) : [];
     
     // Check if ticket already exists
     const ticketExists = existingTickets.some(t => t.conversationId === conversationId);
@@ -484,7 +577,7 @@ export class BotsStore implements IBotsStore {
         friendlyId: '', // Will be filled from ticket data if needed
       });
       
-      await this.storage.set(key, existingTickets);
+      await this.storage.set(key, JSON.stringify(existingTickets));
     }
   }
   
@@ -529,10 +622,11 @@ export class BotsStore implements IBotsStore {
    */
   private async removeFromChatTickets(chatId: number, conversationId: string): Promise<void> {
     const key = `chat:tickets:${chatId}`;
-    const existingTickets: TicketInfo[] = await this.storage.get(key) || [];
+    const data = await this.storage.get(key);
+    const existingTickets: TicketInfo[] = data ? (typeof data === 'string' ? JSON.parse(data) : data) : [];
     
     const filteredTickets = existingTickets.filter(t => t.conversationId !== conversationId);
-    await this.storage.set(key, filteredTickets);
+    await this.storage.set(key, JSON.stringify(filteredTickets));
   }
   
   /**
@@ -556,7 +650,7 @@ export class BotsStore implements IBotsStore {
     
     try {
       // Store agent message for reply lookup
-      await this.storage.set(`agent_message:telegram:${messageId}`, enrichedData);
+      await this.storage.set(`agent_message:telegram:${messageId}`, JSON.stringify(enrichedData));
       
       LogEngine.info(`Agent message stored: ${messageId} for conversation ${conversationId}`);
       return true;
@@ -576,7 +670,8 @@ export class BotsStore implements IBotsStore {
    * Get agent message data by Telegram message ID
    */
   async getAgentMessage(messageId: number): Promise<AgentMessageData | null> {
-    return await this.storage.get(`agent_message:telegram:${messageId}`);
+    const data = await this.storage.get(`agent_message:telegram:${messageId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
   }
   
   /**
@@ -590,45 +685,437 @@ export class BotsStore implements IBotsStore {
     return BotsStore.getInstance().getAgentMessage(messageId);
   }
 
-  // Static methods for cache-aware customer management
-  static async getOrCreateCustomer(
-    chatId: number, 
-    chatTitle: string, 
-    createCustomerFn: (title: string) => Promise<{ id: string }>
-  ): Promise<CustomerData> {
-    return BotsStore.getInstance().getOrCreateCustomer(chatId, chatTitle, createCustomerFn);
+  // ===========================================
+  // GROUP CONFIGURATION OPERATIONS
+  // ===========================================
+
+  /**
+   * Store group configuration data
+   */
+  async storeGroupConfig(config: GroupConfig): Promise<boolean> {
+    try {
+      const key = `group_config:${config.chatId}`;
+      const configData = {
+        ...config,
+        lastUpdatedAt: new Date().toISOString(),
+        version: '1.0'
+      };
+
+      await this.storage.set(key, JSON.stringify(configData));
+      
+      LogEngine.info('Group configuration stored successfully', {
+        chatId: config.chatId,
+        isConfigured: config.isConfigured,
+        customerId: config.customerId,
+        setupBy: config.setupBy
+      });
+
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to store group configuration', {
+        error: err.message,
+        chatId: config.chatId,
+        setupBy: config.setupBy
+      });
+      return false;
+    }
   }
 
-  static async hasCustomer(chatId: number): Promise<boolean> {
-    return BotsStore.getInstance().hasCustomer(chatId);
+  /**
+   * Retrieve group configuration by chat ID
+   */
+  async getGroupConfig(chatId: number): Promise<GroupConfig | null> {
+    try {
+      const key = `group_config:${chatId}`;
+      const data = await this.storage.get(key);
+      
+      if (!data) {
+        LogEngine.debug('No group configuration found', { chatId });
+        return null;
+      }
+
+      const config = typeof data === 'string' ? JSON.parse(data) : data;
+      
+      // Validate the data structure using zod schema
+      const validationResult = GroupConfigSchema.safeParse(config);
+      if (!validationResult.success) {
+        LogEngine.error('Invalid group configuration data structure', {
+          chatId,
+          errors: validationResult.error.issues,
+          rawData: config
+        });
+        return null;
+      }
+      
+      LogEngine.debug('Group configuration retrieved successfully', {
+        chatId,
+        isConfigured: validationResult.data.isConfigured,
+        customerId: validationResult.data.customerId
+      });
+
+      return validationResult.data as GroupConfig;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to retrieve group configuration', {
+        error: err.message,
+        chatId
+      });
+      return null;
+    }
   }
 
-  static async getCustomerCacheStats(): Promise<any> {
-    const instance = BotsStore.getInstance();
-    const storageStats = instance.storage.getStats();
-    
-    return {
-      ...storageStats,
-      cacheHierarchy: 'Memory → Redis → PostgreSQL',
-      sdkVersion: 'bots-brain-1.0.0'
-    };
+  /**
+   * Update group configuration with partial data
+   */
+  async updateGroupConfig(chatId: number, updates: Partial<GroupConfig>): Promise<boolean> {
+    try {
+      const existingConfig = await this.getGroupConfig(chatId);
+      
+      if (!existingConfig) {
+        LogEngine.warn('Cannot update non-existent group configuration', { chatId });
+        return false;
+      }
+
+      const updatedConfig: GroupConfig = {
+        ...existingConfig,
+        ...updates,
+        chatId, // Ensure chatId cannot be overridden
+      } as GroupConfig;
+
+      const success = await this.storeGroupConfig(updatedConfig);
+      
+      if (success) {
+        LogEngine.info('Group configuration updated successfully', {
+          chatId,
+          updatedFields: Object.keys(updates)
+        });
+      }
+
+      return success;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to update group configuration', {
+        error: err.message,
+        chatId,
+        updates
+      });
+      return false;
+    }
   }
 
-  // Memory inspection methods
-  static async getMemoryStats(): Promise<any> {
-    return BotsStore.getInstance().storage.getMemoryStats();
+  /**
+   * Delete group configuration
+   */
+  async deleteGroupConfig(chatId: number): Promise<boolean> {
+    try {
+      const key = `group_config:${chatId}`;
+      await this.storage.delete(key);
+      
+      LogEngine.info('Group configuration deleted successfully', { chatId });
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to delete group configuration', {
+        error: err.message,
+        chatId
+      });
+      return false;
+    }
   }
 
-  static async getMemoryContents(): Promise<any> {
-    return BotsStore.getInstance().storage.getMemoryContents();
+  // ===========================================
+  // SETUP STATE OPERATIONS
+  // ===========================================
+
+  /**
+   * Store setup state for ongoing setup processes
+   */
+  async storeSetupState(state: SetupState): Promise<boolean> {
+    try {
+      const key = `setup_state:${state.chatId}`;
+      const stateData = {
+        ...state,
+        lastUpdatedAt: new Date().toISOString(),
+        version: '1.0'
+      };
+
+      // Set TTL for setup states (1 hour) to prevent stale states
+      await this.storage.set(key, JSON.stringify(stateData), 3600);
+      
+      LogEngine.info('Setup state stored successfully', {
+        chatId: state.chatId,
+        step: state.step,
+        initiatedBy: state.initiatedBy
+      });
+
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to store setup state', {
+        error: err.message,
+        chatId: state.chatId,
+        step: state.step
+      });
+      return false;
+    }
   }
 
-  static async getMemoryContentsByPattern(pattern: string): Promise<any> {
-    const allContents = BotsStore.getInstance().storage.getMemoryContents();
-    return allContents.filter((entry: any) => entry.key.includes(pattern));
+  /**
+   * Retrieve setup state by chat ID
+   */
+  async getSetupState(chatId: number): Promise<SetupState | null> {
+    try {
+      const key = `setup_state:${chatId}`;
+      const data = await this.storage.get(key);
+      
+      if (!data) {
+        LogEngine.debug('No setup state found', { chatId });
+        return null;
+      }
+
+      const state = typeof data === 'string' ? JSON.parse(data) : data;
+      
+      // Validate the data structure using zod schema
+      const validationResult = SetupStateSchema.safeParse(state);
+      if (!validationResult.success) {
+        LogEngine.error('Invalid setup state data structure', {
+          chatId,
+          errors: validationResult.error.issues,
+          rawData: state
+        });
+        return null;
+      }
+      
+      LogEngine.debug('Setup state retrieved successfully', {
+        chatId,
+        step: validationResult.data.step,
+        initiatedBy: validationResult.data.initiatedBy
+      });
+
+      return validationResult.data as SetupState;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to retrieve setup state', {
+        error: err.message,
+        chatId
+      });
+      return null;
+    }
   }
 
-  static async cleanupExpiredMemory(): Promise<number> {
-    return BotsStore.getInstance().storage.cleanupExpiredMemory();
+  /**
+   * Update setup state with partial data
+   */
+  async updateSetupState(chatId: number, updates: Partial<SetupState>): Promise<boolean> {
+    try {
+      const existingState = await this.getSetupState(chatId);
+      
+      if (!existingState) {
+        LogEngine.warn('Cannot update non-existent setup state', { chatId });
+        return false;
+      }
+
+      const updatedState: SetupState = {
+        ...existingState,
+        ...updates,
+        chatId, // Ensure chatId cannot be overridden
+      } as SetupState;
+
+      const success = await this.storeSetupState(updatedState);
+      
+      if (success) {
+        LogEngine.info('Setup state updated successfully', {
+          chatId,
+          newStep: updatedState.step,
+          updatedFields: Object.keys(updates)
+        });
+      }
+
+      return success;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to update setup state', {
+        error: err.message,
+        chatId,
+        updates
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Clear setup state (delete)
+   */
+  async clearSetupState(chatId: number): Promise<boolean> {
+    try {
+      const key = `setup_state:${chatId}`;
+      await this.storage.delete(key);
+      
+      LogEngine.info('Setup state cleared successfully', { chatId });
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to clear setup state', {
+        error: err.message,
+        chatId
+      });
+      return false;
+    }
+  }
+
+  // ===========================================
+  // STATIC METHODS FOR GROUP CONFIGURATION
+  // ===========================================
+
+  /**
+   * Static methods for group configuration operations
+   */
+  static async storeGroupConfig(config: GroupConfig): Promise<boolean> {
+    return BotsStore.getInstance().storeGroupConfig(config);
+  }
+
+  static async getGroupConfig(chatId: number): Promise<GroupConfig | null> {
+    return BotsStore.getInstance().getGroupConfig(chatId);
+  }
+
+  static async updateGroupConfig(chatId: number, updates: Partial<GroupConfig>): Promise<boolean> {
+    return BotsStore.getInstance().updateGroupConfig(chatId, updates);
+  }
+
+  static async deleteGroupConfig(chatId: number): Promise<boolean> {
+    return BotsStore.getInstance().deleteGroupConfig(chatId);
+  }
+
+  /**
+   * Static methods for setup state operations
+   */
+  static async storeSetupState(state: SetupState): Promise<boolean> {
+    return BotsStore.getInstance().storeSetupState(state);
+  }
+
+  static async getSetupState(chatId: number): Promise<SetupState | null> {
+    return BotsStore.getInstance().getSetupState(chatId);
+  }
+
+  static async updateSetupState(chatId: number, updates: Partial<SetupState>): Promise<boolean> {
+    return BotsStore.getInstance().updateSetupState(chatId, updates);
+  }
+
+  static async clearSetupState(chatId: number): Promise<boolean> {
+    return BotsStore.getInstance().clearSetupState(chatId);
+  }
+
+  // Batch group configuration operations
+  async storeGroupConfigs(configs: GroupConfig[]): Promise<boolean> {
+    try {
+      await Promise.all(configs.map(config => this.storeGroupConfig(config)));
+      return true;
+    } catch (error) {
+      LogEngine.error('Error storing group configs:', error);
+      return false;
+    }
+  }
+
+  async getGroupConfigs(chatIds: number[]): Promise<(GroupConfig | null)[]> {
+    try {
+      return await Promise.all(chatIds.map(chatId => this.getGroupConfig(chatId)));
+    } catch (error) {
+      LogEngine.error('Error getting group configs:', error);
+      return chatIds.map(() => null);
+    }
+  }
+
+  async updateGroupConfigs(updates: {chatId: number, updates: Partial<GroupConfig>}[]): Promise<boolean> {
+    try {
+      await Promise.all(updates.map(update => this.updateGroupConfig(update.chatId, update.updates)));
+      return true;
+    } catch (error) {
+      LogEngine.error('Error updating group configs:', error);
+      return false;
+    }
+  }
+
+  async deleteGroupConfigs(chatIds: number[]): Promise<boolean> {
+    try {
+      await Promise.all(chatIds.map(chatId => this.deleteGroupConfig(chatId)));
+      return true;
+    } catch (error) {
+      LogEngine.error('Error deleting group configs:', error);
+      return false;
+    }
+  }
+
+  // Batch setup state operations
+  async storeSetupStates(states: SetupState[]): Promise<boolean> {
+    try {
+      await Promise.all(states.map(state => this.storeSetupState(state)));
+      return true;
+    } catch (error) {
+      LogEngine.error('Error storing setup states:', error);
+      return false;
+    }
+  }
+
+  async getSetupStates(chatIds: number[]): Promise<(SetupState | null)[]> {
+    try {
+      return await Promise.all(chatIds.map(chatId => this.getSetupState(chatId)));
+    } catch (error) {
+      LogEngine.error('Error getting setup states:', error);
+      return chatIds.map(() => null);
+    }
+  }
+
+  async updateSetupStates(updates: {chatId: number, updates: Partial<SetupState>}[]): Promise<boolean> {
+    try {
+      await Promise.all(updates.map(update => this.updateSetupState(update.chatId, update.updates)));
+      return true;
+    } catch (error) {
+      LogEngine.error('Error updating setup states:', error);
+      return false;
+    }
+  }
+
+  async clearSetupStates(chatIds: number[]): Promise<boolean> {
+    try {
+      await Promise.all(chatIds.map(chatId => this.clearSetupState(chatId)));
+      return true;
+    } catch (error) {
+      LogEngine.error('Error clearing setup states:', error);
+      return false;
+    }
+  }
+
+  // Static batch methods
+  static async storeGroupConfigs(configs: GroupConfig[]): Promise<boolean> {
+    return BotsStore.getInstance().storeGroupConfigs(configs);
+  }
+
+  static async getGroupConfigs(chatIds: number[]): Promise<(GroupConfig | null)[]> {
+    return BotsStore.getInstance().getGroupConfigs(chatIds);
+  }
+
+  static async updateGroupConfigs(updates: {chatId: number, updates: Partial<GroupConfig>}[]): Promise<boolean> {
+    return BotsStore.getInstance().updateGroupConfigs(updates);
+  }
+
+  static async deleteGroupConfigs(chatIds: number[]): Promise<boolean> {
+    return BotsStore.getInstance().deleteGroupConfigs(chatIds);
+  }
+
+  static async storeSetupStates(states: SetupState[]): Promise<boolean> {
+    return BotsStore.getInstance().storeSetupStates(states);
+  }
+
+  static async getSetupStates(chatIds: number[]): Promise<(SetupState | null)[]> {
+    return BotsStore.getInstance().getSetupStates(chatIds);
+  }
+
+  static async updateSetupStates(updates: {chatId: number, updates: Partial<SetupState>}[]): Promise<boolean> {
+    return BotsStore.getInstance().updateSetupStates(updates);
+  }
+
+  static async clearSetupStates(chatIds: number[]): Promise<boolean> {
+    return BotsStore.getInstance().clearSetupStates(chatIds);
   }
 }

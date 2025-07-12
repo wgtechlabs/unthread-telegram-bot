@@ -47,6 +47,8 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
 ## ✨ Key Features
 
 - **🎫 Seamless Ticket Management** - Create support tickets directly from Telegram with `/support` command
+- **👤 One-Time Email Setup** - Collect email once, automatically use for all future tickets
+- **📧 Profile Management** - View and update email preferences with `/profile` command
 - **💬 Real-Time Communication** - Bidirectional messaging between agents and customers
 - **🏢 Smart Customer Detection** - Automatically extracts customer names from group chat titles
 - **💬 Natural Conversation Flow** - Customers reply normally, no special commands needed
@@ -63,13 +65,18 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
    - Create new bot with `/newbot` command
    - Save the bot token
 
-2. **Setup Unthread**
+2. **Get Your Telegram User ID** *(NEW REQUIREMENT)*
+   - Message [@userinfobot](https://t.me/userinfobot) on Telegram
+   - Copy your numeric user ID (e.g., `123456789`)
+   - **IMPORTANT**: This is required for admin access to setup groups
+
+3. **Setup Unthread**
    - Log into your Unthread dashboard
    - Navigate to Settings → API Keys
    - Generate a new API key
    - Find your channel ID in the dashboard URL
 
-3. **Deploy Instantly**
+4. **Deploy Instantly**
 
    **Option A: Railway (One-Click Deploy)**
 
@@ -86,7 +93,9 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
    # IMPORTANT: Create the external network first
    docker network create unthread-integration-network
    
-   # Edit .env with your tokens
+   # Edit .env with your tokens AND your Telegram user ID
+   # ADMIN_USERS=your_telegram_user_id_here  # Replace with actual ID!
+   # For multiple admins: ADMIN_USERS=123456789,987654321,555666777
    # Then start everything
    docker compose up -d
    ```
@@ -112,12 +121,13 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
    yarn install
    cp .env.example .env
    
-   # Edit .env with your tokens
+   # Edit .env with ALL required values including ADMIN_USERS
+   # ADMIN_USERS supports multiple user IDs: ADMIN_USERS=123456789,987654321
    # Then start the bot
    yarn start
    ```
 
-4. **Test Your Bot**
+5. **Test Your Bot**
    - Add your bot to a Telegram group
    - Send `/start` to see if it responds
    - Try creating a ticket with `/support`
@@ -147,9 +157,9 @@ UNTHREAD_WEBHOOK_SECRET=your_unthread_webhook_secret
 # Required - Database (Docker will handle this automatically)
 POSTGRES_URL=postgresql://postgres:postgres@postgres-platform:5432/unthread_telegram_bot
 
-# Optional - For enhanced performance
-WEBHOOK_REDIS_URL=redis://redis-webhook:6379
-PLATFORM_REDIS_URL=redis://redis-platform:6379
+# Required - Redis for bot operations (Docker will handle this automatically)
+WEBHOOK_REDIS_URL=redis://redis-webhook:6379  # Critical for agent response delivery
+PLATFORM_REDIS_URL=redis://redis-platform:6379  # Required for bot state management
 ```
 
 > **💡 Pro Tip**: The Docker setup includes PostgreSQL and Redis automatically - no separate installation needed!
@@ -172,13 +182,14 @@ For detailed information about Railway's managed PostgreSQL and SSL handling, pl
 - `/start` - Welcome message and bot introduction
 - `/help` - Display available commands and usage instructions  
 - `/support` - Create a new support ticket (customer/partner group chats only)
+- `/profile` - View and update your email preferences
 - `/version` - Show current bot version
 
 ### **Creating Support Tickets**
 
 1. **Use `/support` in your group chat**
 2. **Describe your issue** when the bot asks
-3. **Provide email or skip** for auto-generated one
+3. **Provide email (first-time users only)** - returning users automatically use their stored email
 4. **Get your ticket number** and confirmation
 
 ```text
@@ -193,6 +204,36 @@ Bot: 🎫 Support Ticket Created Successfully!
      Ticket #TKT-001
      Your issue has been submitted and our team will be in touch soon.
 ```
+
+**Note**: After your first ticket, the bot remembers your email and skips the email prompt for future tickets. You can update your email anytime using the `/profile` command.
+
+### **Managing Your Profile**
+
+Use the `/profile` command to view and update your email preferences:
+
+```text
+User: /profile
+Bot: 👤 Your Profile
+     Email: john@example.com
+     
+     What would you like to do?
+     [📧 Update Email] [ℹ️ About]
+
+User: [clicks Update Email]
+Bot: Please enter your new email address:
+
+User: john.doe@company.com
+Bot: ✅ Email Updated Successfully!
+     Your email has been updated to: john.doe@company.com
+     This email will be used for all future support tickets.
+```
+
+**Profile Features:**
+
+- **View current email** - See the email associated with your profile
+- **Update email** - Change your email for future support tickets
+- **Auto-generated email detection** - Get notified if you're using an auto-generated email
+- **Seamless integration** - Email updates apply to all future support tickets
 
 ### **For Agents (Unthread Dashboard)**
 
