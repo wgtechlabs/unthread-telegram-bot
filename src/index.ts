@@ -28,6 +28,15 @@ import dotenv from 'dotenv';
 // Load environment variables from .env file
 dotenv.config();
 
+// Configure LogEngine to use local timezone only before any logging
+import { LogEngine } from '@wgtechlabs/log-engine';
+LogEngine.configure({
+    format: {
+        includeIsoTimestamp: false,
+        includeLocalTime: true
+    }
+});
+
 // Validate environment configuration before proceeding
 import { validateEnvironment } from './config/env.js';
 validateEnvironment();
@@ -57,7 +66,6 @@ import { WebhookConsumer } from './sdk/unthread-webhook/index.js';
 import { TelegramWebhookHandler } from './handlers/webhookMessage.js';
 import { startSessionCleanupTask, stopSessionCleanupTask } from './utils/sessionTasks.js';
 import packageJSON from '../package.json' with { type: 'json' };
-import { LogEngine } from '@wgtechlabs/log-engine';
 import type { BotContext } from './types/index.js';
 
 /**
