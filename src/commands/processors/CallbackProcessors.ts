@@ -470,15 +470,26 @@ Group setup has been cancelled. You can start over anytime by using \`/setup\` i
             let isExistingCustomer = false;
 
             if (existingCustomerId) {
-                // Linking to existing customer
+                // Linking to existing customer - get actual customer name from Unthread
                 customerId = existingCustomerId;
-                finalCustomerName = `Customer ${existingCustomerId.substring(0, 8)}...`;
                 isExistingCustomer = true;
                 
-                // Note: In a real implementation, you would:
-                // 1. Validate the customer ID exists in Unthread
-                // 2. Fetch the customer name from Unthread API
-                // 3. Handle any API errors appropriately
+                try {
+                    // Import and use validateCustomerExists to get the actual customer name
+                    const { validateCustomerExists } = await import('../../services/unthread.js');
+                    const validationResult = await validateCustomerExists(existingCustomerId);
+                    
+                    if (validationResult.exists && validationResult.customer?.name) {
+                        finalCustomerName = validationResult.customer.name;
+                    } else {
+                        // Fallback to generic name if validation fails or customer not found
+                        finalCustomerName = `Customer ${existingCustomerId.substring(0, 8)}...`;
+                    }
+                } catch (error) {
+                    logError(error, 'CallbackProcessors.completeCustomerSetup.validateCustomer', { existingCustomerId });
+                    // Fallback to generic name if validation fails
+                    finalCustomerName = `Customer ${existingCustomerId.substring(0, 8)}...`;
+                }
                 
             } else {
                 // Creating new customer
@@ -620,6 +631,14 @@ Failed to complete customer setup. Please try again.`
                 await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
                 return true;
             }
+
+            // Extend session expiration to give user more time for template customization
+            const now = new Date();
+            const extendedExpiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes from now
+            
+            await BotsStore.updateDmSetupSession(sessionId, {
+                expiresAt: extendedExpiresAt.toISOString()
+            });
 
             // Show template customization interface
             await this.showTemplateCustomization(ctx, sessionId, session);
@@ -989,6 +1008,14 @@ Each template has access to relevant data like ticket details, customer info, ag
                 return true;
             }
 
+            // Extend session expiration for template editing
+            const now = new Date();
+            const extendedExpiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes from now
+            
+            await BotsStore.updateDmSetupSession(sessionId, {
+                expiresAt: extendedExpiresAt.toISOString()
+            });
+
             // Get current template content and available variables
             const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
             const templateManager = GlobalTemplateManager.getInstance();
@@ -1096,6 +1123,14 @@ ${timeVars}
                 await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
                 return true;
             }
+
+            // Extend session expiration for template editing
+            const now = new Date();
+            const extendedExpiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes from now
+            
+            await BotsStore.updateDmSetupSession(sessionId, {
+                expiresAt: extendedExpiresAt.toISOString()
+            });
 
             // Get current template content
             const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');

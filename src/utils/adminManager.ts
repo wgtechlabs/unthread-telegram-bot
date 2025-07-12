@@ -240,7 +240,7 @@ export async function createDmSetupSession(
   try {
     const sessionId = uuidv4();
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + 10 * 60 * 1000); // 10 minutes for DM sessions
+    const expiresAt = new Date(now.getTime() + 20 * 60 * 1000); // 20 minutes for DM sessions (extended for complex flows)
 
     const dmSession: DmSetupSession = {
       sessionId,

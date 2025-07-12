@@ -186,12 +186,47 @@ export class DmSetupInputProcessor implements IConversationProcessor {
 
             await ctx.reply("🔍 Validating customer ID with Unthread...", { parse_mode: 'Markdown' });
 
-            // TODO: Add actual validation with Unthread API
-            // For now, we'll accept any properly formatted UUID
+            // Validate customer exists and get customer details
             const trimmedCustomerId = customerId.trim();
+            let customerName: string;
+            
+            try {
+                const { validateCustomerExists } = await import('../../services/unthread.js');
+                const validationResult = await validateCustomerExists(trimmedCustomerId);
 
-            // Complete the setup with the existing customer ID
-            await ctx.reply("✅ Linking to existing customer...", { parse_mode: 'Markdown' });
+                if (!validationResult.exists) {
+                    await ctx.reply(
+                        `❌ **Customer Not Found**\n\n${validationResult.error || 'The customer ID was not found in your Unthread workspace.'}\n\nPlease check the customer ID and try again:`,
+                        {
+                            parse_mode: 'Markdown',
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [
+                                        { text: "❌ Cancel Setup", callback_data: `dmsetup_cancel_${session.sessionId}` }
+                                    ]
+                                ]
+                            }
+                        }
+                    );
+                    return true;
+                }
+
+                customerName = validationResult.customer?.name || `Customer ${trimmedCustomerId.substring(0, 8)}...`;
+                await ctx.reply(`✅ Customer found: **${customerName}**\n\nLinking to existing customer...`, { parse_mode: 'Markdown' });
+
+            } catch (validationError) {
+                logError(validationError, 'DmSetupInputProcessor.validateCustomer', { 
+                    customerId: trimmedCustomerId,
+                    sessionId: session.sessionId 
+                });
+                
+                // Fallback to generic name if validation fails
+                customerName = `Customer ${trimmedCustomerId.substring(0, 8)}...`;
+                await ctx.reply(
+                    `⚠️ **Validation Warning**\n\nCould not verify customer details with Unthread, but proceeding with the setup.\n\nLinking to customer ID: \`${trimmedCustomerId}\`...`,
+                    { parse_mode: 'Markdown' }
+                );
+            }
 
             // Update session with the customer ID
             await BotsStore.updateDmSetupSession(session.sessionId, {
@@ -213,7 +248,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                     chatTitle: session.groupChatName,
                     isConfigured: true,
                     customerId: trimmedCustomerId,
-                    customerName: `Customer ${trimmedCustomerId.substring(0, 8)}...`,
+                    customerName: customerName, // Use the actual customer name from Unthread
                     setupBy: session.adminId,
                     setupAt: new Date().toISOString(),
                     botIsAdmin: true,
@@ -228,13 +263,19 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 await BotsStore.storeGroupConfig(groupConfig);
 
                 // Update session to template configuration step (don't mark as completed yet)
+                // Also extend the session expiration time to give user more time for template customization
+                const now = new Date();
+                const extendedExpiresAt = new Date(now.getTime() + 15 * 60 * 1000); // Extend to 15 minutes from now
+                
                 await BotsStore.updateDmSetupSession(session.sessionId, {
-                    currentStep: 'template_configuration'
+                    currentStep: 'template_configuration',
+                    expiresAt: extendedExpiresAt.toISOString() // Extend session expiration
                 });
 
                 const successMessage = `🎉 **Setup Complete!**
 
 **Linked to Existing Customer**
+**Customer:** ${customerName}
 **Customer ID:** \`${trimmedCustomerId}\`
 **Group:** ${session.groupChatName}
 
