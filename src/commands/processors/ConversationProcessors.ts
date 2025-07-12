@@ -147,7 +147,8 @@ export class DmSetupInputProcessor implements IConversationProcessor {
 
             // Check if we're waiting for text input
             return activeSessions.currentStep === 'awaiting_custom_name' || 
-                   activeSessions.currentStep === 'awaiting_customer_id';
+                   activeSessions.currentStep === 'awaiting_customer_id' ||
+                   activeSessions.currentStep === 'awaiting_template_content';
         } catch (error) {
             logError(error, 'DmSetupInputProcessor.canHandle', { userId });
             return false;
@@ -163,8 +164,15 @@ export class DmSetupInputProcessor implements IConversationProcessor {
         try {
             // Get the active session
             const session = await BotsStore.getActiveDmSetupSessionByAdmin(userId);
-            if (!session || (session.currentStep !== 'awaiting_custom_name' && session.currentStep !== 'awaiting_customer_id')) {
+            if (!session || (session.currentStep !== 'awaiting_custom_name' && 
+                           session.currentStep !== 'awaiting_customer_id' && 
+                           session.currentStep !== 'awaiting_template_content')) {
                 return false;
+            }
+
+            // Handle template content input
+            if (session.currentStep === 'awaiting_template_content') {
+                return await this.handleTemplateContentInput(ctx, session, inputText);
             }
 
             // Handle customer ID input
@@ -407,6 +415,152 @@ Choose how you'd like to handle message templates:`;
                         inline_keyboard: [
                             [
                                 { text: "❌ Cancel Setup", callback_data: `setup_cancel_${session.sessionId}` }
+                            ]
+                        ]
+                    }
+                }
+            );
+            return true;
+        }
+    }
+
+    /**
+     * Handle template content input during setup
+     */
+    private async handleTemplateContentInput(ctx: BotContext, session: any, templateContent: string): Promise<boolean> {
+        try {
+            // Validate template content length
+            if (templateContent.trim().length === 0) {
+                await ctx.reply(
+                    "❌ **Empty Template**\n\nTemplate content cannot be empty. Please type your template content:",
+                    {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${session.stepData?.editingTemplateType}_${session.sessionId}` }
+                                ]
+                            ]
+                        }
+                    }
+                );
+                return true;
+            }
+
+            if (templateContent.length > 4000) {
+                await ctx.reply(
+                    "❌ **Template Too Long**\n\nTemplate content is too long (max 4000 characters). Please shorten your template:",
+                    {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${session.stepData?.editingTemplateType}_${session.sessionId}` }
+                                ]
+                            ]
+                        }
+                    }
+                );
+                return true;
+            }
+
+            // Validate template content using GlobalTemplateManager
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            const templateManager = GlobalTemplateManager.getInstance();
+            
+            // Note: We'll use a basic validation here since GlobalTemplateManager's validateTemplate is private
+            // Check for basic variable syntax
+            const variableMatches = templateContent.match(/\{\{[^}]+\}\}/g);
+            if (variableMatches) {
+                const invalidVars: string[] = [];
+                const validVars = ['ticketId', 'summary', 'customerName', 'status', 'agentName', 'response', 'createdAt', 'updatedAt'];
+                
+                for (const match of variableMatches) {
+                    const varName = match.replace(/[{}]/g, '').trim();
+                    if (!validVars.includes(varName)) {
+                        invalidVars.push(varName);
+                    }
+                }
+                
+                if (invalidVars.length > 0) {
+                    await ctx.reply(
+                        `❌ **Invalid Variables**\n\nThe following variables are not recognized:\n• ${invalidVars.join('\n• ')}\n\n**Valid variables:**\n• ticketId, summary, customerName, status\n• agentName, response, createdAt, updatedAt\n\nPlease fix your template:`,
+                        {
+                            parse_mode: 'Markdown',
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [
+                                        { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${session.stepData?.editingTemplateType}_${session.sessionId}` }
+                                    ]
+                                ]
+                            }
+                        }
+                    );
+                    return true;
+                }
+            }
+
+            // Update the global template
+            const templateType = session.stepData?.editingTemplateType;
+            const updateResult = await templateManager.updateTemplate(
+                templateType as any,
+                templateContent,
+                true,
+                session.adminId
+            );
+
+            if (!updateResult.success) {
+                await ctx.reply(
+                    `❌ **Template Update Failed**\n\n${updateResult.error || 'Unknown error occurred'}\n\nPlease try again:`,
+                    {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${templateType}_${session.sessionId}` }
+                                ]
+                            ]
+                        }
+                    }
+                );
+                return true;
+            }
+
+            // Success! Show confirmation and return to template customization
+            await ctx.reply("✅ **Template Updated Successfully!**\n\nYour template has been saved and is now active.");
+
+            // Reset session step and return to template customization
+            await BotsStore.updateDmSetupSession(session.sessionId, {
+                currentStep: 'template_customization',
+                stepData: {
+                    ...session.stepData,
+                    editingTemplateType: undefined,
+                    originalTemplateContent: undefined
+                }
+            });
+
+            // Import and use the callback processor to show template customization
+            const { SetupCallbackProcessor } = await import('./CallbackProcessors.js');
+            const callbackProcessor = new SetupCallbackProcessor();
+            
+            // Show updated template customization interface
+            await callbackProcessor.showTemplateCustomization(ctx, session.sessionId, session);
+
+            return true;
+        } catch (error) {
+            logError(error, 'DmSetupInputProcessor.handleTemplateContentInput', { 
+                userId: ctx.from?.id, 
+                templateContent,
+                sessionId: session.sessionId 
+            });
+            await ctx.reply(
+                "❌ **Template Update Error**\n\nFailed to update the template. Please try again or cancel the edit.",
+                {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${session.stepData?.editingTemplateType}_${session.sessionId}` }
                             ]
                         ]
                     }

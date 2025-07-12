@@ -106,7 +106,11 @@ This demonstrates clean callback-to-command handoff.
  */
 export class SetupCallbackProcessor implements ICallbackProcessor {
     canHandle(callbackData: string): boolean {
-        return callbackData.startsWith('setup_') || callbackData.startsWith('dmsetup_');
+        return callbackData.startsWith('setup_') || 
+               callbackData.startsWith('dmsetup_') || 
+               callbackData.startsWith('template_edit_') ||
+               callbackData.startsWith('template_start_edit_') ||
+               callbackData.startsWith('template_cancel_edit_');
     }
 
     async process(ctx: BotContext, callbackData: string): Promise<boolean> {
@@ -127,6 +131,67 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                 }
                 
                 return false;
+            }
+            
+            // Handle template_edit_ prefixed callbacks
+            if (callbackData.startsWith('template_edit_')) {
+                const parts = callbackData.split('_');
+                // Handle compound template types like "ticket_created", "agent_response", "ticket_closed"
+                let templateType: string;
+                let sessionIdStartIndex: number;
+                
+                if (parts[2] === 'ticket' && parts[3] === 'created') {
+                    templateType = 'ticket_created';
+                    sessionIdStartIndex = 4;
+                } else if (parts[2] === 'agent' && parts[3] === 'response') {
+                    templateType = 'agent_response';
+                    sessionIdStartIndex = 4;
+                } else if (parts[2] === 'ticket' && parts[3] === 'closed') {
+                    templateType = 'ticket_closed';
+                    sessionIdStartIndex = 4;
+                } else {
+                    templateType = parts[2] || 'unknown';
+                    sessionIdStartIndex = 3;
+                }
+                
+                const sessionId = parts.slice(sessionIdStartIndex).join('_');
+                
+                if (!sessionId || !templateType) {
+                    await ctx.answerCbQuery("❌ Invalid template edit request.");
+                    return true;
+                }
+                
+                return await this.handleTemplateEdit(ctx, sessionId, templateType);
+            }
+            
+            // Handle template_start_edit_ prefixed callbacks
+            if (callbackData.startsWith('template_start_edit_')) {
+                const parts = callbackData.split('_');
+                // Format: template_start_edit_templateType_sessionId
+                const templateType = parts[3];
+                const sessionId = parts.slice(4).join('_');
+                
+                if (!sessionId || !templateType) {
+                    await ctx.answerCbQuery("❌ Invalid template edit request.");
+                    return true;
+                }
+                
+                return await this.handleTemplateStartEdit(ctx, sessionId, templateType);
+            }
+            
+            // Handle template_cancel_edit_ prefixed callbacks
+            if (callbackData.startsWith('template_cancel_edit_')) {
+                const parts = callbackData.split('_');
+                // Format: template_cancel_edit_templateType_sessionId
+                const templateType = parts[3];
+                const sessionId = parts.slice(4).join('_');
+                
+                if (!sessionId || !templateType) {
+                    await ctx.answerCbQuery("❌ Invalid template cancel request.");
+                    return true;
+                }
+                
+                return await this.handleTemplateCancelEdit(ctx, sessionId, templateType);
             }
             
             // Handle setup_ prefixed callbacks
@@ -573,9 +638,28 @@ Templates control how the bot communicates with users and admins.
 • More engaging setup experience
 
 **Available Templates:**
-• 🎫 Ticket Created - When new support tickets are created
-• 👨‍💼 Agent Response - When agents reply to tickets
-• ✅ Ticket Closed - When support tickets are resolved
+• 🎫 **Ticket Created** - When new support tickets are created
+• 👨‍💼 **Agent Response** - When agents reply to tickets
+• ✅ **Ticket Closed** - When support tickets are resolved
+
+**💡 Template Variables:**
+Templates use dynamic placeholders like:
+• \`{{ticketId}}\` - Unique ticket identifier
+• \`{{customerName}}\` - Customer name
+• \`{{agentName}}\` - Support agent name
+• \`{{summary}}\` - Ticket description
+• \`{{status}}\` - Current ticket status
+
+**Example Template:**
+\`\`\`
+🎫 New Ticket: {{summary}}
+
+ID: {{ticketId}}
+Customer: {{customerName}}
+Status: {{status}}
+
+We'll respond soon!
+\`\`\`
 
 Choose your preferred approach:`;
 
@@ -685,7 +769,7 @@ Choose how you'd like to handle message templates:`;
             await ctx.editMessageText(completionMessage, { parse_mode: 'Markdown' });
             
             // Send notification to the group chat
-            await this.sendGroupSetupNotification(session);
+            await this.sendGroupSetupNotification(ctx, session);
             
             // Clean up session after delay
             setTimeout(async () => {
@@ -753,7 +837,7 @@ Choose how you'd like to handle message templates:`;
             await ctx.editMessageText(completionMessage, { parse_mode: 'Markdown' });
             
             // Send notification to the group chat
-            await this.sendGroupSetupNotification(session);
+            await this.sendGroupSetupNotification(ctx, session);
             
             // Clean up session after delay
             setTimeout(async () => {
@@ -780,14 +864,8 @@ Please return to the group and run \`/setup\` again to retry the validation proc
     /**
      * Send setup completion notification to the group chat
      */
-    private async sendGroupSetupNotification(session: DmSetupSession): Promise<void> {
+    private async sendGroupSetupNotification(ctx: BotContext, session: DmSetupSession): Promise<void> {
         try {
-            const bot = (global as any).bot;
-            if (!bot) {
-                logError(new Error('Bot instance not available for group notification'), 'SetupCallbackProcessor.sendGroupSetupNotification', { sessionId: session.sessionId });
-                return;
-            }
-
             const customerName = session.stepData?.customerName || 
                                session.stepData?.suggestedName || 
                                (session.stepData?.existingCustomerId ? `Customer ${session.stepData.existingCustomerId.substring(0, 8)}...` : 'Unknown');
@@ -805,7 +883,7 @@ Please return to the group and run \`/setup\` again to retry the validation proc
 
 ⚡ **Quick Setup:** Just two simple choices in your DM!`;
 
-            await bot.telegram.sendMessage(session.groupChatId, groupNotification, { 
+            await ctx.telegram.sendMessage(session.groupChatId, groupNotification, { 
                 parse_mode: 'Markdown' 
             });
 
@@ -818,9 +896,9 @@ Please return to the group and run \`/setup\` again to retry the validation proc
     }
 
     /**
-     * Show template customization interface
+     * Show template customization interface (public method for external access)
      */
-    private async showTemplateCustomization(ctx: BotContext, sessionId: string, session: DmSetupSession): Promise<void> {
+    public async showTemplateCustomization(ctx: BotContext, sessionId: string, session: DmSetupSession): Promise<void> {
         try {
             const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
             
@@ -836,10 +914,19 @@ Choose which template to customize first:
 
 **Available Templates:**
 • 🎫 **Ticket Created** - New support ticket notifications
-• 👨‍💼 **Agent Response** - When agents reply to tickets
+• 👨‍💼 **Agent Response** - When agents reply to tickets  
 • ✅ **Ticket Closed** - Support ticket resolution messages
 
-*You can customize each template individually:*`;
+💡 **What You Can Customize:**
+• Message content and formatting
+• Use dynamic variables like \`{{ticketId}}\`, \`{{customerName}}\`
+• Add your brand voice and personality
+• Include specific instructions or next steps
+
+🔧 **Available Variables:**
+Each template has access to relevant data like ticket details, customer info, agent names, and timestamps.
+
+*Click a template below to see all available variables and current content:*`;
 
             await ctx.editMessageText(customizationMessage, {
                 parse_mode: 'Markdown',
@@ -866,6 +953,231 @@ Choose which template to customize first:
             logError(error, 'SetupCallbackProcessor.showTemplateCustomization', { sessionId });
             await ctx.editMessageText("❌ Failed to load template customization. Using defaults instead...");
             await this.handleUseDefaultTemplates(ctx, sessionId);
+        }
+    }
+
+    /**
+     * Handle template editing during setup
+     */
+    private async handleTemplateEdit(ctx: BotContext, sessionId: string, templateType: string): Promise<boolean> {
+        await ctx.answerCbQuery(`✏️ Editing ${templateType.replace('_', ' ')} template...`);
+        
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            const session = await BotsStore.getDmSetupSession(sessionId);
+            
+            if (!session) {
+                await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
+                return true;
+            }
+
+            // Get current template content and available variables
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            const templateManager = GlobalTemplateManager.getInstance();
+            const availableVariables = templateManager.getAvailableVariables();
+            
+            // Get current template
+            const currentTemplate = await templateManager.getTemplate(templateType as any);
+            
+            // Map template type to readable name
+            let templateDisplayName = 'Template';
+            let templateDescription = '';
+            
+            switch (templateType) {
+                case 'ticket_created':
+                    templateDisplayName = 'Ticket Created';
+                    templateDescription = 'Sent when a new support ticket is created';
+                    break;
+                case 'agent_response':
+                    templateDisplayName = 'Agent Response';
+                    templateDescription = 'Sent when an agent responds to a ticket';
+                    break;
+                case 'ticket_closed':
+                    templateDisplayName = 'Ticket Closed';
+                    templateDescription = 'Sent when a support ticket is resolved';
+                    break;
+                default:
+                    templateDisplayName = templateType.charAt(0).toUpperCase() + templateType.slice(1).replace('_', ' ');
+            }
+
+            // Build available variables list
+            const coreVars = availableVariables.core.map(v => `• \`{{${v.name}}}\` - ${v.description}`).join('\n');
+            const agentVars = availableVariables.agent.map(v => `• \`{{${v.name}}}\` - ${v.description}`).join('\n');
+            const timeVars = availableVariables.time.map(v => `• \`{{${v.name}}}\` - ${v.description}`).join('\n');
+
+            const editMessage = `✏️ **Template Editor: ${templateDisplayName}**
+
+**Group:** ${session.groupChatName}
+**Purpose:** ${templateDescription}
+
+� **Current Template:**
+\`\`\`
+${currentTemplate?.content || 'Loading...'}
+\`\`\`
+
+🔧 **Available Variables:**
+
+**Core Variables:**
+${coreVars}
+
+**Agent Variables:**
+${agentVars}
+
+**Time Variables:**
+${timeVars}
+
+💡 **Usage Examples:**
+• \`{{ticketId}}\` → TKT-12345
+• \`{{customerName}}\` → John Doe
+• \`{{agentName}}\` → Sarah Johnson
+
+📋 **Template Syntax:**
+• Use \`{{variableName}}\` for dynamic content
+• Keep messages clear and professional
+• Test with different scenarios in mind
+
+**Ready to customize? Click "Edit Template" to start!**`;
+
+            await ctx.editMessageText(editMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "✏️ Edit Template", callback_data: `template_start_edit_${templateType}_${sessionId}` }
+                        ],
+                        [
+                            { text: "⬅️ Back to Templates", callback_data: `setup_customize_templates_${sessionId}` }
+                        ],
+                        [
+                            { text: "🚀 Use Defaults Instead", callback_data: `setup_use_defaults_${sessionId}` },
+                            { text: "✅ Finish Setup", callback_data: `setup_finish_custom_${sessionId}` }
+                        ]
+                    ]
+                }
+            });
+            
+            return true;
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.handleTemplateEdit', { sessionId, templateType });
+            await ctx.answerCbQuery("❌ Failed to open template editor. Please try again.");
+            return true;
+        }
+    }
+
+    /**
+     * Handle starting template editing (text input flow)
+     */
+    private async handleTemplateStartEdit(ctx: BotContext, sessionId: string, templateType: string): Promise<boolean> {
+        await ctx.answerCbQuery("✏️ Starting template editor...");
+        
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            const session = await BotsStore.getDmSetupSession(sessionId);
+            
+            if (!session) {
+                await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
+                return true;
+            }
+
+            // Get current template content
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            const templateManager = GlobalTemplateManager.getInstance();
+            const currentTemplate = await templateManager.getTemplate(templateType as any);
+            
+            // Map template type to readable name
+            let templateDisplayName = templateType.charAt(0).toUpperCase() + templateType.slice(1).replace('_', ' ');
+            
+            switch (templateType) {
+                case 'ticket_created':
+                    templateDisplayName = 'Ticket Created';
+                    break;
+                case 'agent_response':
+                    templateDisplayName = 'Agent Response';
+                    break;
+                case 'ticket_closed':
+                    templateDisplayName = 'Ticket Closed';
+                    break;
+            }
+
+            // Update session to expect template content input
+            await BotsStore.updateDmSetupSession(sessionId, {
+                currentStep: 'awaiting_template_content',
+                stepData: {
+                    ...session.stepData,
+                    editingTemplateType: templateType,
+                    originalTemplateContent: currentTemplate?.content || ''
+                }
+            });
+            
+            const editPromptMessage = `✏️ **Edit ${templateDisplayName} Template**
+
+**Group:** ${session.groupChatName}
+
+📝 **Current Template:**
+\`\`\`
+${currentTemplate?.content || 'Loading...'}
+\`\`\`
+
+**Instructions:**
+• Type your new template content below
+• Use variables like \`{{ticketId}}\`, \`{{customerName}}\`, \`{{agentName}}\`
+• Keep it clear and professional
+• You can use multiple lines
+
+**Available Variables:**
+• \`{{ticketId}}\` - Unique ticket identifier
+• \`{{summary}}\` - Ticket summary/title  
+• \`{{customerName}}\` - Customer name
+• \`{{status}}\` - Ticket status
+• \`{{agentName}}\` - Agent name (for responses)
+• \`{{response}}\` - Agent response content
+• \`{{createdAt}}\` - Creation time
+• \`{{updatedAt}}\` - Last update time
+
+**Type your new template content:**`;
+
+            await ctx.editMessageText(editPromptMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${templateType}_${sessionId}` }
+                        ],
+                        [
+                            { text: "⬅️ Back to Template Info", callback_data: `template_edit_${templateType}_${sessionId}` }
+                        ]
+                    ]
+                }
+            });
+            
+            return true;
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.handleTemplateStartEdit', { sessionId, templateType });
+            await ctx.answerCbQuery("❌ Failed to start template editor. Please try again.");
+            return true;
+        }
+    }
+
+    /**
+     * Handle canceling template edit
+     */
+    private async handleTemplateCancelEdit(ctx: BotContext, sessionId: string, templateType: string): Promise<boolean> {
+        await ctx.answerCbQuery("❌ Template edit cancelled");
+        
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            
+            // Reset session step
+            await BotsStore.updateDmSetupSession(sessionId, {
+                currentStep: 'template_customization'
+            });
+            
+            // Return to template info view
+            return await this.handleTemplateEdit(ctx, sessionId, templateType);
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.handleTemplateCancelEdit', { sessionId, templateType });
+            await ctx.editMessageText("❌ Failed to cancel template edit. Please try again.");
+            return true;
         }
     }
 }
