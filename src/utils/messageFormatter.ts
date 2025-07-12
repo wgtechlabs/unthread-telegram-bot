@@ -351,32 +351,30 @@ If this error persists, please contact an administrator.`,
 
 Your group is now ready to receive support notifications!`,
 
-      admin_config_changed: `⚙️ **Admin Notification: Configuration Changed**
+      admin_config_changed: `⚙️ **Configuration Update**
 
 **Group:** {{groupTitle}}
-**Change Type:** {{changeType}}
-**Details:** {{changeDetails}}
+**Change:** {{changeType}}
 
 {{#if adminName}}
-**Changed by:** {{adminName}}
+**By:** {{adminName}}
 {{/if}}
 **Time:** {{timestamp}}
 
-This is an automated notification for all group administrators.`,
+Group configuration has been updated.`,
 
-      admin_template_changed: `📝 **Admin Notification: Template Modified**
+      admin_template_changed: `📝 **Template Update**
 
 **Group:** {{groupTitle}}
-**Template Type:** {{templateType}}
-**Action:** {{action}}
 **Template:** {{templateName}}
+**Action:** {{action}}
 
 {{#if adminName}}
-**Modified by:** {{adminName}}
+**By:** {{adminName}}
 {{/if}}
 **Time:** {{timestamp}}
 
-This is an automated notification for all group administrators.`,
+Message template has been updated.`,
 
       admin_setup_completed: `✅ **Admin Notification: Setup Completed**
 

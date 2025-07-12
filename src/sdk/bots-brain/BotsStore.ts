@@ -871,6 +871,76 @@ export class BotsStore implements IBotsStore {
   }
 
   // ===========================================
+  // GLOBAL CONFIGURATION OPERATIONS
+  // ===========================================
+
+  /**
+   * Get global configuration value by key
+   */
+  async getGlobalConfig(key: string): Promise<any | null> {
+    try {
+      const globalKey = `global_config:${key}`;
+      const data = await this.storage.get(globalKey);
+      
+      if (!data) {
+        LogEngine.debug('No global configuration found', { key });
+        return null;
+      }
+
+      return typeof data === 'string' ? JSON.parse(data) : data;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to get global configuration', {
+        error: err.message,
+        key
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Set global configuration value by key
+   */
+  async setGlobalConfig(key: string, value: any): Promise<boolean> {
+    try {
+      const globalKey = `global_config:${key}`;
+      const dataToStore = typeof value === 'object' ? JSON.stringify(value) : value;
+      
+      await this.storage.set(globalKey, dataToStore);
+      
+      LogEngine.info('Global configuration saved successfully', { key });
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to set global configuration', {
+        error: err.message,
+        key
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Delete global configuration by key
+   */
+  async deleteGlobalConfig(key: string): Promise<boolean> {
+    try {
+      const globalKey = `global_config:${key}`;
+      await this.storage.delete(globalKey);
+      
+      LogEngine.info('Global configuration deleted successfully', { key });
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to delete global configuration', {
+        error: err.message,
+        key
+      });
+      return false;
+    }
+  }
+
+  // ===========================================
   // SETUP STATE OPERATIONS
   // ===========================================
 
@@ -1556,6 +1626,19 @@ export class BotsStore implements IBotsStore {
 
   static async updateGroupConfig(chatId: number, updates: Partial<GroupConfig>): Promise<boolean> {
     return BotsStore.getInstance().updateGroupConfig(chatId, updates);
+  }
+
+  // Static methods for global configuration
+  static async getGlobalConfig(key: string): Promise<any | null> {
+    return BotsStore.getInstance().getGlobalConfig(key);
+  }
+
+  static async setGlobalConfig(key: string, value: any): Promise<boolean> {
+    return BotsStore.getInstance().setGlobalConfig(key, value);
+  }
+
+  static async deleteGlobalConfig(key: string): Promise<boolean> {
+    return BotsStore.getInstance().deleteGlobalConfig(key);
   }
 
   // Message template storage methods

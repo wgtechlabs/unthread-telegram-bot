@@ -324,3 +324,15 @@ export function isAdminUser(telegramUserId: number): boolean {
     const adminUsers = getAdminUsers();
     return adminUsers.includes(telegramUserId);
 }
+
+/**
+ * Retrieves the company name from the environment variable.
+ * 
+ * Used for automatic partner name extraction from group titles.
+ * If not set, defaults to 'Unthread'.
+ * 
+ * @returns The company name string
+ */
+export function getCompanyName(): string {
+    return process.env.COMPANY_NAME?.trim() || 'Unthread';
+}
