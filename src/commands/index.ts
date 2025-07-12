@@ -39,7 +39,8 @@ import {
 import { 
     SupportConversationProcessor,
     SetupInputProcessor,
-    TemplateEditProcessor
+    TemplateEditProcessor,
+    DmSetupInputProcessor
 } from './processors/ConversationProcessors.js';
 import { 
     SupportCallbackProcessor,
@@ -74,6 +75,7 @@ export function initializeCommands(): void {
     commandRegistry.registerConversationProcessor(new SupportConversationProcessor());
     commandRegistry.registerConversationProcessor(new SetupInputProcessor());
     commandRegistry.registerConversationProcessor(new TemplateEditProcessor());
+    commandRegistry.registerConversationProcessor(new DmSetupInputProcessor());
 
     // Register callback processors
     commandRegistry.registerCallbackProcessor(new SupportCallbackProcessor());

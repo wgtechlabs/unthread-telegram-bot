@@ -238,7 +238,17 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
 
 Please type the customer name you'd like to use:
 
-*(Type your customer name and I'll set it up)*`
+*(Type your customer name and I'll set it up)*`,
+            {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "❌ Cancel Setup", callback_data: `setup_cancel_${sessionId}` }
+                        ]
+                    ]
+                }
+            }
         );
         
         // Update session to expect custom name input
@@ -289,7 +299,7 @@ Group setup has been cancelled. You can start over anytime by using \`/setup\` i
         }
     }
 
-    private async completeCustomerSetup(ctx: BotContext, sessionId: string, customerName: string, session: DmSetupSession): Promise<void> {
+    public async completeCustomerSetup(ctx: BotContext, sessionId: string, customerName: string, session: DmSetupSession): Promise<void> {
         try {
             const { BotsStore } = await import('../../sdk/bots-brain/index.js');
             

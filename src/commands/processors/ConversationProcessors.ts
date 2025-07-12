@@ -128,3 +128,102 @@ export class TemplateEditProcessor implements IConversationProcessor {
         }
     }
 }
+
+/**
+ * DM Setup Input Processor
+ * Handles text input during DM-based setup flows (like custom customer names)
+ */
+export class DmSetupInputProcessor implements IConversationProcessor {
+    async canHandle(ctx: BotContext): Promise<boolean> {
+        const userId = ctx.from?.id;
+        if (!userId || ctx.chat?.type !== 'private' || !ctx.message || !('text' in ctx.message)) {
+            return false;
+        }
+
+        try {
+            // Check if user has an active DM setup session
+            const activeSessions = await BotsStore.getActiveDmSetupSessionByAdmin(userId);
+            if (!activeSessions) return false;
+
+            // Check if we're waiting for text input
+            return activeSessions.currentStep === 'awaiting_custom_name';
+        } catch (error) {
+            logError(error, 'DmSetupInputProcessor.canHandle', { userId });
+            return false;
+        }
+    }
+
+    async process(ctx: BotContext): Promise<boolean> {
+        const userId = ctx.from?.id;
+        const inputText = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
+
+        if (!userId || !inputText) return false;
+
+        try {
+            // Get the active session
+            const session = await BotsStore.getActiveDmSetupSessionByAdmin(userId);
+            if (!session || session.currentStep !== 'awaiting_custom_name') {
+                return false;
+            }
+
+            // Validate the customer name input
+            const { validateCustomerName } = await import('../utils/validation.js');
+            const validation = validateCustomerName(inputText);
+
+            if (!validation.isValid) {
+                await ctx.reply(
+                    `❌ **Invalid Customer Name**\n\n${validation.error}\n\n${validation.details}\n\nPlease try again:`,
+                    {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "❌ Cancel Setup", callback_data: `setup_cancel_${session.sessionId}` }
+                                ]
+                            ]
+                        }
+                    }
+                );
+                return true;
+            }
+
+            // Process the valid customer name
+            await ctx.reply("✅ Processing your custom customer name...", { parse_mode: 'Markdown' });
+
+            // Import and use the callback processor to complete the setup
+            const { SetupCallbackProcessor } = await import('./CallbackProcessors.js');
+            const callbackProcessor = new SetupCallbackProcessor();
+            
+            // Update session with the custom name and complete setup
+            await BotsStore.updateDmSetupSession(session.sessionId, {
+                currentStep: 'customer_setup_complete',
+                stepData: {
+                    ...session.stepData,
+                    customerName: validation.sanitizedValue
+                }
+            });
+
+            // Complete the customer setup using the callback processor's method
+            const customerName = validation.sanitizedValue || inputText.trim();
+            await callbackProcessor.completeCustomerSetup(ctx, session.sessionId, customerName, session);
+
+            return true;
+        } catch (error) {
+            logError(error, 'DmSetupInputProcessor.process', { userId, inputText });
+            await ctx.reply(
+                "❌ **Setup Error**\n\nFailed to process your input. Please try again or cancel setup.",
+                {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "❌ Cancel Setup", callback_data: `setup_cancel_unknown` }
+                            ]
+                        ]
+                    }
+                }
+            );
+            return true;
+        }
+    }
+}
