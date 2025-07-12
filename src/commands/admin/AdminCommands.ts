@@ -448,7 +448,7 @@ export class SetupCommand extends BaseCommand {
                         ],
                         [
                             { text: "✏️ Use Different Name", callback_data: `setup_custom_name_${sessionId}` },
-                            { text: "🔗 Existing Customer", callback_data: `setup_existing_customer_${sessionId}` }
+                            { text: "🔗 Existing Customer ID", callback_data: `setup_existing_customer_${sessionId}` }
                         ],
                         [
                             { text: "❌ Cancel Setup", callback_data: `setup_cancel_${sessionId}` }

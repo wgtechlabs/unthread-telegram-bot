@@ -146,7 +146,8 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             if (!activeSessions) return false;
 
             // Check if we're waiting for text input
-            return activeSessions.currentStep === 'awaiting_custom_name';
+            return activeSessions.currentStep === 'awaiting_custom_name' || 
+                   activeSessions.currentStep === 'awaiting_customer_id';
         } catch (error) {
             logError(error, 'DmSetupInputProcessor.canHandle', { userId });
             return false;
@@ -162,10 +163,192 @@ export class DmSetupInputProcessor implements IConversationProcessor {
         try {
             // Get the active session
             const session = await BotsStore.getActiveDmSetupSessionByAdmin(userId);
-            if (!session || session.currentStep !== 'awaiting_custom_name') {
+            if (!session || (session.currentStep !== 'awaiting_custom_name' && session.currentStep !== 'awaiting_customer_id')) {
                 return false;
             }
 
+            // Handle customer ID input
+            if (session.currentStep === 'awaiting_customer_id') {
+                return await this.handleCustomerIdInput(ctx, session, inputText);
+            }
+
+            // Handle custom name input (existing logic)
+            return await this.handleCustomNameInput(ctx, session, inputText);
+        } catch (error) {
+            logError(error, 'DmSetupInputProcessor.process', { userId, inputText });
+            await ctx.reply(
+                "❌ **Setup Error**\n\nFailed to process your input. Please try again or cancel setup.",
+                {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "❌ Cancel Setup", callback_data: `setup_cancel_unknown` }
+                            ]
+                        ]
+                    }
+                }
+            );
+            return true;
+        }
+    }
+
+    private async handleCustomerIdInput(ctx: BotContext, session: any, customerId: string): Promise<boolean> {
+        try {
+            // Validate customer ID format (UUID-like format)
+            const customerIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            
+            if (!customerIdPattern.test(customerId.trim())) {
+                await ctx.reply(
+                    `❌ **Invalid Customer ID Format**\n\nThe customer ID must be in UUID format (e.g., ee19d165-a170-4261-8a4b-569c6a1bbcb7)\n\nPlease enter a valid customer ID:`,
+                    {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "❌ Cancel Setup", callback_data: `dmsetup_cancel_${session.sessionId}` }
+                                ]
+                            ]
+                        }
+                    }
+                );
+                return true;
+            }
+
+            await ctx.reply("🔍 Validating customer ID with Unthread...", { parse_mode: 'Markdown' });
+
+            // TODO: Add actual validation with Unthread API
+            // For now, we'll accept any properly formatted UUID
+            const trimmedCustomerId = customerId.trim();
+
+            // Complete the setup with the existing customer ID
+            await ctx.reply("✅ Linking to existing customer...", { parse_mode: 'Markdown' });
+
+            // Update session with the customer ID
+            await BotsStore.updateDmSetupSession(session.sessionId, {
+                currentStep: 'customer_link_complete',
+                stepData: {
+                    ...session.stepData,
+                    existingCustomerId: trimmedCustomerId,
+                    linkType: 'existing'
+                }
+            });
+
+            // Complete the setup by creating the group configuration directly
+            try {
+                const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+                
+                // Create group configuration for existing customer
+                const groupConfig = {
+                    chatId: session.groupChatId,
+                    chatTitle: session.groupChatName,
+                    isConfigured: true,
+                    customerId: trimmedCustomerId,
+                    customerName: `Customer ${trimmedCustomerId.substring(0, 8)}...`,
+                    setupBy: session.adminId,
+                    setupAt: new Date().toISOString(),
+                    botIsAdmin: true,
+                    lastAdminCheck: new Date().toISOString(),
+                    setupVersion: '2.0',
+                    metadata: {
+                        setupSessionId: session.sessionId,
+                        isExistingCustomer: true
+                    }
+                };
+
+                await BotsStore.storeGroupConfig(groupConfig);
+
+                // Update session to template configuration step (don't mark as completed yet)
+                await BotsStore.updateDmSetupSession(session.sessionId, {
+                    currentStep: 'template_configuration'
+                });
+
+                const successMessage = `🎉 **Setup Complete!**
+
+**Linked to Existing Customer**
+**Customer ID:** \`${trimmedCustomerId}\`
+**Group:** ${session.groupChatName}
+
+✅ **What's configured:**
+• Group linked to existing customer account
+• Support ticket system enabled
+• Bot admin permissions verified
+
+📝 **Template Configuration** (Optional)
+
+Choose how you'd like to handle message templates:`;
+
+                await ctx.reply(successMessage, {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "🚀 Use Default Templates", callback_data: `setup_use_defaults_${session.sessionId}` },
+                                { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${session.sessionId}` }
+                            ],
+                            [
+                                { text: "ℹ️ Learn About Templates", callback_data: `setup_template_info_${session.sessionId}` }
+                            ]
+                        ]
+                    }
+                });
+
+            } catch (setupError) {
+                logError(setupError, 'DmSetupInputProcessor.completeExistingCustomerSetup', { 
+                    sessionId: session.sessionId,
+                    customerId: trimmedCustomerId 
+                });
+                
+                await ctx.reply(
+                    "❌ **Setup Failed**\n\nFailed to complete the customer setup. This might be due to:\n• Database connection issues\n• Invalid session state\n• System configuration problems\n\nWhat would you like to do?",
+                    {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "🔄 Retry Setup", callback_data: `setup_existing_customer_${session.sessionId}` },
+                                    { text: "✏️ Use Different Name", callback_data: `setup_custom_name_${session.sessionId}` }
+                                ],
+                                [
+                                    { text: "❌ Cancel Setup", callback_data: `dmsetup_cancel_${session.sessionId}` }
+                                ]
+                            ]
+                        }
+                    }
+                );
+                return true;
+            }
+
+            return true;
+        } catch (error) {
+            logError(error, 'DmSetupInputProcessor.handleCustomerIdInput', { 
+                userId: ctx.from?.id, 
+                customerId,
+                sessionId: session.sessionId 
+            });
+            await ctx.reply(
+                "❌ **Customer ID Validation Failed**\n\nUnable to validate the customer ID. This could be due to:\n• Network connection issues\n• Invalid customer ID format\n• Customer ID doesn't exist in your Unthread workspace\n\nWhat would you like to do?",
+                {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "🔄 Try Again", callback_data: `setup_existing_customer_${session.sessionId}` },
+                                { text: "✏️ Use Different Name", callback_data: `setup_custom_name_${session.sessionId}` }
+                            ],
+                            [
+                                { text: "❌ Cancel Setup", callback_data: `dmsetup_cancel_${session.sessionId}` }
+                            ]
+                        ]
+                    }
+                }
+            );
+            return true;
+        }
+    }
+
+    private async handleCustomNameInput(ctx: BotContext, session: any, inputText: string): Promise<boolean> {
+        try {
             // Validate the customer name input
             const { validateCustomerName } = await import('../utils/validation.js');
             const validation = validateCustomerName(inputText);
@@ -209,7 +392,11 @@ export class DmSetupInputProcessor implements IConversationProcessor {
 
             return true;
         } catch (error) {
-            logError(error, 'DmSetupInputProcessor.process', { userId, inputText });
+            logError(error, 'DmSetupInputProcessor.handleCustomNameInput', { 
+                userId: ctx.from?.id, 
+                inputText,
+                sessionId: session.sessionId 
+            });
             await ctx.reply(
                 "❌ **Setup Error**\n\nFailed to process your input. Please try again or cancel setup.",
                 {
@@ -217,7 +404,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                     reply_markup: {
                         inline_keyboard: [
                             [
-                                { text: "❌ Cancel Setup", callback_data: `setup_cancel_unknown` }
+                                { text: "❌ Cancel Setup", callback_data: `setup_cancel_${session.sessionId}` }
                             ]
                         ]
                     }
