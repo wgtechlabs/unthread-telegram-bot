@@ -17,6 +17,13 @@ export default [
       '@typescript-eslint': tseslint,
     },
     rules: {
+      // Keeping these rules disabled for now, enabling these should be
+      // a separate ticket since there a lot of changes  
+      '@typescript-eslint/ban-ts-comment': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/no-var-requires': 'off',
+      '@typescript-eslint/prefer-as-const': 'off',
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
       'no-undef': 'off',
