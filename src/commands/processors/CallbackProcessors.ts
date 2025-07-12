@@ -113,6 +113,16 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                callbackData.startsWith('template_cancel_edit_');
     }
 
+    // Helper function to convert template types to short codes for callback data
+    private getTemplateShortCode(templateType: string): string {
+        const templateToCodeMap: Record<string, string> = {
+            'ticket_created': 'tc',
+            'agent_response': 'ar', 
+            'ticket_status': 'ts'
+        };
+        return templateToCodeMap[templateType] || templateType;
+    }
+
     async process(ctx: BotContext, callbackData: string): Promise<boolean> {
         try {
             // Handle dmsetup_ prefixed callbacks
@@ -133,30 +143,22 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                 return false;
             }
             
-            // Handle template_edit_ prefixed callbacks
+            // Handle template_edit_ prefixed callbacks (shortened for callback data limits)
             if (callbackData.startsWith('template_edit_')) {
                 const parts = callbackData.split('_');
-                // Handle compound template types like "ticket_created", "agent_response", "ticket_closed"
-                let templateType: string;
-                let sessionIdStartIndex: number;
+                // Use short codes: tc=ticket_created, ar=agent_response, ts=ticket_status
+                const shortCode = parts[2]; // tc, ar, or ts
+                const sessionId = parts[3];
                 
-                if (parts[2] === 'ticket' && parts[3] === 'created') {
-                    templateType = 'ticket_created';
-                    sessionIdStartIndex = 4;
-                } else if (parts[2] === 'agent' && parts[3] === 'response') {
-                    templateType = 'agent_response';
-                    sessionIdStartIndex = 4;
-                } else if (parts[2] === 'ticket' && parts[3] === 'closed') {
-                    templateType = 'ticket_closed';
-                    sessionIdStartIndex = 4;
-                } else {
-                    templateType = parts[2] || 'unknown';
-                    sessionIdStartIndex = 3;
-                }
+                // Map short codes back to full template types
+                const codeToTemplateMap: Record<string, string> = {
+                    'tc': 'ticket_created',
+                    'ar': 'agent_response', 
+                    'ts': 'ticket_status'
+                };
                 
-                const sessionId = parts.slice(sessionIdStartIndex).join('_');
-                
-                if (!sessionId || !templateType) {
+                const templateType = shortCode ? codeToTemplateMap[shortCode] : undefined;
+                if (!templateType || !sessionId) {
                     await ctx.answerCbQuery("❌ Invalid template edit request.");
                     return true;
                 }
@@ -164,14 +166,22 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                 return await this.handleTemplateEdit(ctx, sessionId, templateType);
             }
             
-            // Handle template_start_edit_ prefixed callbacks
+            // Handle template_start_edit_ prefixed callbacks (shortened)
             if (callbackData.startsWith('template_start_edit_')) {
                 const parts = callbackData.split('_');
-                // Format: template_start_edit_templateType_sessionId
-                const templateType = parts[3];
-                const sessionId = parts.slice(4).join('_');
+                // Format: template_start_edit_shortCode_sessionId
+                const shortCode = parts[3]; // tc, ar, or ts  
+                const sessionId = parts[4];
                 
-                if (!sessionId || !templateType) {
+                // Map short codes back to full template types
+                const codeToTemplateMap: Record<string, string> = {
+                    'tc': 'ticket_created',
+                    'ar': 'agent_response', 
+                    'ts': 'ticket_status'
+                };
+                
+                const templateType = shortCode ? codeToTemplateMap[shortCode] : undefined;
+                if (!templateType || !sessionId) {
                     await ctx.answerCbQuery("❌ Invalid template edit request.");
                     return true;
                 }
@@ -179,14 +189,22 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                 return await this.handleTemplateStartEdit(ctx, sessionId, templateType);
             }
             
-            // Handle template_cancel_edit_ prefixed callbacks
+            // Handle template_cancel_edit_ prefixed callbacks (shortened)
             if (callbackData.startsWith('template_cancel_edit_')) {
                 const parts = callbackData.split('_');
-                // Format: template_cancel_edit_templateType_sessionId
-                const templateType = parts[3];
-                const sessionId = parts.slice(4).join('_');
+                // Format: template_cancel_edit_shortCode_sessionId
+                const shortCode = parts[3]; // tc, ar, or ts
+                const sessionId = parts[4];
                 
-                if (!sessionId || !templateType) {
+                // Map short codes back to full template types
+                const codeToTemplateMap: Record<string, string> = {
+                    'tc': 'ticket_created',
+                    'ar': 'agent_response', 
+                    'ts': 'ticket_status'
+                };
+                
+                const templateType = shortCode ? codeToTemplateMap[shortCode] : undefined;
+                if (!templateType || !sessionId) {
                     await ctx.answerCbQuery("❌ Invalid template cancel request.");
                     return true;
                 }
@@ -933,13 +951,13 @@ Each template has access to relevant data like ticket details, customer info, ag
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: "🎫 Ticket Created", callback_data: `template_edit_ticket_created_${sessionId}` }
+                            { text: "🎫 Ticket Created", callback_data: `template_edit_tc_${sessionId}` }
                         ],
                         [
-                            { text: "👨‍💼 Agent Response", callback_data: `template_edit_agent_response_${sessionId}` }
+                            { text: "👨‍💼 Agent Response", callback_data: `template_edit_ar_${sessionId}` }
                         ],
                         [
-                            { text: "✅ Ticket Closed", callback_data: `template_edit_ticket_closed_${sessionId}` }
+                            { text: "✅ Ticket Status", callback_data: `template_edit_ts_${sessionId}` }
                         ],
                         [
                             { text: "🚀 Use Defaults Instead", callback_data: `setup_use_defaults_${sessionId}` },
@@ -992,9 +1010,9 @@ Each template has access to relevant data like ticket details, customer info, ag
                     templateDisplayName = 'Agent Response';
                     templateDescription = 'Sent when an agent responds to a ticket';
                     break;
-                case 'ticket_closed':
-                    templateDisplayName = 'Ticket Closed';
-                    templateDescription = 'Sent when a support ticket is resolved';
+                case 'ticket_status':
+                    templateDisplayName = 'Ticket Status';
+                    templateDescription = 'Sent when a support ticket status changes';
                     break;
                 default:
                     templateDisplayName = templateType.charAt(0).toUpperCase() + templateType.slice(1).replace('_', ' ');
@@ -1043,7 +1061,7 @@ ${timeVars}
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: "✏️ Edit Template", callback_data: `template_start_edit_${templateType}_${sessionId}` }
+                            { text: "✏️ Edit Template", callback_data: `template_start_edit_${this.getTemplateShortCode(templateType)}_${sessionId}` }
                         ],
                         [
                             { text: "⬅️ Back to Templates", callback_data: `setup_customize_templates_${sessionId}` }
@@ -1094,8 +1112,8 @@ ${timeVars}
                 case 'agent_response':
                     templateDisplayName = 'Agent Response';
                     break;
-                case 'ticket_closed':
-                    templateDisplayName = 'Ticket Closed';
+                case 'ticket_status':
+                    templateDisplayName = 'Ticket Status';
                     break;
             }
 
@@ -1141,10 +1159,10 @@ ${currentTemplate?.content || 'Loading...'}
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${templateType}_${sessionId}` }
+                            { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${this.getTemplateShortCode(templateType)}_${sessionId}` }
                         ],
                         [
-                            { text: "⬅️ Back to Template Info", callback_data: `template_edit_${templateType}_${sessionId}` }
+                            { text: "⬅️ Back to Template Info", callback_data: `template_edit_${this.getTemplateShortCode(templateType)}_${sessionId}` }
                         ]
                     ]
                 }

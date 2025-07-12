@@ -16,13 +16,13 @@ export interface GlobalTemplate {
 export type GlobalTemplateEvent = 
   | 'ticket_created'    // When a new support ticket is created
   | 'agent_response'    // When an agent responds to a ticket
-  | 'ticket_closed';    // When a ticket is resolved/closed
+  | 'ticket_status';    // When a ticket status changes (open, in progress, resolved, etc.)
 
 export interface GlobalTemplateConfig {
   templates: {
     ticket_created: GlobalTemplate;
     agent_response: GlobalTemplate;
-    ticket_closed: GlobalTemplate;
+    ticket_status: GlobalTemplate;
   };
   version: number;
   lastUpdated: string;
@@ -49,13 +49,14 @@ export const DEFAULT_GLOBAL_TEMPLATES: GlobalTemplateConfig = {
                '**Status:** {{status}}',
       enabled: true
     },
-    ticket_closed: {
-      event: 'ticket_closed',
-      content: '✅ **Ticket Resolved**\n\n' +
+    ticket_status: {
+      event: 'ticket_status',
+      content: '📋 **Ticket Status Update**\n\n' +
                '**Ticket ID:** {{ticketId}}\n' +
                '**Summary:** {{summary}}\n' +
-               '**Resolved by:** {{agentName}}\n\n' +
-               'Thank you for using our support! If you need further assistance, feel free to create a new ticket.',
+               '**Status:** {{status}}\n' +
+               '**Updated by:** {{agentName}}\n\n' +
+               'Your ticket status has been updated. We\'ll keep you informed of any further changes.',
       enabled: true
     }
   },

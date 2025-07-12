@@ -532,7 +532,7 @@ export class TemplatesCommand extends BaseCommand {
                             { text: "�‍💼 Edit Agent Response", callback_data: "template_edit_agent_response" }
                         ],
                         [
-                            { text: "✅ Edit Ticket Closed", callback_data: "template_edit_ticket_closed" },
+                            { text: "✅ Edit Ticket Status", callback_data: "template_edit_ticket_status" },
                             { text: "📊 Template Preview", callback_data: "template_preview_all" }
                         ],
                         [

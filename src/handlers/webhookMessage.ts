@@ -552,7 +552,7 @@ export class TelegramWebhookHandler {
       };
 
       // Choose template type based on status
-      const templateType = status === 'closed' ? 'ticket_closed' : 'ticket_created'; // Use ticket_created for updates since ticket_updated doesn't exist in global system
+      const templateType = 'ticket_status'; // Always use ticket_status for any status update
 
       // Format using global template system
       const formatted = await this.templateManager.renderTemplate(templateType, variables);
