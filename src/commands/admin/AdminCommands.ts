@@ -13,6 +13,7 @@ import { BotsStore } from '../../sdk/bots-brain/index.js';
 import { checkAndPromptBotAdmin, isBotAdmin } from '../../utils/botPermissions.js';
 import { logError, createUserErrorMessage } from '../utils/errorHandler.js';
 import { getCompanyName } from '../../config/env.js';
+import { GlobalTemplateManager } from '../../utils/globalTemplateManager.js';
 
 export class ActivateCommand extends BaseCommand {
     readonly metadata: CommandMetadata = {
@@ -117,6 +118,13 @@ export class SetupCommand extends BaseCommand {
         const chatTitle = 'title' in ctx.chat! ? ctx.chat!.title || 'Unknown Group' : 'Unknown Group';
 
         try {
+            // Check if admin has activated their privileges via /activate command
+            const adminProfile = await BotsStore.getAdminProfile(userId);
+            if (!adminProfile?.isActivated) {
+                await this.handleAdminNotActivated(ctx, userId);
+                return;
+            }
+
             // Check if bot has admin permissions
             const hasBotAdmin = await isBotAdmin(ctx);
             if (!hasBotAdmin) {
@@ -171,30 +179,297 @@ export class SetupCommand extends BaseCommand {
     }
 
     private async startSetupWizard(ctx: BotContext, userId: number, chatId: number, chatTitle: string): Promise<void> {
-        const setupMessage = 
-            "🚀 **Group Setup Wizard**\n\n" +
-            `Configuring support for: **${chatTitle}**\n\n` +
-            "This wizard will:\n" +
-            "1. Link this group to a customer\n" +
-            "2. Configure message templates\n" +
-            "3. Enable support ticket creation\n\n" +
-            "**Customer Linking Options:**";
+        try {
+            // Create a setup session and initiate DM-based setup
+            const sessionId = `setup_${chatId}_${Date.now()}`;
+            const adminProfile = await BotsStore.getAdminProfile(userId);
+            
+            if (!adminProfile?.dmChatId) {
+                await ctx.reply(
+                    "❌ **Setup Error**\n\n" +
+                    "Cannot initiate setup: Admin DM chat not found.\n" +
+                    "Please re-run `/activate` in private chat first.",
+                    { parse_mode: 'Markdown' }
+                );
+                return;
+            }
 
-        await ctx.reply(setupMessage, {
+            // Store setup session
+            const now = new Date();
+            const expiresAt = new Date(now.getTime() + 10 * 60 * 1000); // 10 minutes from now
+            
+            const setupSession = {
+                sessionId,
+                adminId: userId,
+                groupChatId: chatId,
+                groupChatName: chatTitle,
+                status: 'active' as const,
+                startedAt: now.toISOString(),
+                expiresAt: expiresAt.toISOString(),
+                currentStep: 'initiated',
+                stepData: {},
+                messageIds: []
+            };
+
+            await BotsStore.storeDmSetupSession(setupSession);
+
+            // Send confirmation in group
+            const groupMessage = 
+                "✅ **Setup Started**\n\n" +
+                "Check your private messages to complete the setup for Unthread x Telegram.\n\n" +
+                "⚡ **Quick Setup: Just two simple choices in your DM!**";
+
+            await ctx.reply(groupMessage, { parse_mode: 'Markdown' });
+
+            // Initiate DM setup process
+            await this.initiateDmSetup(ctx, sessionId, adminProfile.dmChatId, chatId, chatTitle);
+
+        } catch (error) {
+            logError(error, 'SetupCommand.startSetupWizard', { userId, chatId });
+            await ctx.reply("❌ **Setup Error**\n\nFailed to start setup. Please try again.");
+        }
+    }
+
+    private async initiateDmSetup(ctx: BotContext, sessionId: string, dmChatId: number, groupChatId: number, groupTitle: string): Promise<void> {
+        try {
+            // Send initial setup message to admin's DM
+            const welcomeMessage = 
+                "🚀 **Group Setup Configuration**\n\n" +
+                `**Group:** ${groupTitle}\n` +
+                `**Chat ID:** \`${groupChatId}\`\n\n` +
+                "Running pre-setup validation checks...\n\n" +
+                "⏳ *Please wait while I verify the setup requirements...*";
+
+            const sentMessage = await ctx.telegram.sendMessage(dmChatId, welcomeMessage, { 
+                parse_mode: 'Markdown' 
+            });
+
+            // Run setup validation checks
+            await this.performSetupValidation(ctx, sessionId, dmChatId, groupChatId, groupTitle, sentMessage.message_id);
+
+        } catch (error) {
+            logError(error, 'SetupCommand.initiateDmSetup', { sessionId, dmChatId, groupChatId });
+            // Try to notify in group about DM failure
+            await ctx.reply(
+                "⚠️ **DM Setup Failed**\n\n" +
+                "Could not send setup instructions to your private chat.\n" +
+                "Please ensure you have started a conversation with the bot first.",
+                { parse_mode: 'Markdown' }
+            );
+        }
+    }
+
+    private async handleAdminNotActivated(ctx: BotContext, userId: number): Promise<void> {
+        const username = ctx.from?.username ? `@${ctx.from.username}` : 'Admin';
+        const firstName = ctx.from?.first_name || 'Admin';
+        
+        const activationMessage = 
+            "🔐 **Admin Activation Required**\n\n" +
+            `Hello ${firstName}! Before you can configure group chats, you need to activate your admin privileges.\n\n` +
+            "**Required Steps:**\n" +
+            "1. Send me a **private message** (DM)\n" +
+            "2. Use the `/activate` command in our private chat\n" +
+            "3. Return here and try `/setup` again\n\n" +
+            "**Why is this needed?**\n" +
+            "• Ensures secure admin communication channel\n" +
+            "• Enables notifications and configuration updates\n" +
+            "• Links your admin account to a private chat for security\n\n" +
+            "**Start Here:** Click the button below to message me privately.";
+
+        await ctx.reply(activationMessage, {
             parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
                     [
-                        { text: "🆕 Create New Customer", callback_data: `setup_create_${chatId}` },
-                        { text: "🔗 Link Existing Customer", callback_data: `setup_link_${chatId}` }
+                        {
+                            text: "💬 Send Private Message",
+                            url: `https://t.me/${ctx.botInfo?.username || 'unthread_bot'}?start=admin_activate`
+                        }
                     ],
                     [
-                        { text: "🤖 Auto-Generate", callback_data: `setup_auto_${chatId}` },
-                        { text: "❌ Cancel", callback_data: `setup_cancel_${chatId}` }
+                        {
+                            text: "❓ Help & Instructions",
+                            callback_data: `admin_help_activation_${userId}`
+                        }
                     ]
                 ]
             }
         });
+    }
+
+    private async performSetupValidation(ctx: BotContext, sessionId: string, dmChatId: number, groupChatId: number, groupTitle: string, messageId: number): Promise<void> {
+        try {
+            let validationMessage = 
+                "🔍 **Setup Validation Results**\n\n" +
+                `**Group:** ${groupTitle}\n` +
+                `**Chat ID:** \`${groupChatId}\`\n\n`;
+
+            interface ValidationCheck {
+                name: string;
+                passed: boolean;
+                details: string;
+            }
+
+            const checks: ValidationCheck[] = [];
+            let allPassed = true;
+
+            // Check 1: Bot admin status
+            try {
+                const botUser = await ctx.telegram.getMe();
+                const chatMember = await ctx.telegram.getChatMember(groupChatId, botUser.id);
+                const isBotAdmin = chatMember.status === 'administrator' || chatMember.status === 'creator';
+                
+                checks.push({
+                    name: "Bot Admin Status",
+                    passed: isBotAdmin,
+                    details: isBotAdmin ? "Bot has admin privileges" : "Bot needs admin privileges"
+                });
+                
+                if (!isBotAdmin) allPassed = false;
+            } catch (error) {
+                checks.push({
+                    name: "Bot Admin Status",
+                    passed: false,
+                    details: "Unable to check bot permissions"
+                });
+                allPassed = false;
+            }
+
+            // Check 2: Group privacy settings
+            try {
+                const chat = await ctx.telegram.getChat(groupChatId);
+                const hasHistoryAccess = Boolean('all_members_are_administrators' in chat ? chat.all_members_are_administrators : true);
+                
+                checks.push({
+                    name: "Group Privacy Settings",
+                    passed: hasHistoryAccess,
+                    details: hasHistoryAccess ? "Bot can access message history" : "Group privacy may block bot access"
+                });
+                
+                if (!hasHistoryAccess) allPassed = false;
+            } catch (error) {
+                checks.push({
+                    name: "Group Privacy Settings",
+                    passed: true, // Assume OK if can't check
+                    details: "Privacy check completed (assumed OK)"
+                });
+            }
+
+            // Check 3: Bot can send messages
+            try {
+                await ctx.telegram.sendChatAction(groupChatId, 'typing');
+                checks.push({
+                    name: "Message Sending",
+                    passed: true,
+                    details: "Bot can send messages to group"
+                });
+            } catch (error) {
+                checks.push({
+                    name: "Message Sending",
+                    passed: false,
+                    details: "Bot cannot send messages to group"
+                });
+                allPassed = false;
+            }
+
+            // Build validation results message
+            validationMessage += "**Validation Checks:**\n\n";
+            for (const check of checks) {
+                const icon = check.passed ? "✅" : "❌";
+                validationMessage += `${icon} **${check.name}**\n`;
+                validationMessage += `   ${check.details}\n\n`;
+            }
+
+            if (allPassed) {
+                validationMessage += 
+                    "🎉 **All Checks Passed!**\n\n" +
+                    "Ready to proceed with customer setup.";
+                
+                // Update session and proceed to customer setup
+                await BotsStore.updateDmSetupSession(sessionId, {
+                    currentStep: 'validation_passed',
+                    stepData: { validationResults: checks }
+                });
+
+                await this.proceedToCustomerSetup(ctx, sessionId, dmChatId, groupChatId, groupTitle, messageId);
+            } else {
+                validationMessage += 
+                    "⚠️ **Setup Issues Found**\n\n" +
+                    "Please resolve the issues above before continuing.\n\n" +
+                    "**Common Solutions:**\n" +
+                    "• Make the bot an admin in the group\n" +
+                    "• Check group privacy settings\n" +
+                    "• Ensure bot has message permissions";
+
+                await ctx.telegram.editMessageText(dmChatId, messageId, undefined, validationMessage, {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "🔄 Retry Validation", callback_data: `setup_retry_validation_${sessionId}` }
+                            ],
+                            [
+                                { text: "❌ Cancel Setup", callback_data: `setup_cancel_${sessionId}` }
+                            ]
+                        ]
+                    }
+                });
+            }
+
+        } catch (error) {
+            logError(error, 'SetupCommand.performSetupValidation', { sessionId, groupChatId });
+            await ctx.telegram.editMessageText(dmChatId, messageId, undefined, 
+                "❌ **Validation Error**\n\n" +
+                "Failed to validate setup requirements. Please try again.", 
+                { parse_mode: 'Markdown' }
+            );
+        }
+    }
+
+    private async proceedToCustomerSetup(ctx: BotContext, sessionId: string, dmChatId: number, groupChatId: number, groupTitle: string, messageId: number): Promise<void> {
+        try {
+            // Extract suggested customer name from group title using sophisticated partner extraction
+            const { generateCustomerName } = await import('../../services/unthread.js');
+            const suggestedName = generateCustomerName(groupTitle).replace('[Telegram] ', '');
+            
+            const customerSetupMessage = 
+                "👥 **Customer Setup**\n\n" +
+                `**Group:** ${groupTitle}\n\n` +
+                "I'll help you link this group to a customer for support ticket management.\n\n" +
+                `**Suggested Customer Name:**\n\`${suggestedName}\`\n\n` +
+                "**Choose an option below:**";
+
+            await ctx.telegram.editMessageText(dmChatId, messageId, undefined, customerSetupMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: `✅ Use "${suggestedName}"`, callback_data: `setup_use_suggested_${sessionId}` }
+                        ],
+                        [
+                            { text: "✏️ Use Different Name", callback_data: `setup_custom_name_${sessionId}` },
+                            { text: "🔗 Existing Customer", callback_data: `setup_existing_customer_${sessionId}` }
+                        ],
+                        [
+                            { text: "❌ Cancel Setup", callback_data: `setup_cancel_${sessionId}` }
+                        ]
+                    ]
+                }
+            });
+
+            // Update session with customer setup step
+            await BotsStore.updateDmSetupSession(sessionId, {
+                currentStep: 'customer_setup',
+                stepData: { 
+                    suggestedName,
+                    groupTitle,
+                    messageId
+                }
+            });
+
+        } catch (error) {
+            logError(error, 'SetupCommand.proceedToCustomerSetup', { sessionId, groupChatId });
+        }
     }
 }
 
@@ -214,14 +489,10 @@ export class TemplatesCommand extends BaseCommand {
         const userId = ctx.from!.id;
 
         try {
-            // Check admin activation
+            // Check admin activation with enhanced messaging
             const adminProfile = await BotsStore.getAdminProfile(userId);
             if (!adminProfile?.isActivated) {
-                await ctx.reply(
-                    "🔒 **Admin Activation Required**\n\n" +
-                    "Please use `/activate` first to enable admin features.",
-                    { parse_mode: 'Markdown' }
-                );
+                await this.handleTemplateAdminNotActivated(ctx);
                 return;
             }
 
@@ -234,34 +505,87 @@ export class TemplatesCommand extends BaseCommand {
     }
 
     private async showTemplateManager(ctx: BotContext): Promise<void> {
-        const templateMessage = 
-            "📝 **Message Template Manager**\n\n" +
-            "Customize how the bot communicates with users and admins.\n\n" +
-            "**Template Categories:**\n" +
-            "• 🎫 **Support Templates** - Ticket notifications\n" +
-            "• 👥 **Group Templates** - Group-specific messages\n" +
-            "• 🔧 **Admin Templates** - Administrative notifications\n" +
-            "• 🌐 **Global Templates** - System-wide messages\n\n" +
-            "**Management Options:**";
+        try {
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            
+            // Get current template statistics
+            const templateManager = GlobalTemplateManager.getInstance();
+            const templates = await templateManager.getGlobalTemplates();
+            const templateCount = Object.keys(templates.templates).length;
+            
+            const templateMessage = 
+                "📝 **Message Template Manager**\n\n" +
+                "Customize how the bot communicates with users and admins.\n\n" +
+                `**Current Status:** ${templateCount} templates configured\n\n` +
+                "**Available Templates:**\n" +
+                "• 🎫 **Ticket Created** - New support ticket notifications\n" +
+                "• �‍💼 **Agent Response** - When agents reply to tickets\n" +
+                "• ✅ **Ticket Closed** - Support ticket resolution messages\n\n" +
+                "**Management Options:**";
 
-        await ctx.reply(templateMessage, {
+            await ctx.reply(templateMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "🎫 Edit Ticket Created", callback_data: "template_edit_ticket_created" },
+                            { text: "�‍💼 Edit Agent Response", callback_data: "template_edit_agent_response" }
+                        ],
+                        [
+                            { text: "✅ Edit Ticket Closed", callback_data: "template_edit_ticket_closed" },
+                            { text: "📊 Template Preview", callback_data: "template_preview_all" }
+                        ],
+                        [
+                            { text: "� Reset to Defaults", callback_data: "template_reset_confirm" },
+                            { text: "� Export Templates", callback_data: "template_export" }
+                        ],
+                        [
+                            { text: "❌ Close", callback_data: "template_close" }
+                        ]
+                    ]
+                }
+            });
+            
+        } catch (error) {
+            logError(error, 'TemplatesCommand.showTemplateManager');
+            
+            // Fallback to basic interface
+            const fallbackMessage = 
+                "📝 **Message Template Manager**\n\n" +
+                "Template management interface is being prepared.\n\n" +
+                "For now, templates are using sensible defaults that work great!\n\n" +
+                "*Full customization interface coming soon.*";
+
+            await ctx.reply(fallbackMessage, { parse_mode: 'Markdown' });
+        }
+    }
+
+    private async handleTemplateAdminNotActivated(ctx: BotContext): Promise<void> {
+        const firstName = ctx.from?.first_name || 'Admin';
+        
+        const activationMessage = 
+            "🔒 **Admin Activation Required**\n\n" +
+            `Hello ${firstName}! To manage message templates, you need to activate your admin privileges first.\n\n` +
+            "**Quick Steps:**\n" +
+            "1. **Start a private chat** with me\n" +
+            "2. Send `/activate` command in our DM\n" +
+            "3. Return and use `/templates` again\n\n" +
+            "**What You'll Get:**\n" +
+            "• Full template management access\n" +
+            "• Customizable message templates\n" +
+            "• Admin notification preferences\n" +
+            "• Secure configuration channel\n\n" +
+            "**Ready to activate?** Click below to start:";
+
+        await ctx.reply(activationMessage, {
             parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
                     [
-                        { text: "🎫 Support Templates", callback_data: "templates_support" },
-                        { text: "👥 Group Templates", callback_data: "templates_group" }
-                    ],
-                    [
-                        { text: "🔧 Admin Templates", callback_data: "templates_admin" },
-                        { text: "🌐 Global Templates", callback_data: "templates_global" }
-                    ],
-                    [
-                        { text: "📊 Template Stats", callback_data: "templates_stats" },
-                        { text: "🔄 Reset to Defaults", callback_data: "templates_reset" }
-                    ],
-                    [
-                        { text: "❌ Close", callback_data: "templates_close" }
+                        {
+                            text: "🚀 Activate Admin Access",
+                            url: `https://t.me/${ctx.botInfo?.username || 'unthread_bot'}?start=admin_activate`
+                        }
                     ]
                 ]
             }

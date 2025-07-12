@@ -44,7 +44,8 @@ import {
 import { 
     SupportCallbackProcessor,
     SetupCallbackProcessor,
-    TemplateCallbackProcessor
+    TemplateCallbackProcessor,
+    AdminCallbackProcessor
 } from './processors/CallbackProcessors.js';
 
 /**
@@ -78,6 +79,7 @@ export function initializeCommands(): void {
     commandRegistry.registerCallbackProcessor(new SupportCallbackProcessor());
     commandRegistry.registerCallbackProcessor(new SetupCallbackProcessor());
     commandRegistry.registerCallbackProcessor(new TemplateCallbackProcessor());
+    commandRegistry.registerCallbackProcessor(new AdminCallbackProcessor());
 
     const stats = commandRegistry.getStats();
     LogEngine.info('✅ Command Architecture Initialized', {

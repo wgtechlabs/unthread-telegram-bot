@@ -19,7 +19,7 @@
  * - DATABASE_SSL_VALIDATE: SSL validation mode for database connections (true/false)
  * - NODE_ENV: Runtime environment (development/production)
  * - WEBHOOK_POLL_INTERVAL: Webhook polling interval in milliseconds
- * - COMPANY_NAME: Company name for ticket attribution
+ * - MY_COMPANY_NAME: Company name for ticket attribution
  * - UNTHREAD_DEFAULT_PRIORITY: Default priority for new tickets (3, 5, 7, or 9)
  * 
  * Security:
@@ -329,10 +329,27 @@ export function isAdminUser(telegramUserId: number): boolean {
  * Retrieves the company name from the environment variable.
  * 
  * Used for automatic partner name extraction from group titles.
- * If not set, defaults to 'Unthread'.
+ * Returns null if not set or contains placeholder values, indicating
+ * that the full group chat name should be used instead of extraction.
  * 
- * @returns The company name string
+ * @returns The company name string, or null if not configured properly
  */
-export function getCompanyName(): string {
-    return process.env.COMPANY_NAME?.trim() || 'Unthread';
+export function getCompanyName(): string | null {
+    const companyName = process.env.MY_COMPANY_NAME?.trim();
+    
+    // Check for placeholder values that should be treated as unset
+    const placeholderValues = [
+        'your_company_name_here',
+        'your_company_name',
+        'company_name_here',
+        'placeholder',
+        'change_me',
+        'replace_me'
+    ];
+    
+    if (!companyName || placeholderValues.includes(companyName.toLowerCase())) {
+        return null; // Indicates no company name is configured, use full group chat name
+    }
+    
+    return companyName;
 }

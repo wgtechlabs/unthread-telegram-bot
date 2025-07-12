@@ -118,7 +118,26 @@ export abstract class BaseCommand implements ICommand {
                 return false;
             }
 
-            // Additional admin validation for sensitive commands
+            // For admin commands, also check if admin has activated their profile
+            // This ensures proper admin setup and secure communication channels
+            if (this.metadata.name !== 'activate') { // Skip check for activate command itself
+                try {
+                    const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+                    const adminProfile = await BotsStore.getAdminProfile(userId);
+                    if (!adminProfile?.isActivated) {
+                        return false; // Will trigger handleUnauthorized with proper messaging
+                    }
+                } catch (error) {
+                    LogEngine.error('Failed to check admin profile during authorization', { 
+                        userId, 
+                        command: this.metadata.name,
+                        error: (error as Error).message 
+                    });
+                    return false;
+                }
+            }
+
+            // Additional admin validation for sensitive commands in group context
             if (chatType !== 'private') {
                 return await validateAdminAccess(ctx);
             }
@@ -160,13 +179,33 @@ export abstract class BaseCommand implements ICommand {
         const chatType = ctx.chat?.type;
         const userId = ctx.from?.id;
 
-        if (this.metadata.adminOnly && userId && !isAdminUser(userId)) {
-            await ctx.reply(
-                "🔒 **Admin Only Command**\n\n" +
-                "This command requires administrator privileges. Contact your bot administrator for access.",
-                { parse_mode: 'Markdown' }
-            );
-            return;
+        if (this.metadata.adminOnly && userId) {
+            if (!isAdminUser(userId)) {
+                await ctx.reply(
+                    "🔒 **Admin Only Command**\n\n" +
+                    "This command requires administrator privileges. Contact your bot administrator for access.",
+                    { parse_mode: 'Markdown' }
+                );
+                return;
+            }
+
+            // Check if admin activation is the issue
+            if (this.metadata.name !== 'activate') {
+                try {
+                    const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+                    const adminProfile = await BotsStore.getAdminProfile(userId);
+                    if (!adminProfile?.isActivated) {
+                        await this.handleAdminActivationRequired(ctx);
+                        return;
+                    }
+                } catch (error) {
+                    LogEngine.error('Failed to check admin profile in handleUnauthorized', { 
+                        userId, 
+                        command: this.metadata.name,
+                        error: (error as Error).message 
+                    });
+                }
+            }
         }
 
         if (this.metadata.privateOnly && chatType !== 'private') {
@@ -218,6 +257,41 @@ export abstract class BaseCommand implements ICommand {
                 { parse_mode: 'Markdown' }
             );
         }
+    }
+
+    /**
+     * Handle case where admin needs to activate their privileges
+     */
+    protected async handleAdminActivationRequired(ctx: BotContext): Promise<void> {
+        const firstName = ctx.from?.first_name || 'Admin';
+        const commandName = this.metadata.name;
+        
+        const activationMessage = 
+            "🔐 **Admin Activation Required**\n\n" +
+            `Hello ${firstName}! To use the \`/${commandName}\` command, you need to activate your admin privileges first.\n\n` +
+            "**Quick Setup:**\n" +
+            "1. **Send me a private message** (DM)\n" +
+            "2. Use the `/activate` command in our DM\n" +
+            "3. Return and try the command again\n\n" +
+            "**Why activate?**\n" +
+            "• Secure admin communication channel\n" +
+            "• Enhanced bot administration features\n" +
+            "• Notifications and configuration updates\n\n" +
+            "**Ready?** Click below to start activation:";
+
+        await ctx.reply(activationMessage, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        {
+                            text: "🚀 Start Activation",
+                            url: `https://t.me/${ctx.botInfo?.username || 'unthread_bot'}?start=admin_activate`
+                        }
+                    ]
+                ]
+            }
+        });
     }
 
     /**

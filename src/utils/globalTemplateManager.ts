@@ -51,7 +51,7 @@ export class GlobalTemplateManager {
   async updateTemplate(
     event: GlobalTemplateEvent, 
     content: string, 
-    enabled: boolean = true,
+    enabled = true,
     updatedBy?: number
   ): Promise<{ success: boolean; error?: string }> {
     try {
@@ -163,6 +163,44 @@ export class GlobalTemplateManager {
     } catch (error) {
       LogEngine.error('Failed to reset templates to defaults', { error });
       return { success: false, error: 'Failed to reset templates' };
+    }
+  }
+
+  /**
+   * Initialize default templates for a group (simplified for global templates)
+   * This method ensures global templates are available and creates them if needed
+   */
+  async initializeDefaultTemplates(groupChatId?: number): Promise<{ success: boolean; error?: string }> {
+    try {
+      // For global templates, groupChatId is not used but kept for API compatibility
+      const currentConfig = await this.getGlobalTemplates();
+      
+      // Check if templates are already initialized
+      if (currentConfig.version > 1 || 
+          Object.keys(currentConfig.templates).length === Object.keys(DEFAULT_GLOBAL_TEMPLATES.templates).length) {
+        LogEngine.info('Global templates already initialized', { 
+          version: currentConfig.version,
+          templateCount: Object.keys(currentConfig.templates).length
+        });
+        return { success: true };
+      }
+      
+      // Initialize with defaults if not already present
+      const defaultConfig = { ...DEFAULT_GLOBAL_TEMPLATES };
+      defaultConfig.version = 1;
+      defaultConfig.lastUpdated = new Date().toISOString();
+      
+      await BotsStore.setGlobalConfig('templates', defaultConfig);
+      
+      LogEngine.info('Default global templates initialized', { 
+        templateCount: Object.keys(defaultConfig.templates).length,
+        groupChatId
+      });
+      
+      return { success: true };
+    } catch (error) {
+      LogEngine.error('Failed to initialize default templates', { error, groupChatId });
+      return { success: false, error: 'Failed to initialize templates' };
     }
   }
 

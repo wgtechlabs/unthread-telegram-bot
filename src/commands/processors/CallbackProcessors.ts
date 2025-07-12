@@ -9,6 +9,7 @@
 
 import type { ICallbackProcessor } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
+import type { DmSetupSession } from '../../sdk/types.js';
 import { logError } from '../utils/errorHandler.js';
 
 /**
@@ -49,9 +50,11 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
     private async handleContinue(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("✅ Continuing support form...");
         await ctx.editMessageText(
-            "📝 **Support Form Continued**\n\n" +
-            "This demonstrates the clean callback handling architecture.\n\n" +
-            "*In the full implementation, this would resume the form!*",
+            `📝 **Support Form Continued**
+
+This demonstrates the clean callback handling architecture.
+
+*In the full implementation, this would resume the form!*`,
             { parse_mode: 'Markdown' }
         );
         return true;
@@ -60,9 +63,11 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
     private async handleRestart(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("🔄 Restarting support form...");
         await ctx.editMessageText(
-            "🔄 **Support Form Restarted**\n\n" +
-            "This shows how clean architecture makes flow control easy.\n\n" +
-            "*Starting fresh form would happen here!*",
+            `🔄 **Support Form Restarted**
+
+This shows how clean architecture makes flow control easy.
+
+*Starting fresh form would happen here!*`,
             { parse_mode: 'Markdown' }
         );
         return true;
@@ -71,9 +76,11 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
     private async handleCancel(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("❌ Support form cancelled");
         await ctx.editMessageText(
-            "❌ **Support Form Cancelled**\n\n" +
-            "Clean architecture makes cancellation handling straightforward.\n\n" +
-            "*Form state would be cleared here!*",
+            `❌ **Support Form Cancelled**
+
+Clean architecture makes cancellation handling straightforward.
+
+*Form state would be cleared here!*`,
             { parse_mode: 'Markdown' }
         );
         return true;
@@ -82,9 +89,11 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
     private async handleCreateNew(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("🎫 Creating new ticket...");
         await ctx.editMessageText(
-            "🎫 **New Ticket Creation**\n\n" +
-            "This demonstrates clean callback-to-command handoff.\n\n" +
-            "*New support flow would start here!*",
+            `🎫 **New Ticket Creation**
+
+This demonstrates clean callback-to-command handoff.
+
+*New support flow would start here!*`,
             { parse_mode: 'Markdown' }
         );
         return true;
@@ -93,7 +102,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
 
 /**
  * Setup Callback Processor
- * Handles callbacks related to group setup
+ * Handles callbacks related to DM-based group setup flow
  */
 export class SetupCallbackProcessor implements ICallbackProcessor {
     canHandle(callbackData: string): boolean {
@@ -101,95 +110,539 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
     }
 
     async process(ctx: BotContext, callbackData: string): Promise<boolean> {
-        // Extract action and group ID
-        const parts = callbackData.split('_');
-        const action = parts[1];
-        const groupId = parts[2] ? parseInt(parts[2]) : null;
-
         try {
+            // Extract action and session ID from callback data
+            const parts = callbackData.split('_');
+            const action = parts[1];
+            
+            // Session ID is always the last part for our callbacks
+            const sessionId = parts[parts.length - 1];
+            
+            if (!sessionId) {
+                await ctx.answerCbQuery("❌ Invalid setup session.");
+                return true;
+            }
+
             switch (action) {
-                case 'create':
-                    return await this.handleCreateCustomer(ctx, groupId);
-                case 'link':
-                    return await this.handleLinkCustomer(ctx, groupId);
-                case 'auto':
-                    return await this.handleAutoGenerate(ctx, groupId);
+                case 'retry':
+                    if (parts[2] === 'validation') {
+                        return await this.handleRetryValidation(ctx, sessionId);
+                    }
+                    break;
+                case 'use':
+                    if (parts[2] === 'suggested') {
+                        return await this.handleUseSuggested(ctx, sessionId);
+                    } else if (parts[2] === 'defaults') {
+                        return await this.handleUseDefaultTemplates(ctx, sessionId);
+                    }
+                    break;
+                case 'customize':
+                    if (parts[2] === 'templates') {
+                        return await this.handleCustomizeTemplates(ctx, sessionId);
+                    }
+                    break;
+                case 'template':
+                    if (parts[2] === 'info') {
+                        return await this.handleTemplateInfo(ctx, sessionId);
+                    }
+                    break;
+                case 'back':
+                    if (parts[2] === 'to' && parts[3] === 'completion') {
+                        return await this.handleBackToCompletion(ctx, sessionId);
+                    }
+                    break;
+                case 'custom':
+                    if (parts[2] === 'name') {
+                        return await this.handleCustomName(ctx, sessionId);
+                    }
+                    break;
+                case 'existing':
+                    if (parts[2] === 'customer') {
+                        return await this.handleExistingCustomer(ctx, sessionId);
+                    }
+                    break;
                 case 'cancel':
-                    return await this.handleCancel(ctx, groupId);
-                case 'reconfigure':
-                    return await this.handleReconfigure(ctx, groupId);
+                    return await this.handleCancel(ctx, sessionId);
                 default:
                     return false;
             }
+            return false;
         } catch (error) {
             logError(error, 'SetupCallbackProcessor.process', { 
-                action, 
-                groupId,
+                callbackData, 
                 userId: ctx.from?.id 
             });
-            await ctx.answerCbQuery("❌ Setup error occurred. Please try again.");
+            await ctx.answerCbQuery("❌ An error occurred. Please try again.");
             return true;
         }
     }
 
-    private async handleCreateCustomer(ctx: BotContext, groupId: number | null): Promise<boolean> {
-        await ctx.answerCbQuery("🆕 Creating new customer...");
+    private async handleRetryValidation(ctx: BotContext, sessionId: string): Promise<boolean> {
+        await ctx.answerCbQuery("🔄 Retrying validation...");
+        
+        try {
+            // Import here to avoid circular dependencies
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            const session = await BotsStore.getDmSetupSession(sessionId);
+            
+            if (!session) {
+                await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
+                return true;
+            }
+
+            // Re-run validation
+            const validationMessage = "⏳ **Re-running Validation**\n\nPlease wait while I check the setup requirements again...";
+            await ctx.editMessageText(validationMessage);
+            
+            // Note: In production, you'd extract validation to a shared service
+            await this.performSetupValidation(ctx, sessionId, session.groupChatId, session.groupChatName);
+            
+            return true;
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.handleRetryValidation', { sessionId });
+            await ctx.editMessageText("❌ Failed to retry validation. Please start over.");
+            return true;
+        }
+    }
+
+    private async handleUseSuggested(ctx: BotContext, sessionId: string): Promise<boolean> {
+        await ctx.answerCbQuery("✅ Using suggested name...");
+        
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            const session = await BotsStore.getDmSetupSession(sessionId);
+            
+            if (!session || !session.stepData?.suggestedName) {
+                await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
+                return true;
+            }
+
+            const customerName = session.stepData.suggestedName;
+            
+            // Create customer and complete setup
+            await this.completeCustomerSetup(ctx, sessionId, customerName, session);
+            
+            return true;
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.handleUseSuggested', { sessionId });
+            await ctx.answerCbQuery("❌ Failed to create customer. Please try again.");
+            return true;
+        }
+    }
+
+    private async handleCustomName(ctx: BotContext, sessionId: string): Promise<boolean> {
+        await ctx.answerCbQuery("✏️ Enter custom name...");
+        
         await ctx.editMessageText(
-            "🆕 **Create New Customer**\n\n" +
-            "This demonstrates the setup wizard flow with clean separation.\n\n" +
-            `**Group ID:** ${groupId}\n\n` +
-            "*Customer creation flow would start here!*",
-            { parse_mode: 'Markdown' }
+            `✏️ **Custom Customer Name**
+
+Please type the customer name you'd like to use:
+
+*(Type your customer name and I'll set it up)*`
         );
+        
+        // Update session to expect custom name input
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            await BotsStore.updateDmSetupSession(sessionId, {
+                currentStep: 'awaiting_custom_name'
+            });
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.handleCustomName', { sessionId });
+        }
+        
         return true;
     }
 
-    private async handleLinkCustomer(ctx: BotContext, groupId: number | null): Promise<boolean> {
-        await ctx.answerCbQuery("🔗 Linking existing customer...");
+    private async handleExistingCustomer(ctx: BotContext, sessionId: string): Promise<boolean> {
+        await ctx.answerCbQuery("🔗 Link existing customer...");
+        
         await ctx.editMessageText(
-            "🔗 **Link Existing Customer**\n\n" +
-            "Clean architecture makes complex workflows manageable.\n\n" +
-            `**Group ID:** ${groupId}\n\n` +
-            "*Customer linking flow would start here!*",
-            { parse_mode: 'Markdown' }
+            `🔗 **Link Existing Customer**
+
+Feature coming soon! For now, please use the suggested name or enter a custom name.
+
+This will allow you to link to existing customers from other groups.`
         );
+        
         return true;
     }
 
-    private async handleAutoGenerate(ctx: BotContext, groupId: number | null): Promise<boolean> {
-        await ctx.answerCbQuery("🤖 Auto-generating configuration...");
-        await ctx.editMessageText(
-            "🤖 **Auto-Generate Setup**\n\n" +
-            "This shows how clean code makes automation easy.\n\n" +
-            `**Group ID:** ${groupId}\n\n` +
-            "*Automatic setup would complete here!*",
-            { parse_mode: 'Markdown' }
-        );
-        return true;
-    }
-
-    private async handleCancel(ctx: BotContext, groupId: number | null): Promise<boolean> {
+    private async handleCancel(ctx: BotContext, sessionId: string): Promise<boolean> {
         await ctx.answerCbQuery("❌ Setup cancelled");
-        await ctx.editMessageText(
-            "❌ **Setup Cancelled**\n\n" +
-            "Clean architecture makes cancellation graceful.\n\n" +
-            `**Group ID:** ${groupId}\n\n` +
-            "*Setup state would be cleaned here!*",
-            { parse_mode: 'Markdown' }
-        );
+        
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            await BotsStore.deleteDmSetupSession(sessionId);
+            
+            await ctx.editMessageText(
+                `❌ **Setup Cancelled**
+
+Group setup has been cancelled. You can start over anytime by using \`/setup\` in the group chat.`
+            );
+            
+            return true;
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.handleCancel', { sessionId });
+            await ctx.editMessageText("❌ Setup cancelled.");
+            return true;
+        }
+    }
+
+    private async completeCustomerSetup(ctx: BotContext, sessionId: string, customerName: string, session: DmSetupSession): Promise<void> {
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            
+            // Generate customer ID
+            const customerId = `cust_${Date.now()}`;
+            
+            // Create customer record
+            const customerData = {
+                id: customerId,
+                unthreadCustomerId: customerId,
+                telegramChatId: session.groupChatId,
+                chatId: session.groupChatId,
+                chatTitle: session.groupChatName,
+                customerName,
+                name: customerName,
+                company: customerName,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+
+            await BotsStore.storeCustomer(customerData);
+
+            // Create group configuration
+            const groupConfig = {
+                chatId: session.groupChatId,
+                chatTitle: session.groupChatName,
+                isConfigured: true,
+                customerId,
+                customerName,
+                setupBy: session.adminId,
+                setupAt: new Date().toISOString(),
+                botIsAdmin: true,
+                lastAdminCheck: new Date().toISOString(),
+                setupVersion: '2.0',
+                metadata: {
+                    setupSessionId: sessionId
+                }
+            };
+
+            await BotsStore.storeGroupConfig(groupConfig);
+
+            // Complete the setup
+            await BotsStore.updateDmSetupSession(sessionId, {
+                status: 'completed',
+                currentStep: 'completed'
+            });
+
+            const successMessage = `🎉 **Setup Complete!**
+
+**Customer:** ${customerName}
+**Group:** ${session.groupChatName}
+**Customer ID:** \`${customerId}\`
+
+✅ **What's configured:**
+• Group linked to customer account
+• Support ticket system enabled
+• Bot admin permissions verified
+
+📝 **Template Configuration** (Optional)
+
+Choose how you'd like to handle message templates:`;
+
+            await ctx.editMessageText(successMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "🚀 Use Default Templates", callback_data: `setup_use_defaults_${sessionId}` },
+                            { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${sessionId}` }
+                        ],
+                        [
+                            { text: "ℹ️ Learn About Templates", callback_data: `setup_template_info_${sessionId}` }
+                        ]
+                    ]
+                }
+            });
+
+            // Note: Session cleanup will be handled by template choice handlers
+
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.completeCustomerSetup', { sessionId, customerName });
+            await ctx.editMessageText(
+                `❌ **Setup Failed**
+
+Failed to complete customer setup. Please try again.`
+            );
+        }
+    }
+
+    /**
+     * Handle using default templates during setup
+     */
+    private async handleUseDefaultTemplates(ctx: BotContext, sessionId: string): Promise<boolean> {
+        await ctx.answerCbQuery("🚀 Setting up with default templates...");
+        
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            
+            const session = await BotsStore.getDmSetupSession(sessionId);
+            if (!session) {
+                await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
+                return true;
+            }
+
+            // Initialize default templates for the group
+            const templateManager = GlobalTemplateManager.getInstance();
+            await templateManager.initializeDefaultTemplates(session.groupChatId);
+            
+            // Complete setup with defaults
+            await this.finalizeSetupWithDefaults(ctx, sessionId, session);
+            
+            return true;
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.handleUseDefaultTemplates', { sessionId });
+            await ctx.answerCbQuery("❌ Failed to set up default templates. Please try again.");
+            return true;
+        }
+    }
+
+    /**
+     * Handle customizing templates during setup
+     */
+    private async handleCustomizeTemplates(ctx: BotContext, sessionId: string): Promise<boolean> {
+        await ctx.answerCbQuery("🎨 Opening template customization...");
+        
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            const session = await BotsStore.getDmSetupSession(sessionId);
+            
+            if (!session) {
+                await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
+                return true;
+            }
+
+            // Show template customization interface
+            await this.showTemplateCustomization(ctx, sessionId, session);
+            
+            return true;
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.handleCustomizeTemplates', { sessionId });
+            await ctx.answerCbQuery("❌ Failed to open template customization. Please try again.");
+            return true;
+        }
+    }
+
+    /**
+     * Handle showing template information during setup
+     */
+    private async handleTemplateInfo(ctx: BotContext, sessionId: string): Promise<boolean> {
+        await ctx.answerCbQuery("ℹ️ Loading template information...");
+        
+        const infoMessage = 
+            `📝 **About Message Templates**
+
+Templates control how the bot communicates with users and admins.
+
+**🚀 Default Templates:**
+• Pre-configured and ready to use
+• Professional and friendly tone
+• Can be customized later via \`/templates\`
+• Perfect for quick setup
+
+**🎨 Custom Templates:**
+• Immediate personalization
+• Match your brand voice
+• Preview before saving
+• More engaging setup experience
+
+**Available Templates:**
+• 🎫 Ticket Created - When new support tickets are created
+• 👨‍💼 Agent Response - When agents reply to tickets
+• ✅ Ticket Closed - When support tickets are resolved
+
+Choose your preferred approach:`;
+
+        await ctx.editMessageText(infoMessage, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "🚀 Use Defaults", callback_data: `setup_use_defaults_${sessionId}` },
+                        { text: "🎨 Customize Now", callback_data: `setup_customize_templates_${sessionId}` }
+                    ],
+                    [
+                        { text: "⬅️ Back to Setup", callback_data: `setup_back_to_completion_${sessionId}` }
+                    ]
+                ]
+            }
+        });
+        
         return true;
     }
 
-    private async handleReconfigure(ctx: BotContext, groupId: number | null): Promise<boolean> {
-        await ctx.answerCbQuery("🔄 Starting reconfiguration...");
+    /**
+     * Handle returning to setup completion screen
+     */
+    private async handleBackToCompletion(ctx: BotContext, sessionId: string): Promise<boolean> {
+        await ctx.answerCbQuery("⬅️ Returning to setup...");
+        
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            const session = await BotsStore.getDmSetupSession(sessionId);
+            
+            if (!session) {
+                await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
+                return true;
+            }
+
+            const customerName = session.stepData?.customerName || session.stepData?.suggestedName || 'Unknown';
+            const customerId = session.stepData?.customerId || 'Unknown';
+
+            const successMessage = `🎉 **Setup Complete!**
+
+**Customer:** ${customerName}
+**Group:** ${session.groupChatName}
+**Customer ID:** \`${customerId}\`
+
+✅ **What's configured:**
+• Group linked to customer account
+• Support ticket system enabled
+• Bot admin permissions verified
+
+📝 **Template Configuration** (Optional)
+
+Choose how you'd like to handle message templates:`;
+
+            await ctx.editMessageText(successMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "🚀 Use Default Templates", callback_data: `setup_use_defaults_${sessionId}` },
+                            { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${sessionId}` }
+                        ],
+                        [
+                            { text: "ℹ️ Learn About Templates", callback_data: `setup_template_info_${sessionId}` }
+                        ]
+                    ]
+                }
+            });
+            
+            return true;
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.handleBackToCompletion', { sessionId });
+            await ctx.editMessageText("❌ Failed to return to setup. Please try again.");
+            return true;
+        }
+    }
+
+    /**
+     * Finalize setup with default templates
+     */
+    private async finalizeSetupWithDefaults(ctx: BotContext, sessionId: string, session: DmSetupSession): Promise<void> {
+        try {
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            
+            // Initialize global templates for the group
+            const templateManager = GlobalTemplateManager.getInstance();
+            await templateManager.initializeDefaultTemplates(session.groupChatId);
+            
+            const customerName = session.stepData?.customerName || session.stepData?.suggestedName || 'Unknown';
+            
+            const completionMessage = `✅ **Setup Fully Complete!**
+
+**Customer:** ${customerName}
+**Group:** ${session.groupChatName}
+**Templates:** Default templates active
+
+🎉 **Your group is ready for support ticket management!**
+
+**Next Steps:**
+• Users can now create support tickets
+• Templates are ready and working
+• Use \`/templates\` anytime to customize
+• Check \`/help\` for all commands
+
+*Enjoy your new support system!*`;
+
+            await ctx.editMessageText(completionMessage, { parse_mode: 'Markdown' });
+            
+            // Clean up session after delay
+            setTimeout(async () => {
+                const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+                await BotsStore.deleteDmSetupSession(sessionId);
+            }, 60000);
+            
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.finalizeSetupWithDefaults', { sessionId });
+            await ctx.editMessageText("❌ **Setup Error**\n\nFailed to finalize setup. Please try `/setup` again.");
+        }
+    }
+
+    /**
+     * Show template customization interface
+     */
+    private async showTemplateCustomization(ctx: BotContext, sessionId: string, session: DmSetupSession): Promise<void> {
+        try {
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            
+            // Get current templates (will be defaults if not set)
+            const templateManager = GlobalTemplateManager.getInstance();
+            const templates = await templateManager.getGlobalTemplates();
+            
+            const customizationMessage = `🎨 **Template Customization**
+
+**Group:** ${session.groupChatName}
+
+Choose which template to customize first:
+
+**Available Templates:**
+• 🎫 **Ticket Created** - New support ticket notifications
+• 👨‍💼 **Agent Response** - When agents reply to tickets
+• ✅ **Ticket Closed** - Support ticket resolution messages
+
+*You can customize each template individually:*`;
+
+            await ctx.editMessageText(customizationMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "🎫 Ticket Created", callback_data: `template_edit_ticket_created_${sessionId}` }
+                        ],
+                        [
+                            { text: "👨‍💼 Agent Response", callback_data: `template_edit_agent_response_${sessionId}` }
+                        ],
+                        [
+                            { text: "✅ Ticket Closed", callback_data: `template_edit_ticket_closed_${sessionId}` }
+                        ],
+                        [
+                            { text: "🚀 Use Defaults Instead", callback_data: `setup_use_defaults_${sessionId}` },
+                            { text: "✅ Finish Setup", callback_data: `setup_finish_custom_${sessionId}` }
+                        ]
+                    ]
+                }
+            });
+            
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.showTemplateCustomization', { sessionId });
+            await ctx.editMessageText("❌ Failed to load template customization. Using defaults instead...");
+            await this.handleUseDefaultTemplates(ctx, sessionId);
+        }
+    }
+
+    // Simplified validation method for callback processor
+    private async performSetupValidation(ctx: BotContext, sessionId: string, groupChatId: number, groupTitle: string): Promise<void> {
+        // This is a simplified version - in production, you'd extract this to a shared service
         await ctx.editMessageText(
-            "🔄 **Reconfigure Group**\n\n" +
-            "Clean design makes reconfiguration straightforward.\n\n" +
-            `**Group ID:** ${groupId}\n\n` +
-            "*Reconfiguration flow would start here!*",
-            { parse_mode: 'Markdown' }
+            `🔄 **Validation Retry**
+
+Please return to the group and run \`/setup\` again to retry the validation process.`
         );
-        return true;
     }
 }
 
@@ -235,14 +688,17 @@ export class TemplateCallbackProcessor implements ICallbackProcessor {
     private async handleSupportTemplates(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("🎫 Loading support templates...");
         await ctx.editMessageText(
-            "🎫 **Support Templates**\n\n" +
-            "This demonstrates the clean template management system.\n\n" +
-            "**Available Templates:**\n" +
-            "• Ticket Created\n" +
-            "• Ticket Updated\n" +
-            "• Agent Response\n" +
-            "• Ticket Closed\n\n" +
-            "*Template editing interface would be here!*",
+            `🎫 **Support Templates**
+
+This demonstrates the clean template management system.
+
+**Available Templates:**
+• Ticket Created
+• Ticket Updated
+• Agent Response
+• Ticket Closed
+
+*Template editing interface would be here!*`,
             { 
                 parse_mode: 'Markdown',
                 reply_markup: {
@@ -258,14 +714,17 @@ export class TemplateCallbackProcessor implements ICallbackProcessor {
     private async handleGroupTemplates(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("👥 Loading group templates...");
         await ctx.editMessageText(
-            "👥 **Group Templates**\n\n" +
-            "Clean architecture makes group-specific customization easy.\n\n" +
-            "**Template Categories:**\n" +
-            "• Welcome Messages\n" +
-            "• Error Messages\n" +
-            "• Setup Complete\n" +
-            "• Configuration Changes\n\n" +
-            "*Group template management would be here!*",
+            `👥 **Group Templates**
+
+Clean architecture makes group-specific customization easy.
+
+**Template Categories:**
+• Welcome Messages
+• Error Messages
+• Setup Complete
+• Configuration Changes
+
+*Group template management would be here!*`,
             { 
                 parse_mode: 'Markdown',
                 reply_markup: {
@@ -281,14 +740,17 @@ export class TemplateCallbackProcessor implements ICallbackProcessor {
     private async handleAdminTemplates(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("🔧 Loading admin templates...");
         await ctx.editMessageText(
-            "🔧 **Admin Templates**\n\n" +
-            "This shows how admin-specific templates are managed cleanly.\n\n" +
-            "**Admin Notifications:**\n" +
-            "• Setup Completed\n" +
-            "• Configuration Changed\n" +
-            "• Template Modified\n" +
-            "• System Alerts\n\n" +
-            "*Admin template interface would be here!*",
+            `🔧 **Admin Templates**
+
+This shows how admin-specific templates are managed cleanly.
+
+**Admin Notifications:**
+• Setup Completed
+• Configuration Changed
+• Template Modified
+• System Alerts
+
+*Admin template interface would be here!*`,
             { 
                 parse_mode: 'Markdown',
                 reply_markup: {
@@ -304,14 +766,17 @@ export class TemplateCallbackProcessor implements ICallbackProcessor {
     private async handleGlobalTemplates(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("🌐 Loading global templates...");
         await ctx.editMessageText(
-            "🌐 **Global Templates**\n\n" +
-            "Clean architecture enables system-wide template management.\n\n" +
-            "**System Templates:**\n" +
-            "• Default Messages\n" +
-            "• Error Responses\n" +
-            "• Help Content\n" +
-            "• Status Messages\n\n" +
-            "*Global template management would be here!*",
+            `🌐 **Global Templates**
+
+Clean architecture enables system-wide template management.
+
+**System Templates:**
+• Default Messages
+• Error Responses
+• Help Content
+• Status Messages
+
+*Global template management would be here!*`,
             { 
                 parse_mode: 'Markdown',
                 reply_markup: {
@@ -327,14 +792,17 @@ export class TemplateCallbackProcessor implements ICallbackProcessor {
     private async handleTemplateStats(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("📊 Loading template statistics...");
         await ctx.editMessageText(
-            "📊 **Template Statistics**\n\n" +
-            "Clean architecture makes analytics and monitoring easy.\n\n" +
-            "**Usage Stats:**\n" +
-            "• Total Templates: 24\n" +
-            "• Custom Templates: 8\n" +
-            "• Default Templates: 16\n" +
-            "• Last Modified: Today\n\n" +
-            "*Detailed analytics would be here!*",
+            `📊 **Template Statistics**
+
+Clean architecture makes analytics and monitoring easy.
+
+**Usage Stats:**
+• Total Templates: 24
+• Custom Templates: 8
+• Default Templates: 16
+• Last Modified: Today
+
+*Detailed analytics would be here!*`,
             { 
                 parse_mode: 'Markdown',
                 reply_markup: {
@@ -350,11 +818,98 @@ export class TemplateCallbackProcessor implements ICallbackProcessor {
     private async handleClose(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("❌ Closing template manager");
         await ctx.editMessageText(
-            "📝 **Template Manager Closed**\n\n" +
-            "Clean architecture makes UI state management elegant.\n\n" +
-            "*Use `/templates` to reopen the manager.*",
+            `📝 **Template Manager Closed**
+
+Clean architecture makes UI state management elegant.
+
+*Use \`/templates\` to reopen the manager.*`,
             { parse_mode: 'Markdown' }
         );
+        return true;
+    }
+}
+
+/**
+ * Admin Callback Processor
+ * Handles callbacks related to admin functionality and activation
+ */
+export class AdminCallbackProcessor implements ICallbackProcessor {
+    canHandle(callbackData: string): boolean {
+        return callbackData.startsWith('admin_help_');
+    }
+
+    async process(ctx: BotContext, callbackData: string): Promise<boolean> {
+        try {
+            if (callbackData.startsWith('admin_help_activation_')) {
+                return await this.handleActivationHelp(ctx);
+            }
+            return false;
+        } catch (error) {
+            logError(error, 'AdminCallbackProcessor.process', { 
+                callbackData, 
+                userId: ctx.from?.id 
+            });
+            await ctx.answerCbQuery("❌ An error occurred. Please try again.");
+            return true;
+        }
+    }
+
+    private async handleActivationHelp(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("📋 Loading activation help...");
+        
+        const helpMessage = 
+            `📋 **Admin Activation Guide**
+
+**Why do you need to activate?**
+• Security: Links your admin account to a private chat
+• Notifications: Enables direct updates and alerts
+• Configuration: Allows secure setup management
+• Audit Trail: Tracks admin actions for compliance
+
+**Step-by-Step Instructions:**
+
+**1. Start Private Chat**
+   • Click 'Send Private Message' button (above)
+   • Or search for this bot in Telegram
+   • Start a conversation
+
+**2. Send Activation Command**
+   • Type: \`/activate\`
+   • Send the message
+   • Wait for confirmation
+
+**3. Return to Group**
+   • Come back to this group chat
+   • Try \`/setup\` command again
+   • Configuration should now work
+
+**Troubleshooting:**
+• Make sure you're in a private chat (not group)
+• Verify your user ID is in bot's admin list
+• Contact system administrator if issues persist
+
+*Ready to activate? Use the buttons above!*`;
+
+        await ctx.editMessageText(helpMessage, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        {
+                            text: "💬 Send Private Message",
+                            url: `https://t.me/${ctx.botInfo?.username || 'unthread_bot'}?start=admin_activate`
+                        }
+                    ],
+                    [
+                        {
+                            text: "⬅️ Back to Setup",
+                            callback_data: "admin_back_to_setup"
+                        }
+                    ]
+                ]
+            }
+        });
+        
         return true;
     }
 }
