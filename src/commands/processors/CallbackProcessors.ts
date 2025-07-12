@@ -11,6 +11,7 @@ import type { ICallbackProcessor } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
 import type { DmSetupSession } from '../../sdk/types.js';
 import { logError } from '../utils/errorHandler.js';
+import { LogEngine } from '@wgtechlabs/log-engine';
 
 /**
  * Support Callback Processor
@@ -105,6 +106,10 @@ This demonstrates clean callback-to-command handoff.
  * Handles callbacks related to DM-based group setup flow
  */
 export class SetupCallbackProcessor implements ICallbackProcessor {
+    // Callback ID mapping to handle Telegram's 64-byte limit
+    private static callbackSessionMap = new Map<string, string>();
+    private static callbackIdCounter = 1;
+
     canHandle(callbackData: string): boolean {
         return callbackData.startsWith('setup_') || 
                callbackData.startsWith('dmsetup_') || 
@@ -121,6 +126,39 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             'ticket_status': 'ts'
         };
         return templateToCodeMap[templateType] || templateType;
+    }
+
+    /**
+     * Generate a short callback ID for long session IDs to work within Telegram's 64-byte limit
+     */
+    private static generateShortCallbackId(sessionId: string): string {
+        // Check if we already have a mapping for this session
+        for (const [shortId, fullId] of SetupCallbackProcessor.callbackSessionMap.entries()) {
+            if (fullId === sessionId) {
+                return shortId;
+            }
+        }
+        
+        // Generate new short ID
+        const shortId = `cb${SetupCallbackProcessor.callbackIdCounter++}`;
+        SetupCallbackProcessor.callbackSessionMap.set(shortId, sessionId);
+        
+        // Clean up old mappings (keep only last 100)
+        if (SetupCallbackProcessor.callbackSessionMap.size > 100) {
+            const firstKey = SetupCallbackProcessor.callbackSessionMap.keys().next().value;
+            if (firstKey) {
+                SetupCallbackProcessor.callbackSessionMap.delete(firstKey);
+            }
+        }
+        
+        return shortId;
+    }
+    
+    /**
+     * Resolve short callback ID back to full session ID
+     */
+    private static resolveCallbackId(shortId: string): string | undefined {
+        return SetupCallbackProcessor.callbackSessionMap.get(shortId);
     }
 
     async process(ctx: BotContext, callbackData: string): Promise<boolean> {
@@ -148,7 +186,20 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                 const parts = callbackData.split('_');
                 // Use short codes: tc=ticket_created, ar=agent_response, ts=ticket_status
                 const shortCode = parts[2]; // tc, ar, or ts
-                const sessionId = parts[3];
+                const shortCallbackId = parts[3]; // Short callback ID
+                
+                // Ensure we have the shortCallbackId
+                if (!shortCallbackId) {
+                    await ctx.answerCbQuery("❌ Invalid callback format.");
+                    return true;
+                }
+                
+                // Resolve short callback ID to full session ID
+                const sessionId = SetupCallbackProcessor.resolveCallbackId(shortCallbackId);
+                if (!sessionId) {
+                    await ctx.answerCbQuery("❌ Session expired. Please start setup again.");
+                    return true;
+                }
                 
                 // Map short codes back to full template types
                 const codeToTemplateMap: Record<string, string> = {
@@ -158,7 +209,7 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                 };
                 
                 const templateType = shortCode ? codeToTemplateMap[shortCode] : undefined;
-                if (!templateType || !sessionId) {
+                if (!templateType) {
                     await ctx.answerCbQuery("❌ Invalid template edit request.");
                     return true;
                 }
@@ -169,9 +220,22 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             // Handle template_start_edit_ prefixed callbacks (shortened)
             if (callbackData.startsWith('template_start_edit_')) {
                 const parts = callbackData.split('_');
-                // Format: template_start_edit_shortCode_sessionId
+                // Format: template_start_edit_shortCode_shortCallbackId
                 const shortCode = parts[3]; // tc, ar, or ts  
-                const sessionId = parts[4];
+                const shortCallbackId = parts[4]; // Short callback ID
+                
+                // Ensure we have the shortCallbackId
+                if (!shortCallbackId) {
+                    await ctx.answerCbQuery("❌ Invalid callback format.");
+                    return true;
+                }
+                
+                // Resolve short callback ID to full session ID
+                const sessionId = SetupCallbackProcessor.resolveCallbackId(shortCallbackId);
+                if (!sessionId) {
+                    await ctx.answerCbQuery("❌ Session expired. Please start setup again.");
+                    return true;
+                }
                 
                 // Map short codes back to full template types
                 const codeToTemplateMap: Record<string, string> = {
@@ -181,7 +245,7 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                 };
                 
                 const templateType = shortCode ? codeToTemplateMap[shortCode] : undefined;
-                if (!templateType || !sessionId) {
+                if (!templateType) {
                     await ctx.answerCbQuery("❌ Invalid template edit request.");
                     return true;
                 }
@@ -192,9 +256,22 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             // Handle template_cancel_edit_ prefixed callbacks (shortened)
             if (callbackData.startsWith('template_cancel_edit_')) {
                 const parts = callbackData.split('_');
-                // Format: template_cancel_edit_shortCode_sessionId
+                // Format: template_cancel_edit_shortCode_shortCallbackId
                 const shortCode = parts[3]; // tc, ar, or ts
-                const sessionId = parts[4];
+                const shortCallbackId = parts[4]; // Short callback ID
+                
+                // Ensure we have the shortCallbackId
+                if (!shortCallbackId) {
+                    await ctx.answerCbQuery("❌ Invalid callback format.");
+                    return true;
+                }
+                
+                // Resolve short callback ID to full session ID
+                const sessionId = SetupCallbackProcessor.resolveCallbackId(shortCallbackId);
+                if (!sessionId) {
+                    await ctx.answerCbQuery("❌ Session expired. Please start setup again.");
+                    return true;
+                }
                 
                 // Map short codes back to full template types
                 const codeToTemplateMap: Record<string, string> = {
@@ -204,7 +281,7 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                 };
                 
                 const templateType = shortCode ? codeToTemplateMap[shortCode] : undefined;
-                if (!templateType || !sessionId) {
+                if (!templateType) {
                     await ctx.answerCbQuery("❌ Invalid template cancel request.");
                     return true;
                 }
@@ -218,27 +295,40 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             
             // Session ID extraction depends on the callback format
             let sessionId: string;
+            let rawSessionId: string;
+            
             if (action === 'existing' && parts[2] === 'customer') {
                 // Format: setup_existing_customer_setup_chatId_timestamp
-                sessionId = parts.slice(3).join('_'); 
+                rawSessionId = parts.slice(3).join('_'); 
             } else if (action === 'customize' && parts[2] === 'templates') {
-                // Format: setup_customize_templates_setup_chatId_timestamp
-                sessionId = parts.slice(3).join('_'); 
+                // Format: setup_customize_templates_[shortId OR setup_chatId_timestamp]
+                rawSessionId = parts.slice(3).join('_'); 
             } else if (action === 'use' && parts[2] === 'defaults') {
-                // Format: setup_use_defaults_setup_chatId_timestamp
-                sessionId = parts.slice(3).join('_'); 
+                // Format: setup_use_defaults_[shortId OR setup_chatId_timestamp]
+                rawSessionId = parts.slice(3).join('_'); 
             } else if (action === 'template' && parts[2] === 'info') {
-                // Format: setup_template_info_setup_chatId_timestamp
-                sessionId = parts.slice(3).join('_'); 
+                // Format: setup_template_info_[shortId OR setup_chatId_timestamp]
+                rawSessionId = parts.slice(3).join('_'); 
             } else if (action === 'back' && parts[2] === 'to' && parts[3] === 'completion') {
-                // Format: setup_back_to_completion_setup_chatId_timestamp
-                sessionId = parts.slice(4).join('_'); 
+                // Format: setup_back_to_completion_[shortId OR setup_chatId_timestamp]
+                rawSessionId = parts.slice(4).join('_'); 
             } else if (action === 'finish' && parts[2] === 'custom') {
-                // Format: setup_finish_custom_setup_chatId_timestamp
-                sessionId = parts.slice(3).join('_'); 
+                // Format: setup_finish_custom_[shortId OR setup_chatId_timestamp]
+                rawSessionId = parts.slice(3).join('_'); 
             } else {
                 // Standard format: session ID is the last part
-                sessionId = parts[parts.length - 1] || '';
+                rawSessionId = parts[parts.length - 1] || '';
+            }
+            
+            // Check if this is a short callback ID (starts with 'cb') that needs resolution
+            if (rawSessionId.startsWith('cb') && /^cb\d+$/.test(rawSessionId)) {
+                sessionId = SetupCallbackProcessor.resolveCallbackId(rawSessionId) || '';
+                if (!sessionId) {
+                    await ctx.answerCbQuery("❌ Session expired. Please start setup again.");
+                    return true;
+                }
+            } else {
+                sessionId = rawSessionId;
             }
             
             if (!sessionId) {
@@ -559,16 +649,19 @@ Group setup has been cancelled. You can start over anytime by using \`/setup\` i
 
 Choose how you'd like to handle message templates:`;
 
+            // Generate short callback ID for this session
+            const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+
             await ctx.editMessageText(successMessage, {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: "🚀 Use Default Templates", callback_data: `setup_use_defaults_${sessionId}` },
-                            { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${sessionId}` }
+                            { text: "🚀 Use Default Templates", callback_data: `setup_use_defaults_${shortId}` },
+                            { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${shortId}` }
                         ],
                         [
-                            { text: "ℹ️ Learn About Templates", callback_data: `setup_template_info_${sessionId}` }
+                            { text: "ℹ️ Learn About Templates", callback_data: `setup_template_info_${shortId}` }
                         ]
                     ]
                 }
@@ -628,16 +721,49 @@ Failed to complete customer setup. Please try again.`
             const session = await BotsStore.getDmSetupSession(sessionId);
             
             if (!session) {
+                LogEngine.warn('Session not found during template customization', { 
+                    sessionId,
+                    userId: ctx.from?.id,
+                    context: 'handleCustomizeTemplates'
+                });
                 await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
                 return true;
             }
 
+            LogEngine.info('Session found for template customization', { 
+                sessionId, 
+                currentExpiresAt: session.expiresAt,
+                currentStep: session.currentStep,
+                userId: ctx.from?.id
+            });
+
             // Extend session expiration to give user more time for template customization
             const now = new Date();
-            const extendedExpiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes from now
+            const currentExpiry = new Date(session.expiresAt);
             
-            await BotsStore.updateDmSetupSession(sessionId, {
+            // Extend to 15 minutes from now, or add 15 minutes to current expiry, whichever is later
+            const newExpiryFromNow = new Date(now.getTime() + 15 * 60 * 1000);
+            const newExpiryFromCurrent = new Date(currentExpiry.getTime() + 15 * 60 * 1000);
+            const extendedExpiresAt = newExpiryFromNow > newExpiryFromCurrent ? newExpiryFromNow : newExpiryFromCurrent;
+            
+            LogEngine.info('Extending session expiration for template customization', { 
+                sessionId, 
+                currentTime: now.toISOString(),
+                currentExpiry: session.expiresAt, 
+                newExpiryFromNow: newExpiryFromNow.toISOString(),
+                newExpiryFromCurrent: newExpiryFromCurrent.toISOString(),
+                finalExpiry: extendedExpiresAt.toISOString(),
+                extensionMinutes: 15
+            });
+            
+            const updateResult = await BotsStore.updateDmSetupSession(sessionId, {
                 expiresAt: extendedExpiresAt.toISOString()
+            });
+
+            LogEngine.info('Session update completed', { 
+                sessionId, 
+                updateResult,
+                newExpiresAt: extendedExpiresAt.toISOString()
             });
 
             // Show template customization interface
@@ -645,6 +771,13 @@ Failed to complete customer setup. Please try again.`
             
             return true;
         } catch (error) {
+            LogEngine.error('Error in handleCustomizeTemplates', {
+                error: error instanceof Error ? error.message : 'Unknown error',
+                stack: error instanceof Error ? error.stack : undefined,
+                sessionId,
+                userId: ctx.from?.id,
+                context: 'handleCustomizeTemplates'
+            });
             logError(error, 'SetupCallbackProcessor.handleCustomizeTemplates', { sessionId });
             await ctx.answerCbQuery("❌ Failed to open template customization. Please try again.");
             return true;
@@ -700,16 +833,19 @@ We'll respond soon!
 
 Choose your preferred approach:`;
 
+        // Generate short callback ID for this session
+        const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+
         await ctx.editMessageText(infoMessage, {
             parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
                     [
-                        { text: "🚀 Use Defaults", callback_data: `setup_use_defaults_${sessionId}` },
-                        { text: "🎨 Customize Now", callback_data: `setup_customize_templates_${sessionId}` }
+                        { text: "🚀 Use Defaults", callback_data: `setup_use_defaults_${shortId}` },
+                        { text: "🎨 Customize Now", callback_data: `setup_customize_templates_${shortId}` }
                     ],
                     [
-                        { text: "⬅️ Back to Setup", callback_data: `setup_back_to_completion_${sessionId}` }
+                        { text: "⬅️ Back to Setup", callback_data: `setup_back_to_completion_${shortId}` }
                     ]
                 ]
             }
@@ -751,16 +887,19 @@ Choose your preferred approach:`;
 
 Choose how you'd like to handle message templates:`;
 
+            // Generate short callback ID for this session
+            const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+
             await ctx.editMessageText(successMessage, {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: "🚀 Use Default Templates", callback_data: `setup_use_defaults_${sessionId}` },
-                            { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${sessionId}` }
+                            { text: "🚀 Use Default Templates", callback_data: `setup_use_defaults_${shortId}` },
+                            { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${shortId}` }
                         ],
                         [
-                            { text: "ℹ️ Learn About Templates", callback_data: `setup_template_info_${sessionId}` }
+                            { text: "ℹ️ Learn About Templates", callback_data: `setup_template_info_${shortId}` }
                         ]
                     ]
                 }
@@ -943,6 +1082,9 @@ Please return to the group and run \`/setup\` again to retry the validation proc
             const templateManager = GlobalTemplateManager.getInstance();
             const templates = await templateManager.getGlobalTemplates();
             
+            // Generate short callback ID for this session
+            const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            
             const customizationMessage = `🎨 **Template Customization**
 
 **Group:** ${session.groupChatName}
@@ -965,22 +1107,22 @@ Each template has access to relevant data like ticket details, customer info, ag
 
 *Click a template below to see all available variables and current content:*`;
 
-            await ctx.editMessageText(customizationMessage, {
+            await ctx.reply(customizationMessage, {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: "🎫 Ticket Created", callback_data: `template_edit_tc_${sessionId}` }
+                            { text: "🎫 Ticket Created", callback_data: `template_edit_tc_${shortId}` }
                         ],
                         [
-                            { text: "👨‍💼 Agent Response", callback_data: `template_edit_ar_${sessionId}` }
+                            { text: "👨‍💼 Agent Response", callback_data: `template_edit_ar_${shortId}` }
                         ],
                         [
-                            { text: "✅ Ticket Status", callback_data: `template_edit_ts_${sessionId}` }
+                            { text: "✅ Ticket Status", callback_data: `template_edit_ts_${shortId}` }
                         ],
                         [
-                            { text: "🚀 Use Defaults Instead", callback_data: `setup_use_defaults_${sessionId}` },
-                            { text: "✅ Finish Setup", callback_data: `setup_finish_custom_${sessionId}` }
+                            { text: "🚀 Use Defaults Instead", callback_data: `setup_use_defaults_${shortId}` },
+                            { text: "✅ Finish Setup", callback_data: `setup_finish_custom_${shortId}` }
                         ]
                     ]
                 }
@@ -988,7 +1130,7 @@ Each template has access to relevant data like ticket details, customer info, ag
             
         } catch (error) {
             logError(error, 'SetupCallbackProcessor.showTemplateCustomization', { sessionId });
-            await ctx.editMessageText("❌ Failed to load template customization. Using defaults instead...");
+            await ctx.reply("❌ Failed to load template customization. Using defaults instead...");
             await this.handleUseDefaultTemplates(ctx, sessionId);
         }
     }
@@ -1010,7 +1152,20 @@ Each template has access to relevant data like ticket details, customer info, ag
 
             // Extend session expiration for template editing
             const now = new Date();
-            const extendedExpiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes from now
+            const currentExpiry = new Date(session.expiresAt);
+            
+            // Extend to 15 minutes from now, or add 15 minutes to current expiry, whichever is later
+            const newExpiryFromNow = new Date(now.getTime() + 15 * 60 * 1000);
+            const newExpiryFromCurrent = new Date(currentExpiry.getTime() + 15 * 60 * 1000);
+            const extendedExpiresAt = newExpiryFromNow > newExpiryFromCurrent ? newExpiryFromNow : newExpiryFromCurrent;
+            
+            LogEngine.info('Extending session expiration for template editing', {
+                sessionId,
+                templateType,
+                currentTime: now.toISOString(),
+                currentExpiry: session.expiresAt,
+                finalExpiry: extendedExpiresAt.toISOString()
+            });
             
             await BotsStore.updateDmSetupSession(sessionId, {
                 expiresAt: extendedExpiresAt.toISOString()
@@ -1083,19 +1238,22 @@ ${timeVars}
 
 **Ready to customize? Click "Edit Template" to start!**`;
 
+            // Generate short callback ID for this session
+            const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+
             await ctx.editMessageText(editMessage, {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: "✏️ Edit Template", callback_data: `template_start_edit_${this.getTemplateShortCode(templateType)}_${sessionId}` }
+                            { text: "✏️ Edit Template", callback_data: `template_start_edit_${this.getTemplateShortCode(templateType)}_${shortId}` }
                         ],
                         [
-                            { text: "⬅️ Back to Templates", callback_data: `setup_customize_templates_${sessionId}` }
+                            { text: "⬅️ Back to Templates", callback_data: `setup_customize_templates_${shortId}` }
                         ],
                         [
-                            { text: "🚀 Use Defaults Instead", callback_data: `setup_use_defaults_${sessionId}` },
-                            { text: "✅ Finish Setup", callback_data: `setup_finish_custom_${sessionId}` }
+                            { text: "🚀 Use Defaults Instead", callback_data: `setup_use_defaults_${shortId}` },
+                            { text: "✅ Finish Setup", callback_data: `setup_finish_custom_${shortId}` }
                         ]
                     ]
                 }
@@ -1126,7 +1284,20 @@ ${timeVars}
 
             // Extend session expiration for template editing
             const now = new Date();
-            const extendedExpiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes from now
+            const currentExpiry = new Date(session.expiresAt);
+            
+            // Extend to 15 minutes from now, or add 15 minutes to current expiry, whichever is later
+            const newExpiryFromNow = new Date(now.getTime() + 15 * 60 * 1000);
+            const newExpiryFromCurrent = new Date(currentExpiry.getTime() + 15 * 60 * 1000);
+            const extendedExpiresAt = newExpiryFromNow > newExpiryFromCurrent ? newExpiryFromNow : newExpiryFromCurrent;
+            
+            LogEngine.info('Extending session expiration for template start edit', {
+                sessionId,
+                templateType,
+                currentTime: now.toISOString(),
+                currentExpiry: session.expiresAt,
+                finalExpiry: extendedExpiresAt.toISOString()
+            });
             
             await BotsStore.updateDmSetupSession(sessionId, {
                 expiresAt: extendedExpiresAt.toISOString()
@@ -1189,15 +1360,18 @@ ${currentTemplate?.content || 'Loading...'}
 
 **Type your new template content:**`;
 
+            // Generate short callback ID for this session
+            const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+
             await ctx.editMessageText(editPromptMessage, {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${this.getTemplateShortCode(templateType)}_${sessionId}` }
+                            { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${this.getTemplateShortCode(templateType)}_${shortId}` }
                         ],
                         [
-                            { text: "⬅️ Back to Template Info", callback_data: `template_edit_${this.getTemplateShortCode(templateType)}_${sessionId}` }
+                            { text: "⬅️ Back to Template Info", callback_data: `template_edit_${this.getTemplateShortCode(templateType)}_${shortId}` }
                         ]
                     ]
                 }

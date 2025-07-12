@@ -265,7 +265,12 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 // Update session to template configuration step (don't mark as completed yet)
                 // Also extend the session expiration time to give user more time for template customization
                 const now = new Date();
-                const extendedExpiresAt = new Date(now.getTime() + 15 * 60 * 1000); // Extend to 15 minutes from now
+                const currentExpiry = new Date(session.expiresAt);
+                
+                // Extend to 15 minutes from now, or add 15 minutes to current expiry, whichever is later
+                const newExpiryFromNow = new Date(now.getTime() + 15 * 60 * 1000);
+                const newExpiryFromCurrent = new Date(currentExpiry.getTime() + 15 * 60 * 1000);
+                const extendedExpiresAt = newExpiryFromNow > newExpiryFromCurrent ? newExpiryFromNow : newExpiryFromCurrent;
                 
                 await BotsStore.updateDmSetupSession(session.sessionId, {
                     currentStep: 'template_configuration',

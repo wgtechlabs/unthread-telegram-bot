@@ -1388,21 +1388,38 @@ export class BotsStore implements IBotsStore {
     try {
       const key = `dm_session:${sessionData.sessionId}`;
       
-      // Store with 10-minute TTL for DM sessions (longer than group sessions)
-      await this.storage.set(key, sessionData, 600); // 10 minutes
+      // Calculate TTL based on the expiresAt field in the session data
+      const now = new Date();
+      const expiresAt = new Date(sessionData.expiresAt);
+      const ttlSeconds = Math.max(0, Math.floor((expiresAt.getTime() - now.getTime()) / 1000));
       
-      // Create admin mapping for easy lookup
+      // If TTL is 0 or negative, the session has already expired
+      if (ttlSeconds <= 0) {
+        LogEngine.warn('Attempted to store expired DM setup session', {
+          sessionId: sessionData.sessionId,
+          expiresAt: sessionData.expiresAt,
+          currentTime: now.toISOString()
+        });
+        return false;
+      }
+      
+      // Store with calculated TTL based on expiresAt
+      await this.storage.set(key, sessionData, ttlSeconds);
+      
+      // Create admin mapping for easy lookup with same TTL
       await this.storage.set(
         `dm_session:admin:${sessionData.adminId}`, 
         sessionData.sessionId, 
-        600
+        ttlSeconds
       );
 
       LogEngine.info('DM setup session stored', {
         sessionId: sessionData.sessionId,
         adminId: sessionData.adminId,
         groupChatId: sessionData.groupChatId,
-        step: sessionData.currentStep
+        step: sessionData.currentStep,
+        expiresAt: sessionData.expiresAt,
+        ttlSeconds
       });
       
       return true;
