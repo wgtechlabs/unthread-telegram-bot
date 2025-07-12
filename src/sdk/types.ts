@@ -1,4 +1,4 @@
-import type { Pool } from 'pg';
+import type { Pool } from 'pg'
 
 /**
  * Unthread Telegram Bot - SDK Type Definitions
@@ -34,62 +34,62 @@ import type { Pool } from 'pg';
 
 // Database connection interface
 export interface DatabaseConnection {
-  readonly connectionPool: Pool; // PostgreSQL pool accessor
-  query(text: string, params?: any[]): Promise<any>;
+  readonly connectionPool: Pool // PostgreSQL pool accessor
+  query(text: string, params?: any[]): Promise<any>
 }
 
 // Storage interfaces
 export interface StorageConfig {
-  postgres?: Pool;
-  redisUrl?: string | undefined;
+  postgres?: Pool
+  redisUrl?: string | undefined
 }
 
 export interface Storage {
-  get(key: string): Promise<any>;
-  set(key: string, value: any, ttl?: number): Promise<void>;
-  delete(key: string): Promise<void>;
-  exists(key: string): Promise<boolean>;
-  connect(): Promise<void>;
-  disconnect(): Promise<void>;
+  get(key: string): Promise<any>
+  set(key: string, value: any, ttl?: number): Promise<void>
+  delete(key: string): Promise<void>
+  exists(key: string): Promise<boolean>
+  connect(): Promise<void>
+  disconnect(): Promise<void>
 }
 
 // Ticket data structures
 export interface TicketData {
-  chatId: number;
-  messageId: number;
-  conversationId: string;
-  ticketId: string;
-  friendlyId: string;
-  telegramUserId: number;
-  createdAt: string;
-  customerId?: string;
-  summary?: string;
-  status?: string;
-  platform?: string;
-  storedAt?: string;
-  version?: string;
-  metadata?: Record<string, any>;
+  chatId: number
+  messageId: number
+  conversationId: string
+  ticketId: string
+  friendlyId: string
+  telegramUserId: number
+  createdAt: string
+  customerId?: string
+  summary?: string
+  status?: string
+  platform?: string
+  storedAt?: string
+  version?: string
+  metadata?: Record<string, any>
 }
 
 export interface TicketInfo {
-  messageId: number;
-  conversationId: string;
-  friendlyId: string;
+  messageId: number
+  conversationId: string
+  friendlyId: string
 }
 
 // Customer data structures
 export interface CustomerData {
-  id: string;
-  unthreadCustomerId: string;
-  telegramChatId: number;
-  chatId?: number;
-  chatTitle?: string;
-  customerName?: string;
-  email?: string;
-  name?: string;
-  company?: string;
-  createdAt: string;
-  updatedAt: string;
+  id: string
+  unthreadCustomerId: string
+  telegramChatId: number
+  chatId?: number
+  chatTitle?: string
+  customerName?: string
+  email?: string
+  name?: string
+  company?: string
+  createdAt: string
+  updatedAt: string
 }
 
 // User data structures
@@ -105,6 +105,42 @@ export interface UserData {
   email?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// Admin profile data structures
+export interface AdminProfile {
+  telegramUserId: number;
+  telegramUsername?: string;
+  dmChatId: number; // DM chat ID for notifications
+  isActivated: boolean;
+  activatedAt: string;
+  lastActiveAt: string;
+}
+
+// Setup session data structures
+export interface SetupSession {
+  groupChatId: number;
+  groupChatName: string;
+  initiatingAdminId: number;
+  sessionId: string;
+  status: 'in_progress' | 'completed' | 'cancelled';
+  startedAt: string;
+  expiresAt: string; // startedAt + 3 minutes
+  currentStep: string;
+}
+
+// DM Setup Wizard interfaces
+export interface DmSetupSession {
+  sessionId: string;
+  adminId: number;
+  groupChatId: number;
+  groupChatName: string;
+  status: 'active' | 'completed' | 'cancelled';
+  startedAt: string;
+  expiresAt: string; // Extended timeout for DM sessions (10 minutes)
+  currentStep: string;
+  stepData?: Record<string, any>;
+  messageIds?: number[]; // Track wizard messages for cleanup
 }
 
 // Admin profile data structures
@@ -179,82 +215,110 @@ export interface SetupState {
   metadata?: Record<string, any>;
 }
 
+// Group configuration and setup state interfaces
+export interface GroupConfig {
+  chatId: number;
+  chatTitle?: string;
+  isConfigured: boolean;
+  customerId?: string;
+  customerName?: string;
+  setupBy?: number;
+  setupAt?: string;
+  botIsAdmin: boolean;
+  lastAdminCheck?: string;
+  setupVersion?: string;
+  lastUpdatedAt?: string;  // Metadata field for tracking updates
+  version?: string;        // Version field for schema versioning
+  metadata?: Record<string, any>;
+}
+
+export interface SetupState {
+  chatId: number;
+  step: 'bot_admin_check' | 'customer_selection' | 'customer_creation' | 'customer_linking' | 'complete';
+  initiatedBy: number;
+  startedAt: string;
+  suggestedCustomerName?: string;
+  userInput?: string;
+  retryCount?: number;
+  metadata?: Record<string, any>;
+}
+
 // Agent message data
 export interface AgentMessageData {
-  messageId: number;
-  conversationId: string;
-  chatId: number;
-  friendlyId: string;
-  originalTicketMessageId: number;
-  sentAt: string;
+  messageId: number
+  conversationId: string
+  chatId: number
+  friendlyId: string
+  originalTicketMessageId: number
+  sentAt: string
 }
 
 // Webhook event interfaces
 export interface WebhookEvent {
-  type: 'message_created' | 'conversation_updated';
-  sourcePlatform: 'dashboard';
-  timestamp: string;
-  data: MessageData | ConversationData;
+  type: 'message_created' | 'conversation_updated'
+  sourcePlatform: 'dashboard'
+  timestamp: string
+  data: MessageData | ConversationData
 }
 
 export interface MessageCreatedEvent extends WebhookEvent {
-  type: 'message_created';
-  data: MessageData;
+  type: 'message_created'
+  data: MessageData
 }
 
 export interface ConversationUpdatedEvent extends WebhookEvent {
-  type: 'conversation_updated';
-  data: ConversationData;
+  type: 'conversation_updated'
+  data: ConversationData
 }
 
 export interface MessageData {
-  conversationId?: string;
-  id?: string;
-  content?: string;
-  text?: string;
-  [key: string]: any;
+  conversationId?: string
+  id?: string
+  content?: string
+  text?: string
+  [key: string]: any
 }
 
 export interface ConversationData {
-  conversationId?: string;
-  id?: string;
-  status?: string;
-  [key: string]: any;
+  conversationId?: string
+  id?: string
+  status?: string
+  [key: string]: any
 }
 
 export interface WebhookConsumerConfig {
-  redisUrl: string;
-  queueName: string;
+  redisUrl: string
+  queueName: string
 }
 
-export type EventHandler = (event: WebhookEvent) => Promise<void>;
+export type EventHandler = (event: WebhookEvent) => Promise<void>
 
 // BotsStore interface
 export interface IBotsStore {
-  storage: Storage;
+  storage: Storage
 
   // Ticket operations
-  storeTicket(ticketData: TicketData): Promise<boolean>;
-  getTicketByConversationId(conversationId: string): Promise<TicketData | null>;
-  getTicketByMessageId(messageId: number): Promise<TicketData | null>;
-  getTicketByFriendlyId(friendlyId: string): Promise<TicketData | null>;
-  getTicketByTicketId(ticketId: string): Promise<TicketData | null>;
-  getTicketsForChat(chatId: number): Promise<TicketData[]>;
-  deleteTicket(conversationId: string): Promise<boolean>;
+  storeTicket(ticketData: TicketData): Promise<boolean>
+  getTicketByConversationId(conversationId: string): Promise<TicketData | null>
+  getTicketByMessageId(messageId: number): Promise<TicketData | null>
+  getTicketByFriendlyId(friendlyId: string): Promise<TicketData | null>
+  getTicketByTicketId(ticketId: string): Promise<TicketData | null>
+  getTicketsForChat(chatId: number): Promise<TicketData[]>
+  deleteTicket(conversationId: string): Promise<boolean>
 
   // User state operations
-  storeUserState(telegramUserId: number, state: UserState): Promise<boolean>;
-  getUserState(telegramUserId: number): Promise<UserState | null>;
-  clearUserState(telegramUserId: number): Promise<boolean>;
+  storeUserState(telegramUserId: number, state: UserState): Promise<boolean>
+  getUserState(telegramUserId: number): Promise<UserState | null>
+  clearUserState(telegramUserId: number): Promise<boolean>
 
   // Customer operations
-  storeCustomer(customerData: CustomerData): Promise<boolean>;
-  getCustomerById(customerId: string): Promise<CustomerData | null>;
-  getCustomerByChatId(chatId: number): Promise<CustomerData | null>;
+  storeCustomer(customerData: CustomerData): Promise<boolean>
+  getCustomerById(customerId: string): Promise<CustomerData | null>
+  getCustomerByChatId(chatId: number): Promise<CustomerData | null>
 
   // User operations
-  storeUser(userData: UserData): Promise<boolean>;
-  getUserByTelegramId(telegramUserId: number): Promise<UserData | null>;
+  storeUser(userData: UserData): Promise<boolean>
+  getUserByTelegramId(telegramUserId: number): Promise<UserData | null>
   updateUser(telegramUserId: number, updates: Partial<UserData>): Promise<boolean>;
   
   // Admin profile operations
@@ -280,8 +344,8 @@ export interface IBotsStore {
   cleanupExpiredDmSessions(): Promise<number>; // Returns count of cleaned sessions
 
   // Agent message operations
-  storeAgentMessage(messageData: AgentMessageData): Promise<boolean>;
-  getAgentMessage(messageId: number): Promise<AgentMessageData | null>;
+  storeAgentMessage(messageData: AgentMessageData): Promise<boolean>
+  getAgentMessage(messageId: number): Promise<AgentMessageData | null>
   
   // Group configuration operations
   storeGroupConfig(config: GroupConfig): Promise<boolean>;

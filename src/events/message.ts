@@ -29,11 +29,11 @@
  * @since 2025
  */
 
-import { LogEngine } from '@wgtechlabs/log-engine';
-import { processConversation, aboutCommand } from '../commands/index.js';
-import * as unthreadService from '../services/unthread.js';
-import { safeReply, safeEditMessageText } from '../bot.js';
-import type { BotContext } from '../types/index.js';
+import { LogEngine } from '@wgtechlabs/log-engine'
+import { processConversation, aboutCommand } from '../commands/index.js'
+import * as unthreadService from '../services/unthread.js'
+import { safeReply, safeEditMessageText } from '../bot.js'
+import type { BotContext } from '../types/index.js'
 
 /**
  * Returns true if the message originates from a group or supergroup chat.
@@ -41,7 +41,7 @@ import type { BotContext } from '../types/index.js';
  * @returns True if the chat type is 'group' or 'supergroup'; otherwise, false.
  */
 export function isGroupChat(ctx: BotContext): boolean {
-  return ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
+  return ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup'
 }
 
 /**
@@ -50,7 +50,7 @@ export function isGroupChat(ctx: BotContext): boolean {
  * @returns True if the chat type is 'private'; otherwise, false.
  */
 export function isPrivateChat(ctx: BotContext): boolean {
-  return ctx.chat?.type === 'private';
+  return ctx.chat?.type === 'private'
 }
 
 /**
@@ -65,7 +65,7 @@ export async function handleMessage(
   try {
     // Skip if there's no message or chat
     if (!ctx.message || !ctx.chat) {
-      return await next();
+      return await next()
     }
 
     // Log basic information about the message
@@ -79,24 +79,24 @@ export async function handleMessage(
         'text' in ctx.message ? ctx.message.text?.startsWith('/') : false,
       hasFromUser: !!ctx.from,
       messageType: 'text' in ctx.message ? 'text' : 'other',
-    });
+    })
 
     // If this is a command, let Telegraf handle it and don't process further
     if ('text' in ctx.message && ctx.message.text?.startsWith('/')) {
       LogEngine.debug('Command detected, passing to command handlers', {
         command: ctx.message.text,
         chatType: ctx.chat.type,
-      });
-      return; // Don't call next() for commands, let Telegraf handle them
+      })
+      return // Don't call next() for commands, let Telegraf handle them
     }
 
     // Check if this is part of any conversation flow (setup, support, templates, etc.)
-    const isConversationMessage = await processConversation(ctx);
+    const isConversationMessage = await processConversation(ctx)
 
     if (isConversationMessage) {
       // Skip other handlers if this was processed by any conversation processor
-      LogEngine.debug('Message processed by conversation processor');
-      return; // Don't call next() for conversation messages, we're done
+      LogEngine.debug('Message processed by conversation processor')
+      return // Don't call next() for conversation messages, we're done
     }
 
     // Check if this is a reply to a ticket confirmation
@@ -106,35 +106,35 @@ export async function handleMessage(
       'text' in ctx.message &&
       ctx.message.text
     ) {
-      const handled = await handleTicketReply(ctx);
+      const handled = await handleTicketReply(ctx)
       if (handled) {
         // Skip other handlers if this was a ticket reply
-        LogEngine.debug('Message processed as ticket reply');
-        return; // Don't call next() for ticket replies, we're done
+        LogEngine.debug('Message processed as ticket reply')
+        return // Don't call next() for ticket replies, we're done
       }
     }
 
     // Handle different chat types - only if not handled by conversation processors
     if (isPrivateChat(ctx)) {
-      LogEngine.debug('Processing as private message (no conversation processor handled it)');
+      LogEngine.debug('Processing as private message (no conversation processor handled it)')
             // Only send about message if no conversation processor handled it
-      await handlePrivateMessage(ctx);
+      await handlePrivateMessage(ctx)
     } else if (isGroupChat(ctx)) {
-      LogEngine.debug('Processing as group message - NO AUTO RESPONSES');
-      await handleGroupMessage(ctx);
+      LogEngine.debug('Processing as group message - NO AUTO RESPONSES')
+      await handleGroupMessage(ctx)
       // For group chats, DO NOT continue processing to prevent auto-responses
       LogEngine.debug(
         'Stopping processing for group message to prevent auto-responses'
-      );
-      return;
+      )
+      return
     }
 
     // Continue processing with other handlers (only for private chats)
-    return await next();
+    return await next()
   } catch (error) {
-    const err = error as Error;
-    LogEngine.error(`Error handling message: ${err.message}`);
-    return await next();
+    const err = error as Error
+    LogEngine.error(`Error handling message: ${err.message}`)
+    return await next()
   }
 }
 
@@ -152,11 +152,11 @@ async function handleTicketReply(ctx: BotContext): Promise<boolean> {
       !('reply_to_message' in ctx.message) ||
       !ctx.message.reply_to_message
     ) {
-      return false;
+      return false
     }
 
     // Get the ID of the message being replied to
-    const replyToMessageId = ctx.message.reply_to_message.message_id;
+    const replyToMessageId = ctx.message.reply_to_message.message_id
 
     LogEngine.info('Processing potential ticket reply', {
       replyToMessageId,
@@ -164,45 +164,45 @@ async function handleTicketReply(ctx: BotContext): Promise<boolean> {
         'text' in ctx.message ? ctx.message.text?.substring(0, 100) : undefined,
       chatId: ctx.chat?.id,
       userId: ctx.from?.id,
-    });
+    })
 
     // Check if this is a reply to a ticket confirmation
     const ticketInfo =
-      await unthreadService.getTicketFromReply(replyToMessageId);
+      await unthreadService.getTicketFromReply(replyToMessageId)
     if (ticketInfo) {
       LogEngine.info('Found ticket for reply', {
         ticketId: ticketInfo.ticketId,
         friendlyId: ticketInfo.friendlyId,
         replyToMessageId,
-      });
-      return await handleTicketConfirmationReply(ctx, ticketInfo);
+      })
+      return await handleTicketConfirmationReply(ctx, ticketInfo)
     }
 
     // Check if this is a reply to an agent message
     const agentMessageInfo =
-      await unthreadService.getAgentMessageFromReply(replyToMessageId);
+      await unthreadService.getAgentMessageFromReply(replyToMessageId)
     if (agentMessageInfo) {
       LogEngine.info('Found agent message for reply', {
         conversationId: agentMessageInfo.conversationId,
         friendlyId: agentMessageInfo.friendlyId,
         replyToMessageId,
-      });
-      return await handleAgentMessageReply(ctx, agentMessageInfo);
+      })
+      return await handleAgentMessageReply(ctx, agentMessageInfo)
     }
 
     LogEngine.debug('No ticket or agent message found for reply', {
       replyToMessageId,
       chatId: ctx.chat?.id,
-    });
+    })
 
-    return false;
+    return false
   } catch (error) {
-    const err = error as Error;
+    const err = error as Error
     LogEngine.error('Error in handleTicketReply', {
       error: err.message,
       chatId: ctx.chat?.id,
-    });
-    return false;
+    })
+    return false
   }
 }
 
@@ -219,31 +219,31 @@ async function handleTicketConfirmationReply(
 ): Promise<boolean> {
   try {
     // Validate the reply context and ticket information
-    const validation = await validateTicketReply(ctx, ticketInfo);
+    const validation = await validateTicketReply(ctx, ticketInfo)
     if (!validation.isValid) {
-      return false;
+      return false
     }
 
-    const { telegramUserId, username, message } = validation;
+    const { telegramUserId, username, message } = validation
 
     // Send a minimal status message
     const statusMsg = await safeReply(ctx, '⏳ Adding to ticket...', {
       reply_parameters: { message_id: ctx.message!.message_id },
-    });
+    })
 
     if (!statusMsg) {
-      return false;
+      return false
     }
 
     try {
       // Process and send the ticket message to Unthread
-      await processTicketMessage(ticketInfo, telegramUserId, username, message);
+      await processTicketMessage(ticketInfo, telegramUserId, username, message)
 
       // Update status message to success
-      await updateStatusMessage(ctx, statusMsg, true);
-      return true;
+      await updateStatusMessage(ctx, statusMsg, true)
+      return true
     } catch (error) {
-      const err = error as Error;
+      const err = error as Error
       // Handle API errors
       LogEngine.error('Error adding message to ticket', {
         error: err.message,
@@ -251,20 +251,20 @@ async function handleTicketConfirmationReply(
         conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
         telegramUserId,
         username,
-      });
+      })
 
       // Update status message to error
-      await updateStatusMessage(ctx, statusMsg, false);
-      return true;
+      await updateStatusMessage(ctx, statusMsg, false)
+      return true
     }
   } catch (error) {
-    const err = error as Error;
+    const err = error as Error
     LogEngine.error('Error in handleTicketReply', {
       error: err.message,
       stack: err.stack,
       chatId: ctx.chat?.id,
-    });
-    return false;
+    })
+    return false
   }
 }
 
@@ -279,19 +279,19 @@ async function validateTicketReply(
 ): Promise<
   | { isValid: false }
   | {
-      isValid: true;
-      telegramUserId: number;
-      username: string | undefined;
-      message: string;
+      isValid: true
+      telegramUserId: number
+      username: string | undefined
+      message: string
     }
 > {
   if (!ctx.from || !ctx.message || !('text' in ctx.message)) {
-    return { isValid: false };
+    return { isValid: false }
   }
 
-  const telegramUserId = ctx.from.id;
-  const username = ctx.from.username;
-  const message = ctx.message.text || '';
+  const telegramUserId = ctx.from.id
+  const username = ctx.from.username
+  const message = ctx.message.text || ''
 
   LogEngine.info('Processing ticket confirmation reply', {
     conversationId: ticketInfo.conversationId,
@@ -300,14 +300,14 @@ async function validateTicketReply(
     telegramUserId,
     username,
     messageLength: message?.length,
-  });
+  })
 
   return {
     isValid: true,
     telegramUserId,
     username,
     message,
-  };
+  }
 }
 
 /**
@@ -325,20 +325,20 @@ async function processTicketMessage(
   const userData = await unthreadService.getOrCreateUser(
     telegramUserId,
     username
-  );
+  )
 
   LogEngine.info('Retrieved user data for ticket reply', {
     userData: JSON.stringify(userData),
     hasName: !!userData.name,
     hasEmail: !!userData.email,
-  });
+  })
 
   // Send the message to the ticket using conversationId (which is the same as ticketId)
   await unthreadService.sendMessage({
     conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
     message: message || 'No message content',
     onBehalfOf: userData,
-  });
+  })
 
   LogEngine.info('Added message to ticket', {
     ticketNumber: ticketInfo.friendlyId,
@@ -346,7 +346,7 @@ async function processTicketMessage(
     telegramUserId,
     username,
     messageLength: message?.length,
-  });
+  })
 }
 
 /**
@@ -367,14 +367,14 @@ async function updateStatusMessage(
       statusMsg.message_id,
       undefined,
       '✅ Added!'
-    );
+    )
 
     // Delete status message after 3 seconds
     setTimeout(() => {
       ctx.telegram
         .deleteMessage(ctx.chat!.id, statusMsg.message_id)
-        .catch(() => {});
-    }, 3000);
+        .catch(() => {})
+    }, 3000)
   } else {
     // Update status message to error
     await safeEditMessageText(
@@ -383,14 +383,14 @@ async function updateStatusMessage(
       statusMsg.message_id,
       undefined,
       '❌ Error!'
-    );
+    )
 
     // Delete status message after 5 seconds
     setTimeout(() => {
       ctx.telegram
         .deleteMessage(ctx.chat!.id, statusMsg.message_id)
-        .catch(() => {});
-    }, 5000);
+        .catch(() => {})
+    }, 5000)
   }
 }
 
@@ -407,21 +407,21 @@ async function handleAgentMessageReply(
 ): Promise<boolean> {
   try {
     if (!ctx.from || !ctx.message || !('text' in ctx.message)) {
-      return false;
+      return false
     }
 
     // This is a reply to an agent message, send it back to Unthread
-    const telegramUserId = ctx.from.id;
-    const username = ctx.from.username;
-    const message = ctx.message.text || '';
+    const telegramUserId = ctx.from.id
+    const username = ctx.from.username
+    const message = ctx.message.text || ''
 
     // Send a minimal status message
     const statusMsg = await safeReply(ctx, '⏳ Sending...', {
       reply_parameters: { message_id: ctx.message.message_id },
-    });
+    })
 
     if (!statusMsg) {
-      return false;
+      return false
     }
 
     try {
@@ -429,14 +429,14 @@ async function handleAgentMessageReply(
       const userData = await unthreadService.getOrCreateUser(
         telegramUserId,
         username
-      );
+      )
 
       // Send the message to the conversation
       await unthreadService.sendMessage({
         conversationId: agentMessageInfo.conversationId,
         message: message || 'No message content',
         onBehalfOf: userData,
-      });
+      })
 
       // Update status message to success
       await safeEditMessageText(
@@ -445,14 +445,14 @@ async function handleAgentMessageReply(
         statusMsg.message_id,
         undefined,
         '✅ Sent!'
-      );
+      )
 
       // Delete status message after 3 seconds
       setTimeout(() => {
         ctx.telegram
           .deleteMessage(ctx.chat!.id, statusMsg.message_id)
-          .catch(() => {});
-      }, 3000);
+          .catch(() => {})
+      }, 3000)
 
       LogEngine.info('Sent reply to agent', {
         ticketNumber: agentMessageInfo.friendlyId,
@@ -461,15 +461,15 @@ async function handleAgentMessageReply(
         username,
         messageLength: message?.length,
         chatId: ctx.chat?.id,
-      });
-      return true;
+      })
+      return true
     } catch (error) {
-      const err = error as Error;
+      const err = error as Error
       // Handle API errors
       LogEngine.error('Error sending reply to agent', {
         error: err.message,
         conversationId: agentMessageInfo.conversationId,
-      });
+      })
 
       // Update status message to error
       await safeEditMessageText(
@@ -478,24 +478,24 @@ async function handleAgentMessageReply(
         statusMsg.message_id,
         undefined,
         '❌ Error!'
-      );
+      )
 
       // Delete status message after 5 seconds
       setTimeout(() => {
         ctx.telegram
           .deleteMessage(ctx.chat!.id, statusMsg.message_id)
-          .catch(() => {});
-      }, 5000);
+          .catch(() => {})
+      }, 5000)
 
-      return true;
+      return true
     }
   } catch (error) {
-    const err = error as Error;
+    const err = error as Error
     LogEngine.error('Error in handleAgentMessageReply', {
       error: err.message,
       conversationId: agentMessageInfo?.conversationId,
-    });
-    return false;
+    })
+    return false
   }
 }
 
@@ -517,7 +517,7 @@ export async function handlePrivateMessage(ctx: BotContext): Promise<void> {
         ctx.message && 'text' in ctx.message
           ? ctx.message.text?.substring(0, 100)
           : undefined,
-    });
+    })
 
     // Only respond to private messages if they're not commands
     // Commands should be handled by their respective handlers
@@ -528,20 +528,20 @@ export async function handlePrivateMessage(ctx: BotContext): Promise<void> {
     ) {
       LogEngine.debug("Skipping private message - it's a command", {
         command: ctx.message.text.split(' ')[0],
-      });
-      return;
+      })
+      return
     }
 
     // Send the about message for any non-command private message
-    await aboutCommand(ctx);
+    await aboutCommand(ctx)
   } catch (error) {
-    const err = error as Error;
+    const err = error as Error
     LogEngine.error('Error in handlePrivateMessage', {
       error: err.message,
       stack: err.stack,
       telegramUserId: ctx.from?.id,
       username: ctx.from?.username,
-    });
+    })
   }
 }
 
@@ -554,16 +554,16 @@ export async function handleGroupMessage(ctx: BotContext): Promise<void> {
   try {
     // Log more detailed information about the group message
     const chatTitle =
-      ctx.chat && 'title' in ctx.chat ? ctx.chat.title : 'Unknown';
+      ctx.chat && 'title' in ctx.chat ? ctx.chat.title : 'Unknown'
     LogEngine.info(
       `Processing message from group: ${chatTitle} (ID: ${ctx.chat?.id})`
-    );
+    )
 
     // Additional information about the sender if available
     if (ctx.from) {
       LogEngine.info(
         `Message sent by: ${ctx.from.first_name} ${ctx.from.last_name || ''} (ID: ${ctx.from.id})`
-      );
+      )
     }
 
     // Log the message content for debugging
@@ -589,11 +589,11 @@ export async function handleGroupMessage(ctx: BotContext): Promise<void> {
         ctx.message && 'reply_to_message' in ctx.message
           ? ctx.message.reply_to_message?.message_id
           : undefined,
-    });
+    })
 
-    LogEngine.debug('Group message processed - no automatic responses sent');
+    LogEngine.debug('Group message processed - no automatic responses sent')
   } catch (error) {
-    const err = error as Error;
-    LogEngine.error(`Error in handleGroupMessage: ${err.message}`);
+    const err = error as Error
+    LogEngine.error(`Error in handleGroupMessage: ${err.message}`)
   }
 }

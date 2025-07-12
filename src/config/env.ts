@@ -1,6 +1,6 @@
 /**
  * Unthread Telegram Bot - Environment Configuration and Validation
- *
+ * 
  * Validates and manages environment variables required for the Unthread Telegram Bot
  * to function properly. This module ensures all necessary API keys, database connections,
  * and service endpoints are configured before the bot starts.
@@ -14,7 +14,7 @@
  * - PLATFORM_REDIS_URL: Redis connection for bot state management
  * - WEBHOOK_REDIS_URL: Redis connection for webhook event processing (required for agent responses)
  * - POSTGRES_URL: PostgreSQL database connection for persistent storage
- *
+ * 
  * Optional Environment Variables:
  * - DATABASE_SSL_VALIDATE: SSL validation mode for database connections (true/false)
  * - NODE_ENV: Runtime environment (development/production)
@@ -22,13 +22,13 @@
  * - MY_COMPANY_NAME: Company name for ticket attribution
  * - UNTHREAD_DEFAULT_PRIORITY: Default priority for new tickets (3, 5, 7, or 9)
  * - BOT_USERNAME: Bot username for performance optimization (eliminates API calls if set)
- *
+ * 
  * Security:
  * - Validates all critical environment variables at startup
  * - Provides clear error messages for missing configuration 
  * - Prevents bot startup with incomplete configuration
  * - Detects placeholder values and prevents accidental deployment
- *
+ * 
  * @author Waren Gonzaga, WG Technology Labs
  * @version 1.0.0
  * @since 2025
@@ -40,14 +40,14 @@ import { LogEngine } from '@wgtechlabs/log-engine';
  * Required environment variables
  */
 const REQUIRED_ENV_VARS = [
-  'TELEGRAM_BOT_TOKEN',
-  'UNTHREAD_API_KEY',
-  'UNTHREAD_SLACK_CHANNEL_ID',
-  'UNTHREAD_WEBHOOK_SECRET',
+    'TELEGRAM_BOT_TOKEN',
+    'UNTHREAD_API_KEY',
+    'UNTHREAD_SLACK_CHANNEL_ID',
+    'UNTHREAD_WEBHOOK_SECRET',
     'ADMIN_USERS',
-  'PLATFORM_REDIS_URL',
+    'PLATFORM_REDIS_URL',
     'WEBHOOK_REDIS_URL',
-  'POSTGRES_URL',
+    'POSTGRES_URL'
 ] as const;
 
 /**
@@ -70,36 +70,32 @@ const ENV_VAR_HELP: Record<string, string> = {
  * Logs detailed error messages and setup instructions for any missing or improperly set variables, including detection of placeholder values. Terminates the process if validation fails; otherwise, logs successful validation and the current runtime environment.
  */
 export function validateEnvironment(): void {
-  const missingVars: string[] = [];
-
-  for (const varName of REQUIRED_ENV_VARS) {
-    if (!process.env[varName]) {
-      missingVars.push(varName);
+    const missingVars: string[] = [];
+    
+    for (const varName of REQUIRED_ENV_VARS) {
+        if (!process.env[varName]) {
+            missingVars.push(varName);
+        }
     }
-  }
-
-  if (missingVars.length > 0) {
-    LogEngine.error('❌ Missing required environment variables:', {
-      missingVariables: missingVars,
-      totalMissing: missingVars.length,
-    });
-        
-        LogEngine.error('\n📋 Required environment variables:');
-    missingVars.forEach((varName) => {
-            const help = ENV_VAR_HELP[varName] || 'See documentation for setup instructions';
-      LogEngine.error(`   ❌ ${varName}`);
-        LogEngine.error(`      How to get: ${help}`);
+    
+    if (missingVars.length > 0) {
+        LogEngine.error('❌ Missing required environment variables:', {
+            missingVariables: missingVars,
+            totalMissing: missingVars.length
         });
         
-    LogEngine.error(
-      '\n📝 Setup Instructions:');
+        LogEngine.error('\n📋 Required environment variables:');
+        missingVars.forEach(varName => {
+            const help = ENV_VAR_HELP[varName] || 'See documentation for setup instructions';
+            LogEngine.error(`   ❌ ${varName}`);
+            LogEngine.error(`      How to get: ${help}`);
+        });
+        
+        LogEngine.error('\n📝 Setup Instructions:');
         LogEngine.error('   1. Copy .env.example to .env: cp .env.example .env');
-        LogEngine.error('   2. Edit .env and replace placeholder values with actual credentials'
-    );
-    LogEngine.error(
-      '   3. Restart the bot');
-        LogEngine.error('\n💡 This works for both local development and Docker deployment.\n'
-    );
+        LogEngine.error('   2. Edit .env and replace placeholder values with actual credentials');
+        LogEngine.error('   3. Restart the bot');
+        LogEngine.error('\n💡 This works for both local development and Docker deployment.\n');
         process.exit(1);
     }
 
@@ -112,11 +108,11 @@ export function validateEnvironment(): void {
         LogEngine.error('❌ Environment configuration error:', {
             error: (error as Error).message
         });
-    process.exit(1);
-  }
-
-  LogEngine.info('✅ Environment configuration validated successfully');
-  LogEngine.info(`🚀 Running in ${process.env.NODE_ENV || 'development'} mode`);
+        process.exit(1);
+    }
+    
+    LogEngine.info('✅ Environment configuration validated successfully');
+    LogEngine.info(`🚀 Running in ${process.env.NODE_ENV || 'development'} mode`);
 }
 
 /**
@@ -217,14 +213,14 @@ function validateRequiredTokens(): void {
  * Get environment variable with fallback
  */
 export function getEnvVar(key: string, defaultValue: string = ''): string {
-  return process.env[key] || defaultValue;
+    return process.env[key] || defaultValue;
 }
 
 /**
  * Check if running in production
  */
 export function isProduction(): boolean {
-  return process.env.NODE_ENV === 'production';
+    return process.env.NODE_ENV === 'production';
 }
 
 /**
@@ -233,7 +229,7 @@ export function isProduction(): boolean {
  * @returns `true` if the `NODE_ENV` environment variable is set to 'development'; otherwise, `false`.
  */
 export function isDevelopment(): boolean {
-  return process.env.NODE_ENV === 'development';
+    return process.env.NODE_ENV === 'development';
 }
 
 /**
@@ -244,28 +240,21 @@ export function isDevelopment(): boolean {
  * @returns The valid ticket priority (3, 5, 7, or 9), or `undefined` if not set or invalid.
  */
 export function getDefaultTicketPriority(): 3 | 5 | 7 | 9 | undefined {
-  const priority = process.env.UNTHREAD_DEFAULT_PRIORITY;
-
-  if (!priority) {
+    const priority = process.env.UNTHREAD_DEFAULT_PRIORITY;
+    
+    if (!priority) {
+        return undefined;
+    }
+    
+    const numPriority = parseInt(priority, 10);
+    
+    // Validate against allowed priority values from Unthread API
+    if (numPriority === 3 || numPriority === 5 || numPriority === 7 || numPriority === 9) {
+        return numPriority;
+    }
+    
+    LogEngine.warn(`⚠️  Invalid UNTHREAD_DEFAULT_PRIORITY value: ${priority}. Must be 3, 5, 7, or 9. Ignoring priority setting.`);
     return undefined;
-  }
-
-  const numPriority = parseInt(priority, 10);
-
-  // Validate against allowed priority values from Unthread API
-  if (
-    numPriority === 3 ||
-    numPriority === 5 ||
-    numPriority === 7 ||
-    numPriority === 9
-  ) {
-    return numPriority;
-  }
-
-  LogEngine.warn(
-    `⚠️  Invalid UNTHREAD_DEFAULT_PRIORITY value: ${priority}. Must be 3, 5, 7, or 9. Ignoring priority setting.`
-  );
-  return undefined;
 }
 
 /**

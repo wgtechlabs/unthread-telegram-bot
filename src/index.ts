@@ -23,10 +23,10 @@
  * @version 1.0.0
  * @since 2025
  */
-import dotenv from 'dotenv';
+import dotenv from 'dotenv'
 
 // Load environment variables from .env file
-dotenv.config();
+dotenv.config()
 
 // Configure LogEngine to use local timezone only before any logging
 import { LogEngine } from '@wgtechlabs/log-engine';
@@ -38,8 +38,8 @@ LogEngine.configure({
 });
 
 // Validate environment configuration before proceeding
-import { validateEnvironment } from './config/env.js';
-validateEnvironment();
+import { validateEnvironment } from './config/env.js'
+validateEnvironment()
 
 import { createBot, startPolling, safeReply, cleanupBlockedUser } from './bot.js';
 import { 
@@ -71,8 +71,8 @@ import type { BotContext } from './types/index.js';
 /**
  * Initialize the bot with the token from environment variables
  */
-const telegramToken = process.env.TELEGRAM_BOT_TOKEN!;
-const bot = createBot(telegramToken);
+const telegramToken = process.env.TELEGRAM_BOT_TOKEN!
+const bot = createBot(telegramToken)
 
 /**
  * Initialize the clean command architecture
@@ -86,15 +86,15 @@ bot.use(async (ctx: BotContext, next) => {
     try {
         if (ctx.message) {
             // Determine message type
-            let messageType = 'text';
-            if ('photo' in ctx.message) messageType = 'photo';
-            else if ('document' in ctx.message) messageType = 'document';
-            else if ('video' in ctx.message) messageType = 'video';
-            else if ('audio' in ctx.message) messageType = 'audio';
-            else if ('voice' in ctx.message) messageType = 'voice';
-            else if ('video_note' in ctx.message) messageType = 'video_note';
-            else if ('sticker' in ctx.message) messageType = 'sticker';
-            else if (!('text' in ctx.message)) messageType = 'other';
+            let messageType = 'text'
+            if ('photo' in ctx.message) messageType = 'photo'
+            else if ('document' in ctx.message) messageType = 'document'
+            else if ('video' in ctx.message) messageType = 'video'
+            else if ('audio' in ctx.message) messageType = 'audio'
+            else if ('voice' in ctx.message) messageType = 'voice'
+            else if ('video_note' in ctx.message) messageType = 'video_note'
+            else if ('sticker' in ctx.message) messageType = 'sticker'
+            else if (!('text' in ctx.message)) messageType = 'other'
             
             LogEngine.debug('Message received', {
                 chatId: ctx.chat?.id,
@@ -103,22 +103,22 @@ bot.use(async (ctx: BotContext, next) => {
                 hasText: 'text' in ctx.message && !!ctx.message.text,
                 isCommand: 'text' in ctx.message && ctx.message.text?.startsWith('/'),
                 textPreview: 'text' in ctx.message ? ctx.message.text?.substring(0, 30) : undefined
-            });
+            })
         }
-        await next();
+        await next()
     } catch (error) {
-        const err = error as Error;
+        const err = error as Error
         LogEngine.error('Error in bot middleware', {
             error: err.message,
             stack: err.stack,
             chatId: ctx.chat?.id,
             userId: ctx.from?.id
-        });
+        })
         
         // Don't re-throw the error to prevent bot crash
         // Just log it and continue
     }
-});
+})
 
 /**
  * Command handler registration with clean architecture
@@ -130,16 +130,16 @@ bot.use(async (ctx: BotContext, next) => {
 // Simple command middleware for logging
 const commandMiddleware = async (ctx: BotContext, next: () => Promise<void>) => {
     try {
-        return await next();
+        return await next()
     } catch (error) {
-        const err = error as Error;
+        const err = error as Error
         LogEngine.error('Error in command middleware', {
             error: err.message,
             chatId: ctx.chat?.id,
             command: ctx.message && 'text' in ctx.message ? ctx.message.text : undefined
-        });
+        })
     }
-};
+}
 
 // Clean command handler - delegates to the architecture
 const wrapCommandHandler = (commandName: string) => {
@@ -155,36 +155,36 @@ const wrapCommandHandler = (commandName: string) => {
     };
 };
 
-bot.start(commandMiddleware, wrapCommandHandler('start'));
-bot.help(commandMiddleware, wrapCommandHandler('help'));
-bot.command('version', commandMiddleware, wrapCommandHandler('version'));
-bot.command('about', commandMiddleware, wrapCommandHandler('about'));
-bot.command('support', commandMiddleware, wrapCommandHandler('support'));
+bot.start(commandMiddleware, wrapCommandHandler('start'))
+bot.help(commandMiddleware, wrapCommandHandler('help'))
+bot.command('version', commandMiddleware, wrapCommandHandler('version'))
+bot.command('about', commandMiddleware, wrapCommandHandler('about'))
+bot.command('support', commandMiddleware, wrapCommandHandler('support'))
 bot.command('cancel', commandMiddleware, wrapCommandHandler('cancel'));
-bot.command('reset', commandMiddleware, wrapCommandHandler('reset'));
+bot.command('reset', commandMiddleware, wrapCommandHandler('reset'))
 bot.command('setup', commandMiddleware, wrapCommandHandler('setup'));
 bot.command('activate', commandMiddleware, wrapCommandHandler('activate'));
-bot.command('templates', commandMiddleware, wrapCommandHandler('templates'));
+bot.command('templates', commandMiddleware, wrapCommandHandler('templates'))
 
 // Register message handlers with middleware
 bot.on('text', async (ctx, next) => {
     // Skip commands - let Telegraf handle them with the command handlers
     if (ctx.message.text?.startsWith('/')) {
-        return;
+        return
     }
     
-    await handleMessage(ctx, next);
-});
+    await handleMessage(ctx, next)
+})
 
 // Also register the original message handler for non-text messages (photos, etc.)
 bot.on('message', async (ctx, next) => {
     // Only handle non-text messages here
     if ('text' in ctx.message) {
-        return; // Text messages are handled by the 'text' handler above
+        return // Text messages are handled by the 'text' handler above
     }
     
-    await handleMessage(ctx, next);
-});
+    await handleMessage(ctx, next)
+})
 
 // Register callback query handler for buttons
 bot.on('callback_query', async (ctx) => {
@@ -258,12 +258,12 @@ async function retryWithBackoff<T>(
 async function cleanupDatabaseOnInitFailure(dbInitialized: boolean): Promise<void> {
     if (dbInitialized) {
         try {
-            await db.close();
-            LogEngine.info('Database connection closed during cleanup');
+            await db.close()
+            LogEngine.info('Database connection closed during cleanup')
         } catch (cleanupError) {
             LogEngine.error('Failed to cleanup database during initialization failure', {
                 error: (cleanupError as Error).message
-            });
+            })
         }
     }
 }
@@ -274,46 +274,46 @@ async function cleanupDatabaseOnInitFailure(dbInitialized: boolean): Promise<voi
  * Initialize database connection and storage layers before starting the bot
  * Implements retry mechanism to handle transient failures gracefully
  */
-let dbInitialized = false;
+let dbInitialized = false
 
 try {
     // Initialize database connection with retry logic
     await retryWithBackoff(
         async () => {
-            await db.connect();
-            LogEngine.info('Database connection established');
+            await db.connect()
+            LogEngine.info('Database connection established')
         },
         5, // max retries
         2000, // initial delay: 2 seconds
         30000, // max delay: 30 seconds
         'Database connection'
-    );
-    dbInitialized = true;
-    LogEngine.info('Database initialized successfully');
+    )
+    dbInitialized = true
+    LogEngine.info('Database initialized successfully')
     
     // Initialize the BotsStore with retry logic
     await retryWithBackoff(
         async () => {
-            await BotsStore.initialize(db, process.env.PLATFORM_REDIS_URL!);
-            LogEngine.info('BotsStore connection established');
+            await BotsStore.initialize(db, process.env.PLATFORM_REDIS_URL!)
+            LogEngine.info('BotsStore connection established')
         },
         5, // max retries
         2000, // initial delay: 2 seconds
         30000, // max delay: 30 seconds
         'BotsStore initialization'
-    );
-    LogEngine.info('BotsStore initialized successfully');
+    )
+    LogEngine.info('BotsStore initialized successfully')
 } catch (error) {
-    const err = error as Error;
+    const err = error as Error
     LogEngine.error('Failed to initialize database or storage after all retry attempts', {
         error: err.message,
         maxRetries: 5
-    });
+    })
     
     // Cleanup partial initialization
-    await cleanupDatabaseOnInitFailure(dbInitialized);
+    await cleanupDatabaseOnInitFailure(dbInitialized)
     
-    process.exit(1);
+    process.exit(1)
 }
 
 /**
@@ -322,8 +322,8 @@ try {
  * Initialize the webhook consumer to listen for Unthread events
  * and the handler to process agent messages
  */
-let webhookConsumer: WebhookConsumer | undefined;
-let webhookHandler: TelegramWebhookHandler | undefined;
+let webhookConsumer: WebhookConsumer | undefined
+let webhookHandler: TelegramWebhookHandler | undefined
 
 try {
     // Check if webhook Redis URL is available before initializing webhook consumer
@@ -332,47 +332,47 @@ try {
         webhookConsumer = new WebhookConsumer({
             redisUrl: process.env.WEBHOOK_REDIS_URL,
             queueName: 'unthread-events'
-        });
+        })
 
         // Initialize webhook handler
-        const botsStore = BotsStore.getInstance();
-        webhookHandler = new TelegramWebhookHandler(bot, botsStore);
+        const botsStore = BotsStore.getInstance()
+        webhookHandler = new TelegramWebhookHandler(bot, botsStore)
 
         // Subscribe to agent message events from dashboard
         webhookConsumer.subscribe('message_created', 'dashboard', 
             webhookHandler.handleMessageCreated.bind(webhookHandler)
-        );
+        )
 
         // Subscribe to conversation status update events from dashboard
         if (typeof webhookHandler.handleConversationUpdated === 'function') {
             webhookConsumer.subscribe('conversation_updated', 'dashboard', 
                 webhookHandler.handleConversationUpdated.bind(webhookHandler)
-            );
+            )
         } else {
-            LogEngine.warn('Webhook handler does not implement handleConversationUpdated; skipping subscription.');
+            LogEngine.warn('Webhook handler does not implement handleConversationUpdated; skipping subscription.')
         }
 
         // Start the webhook consumer
-        await webhookConsumer.start();
-        LogEngine.info('Webhook consumer started successfully');
+        await webhookConsumer.start()
+        LogEngine.info('Webhook consumer started successfully')
     } else {
-        LogEngine.warn('Webhook Redis URL not configured - webhook processing disabled');
-        LogEngine.info('Bot will run in basic mode (ticket creation only)');
+        LogEngine.warn('Webhook Redis URL not configured - webhook processing disabled')
+        LogEngine.info('Bot will run in basic mode (ticket creation only)')
     }
 
 } catch (error) {
-    const err = error as Error;
+    const err = error as Error
     LogEngine.error('Failed to initialize webhook consumer', {
         error: err.message
-    });
+    })
     // Don't exit - bot can still work for ticket creation without webhook processing
-    LogEngine.warn('Bot will continue without webhook processing capabilities');
+    LogEngine.warn('Bot will continue without webhook processing capabilities')
 }
 
 /**
  * Bot initialization and startup
  */
-bot.botInfo = await bot.telegram.getMe();
+bot.botInfo = await bot.telegram.getMe()
 
 // Set bot commands for Telegram UI
 await bot.telegram.setMyCommands([
@@ -384,7 +384,7 @@ await bot.telegram.setMyCommands([
     { command: 'cancel', description: 'Cancel ongoing support ticket creation' },
     { command: 'reset', description: 'Reset your support conversation state' },
     { command: 'setup', description: 'Configure group for support (admin only)' }
-]);
+])
 
 LogEngine.info('Bot initialized successfully', {
     username: bot.botInfo.username,
@@ -392,14 +392,14 @@ LogEngine.info('Bot initialized successfully', {
     version: packageJSON.version,
     nodeVersion: process.version,
     platform: process.platform
-});
+})
 
-LogEngine.info('Bot is running and listening for messages...');
+LogEngine.info('Bot is running and listening for messages...')
 
 /**
  * Start polling for updates
  */
-startPolling(bot);
+startPolling(bot)
 
 /**
  * Start session cleanup task
@@ -423,7 +423,7 @@ bot.catch(async (error: any, ctx?: BotContext) => {
         userId: ctx?.from?.id,
         method: error.on?.method,
         payload: error.on?.payload
-    });
+    })
     
     // Handle specific error types
     if (error.response?.error_code === 403) {
@@ -431,26 +431,26 @@ bot.catch(async (error: any, ctx?: BotContext) => {
             LogEngine.warn('Bot was blocked by user - cleaning up user data', {
                 chatId: ctx?.chat?.id,
                 userId: ctx?.from?.id
-            });
+            })
             
             // Clean up blocked user data (solution from GitHub issue #1513)
             if (ctx?.chat?.id) {
-                await cleanupBlockedUser(ctx.chat.id);
+                await cleanupBlockedUser(ctx.chat.id)
             }
             
-            return; // Silently skip blocked users
+            return // Silently skip blocked users
         }
         if (error.response.description?.includes('chat not found')) {
             LogEngine.warn('Chat not found - cleaning up chat data', {
                 chatId: ctx?.chat?.id
-            });
+            })
             
             // Clean up chat that no longer exists
             if (ctx?.chat?.id) {
-                await cleanupBlockedUser(ctx.chat.id);
+                await cleanupBlockedUser(ctx.chat.id)
             }
             
-            return;
+            return
         }
     }
     
@@ -458,16 +458,16 @@ bot.catch(async (error: any, ctx?: BotContext) => {
         LogEngine.warn('Rate limit exceeded, backing off', {
             chatId: ctx?.chat?.id,
             retryAfter: error.response.parameters?.retry_after
-        });
-        return;
+        })
+        return
     }
     
     // For other errors, log but don't crash
     LogEngine.error('Unhandled Telegram error', {
         error: error.message,
         stack: error.stack
-    });
-});
+    })
+})
 
 /**
  * Performs a graceful shutdown of the bot, stopping all background tasks and closing resources before exiting the process.
@@ -481,18 +481,18 @@ async function gracefulShutdown(): Promise<void> {
         LogEngine.info('Session cleanup task stopped');
         
         if (webhookConsumer) {
-            await webhookConsumer.stop();
-            LogEngine.info('Webhook consumer stopped');
+            await webhookConsumer.stop()
+            LogEngine.info('Webhook consumer stopped')
         }
-        await BotsStore.shutdown();
-        LogEngine.info('BotsStore shutdown complete');
-        await db.close();
-        LogEngine.info('Database connections closed');
-        process.exit(0);
+        await BotsStore.shutdown()
+        LogEngine.info('BotsStore shutdown complete')
+        await db.close()
+        LogEngine.info('Database connections closed')
+        process.exit(0)
     } catch (error) {
-        const err = error as Error;
-        LogEngine.error('Error during shutdown', { error: err.message });
-        process.exit(1);
+        const err = error as Error
+        LogEngine.error('Error during shutdown', { error: err.message })
+        process.exit(1)
     }
 }
 
@@ -500,11 +500,11 @@ async function gracefulShutdown(): Promise<void> {
  * Signal handlers for graceful shutdown
  */
 process.on('SIGINT', async () => {
-    LogEngine.info('Received SIGINT, shutting down gracefully...');
-    await gracefulShutdown();
-});
+    LogEngine.info('Received SIGINT, shutting down gracefully...')
+    await gracefulShutdown()
+})
 
 process.on('SIGTERM', async () => {
-    LogEngine.info('Received SIGTERM, shutting down gracefully...');
-    await gracefulShutdown();
-});
+    LogEngine.info('Received SIGTERM, shutting down gracefully...')
+    await gracefulShutdown()
+})
