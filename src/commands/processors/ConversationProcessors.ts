@@ -293,6 +293,8 @@ Choose how you'd like to handle message templates:`;
                     }
                 });
 
+                // Note: Group notification will be sent when template configuration is complete
+
             } catch (setupError) {
                 logError(setupError, 'DmSetupInputProcessor.completeExistingCustomerSetup', { 
                     sessionId: session.sessionId,
@@ -411,6 +413,46 @@ Choose how you'd like to handle message templates:`;
                 }
             );
             return true;
+        }
+    }
+
+    /**
+     * Send setup completion notification to the group chat
+     */
+    private async sendGroupSetupNotification(session: any): Promise<void> {
+        try {
+            const bot = (global as any).bot;
+            if (!bot) {
+                logError(new Error('Bot instance not available for group notification'), 'DmSetupInputProcessor.sendGroupSetupNotification', { sessionId: session.sessionId });
+                return;
+            }
+
+            const customerName = session.stepData?.customerName || 
+                               session.stepData?.suggestedName || 
+                               (session.stepData?.existingCustomerId ? `Customer ${session.stepData.existingCustomerId.substring(0, 8)}...` : 'Unknown');
+
+            const setupType = session.stepData?.linkType === 'existing' ? 'linked to existing customer' : 'configured with new customer';
+
+            const groupNotification = `✅ **Setup Complete!**
+
+📋 **This group is now configured for support tickets.**
+
+**Customer:** ${customerName}  
+**Setup:** Successfully ${setupType}
+
+🎫 **Members can use** \`/support\` **to create support tickets and get help from our team.**
+
+⚡ **Quick Setup:** Just two simple choices in your DM!`;
+
+            await bot.telegram.sendMessage(session.groupChatId, groupNotification, { 
+                parse_mode: 'Markdown' 
+            });
+
+        } catch (error) {
+            logError(error, 'DmSetupInputProcessor.sendGroupSetupNotification', { 
+                sessionId: session.sessionId,
+                groupChatId: session.groupChatId 
+            });
         }
     }
 }

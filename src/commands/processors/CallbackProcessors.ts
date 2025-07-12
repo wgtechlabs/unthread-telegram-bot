@@ -201,6 +201,11 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                         return await this.handleExistingCustomer(ctx, sessionId);
                     }
                     break;
+                case 'finish':
+                    if (parts[2] === 'custom') {
+                        return await this.handleFinishCustomSetup(ctx, sessionId);
+                    }
+                    break;
                 case 'cancel':
                     return await this.handleCancel(ctx, sessionId);
                 default:
@@ -679,6 +684,9 @@ Choose how you'd like to handle message templates:`;
 
             await ctx.editMessageText(completionMessage, { parse_mode: 'Markdown' });
             
+            // Send notification to the group chat
+            await this.sendGroupSetupNotification(session);
+            
             // Clean up session after delay
             setTimeout(async () => {
                 const { BotsStore } = await import('../../sdk/bots-brain/index.js');
@@ -688,6 +696,124 @@ Choose how you'd like to handle message templates:`;
         } catch (error) {
             logError(error, 'SetupCallbackProcessor.finalizeSetupWithDefaults', { sessionId });
             await ctx.editMessageText("❌ **Setup Error**\n\nFailed to finalize setup. Please try `/setup` again.");
+        }
+    }
+
+    /**
+     * Handle finishing custom template setup
+     */
+    private async handleFinishCustomSetup(ctx: BotContext, sessionId: string): Promise<boolean> {
+        await ctx.answerCbQuery("✅ Finishing custom template setup...");
+        
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            const session = await BotsStore.getDmSetupSession(sessionId);
+            
+            if (!session) {
+                await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
+                return true;
+            }
+
+            // Complete setup with custom templates
+            await this.finalizeCustomTemplateSetup(ctx, sessionId, session);
+            
+            return true;
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.handleFinishCustomSetup', { sessionId });
+            await ctx.answerCbQuery("❌ Failed to finish custom setup. Please try again.");
+            return true;
+        }
+    }
+
+    /**
+     * Finalize setup with custom templates
+     */
+    private async finalizeCustomTemplateSetup(ctx: BotContext, sessionId: string, session: DmSetupSession): Promise<void> {
+        try {
+            const customerName = session.stepData?.customerName || 
+                               session.stepData?.suggestedName || 
+                               (session.stepData?.existingCustomerId ? `Customer ${session.stepData.existingCustomerId.substring(0, 8)}...` : 'Unknown');
+            
+            const completionMessage = `✅ **Custom Setup Complete!**
+
+**Customer:** ${customerName}
+**Group:** ${session.groupChatName}
+**Templates:** Custom templates configured
+
+🎉 **Your group is ready for support ticket management!**
+
+**Next Steps:**
+• Users can now create support tickets
+• Your custom templates are active
+• Use \`/templates\` anytime to modify them
+• Check \`/help\` for all commands
+
+*Enjoy your personalized support system!*`;
+
+            await ctx.editMessageText(completionMessage, { parse_mode: 'Markdown' });
+            
+            // Send notification to the group chat
+            await this.sendGroupSetupNotification(session);
+            
+            // Clean up session after delay
+            setTimeout(async () => {
+                const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+                await BotsStore.deleteDmSetupSession(sessionId);
+            }, 60000);
+            
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.finalizeCustomTemplateSetup', { sessionId });
+            await ctx.editMessageText("❌ **Setup Error**\n\nFailed to finalize custom setup. Please try `/setup` again.");
+        }
+    }
+
+    // Simplified validation method for callback processor
+    private async performSetupValidation(ctx: BotContext, sessionId: string, groupChatId: number, groupTitle: string): Promise<void> {
+        // This is a simplified version - in production, you'd extract this to a shared service
+        await ctx.editMessageText(
+            `🔄 **Validation Retry**
+
+Please return to the group and run \`/setup\` again to retry the validation process.`
+        );
+    }
+
+    /**
+     * Send setup completion notification to the group chat
+     */
+    private async sendGroupSetupNotification(session: DmSetupSession): Promise<void> {
+        try {
+            const bot = (global as any).bot;
+            if (!bot) {
+                logError(new Error('Bot instance not available for group notification'), 'SetupCallbackProcessor.sendGroupSetupNotification', { sessionId: session.sessionId });
+                return;
+            }
+
+            const customerName = session.stepData?.customerName || 
+                               session.stepData?.suggestedName || 
+                               (session.stepData?.existingCustomerId ? `Customer ${session.stepData.existingCustomerId.substring(0, 8)}...` : 'Unknown');
+
+            const setupType = session.stepData?.linkType === 'existing' ? 'linked to existing customer' : 'configured with new customer';
+
+            const groupNotification = `✅ **Setup Complete!**
+
+📋 **This group is now configured for support tickets.**
+
+**Customer:** ${customerName}  
+**Setup:** Successfully ${setupType}
+
+🎫 **Members can use** \`/support\` **to create support tickets and get help from our team.**
+
+⚡ **Quick Setup:** Just two simple choices in your DM!`;
+
+            await bot.telegram.sendMessage(session.groupChatId, groupNotification, { 
+                parse_mode: 'Markdown' 
+            });
+
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.sendGroupSetupNotification', { 
+                sessionId: session.sessionId,
+                groupChatId: session.groupChatId 
+            });
         }
     }
 
@@ -741,16 +867,6 @@ Choose which template to customize first:
             await ctx.editMessageText("❌ Failed to load template customization. Using defaults instead...");
             await this.handleUseDefaultTemplates(ctx, sessionId);
         }
-    }
-
-    // Simplified validation method for callback processor
-    private async performSetupValidation(ctx: BotContext, sessionId: string, groupChatId: number, groupTitle: string): Promise<void> {
-        // This is a simplified version - in production, you'd extract this to a shared service
-        await ctx.editMessageText(
-            `🔄 **Validation Retry**
-
-Please return to the group and run \`/setup\` again to retry the validation process.`
-        );
     }
 }
 
