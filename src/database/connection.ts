@@ -27,20 +27,20 @@
  * @since 2025
  */
 
-import pkg from 'pg';
-const { Pool } = pkg;
-import type { Pool as PoolType, PoolClient, QueryResult } from 'pg';
-import { LogEngine } from '@wgtechlabs/log-engine';
-import dotenv from 'dotenv';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import pkg from 'pg'
+const { Pool } = pkg
+import type { Pool as PoolType, PoolClient, QueryResult } from 'pg'
+import { LogEngine } from '@wgtechlabs/log-engine'
+import dotenv from 'dotenv'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 
 // Load environment variables
-dotenv.config();
+dotenv.config()
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 /**
  * Database Connection Class
@@ -48,20 +48,20 @@ const __dirname = path.dirname(__filename);
  * Handles PostgreSQL connections with SSL support and connection pooling
  */
 export class DatabaseConnection {
-  private pool: PoolType;
+  private pool: PoolType
 
   constructor() {
     // Configure SSL based on environment
-    const isProduction = process.env.NODE_ENV === 'production';
-    const sslConfig = this.getSSLConfig(isProduction);
+    const isProduction = process.env.NODE_ENV === 'production'
+    const sslConfig = this.getSSLConfig(isProduction)
 
     // Start with the base connection string
-    let connectionString = process.env.POSTGRES_URL!;
+    let connectionString = process.env.POSTGRES_URL!
 
     // Auto-append sslmode=disable only when completely disabling SSL
     if (sslConfig === false && !connectionString.includes('sslmode=')) {
-      const separator = connectionString.includes('?') ? '&' : '?';
-      connectionString += `${separator}sslmode=disable`;
+      const separator = connectionString.includes('?') ? '&' : '?'
+      connectionString += `${separator}sslmode=disable`
       LogEngine.debug(
         'SSL disabled - added sslmode=disable to connection string',
         {
@@ -71,7 +71,7 @@ export class DatabaseConnection {
             '//***:***@'
           ), // Mask credentials
         }
-      );
+      )
     }
 
     // Configure connection pool
@@ -80,22 +80,22 @@ export class DatabaseConnection {
       max: 10, // Maximum number of connections in pool
       idleTimeoutMillis: 30000, // Close idle connections after 30 seconds
       connectionTimeoutMillis: 10000, // Return error after 10 seconds if connection cannot be established
-    };
+    }
 
     // Only add SSL config if it's not explicitly disabled
     if (sslConfig !== false) {
-      poolConfig.ssl = sslConfig;
+      poolConfig.ssl = sslConfig
     }
 
-    this.pool = new Pool(poolConfig);
+    this.pool = new Pool(poolConfig)
 
     // Handle pool errors
     this.pool.on('error', (err: Error) => {
       LogEngine.error('Unexpected error on idle client', {
         error: err.message,
         stack: err.stack,
-      });
-    });
+      })
+    })
     LogEngine.info('Database connection pool initialized', {
       maxConnections: 10,
       sslEnabled: sslConfig !== false,
@@ -112,7 +112,7 @@ export class DatabaseConnection {
                 : 'enabled-no-validation',
       environment: process.env.NODE_ENV || 'development',
       provider: this.isRailwayEnvironment() ? 'Railway' : 'Unknown',
-    });
+    })
   }
 
   /**
@@ -120,7 +120,7 @@ export class DatabaseConnection {
    * @returns The PostgreSQL connection pool
    */
   get connectionPool(): PoolType {
-    return this.pool;
+    return this.pool
   }
 
   /**
@@ -131,31 +131,31 @@ export class DatabaseConnection {
    * @returns Query result
    */
   async query(text: string, params: any[] = []): Promise<QueryResult<any>> {
-    const client: PoolClient = await this.pool.connect();
+    const client: PoolClient = await this.pool.connect()
     try {
-      const start = Date.now();
-      const result = await client.query(text, params);
-      const duration = Date.now() - start;
+      const start = Date.now()
+      const result = await client.query(text, params)
+      const duration = Date.now() - start
 
       LogEngine.debug('Database query executed', {
         query: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
         paramCount: params.length,
         rowCount: result.rowCount,
         duration: `${duration}ms`,
-      });
+      })
 
-      return result;
+      return result
     } catch (error) {
-      const err = error as Error;
+      const err = error as Error
       LogEngine.error('Database query error', {
         error: err.message,
         query: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
         paramCount: params.length,
         stack: err.stack,
-      });
-      throw error;
+      })
+      throw error
     } finally {
-      client.release();
+      client.release()
     }
   }
 
@@ -165,22 +165,22 @@ export class DatabaseConnection {
   async connect(): Promise<void> {
     try {
       // Test connection
-      const result = await this.query('SELECT NOW() as current_time');
+      const result = await this.query('SELECT NOW() as current_time')
       LogEngine.info('Database connection established', {
         currentTime: result.rows[0]?.current_time,
         ssl: 'enabled',
-      });
+      })
 
       // Check if we need to run schema setup
-      await this.ensureSchema();
+      await this.ensureSchema()
     } catch (error) {
-      const err = error as Error;
+      const err = error as Error
       LogEngine.error('Failed to connect to database', {
         error: err.message,
         stack: err.stack,
         postgresUrl: process.env.POSTGRES_URL ? 'configured' : 'missing',
-      });
-      throw error;
+      })
+      throw error
     }
   }
 
@@ -195,13 +195,13 @@ export class DatabaseConnection {
                 FROM information_schema.tables 
                 WHERE table_schema = 'public' 
                 AND table_name IN ('customers', 'tickets', 'user_states', 'storage_cache')
-            `);
+            `)
 
-      const requiredTables = ['customers', 'tickets', 'user_states'];
-      const foundTables = tableCheck.rows.map((row: any) => row.table_name);
+      const requiredTables = ['customers', 'tickets', 'user_states']
+      const foundTables = tableCheck.rows.map((row: any) => row.table_name)
       const missingTables = requiredTables.filter(
         (table) => !foundTables.includes(table)
-      );
+      )
 
       if (missingTables.length > 0) {
         LogEngine.info(
@@ -209,21 +209,21 @@ export class DatabaseConnection {
           {
             missing: missingTables,
           }
-        );
-        await this.initializeSchema();
+        )
+        await this.initializeSchema()
       } else {
         LogEngine.info('Database schema verified', {
           tablesFound: foundTables,
           botsBrainReady: foundTables.includes('storage_cache'),
-        });
+        })
       }
     } catch (error) {
-      const err = error as Error;
+      const err = error as Error
       LogEngine.error('Error checking database schema', {
         error: err.message,
         stack: err.stack,
-      });
-      throw error;
+      })
+      throw error
     }
   }
 
@@ -232,34 +232,34 @@ export class DatabaseConnection {
    */
   async initializeSchema(): Promise<void> {
     try {
-      LogEngine.info('Starting database schema initialization...');
+      LogEngine.info('Starting database schema initialization...')
 
-      const schemaPath = path.join(__dirname, 'schema.sql');
+      const schemaPath = path.join(__dirname, 'schema.sql')
 
       // Check if schema file exists asynchronously
       try {
-        await fs.promises.access(schemaPath, fs.constants.F_OK);
+        await fs.promises.access(schemaPath, fs.constants.F_OK)
       } catch (accessError) {
-        throw new Error(`Schema file not found: ${schemaPath}`);
+        throw new Error(`Schema file not found: ${schemaPath}`)
       }
 
       // Read schema file asynchronously
-      const schema = await fs.promises.readFile(schemaPath, 'utf8');
+      const schema = await fs.promises.readFile(schemaPath, 'utf8')
       LogEngine.debug('Schema file loaded', {
         path: schemaPath,
         size: schema.length,
-      });
+      })
 
       // Execute schema
-      await this.query(schema);
-      LogEngine.info('Database schema created successfully');
+      await this.query(schema)
+      LogEngine.info('Database schema created successfully')
     } catch (error) {
-      const err = error as Error;
+      const err = error as Error
       LogEngine.error('Failed to initialize database schema', {
         error: err.message,
         stack: err.stack,
-      });
-      throw error;
+      })
+      throw error
     }
   }
 
@@ -268,15 +268,15 @@ export class DatabaseConnection {
    */
   async close(): Promise<void> {
     try {
-      await this.pool.end();
-      LogEngine.info('Database connection pool closed');
+      await this.pool.end()
+      LogEngine.info('Database connection pool closed')
     } catch (error) {
-      const err = error as Error;
+      const err = error as Error
       LogEngine.error('Error closing database pool', {
         error: err.message,
         stack: err.stack,
-      });
-      throw error;
+      })
+      throw error
     }
   } /**
    * Check if running on Railway platform
@@ -284,25 +284,25 @@ export class DatabaseConnection {
    */
   private isRailwayEnvironment(): boolean {
     // Check Redis URLs and PostgreSQL URL that are available to this service
-    const platformRedis = process.env.PLATFORM_REDIS_URL;
-    const webhookRedis = process.env.WEBHOOK_REDIS_URL;
-    const postgresUrl = process.env.POSTGRES_URL;
+    const platformRedis = process.env.PLATFORM_REDIS_URL
+    const webhookRedis = process.env.WEBHOOK_REDIS_URL
+    const postgresUrl = process.env.POSTGRES_URL
     // Railway internal services use 'railway.internal' in their hostnames
     const isRailwayHost = (url: string | undefined): boolean => {
-      if (!url || url.trim() === '') return false;
+      if (!url || url.trim() === '') return false
       try {
-        const parsedUrl = new URL(url);
-        return parsedUrl.hostname.toLowerCase().includes('railway.internal');
+        const parsedUrl = new URL(url)
+        return parsedUrl.hostname.toLowerCase().includes('railway.internal')
       } catch {
-        return false; // Invalid URL
+        return false // Invalid URL
       }
-    };
+    }
 
     return (
       isRailwayHost(platformRedis) ||
       isRailwayHost(webhookRedis) ||
       isRailwayHost(postgresUrl)
-    );
+    )
   }
 
   /**
@@ -312,11 +312,11 @@ export class DatabaseConnection {
    */
   private getSSLConfig(isProduction: boolean): any {
     // Check SSL validation setting first (applies to all environments)
-    const sslValidate = process.env.DATABASE_SSL_VALIDATE;
+    const sslValidate = process.env.DATABASE_SSL_VALIDATE
 
     // If set to 'full', disable SSL entirely (useful for local Docker with sslmode=disable)
     if (sslValidate === 'full') {
-      return false;
+      return false
     }
 
     // Check if we're on Railway first - they use self-signed certificates
@@ -325,7 +325,7 @@ export class DatabaseConnection {
         rejectUnauthorized: false, // Accept Railway's self-signed certificates
         // SSL encryption is still enabled for secure data transmission
         ca: process.env.DATABASE_SSL_CA || undefined,
-      };
+      }
     }
 
     // In production, validate SSL certificates for security (unless overridden above)
@@ -334,7 +334,7 @@ export class DatabaseConnection {
         rejectUnauthorized: true,
         // Allow custom CA certificate if provided
         ca: process.env.DATABASE_SSL_CA || undefined,
-      };
+      }
     }
 
     // In development, check remaining SSL validation settings
@@ -343,7 +343,7 @@ export class DatabaseConnection {
       return {
         rejectUnauthorized: false,
         ca: process.env.DATABASE_SSL_CA || undefined,
-      };
+      }
     }
 
     // If explicitly set to 'false', enable SSL with validation
@@ -351,16 +351,16 @@ export class DatabaseConnection {
       return {
         rejectUnauthorized: true,
         ca: process.env.DATABASE_SSL_CA || undefined,
-      };
+      }
     }
 
     // Default for all environments: SSL enabled WITH certificate validation for security
     return {
       rejectUnauthorized: true,
       ca: process.env.DATABASE_SSL_CA || undefined,
-    };
+    }
   }
 }
 
 // Create and export a singleton instance
-export const db = new DatabaseConnection();
+export const db = new DatabaseConnection()

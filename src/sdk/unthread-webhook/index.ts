@@ -43,5 +43,5 @@
  * @since 2025
  */
 
-export { WebhookConsumer } from './WebhookConsumer.js';
-export { EventValidator } from './EventValidator.js';
+export { WebhookConsumer } from './WebhookConsumer.js'
+export { EventValidator } from './EventValidator.js'

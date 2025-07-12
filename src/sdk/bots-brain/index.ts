@@ -25,5 +25,5 @@
  */
 // Multi-layer storage architecture for bots (Memory + Redis + PostgreSQL)
 
-export { UnifiedStorage } from './UnifiedStorage.js';
-export { BotsStore } from './BotsStore.js';
+export { UnifiedStorage } from './UnifiedStorage.js'
+export { BotsStore } from './BotsStore.js'

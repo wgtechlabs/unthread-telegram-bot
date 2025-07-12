@@ -20,14 +20,14 @@
  * @version 1.0.0
  * @since 2025
  */
-import { Telegraf, Markup } from 'telegraf';
+import { Telegraf, Markup } from 'telegraf'
 import type {
   ExtraReplyMessage,
   ExtraEditMessageText,
-} from 'telegraf/typings/telegram-types';
-import { LogEngine } from '@wgtechlabs/log-engine';
-import { BotsStore } from './sdk/bots-brain/index.js';
-import { BotContext, TelegramError, CommandHandler } from './types/index.js';
+} from 'telegraf/typings/telegram-types'
+import { LogEngine } from '@wgtechlabs/log-engine'
+import { BotsStore } from './sdk/bots-brain/index.js'
+import { BotContext, TelegramError, CommandHandler } from './types/index.js'
 
 /**
  * Creates and returns a new Telegraf bot instance using the provided Telegram Bot API token.
@@ -38,9 +38,9 @@ import { BotContext, TelegramError, CommandHandler } from './types/index.js';
  */
 export function createBot(token: string): Telegraf<BotContext> {
   if (!token) {
-    throw new Error('Telegram bot token is required');
+    throw new Error('Telegram bot token is required')
   }
-  return new Telegraf<BotContext>(token);
+  return new Telegraf<BotContext>(token)
 }
 
 /**
@@ -49,7 +49,7 @@ export function createBot(token: string): Telegraf<BotContext> {
  * Initiates the process for the bot to listen for and handle incoming messages and events.
  */
 export function startPolling(bot: Telegraf<BotContext>): void {
-  bot.launch();
+  bot.launch()
 }
 
 /**
@@ -68,9 +68,9 @@ export async function safeReply(
   options: ExtraReplyMessage = {}
 ): Promise<any | null> {
   try {
-    return await ctx.reply(text, options);
+    return await ctx.reply(text, options)
   } catch (error) {
-    const telegramError = error as TelegramError;
+    const telegramError = error as TelegramError
 
     if (telegramError.response?.error_code === 403) {
       if (
@@ -84,26 +84,26 @@ export async function safeReply(
             chatId: ctx.chat?.id,
             userId: ctx.from?.id,
           }
-        );
+        )
 
         // Clean up blocked user from storage
         if (ctx.chat?.id) {
-          await cleanupBlockedUser(ctx.chat.id);
+          await cleanupBlockedUser(ctx.chat.id)
         }
 
-        return null;
+        return null
       }
       if (telegramError.response.description?.includes('chat not found')) {
         LogEngine.warn('Chat not found during reply - cleaning up chat data', {
           chatId: ctx.chat?.id,
-        });
+        })
 
         // Clean up chat that no longer exists
         if (ctx.chat?.id) {
-          await cleanupBlockedUser(ctx.chat.id);
+          await cleanupBlockedUser(ctx.chat.id)
         }
 
-        return null;
+        return null
       }
     }
 
@@ -111,8 +111,8 @@ export async function safeReply(
       LogEngine.warn('Rate limit exceeded during reply', {
         chatId: ctx.chat?.id,
         retryAfter: telegramError.response.parameters?.retry_after,
-      });
-      return null;
+      })
+      return null
     }
 
     // For other errors, log and re-throw
@@ -120,8 +120,8 @@ export async function safeReply(
       error: telegramError.message,
       chatId: ctx.chat?.id,
       textLength: text?.length,
-    });
-    throw error;
+    })
+    throw error
   }
 }
 
@@ -153,9 +153,9 @@ export async function safeEditMessageText(
       inlineMessageId,
       text,
       options
-    );
+    )
   } catch (error) {
-    const telegramError = error as TelegramError;
+    const telegramError = error as TelegramError
 
     if (telegramError.response?.error_code === 403) {
       if (
@@ -169,11 +169,11 @@ export async function safeEditMessageText(
             chatId,
             messageId,
           }
-        );
+        )
 
         // Clean up blocked user from storage
-        await cleanupBlockedUser(chatId);
-        return null;
+        await cleanupBlockedUser(chatId)
+        return null
       }
       if (telegramError.response.description?.includes('chat not found')) {
         LogEngine.warn(
@@ -182,11 +182,11 @@ export async function safeEditMessageText(
             chatId,
             messageId,
           }
-        );
+        )
 
         // Clean up chat that no longer exists
-        await cleanupBlockedUser(chatId);
-        return null;
+        await cleanupBlockedUser(chatId)
+        return null
       }
     }
 
@@ -195,8 +195,8 @@ export async function safeEditMessageText(
         chatId,
         messageId,
         retryAfter: telegramError.response.parameters?.retry_after,
-      });
-      return null;
+      })
+      return null
     }
 
     // For message not found or already edited, just log and continue
@@ -213,8 +213,8 @@ export async function safeEditMessageText(
           chatId,
           messageId,
         }
-      );
-      return null;
+      )
+      return null
     }
 
     // For other errors, log and re-throw
@@ -223,8 +223,8 @@ export async function safeEditMessageText(
       chatId,
       messageId,
       textLength: text?.length,
-    });
-    throw error;
+    })
+    throw error
   }
 }
 
@@ -237,13 +237,13 @@ export async function safeEditMessageText(
  */
 export async function cleanupBlockedUser(chatId: number): Promise<void> {
   try {
-    LogEngine.info('Starting cleanup for blocked user', { chatId });
+    LogEngine.info('Starting cleanup for blocked user', { chatId })
 
     // Get BotsStore instance
-    const botsStore = BotsStore.getInstance();
+    const botsStore = BotsStore.getInstance()
 
     // 1. Get all tickets for this chat
-    const tickets = await botsStore.getTicketsForChat(chatId);
+    const tickets = await botsStore.getTicketsForChat(chatId)
 
     if (tickets.length > 0) {
       LogEngine.info(
@@ -252,34 +252,34 @@ export async function cleanupBlockedUser(chatId: number): Promise<void> {
           chatId,
           ticketIds: tickets.map((t: any) => t.conversationId),
         }
-      );
+      )
 
       // 2. Delete each ticket and its mappings
       for (const ticket of tickets) {
-        await botsStore.deleteTicket(ticket.conversationId);
+        await botsStore.deleteTicket(ticket.conversationId)
         LogEngine.info(
           `Cleaned up ticket ${ticket.friendlyId} for blocked user`,
           {
             chatId,
             conversationId: ticket.conversationId,
           }
-        );
+        )
       }
     }
 
     // 3. Clean up customer data for this chat
-    const customer = await botsStore.getCustomerByChatId(chatId);
+    const customer = await botsStore.getCustomerByChatId(chatId)
     if (customer) {
       // Remove customer mappings (the customer still exists in Unthread, just remove local mappings)
-      await botsStore.storage.delete(`customer:telegram:${chatId}`);
+      await botsStore.storage.delete(`customer:telegram:${chatId}`)
       await botsStore.storage.delete(
         `customer:id:${customer.unthreadCustomerId}`
-      );
+      )
 
       LogEngine.info('Cleaned up customer mappings for blocked user', {
         chatId,
         customerId: customer.unthreadCustomerId,
-      });
+      })
     }
 
     // 4. Clean up any user states
@@ -287,14 +287,14 @@ export async function cleanupBlockedUser(chatId: number): Promise<void> {
     // So we can't clean them up directly without the user ID
     // They will expire naturally due to TTL
 
-    LogEngine.info('Successfully cleaned up blocked user data', { chatId });
+    LogEngine.info('Successfully cleaned up blocked user data', { chatId })
   } catch (error) {
-    const err = error as Error;
+    const err = error as Error
     LogEngine.error('Error cleaning up blocked user data', {
       error: err.message,
       stack: err.stack,
       chatId,
-    });
+    })
     // Don't throw - cleanup failure shouldn't crash the bot
   }
 }

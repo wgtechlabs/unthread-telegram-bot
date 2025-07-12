@@ -28,7 +28,7 @@
  * @since 2025
  */
 
-import { LogEngine } from '@wgtechlabs/log-engine';
+import { LogEngine } from '@wgtechlabs/log-engine'
 
 /**
  * Required environment variables
@@ -40,7 +40,7 @@ const REQUIRED_ENV_VARS = [
   'UNTHREAD_WEBHOOK_SECRET',
   'PLATFORM_REDIS_URL',
   'POSTGRES_URL',
-] as const;
+] as const
 
 /**
  * Ensures all required environment variables are set before application startup.
@@ -48,11 +48,11 @@ const REQUIRED_ENV_VARS = [
  * Logs detailed error messages and terminates the process if any required variables are missing; otherwise, logs successful validation and the current runtime environment.
  */
 export function validateEnvironment(): void {
-  const missingVars: string[] = [];
+  const missingVars: string[] = []
 
   for (const varName of REQUIRED_ENV_VARS) {
     if (!process.env[varName]) {
-      missingVars.push(varName);
+      missingVars.push(varName)
     }
   }
 
@@ -60,35 +60,35 @@ export function validateEnvironment(): void {
     LogEngine.error('❌ Missing required environment variables:', {
       missingVariables: missingVars,
       totalMissing: missingVars.length,
-    });
+    })
     missingVars.forEach((varName) => {
-      LogEngine.error(`   - ${varName}`);
-    });
+      LogEngine.error(`   - ${varName}`)
+    })
     LogEngine.error(
       '\n📝 Please copy .env.example to .env and fill in the required values.'
-    );
+    )
     LogEngine.error(
       '   This works for both local development and Docker deployment.\n'
-    );
-    process.exit(1);
+    )
+    process.exit(1)
   }
 
-  LogEngine.info('✅ Environment configuration validated successfully');
-  LogEngine.info(`🚀 Running in ${process.env.NODE_ENV || 'development'} mode`);
+  LogEngine.info('✅ Environment configuration validated successfully')
+  LogEngine.info(`🚀 Running in ${process.env.NODE_ENV || 'development'} mode`)
 }
 
 /**
  * Get environment variable with fallback
  */
 export function getEnvVar(key: string, defaultValue: string = ''): string {
-  return process.env[key] || defaultValue;
+  return process.env[key] || defaultValue
 }
 
 /**
  * Check if running in production
  */
 export function isProduction(): boolean {
-  return process.env.NODE_ENV === 'production';
+  return process.env.NODE_ENV === 'production'
 }
 
 /**
@@ -97,7 +97,7 @@ export function isProduction(): boolean {
  * @returns `true` if the `NODE_ENV` environment variable is set to 'development'; otherwise, `false`.
  */
 export function isDevelopment(): boolean {
-  return process.env.NODE_ENV === 'development';
+  return process.env.NODE_ENV === 'development'
 }
 
 /**
@@ -108,13 +108,13 @@ export function isDevelopment(): boolean {
  * @returns The ticket priority (3, 5, 7, or 9), or `undefined` if not set or invalid.
  */
 export function getDefaultTicketPriority(): 3 | 5 | 7 | 9 | undefined {
-  const priority = process.env.UNTHREAD_DEFAULT_PRIORITY;
+  const priority = process.env.UNTHREAD_DEFAULT_PRIORITY
 
   if (!priority) {
-    return undefined;
+    return undefined
   }
 
-  const numPriority = parseInt(priority, 10);
+  const numPriority = parseInt(priority, 10)
 
   // Validate against allowed priority values from Unthread API
   if (
@@ -123,11 +123,11 @@ export function getDefaultTicketPriority(): 3 | 5 | 7 | 9 | undefined {
     numPriority === 7 ||
     numPriority === 9
   ) {
-    return numPriority;
+    return numPriority
   }
 
   LogEngine.warn(
     `⚠️  Invalid UNTHREAD_DEFAULT_PRIORITY value: ${priority}. Must be 3, 5, 7, or 9. Ignoring priority setting.`
-  );
-  return undefined;
+  )
+  return undefined
 }

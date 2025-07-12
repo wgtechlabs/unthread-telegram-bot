@@ -35,102 +35,102 @@
  * @since 2025
  */
 
-import fetch from 'node-fetch';
-import { LogEngine } from '@wgtechlabs/log-engine';
-import { BotsStore } from '../sdk/bots-brain/index.js';
-import { TicketData, AgentMessageData, UserData } from '../sdk/types.js';
-import { getDefaultTicketPriority } from '../config/env.js';
-import dotenv from 'dotenv';
+import fetch from 'node-fetch'
+import { LogEngine } from '@wgtechlabs/log-engine'
+import { BotsStore } from '../sdk/bots-brain/index.js'
+import { TicketData, AgentMessageData, UserData } from '../sdk/types.js'
+import { getDefaultTicketPriority } from '../config/env.js'
+import dotenv from 'dotenv'
 
 // Load environment variables
-dotenv.config();
+dotenv.config()
 
 /**
  * Customer data structure
  */
 interface Customer {
-  id: string;
-  name: string;
+  id: string
+  name: string
 }
 
 /**
  * User data for onBehalfOf
  */
 interface OnBehalfOfUser {
-  name: string;
-  email: string;
+  name: string
+  email: string
 }
 
 /**
  * Ticket creation parameters
  */
 interface CreateTicketParams {
-  groupChatName: string;
-  customerId: string;
-  summary: string;
-  onBehalfOf: OnBehalfOfUser;
+  groupChatName: string
+  customerId: string
+  summary: string
+  onBehalfOf: OnBehalfOfUser
 }
 
 /**
  * Message sending parameters
  */
 interface SendMessageParams {
-  conversationId: string;
-  message: string;
-  onBehalfOf: OnBehalfOfUser;
+  conversationId: string
+  message: string
+  onBehalfOf: OnBehalfOfUser
 }
 
 /**
  * Ticket confirmation parameters
  */
 interface RegisterTicketConfirmationParams {
-  messageId: number;
-  ticketId: string;
-  friendlyId: string;
-  customerId: string;
-  chatId: number;
-  telegramUserId: number;
+  messageId: number
+  ticketId: string
+  friendlyId: string
+  customerId: string
+  chatId: number
+  telegramUserId: number
 }
 
 /**
  * Ticket JSON creation parameters
  */
 interface CreateTicketJSONParams {
-  title: string;
-  summary: string;
-  customerId: string;
-  onBehalfOf: OnBehalfOfUser;
+  title: string
+  summary: string
+  customerId: string
+  onBehalfOf: OnBehalfOfUser
 }
 
 /**
  * Message JSON sending parameters
  */
 interface SendMessageJSONParams {
-  conversationId: string;
-  message: string;
-  onBehalfOf: OnBehalfOfUser;
+  conversationId: string
+  message: string
+  onBehalfOf: OnBehalfOfUser
 }
 
 /**
  * Ticket creation response
  */
 interface CreateTicketResponse {
-  id: string;
-  friendlyId: string;
+  id: string
+  friendlyId: string
 }
 
 /**
  * Ticket creation payload for API request
  */
 interface CreateTicketPayload {
-  type: 'slack';
-  title: string;
-  markdown: string;
-  status: 'open';
-  channelId: string;
-  customerId: string;
-  onBehalfOf: OnBehalfOfUser;
-  priority?: 3 | 5 | 7 | 9;
+  type: 'slack'
+  title: string
+  markdown: string
+  status: 'open'
+  channelId: string
+  customerId: string
+  onBehalfOf: OnBehalfOfUser
+  priority?: 3 | 5 | 7 | 9
 }
 
 /**
@@ -141,14 +141,14 @@ interface CreateTicketPayload {
  */
 function extractCustomerCompanyName(groupChatTitle: string): string {
   if (!groupChatTitle) {
-    return 'Unknown Company';
+    return 'Unknown Company'
   }
 
-  const companyName = process.env.COMPANY_NAME || 'Unthread';
+  const companyName = process.env.COMPANY_NAME || 'Unthread'
 
   // Convert both to lowercase for effective matching
-  const lowerTitle = groupChatTitle.toLowerCase().trim();
-  const lowerCompanyName = companyName.toLowerCase().trim();
+  const lowerTitle = groupChatTitle.toLowerCase().trim()
+  const lowerCompanyName = companyName.toLowerCase().trim()
 
   // Regex patterns to match different separators (x, <>, ×, etc.)
   const separatorPatterns = [
@@ -157,27 +157,27 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
     /\s*×\s*/, // matches "×" with optional spaces
     /\s+and\s+/, // matches " and "
     /\s*&\s*/, // matches "&" with optional spaces
-  ];
+  ]
 
   // Try to find a separator and split the title
   for (const pattern of separatorPatterns) {
     if (pattern.test(lowerTitle)) {
-      const parts = lowerTitle.split(pattern).map((part) => part.trim());
+      const parts = lowerTitle.split(pattern).map((part) => part.trim())
 
       if (parts.length === 2) {
         // Find which part is NOT our company name
-        const [part1, part2] = parts;
+        const [part1, part2] = parts
 
         if (part1 === lowerCompanyName && part2 !== lowerCompanyName && part2) {
           // Our company is first, customer is second
-          return capitalizeCompanyName(part2);
+          return capitalizeCompanyName(part2)
         } else if (
           part2 === lowerCompanyName &&
           part1 !== lowerCompanyName &&
           part1
         ) {
           // Customer is first, our company is second
-          return capitalizeCompanyName(part1);
+          return capitalizeCompanyName(part1)
         }
       }
     }
@@ -186,17 +186,17 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
   // Fallback: if no pattern matches, check if the title contains our company name
   // and try to remove it
   if (lowerTitle.includes(lowerCompanyName)) {
-    let result = lowerTitle.replace(lowerCompanyName, '').trim();
+    let result = lowerTitle.replace(lowerCompanyName, '').trim()
     // Remove any leading/trailing separators
-    result = result.replace(/^[x<>&×\s]+|[x<>&×\s]+$/g, '').trim();
+    result = result.replace(/^[x<>&×\s]+|[x<>&×\s]+$/g, '').trim()
 
     if (result && result !== lowerTitle) {
-      return capitalizeCompanyName(result);
+      return capitalizeCompanyName(result)
     }
   }
 
   // Final fallback: return the original title capitalized
-  return capitalizeCompanyName(groupChatTitle);
+  return capitalizeCompanyName(groupChatTitle)
 }
 
 /**
@@ -208,7 +208,7 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
  * @returns The formatted and capitalized company name
  */
 function capitalizeCompanyName(name: string): string {
-  if (!name) return 'Unknown-Company';
+  if (!name) return 'Unknown-Company'
 
   return name
     .toLowerCase()
@@ -218,16 +218,16 @@ function capitalizeCompanyName(name: string): string {
     .trim()
     .replace(/[^a-zA-Z0-9-_]/g, '') // Remove invalid characters, keep only letters, numbers, hyphens, underscores
     .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
-    .replace(/-{2,}/g, '-'); // Replace multiple consecutive hyphens with single hyphen
+    .replace(/-{2,}/g, '-') // Replace multiple consecutive hyphens with single hyphen
 }
 
 // API URLs and Auth Keys
-const API_BASE_URL = 'https://api.unthread.io/api';
-const UNTHREAD_API_KEY = process.env.UNTHREAD_API_KEY!;
-const CHANNEL_ID = process.env.UNTHREAD_SLACK_CHANNEL_ID!;
+const API_BASE_URL = 'https://api.unthread.io/api'
+const UNTHREAD_API_KEY = process.env.UNTHREAD_API_KEY!
+const CHANNEL_ID = process.env.UNTHREAD_SLACK_CHANNEL_ID!
 
 // Customer ID cache to avoid creating duplicates
-const customerCache = new Map<string, Customer>();
+const customerCache = new Map<string, Customer>()
 
 /**
  * Creates a new customer in Unthread using the extracted company name from a Telegram group chat title.
@@ -238,7 +238,7 @@ const customerCache = new Map<string, Customer>();
 export async function createCustomer(groupChatName: string): Promise<Customer> {
   try {
     // Extract the actual customer company name from the group chat title
-    const customerName = extractCustomerCompanyName(groupChatName);
+    const customerName = extractCustomerCompanyName(groupChatName)
 
     const response = await fetch(`${API_BASE_URL}/customers`, {
       method: 'POST',
@@ -249,31 +249,31 @@ export async function createCustomer(groupChatName: string): Promise<Customer> {
       body: JSON.stringify({
         name: customerName,
       }),
-    });
+    })
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorText = await response.text()
       throw new Error(
         `Failed to create customer: ${response.status} ${errorText}`
-      );
+      )
     }
 
-    const result = (await response.json()) as Customer;
+    const result = (await response.json()) as Customer
 
     // Log the extraction for debugging
     LogEngine.info('Customer created with extracted name', {
       originalGroupChatName: groupChatName,
       extractedCustomerName: customerName,
       customerId: result.id,
-    });
+    })
 
-    return result;
+    return result
   } catch (error) {
     LogEngine.error('Error creating customer', {
       error: (error as Error).message,
       groupChatName,
-    });
-    throw error;
+    })
+    throw error
   }
 }
 
@@ -287,19 +287,19 @@ export async function createTicket(
   params: CreateTicketParams
 ): Promise<CreateTicketResponse> {
   try {
-    const { groupChatName, customerId, summary, onBehalfOf } = params;
+    const { groupChatName, customerId, summary, onBehalfOf } = params
 
     // Extract the customer company name for the ticket title
-    const customerCompanyName = extractCustomerCompanyName(groupChatName);
-    const title = `[Telegram Ticket] ${customerCompanyName}`;
+    const customerCompanyName = extractCustomerCompanyName(groupChatName)
+    const title = `[Telegram Ticket] ${customerCompanyName}`
 
-    return await createTicketJSON({ title, summary, customerId, onBehalfOf });
+    return await createTicketJSON({ title, summary, customerId, onBehalfOf })
   } catch (error) {
     LogEngine.error('Error creating ticket', {
       error: (error as Error).message,
       customerId: params.customerId,
-    });
-    throw error;
+    })
+    throw error
   }
 }
 
@@ -315,10 +315,10 @@ export async function createTicket(
 async function createTicketJSON(
   params: CreateTicketJSONParams
 ): Promise<CreateTicketResponse> {
-  const { title, summary, customerId, onBehalfOf } = params;
+  const { title, summary, customerId, onBehalfOf } = params
 
   // Get default priority from environment configuration
-  const defaultPriority = getDefaultTicketPriority();
+  const defaultPriority = getDefaultTicketPriority()
 
   const payload: CreateTicketPayload = {
     type: 'slack',
@@ -328,11 +328,11 @@ async function createTicketJSON(
     channelId: CHANNEL_ID!,
     customerId: customerId,
     onBehalfOf: onBehalfOf,
-  };
+  }
 
   // Add priority only if configured
   if (defaultPriority !== undefined) {
-    payload.priority = defaultPriority;
+    payload.priority = defaultPriority
   }
 
   const response = await fetch(`${API_BASE_URL}/conversations`, {
@@ -342,14 +342,14 @@ async function createTicketJSON(
       'X-API-KEY': UNTHREAD_API_KEY!,
     },
     body: JSON.stringify(payload),
-  });
+  })
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to create ticket: ${response.status} ${errorText}`);
+    const errorText = await response.text()
+    throw new Error(`Failed to create ticket: ${response.status} ${errorText}`)
   }
 
-  const result = (await response.json()) as CreateTicketResponse;
+  const result = (await response.json()) as CreateTicketResponse
 
   LogEngine.info('Ticket created (JSON)', {
     ticketTitle: title,
@@ -357,9 +357,9 @@ async function createTicketJSON(
     friendlyId: result.friendlyId,
     customerId: customerId,
     priority: defaultPriority || 'not set',
-  });
+  })
 
-  return result;
+  return result
 }
 
 /**
@@ -370,13 +370,13 @@ async function createTicketJSON(
  */
 export async function sendMessage(params: SendMessageParams): Promise<any> {
   try {
-    return await sendMessageJSON(params);
+    return await sendMessageJSON(params)
   } catch (error) {
     LogEngine.error('Error sending message', {
       error: (error as Error).message,
       conversationId: params.conversationId,
-    });
-    throw error;
+    })
+    throw error
   }
 }
 
@@ -388,7 +388,7 @@ export async function sendMessage(params: SendMessageParams): Promise<any> {
  * @throws If the API request fails or returns a non-OK status.
  */
 async function sendMessageJSON(params: SendMessageJSONParams): Promise<any> {
-  const { conversationId, message, onBehalfOf } = params;
+  const { conversationId, message, onBehalfOf } = params
 
   const payload = {
     body: {
@@ -396,7 +396,7 @@ async function sendMessageJSON(params: SendMessageJSONParams): Promise<any> {
       value: message,
     },
     onBehalfOf: onBehalfOf,
-  };
+  }
 
   const response = await fetch(
     `${API_BASE_URL}/conversations/${conversationId}/messages`,
@@ -408,14 +408,14 @@ async function sendMessageJSON(params: SendMessageJSONParams): Promise<any> {
       },
       body: JSON.stringify(payload),
     }
-  );
+  )
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to send message: ${response.status} ${errorText}`);
+    const errorText = await response.text()
+    throw new Error(`Failed to send message: ${response.status} ${errorText}`)
   }
 
-  return await response.json();
+  return await response.json()
 }
 
 /**
@@ -434,7 +434,7 @@ export async function registerTicketConfirmation(
       customerId,
       chatId,
       telegramUserId,
-    } = params;
+    } = params
 
     // Store ticket mapping using BotsStore
     await BotsStore.storeTicket({
@@ -445,7 +445,7 @@ export async function registerTicketConfirmation(
       telegramUserId: telegramUserId,
       ticketId: ticketId,
       createdAt: Date.now().toString(),
-    });
+    })
 
     LogEngine.info('Registered ticket confirmation', {
       messageId,
@@ -454,13 +454,13 @@ export async function registerTicketConfirmation(
       customerId,
       chatId,
       telegramUserId,
-    });
+    })
   } catch (error) {
     LogEngine.error('Error registering ticket confirmation', {
       error: (error as Error).message,
       ticketId: params.ticketId,
-    });
-    throw error;
+    })
+    throw error
   }
 }
 
@@ -475,25 +475,25 @@ export async function getTicketFromReply(
 ): Promise<TicketData | null> {
   try {
     const ticketData =
-      await BotsStore.getTicketByTelegramMessageId(replyToMessageId);
+      await BotsStore.getTicketByTelegramMessageId(replyToMessageId)
 
     LogEngine.debug('getTicketFromReply debug', {
       replyToMessageId,
       hasTicketData: !!ticketData,
       ticketDataKeys: ticketData ? Object.keys(ticketData) : null,
       hasMetadata: ticketData ? !!ticketData.metadata : false,
-    });
+    })
 
     // Return the ticketData directly, not ticketData.metadata
     // The stored ticket data contains all the info we need
-    return ticketData || null;
+    return ticketData || null
   } catch (error) {
     LogEngine.error('Error getting ticket from reply', {
       error: (error as Error).message,
       stack: (error as Error).stack,
       replyToMessageId,
-    });
-    return null;
+    })
+    return null
   }
 }
 
@@ -508,15 +508,15 @@ export async function getAgentMessageFromReply(
 ): Promise<AgentMessageData | null> {
   try {
     const agentMessageData =
-      await BotsStore.getAgentMessageByTelegramId(replyToMessageId);
-    return agentMessageData || null;
+      await BotsStore.getAgentMessageByTelegramId(replyToMessageId)
+    return agentMessageData || null
   } catch (error) {
     LogEngine.error('Error getting agent message from reply', {
       error: (error as Error).message,
       stack: (error as Error).stack,
       replyToMessageId,
-    });
-    return null;
+    })
+    return null
   }
 }
 
@@ -535,15 +535,15 @@ export async function getTicketsForChat(chatId: number): Promise<TicketData[]> {
     LogEngine.debug(
       'getTicketsForChat called but not yet implemented with BotsStore',
       { chatId }
-    );
-    return [];
+    )
+    return []
   } catch (error) {
     LogEngine.error('Error getting tickets for chat', {
       error: (error as Error).message,
       stack: (error as Error).stack,
       chatId,
-    });
-    return [];
+    })
+    return []
   }
 }
 
@@ -560,24 +560,24 @@ export async function getOrCreateCustomer(
 ): Promise<Customer> {
   try {
     // First, check if we already have this customer in our database by chat ID
-    const existingCustomer = await BotsStore.getCustomerByChatId(chatId);
+    const existingCustomer = await BotsStore.getCustomerByChatId(chatId)
     if (existingCustomer) {
       LogEngine.info('Using existing customer from database', {
         customerId: existingCustomer.unthreadCustomerId,
         customerName: existingCustomer.customerName || existingCustomer.name,
         chatId: chatId,
-      });
+      })
       return {
         id: existingCustomer.unthreadCustomerId,
         name:
           existingCustomer.customerName ||
           existingCustomer.name ||
           'Unknown Customer',
-      };
+      }
     }
 
     // Extract the actual customer company name from the group chat title
-    const customerName = extractCustomerCompanyName(groupChatName);
+    const customerName = extractCustomerCompanyName(groupChatName)
 
     // Create customer in Unthread API
     const response = await fetch(`${API_BASE_URL}/customers`, {
@@ -589,16 +589,16 @@ export async function getOrCreateCustomer(
       body: JSON.stringify({
         name: customerName,
       }),
-    });
+    })
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorText = await response.text()
       throw new Error(
         `Failed to create customer: ${response.status} ${errorText}`
-      );
+      )
     }
 
-    const result = (await response.json()) as Customer;
+    const result = (await response.json()) as Customer
 
     // Store customer in our database
     await BotsStore.storeCustomer({
@@ -611,19 +611,19 @@ export async function getOrCreateCustomer(
       name: customerName,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    });
+    })
 
     LogEngine.info('Created and stored new customer', {
       originalGroupChatName: groupChatName,
       extractedCustomerName: customerName,
       customerId: result.id,
       chatId: chatId,
-    });
+    })
 
     return {
       id: result.id,
       name: customerName,
-    };
+    }
   } catch (error) {
     LogEngine.error('Error getting or creating customer', {
       error: (error as Error).message,
@@ -631,8 +631,8 @@ export async function getOrCreateCustomer(
       groupChatName,
       chatId,
       apiUrl: `${API_BASE_URL}/customers`,
-    });
-    throw error;
+    })
+    throw error
   }
 }
 
@@ -651,27 +651,27 @@ export async function getOrCreateUser(
 ): Promise<OnBehalfOfUser> {
   try {
     // First, check if we already have this user in our database
-    const existingUser = await BotsStore.getUserByTelegramId(telegramUserId);
+    const existingUser = await BotsStore.getUserByTelegramId(telegramUserId)
     if (existingUser) {
       LogEngine.info('Using existing user from database', {
         telegramUserId: existingUser.telegramUserId,
         unthreadName: existingUser.unthreadName,
         unthreadEmail: existingUser.unthreadEmail,
-      });
+      })
       return {
         name:
           existingUser.unthreadName || `User ${existingUser.telegramUserId}`,
         email:
           existingUser.unthreadEmail ||
           `user_${existingUser.telegramUserId}@telegram.user`,
-      };
+      }
     }
 
     // Create new user data
-    const unthreadName = username ? `@${username}` : `User ${telegramUserId}`;
+    const unthreadName = username ? `@${username}` : `User ${telegramUserId}`
     const unthreadEmail = username
       ? `${username}_${telegramUserId}@telegram.user`
-      : `user_${telegramUserId}@telegram.user`;
+      : `user_${telegramUserId}@telegram.user`
 
     // Store user in our database
     const userData: UserData = {
@@ -681,36 +681,36 @@ export async function getOrCreateUser(
       unthreadEmail: unthreadEmail,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    };
-
-    if (username) {
-      userData.telegramUsername = username;
-      userData.username = username;
     }
 
-    await BotsStore.storeUser(userData);
+    if (username) {
+      userData.telegramUsername = username
+      userData.username = username
+    }
+
+    await BotsStore.storeUser(userData)
 
     LogEngine.info('Created and stored new user', {
       telegramUserId: telegramUserId,
       telegramUsername: username,
       unthreadName: unthreadName,
       unthreadEmail: unthreadEmail,
-    });
+    })
 
     return {
       name: unthreadName,
       email: unthreadEmail,
-    };
+    }
   } catch (error) {
     LogEngine.error('Error getting or creating user', {
       error: (error as Error).message,
       stack: (error as Error).stack,
       telegramUserId,
       username,
-    });
-    throw error;
+    })
+    throw error
   }
 }
 
 // Export the customer cache for potential use in other modules
-export { customerCache };
+export { customerCache }
