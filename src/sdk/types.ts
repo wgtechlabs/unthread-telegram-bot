@@ -107,12 +107,77 @@ export interface UserData {
   updatedAt: string;
 }
 
+// Admin profile data structures
+export interface AdminProfile {
+  telegramUserId: number;
+  telegramUsername?: string;
+  dmChatId: number; // DM chat ID for notifications
+  isActivated: boolean;
+  activatedAt: string;
+  lastActiveAt: string;
+}
+
+// Setup session data structures
+export interface SetupSession {
+  groupChatId: number;
+  groupChatName: string;
+  initiatingAdminId: number;
+  sessionId: string;
+  status: 'in_progress' | 'completed' | 'cancelled';
+  startedAt: string;
+  expiresAt: string; // startedAt + 3 minutes
+  currentStep: string;
+}
+
+// DM Setup Wizard interfaces
+export interface DmSetupSession {
+  sessionId: string;
+  adminId: number;
+  groupChatId: number;
+  groupChatName: string;
+  status: 'active' | 'completed' | 'cancelled';
+  startedAt: string;
+  expiresAt: string; // Extended timeout for DM sessions (10 minutes)
+  currentStep: string;
+  stepData?: Record<string, any>;
+  messageIds?: number[]; // Track wizard messages for cleanup
+}
+
 // User state for conversations
 export interface UserState {
   currentField?: string;
   field?: string;
   ticket?: any;
   [key: string]: any;
+}
+
+// Group configuration and setup state interfaces
+export interface GroupConfig {
+  chatId: number;
+  chatTitle?: string;
+  isConfigured: boolean;
+  customerId?: string;
+  customerName?: string;
+  setupBy?: number;
+  setupAt?: string;
+  botIsAdmin: boolean;
+  lastAdminCheck?: string;
+  setupVersion?: string;
+  lastUpdatedAt?: string;  // Metadata field for tracking updates
+  version?: string;        // Version field for schema versioning
+  metadata?: Record<string, any>;
+}
+
+export interface SetupState {
+  chatId: number;
+  step: 'bot_admin_check' | 'customer_selection' | 'customer_creation' | 'customer_linking' | 'complete';
+  initiatedBy: number;
+  startedAt: string;
+  suggestedCustomerName?: string;
+  tempCustomerId?: string;
+  userInput?: string;
+  retryCount?: number;
+  metadata?: Record<string, any>;
 }
 
 // Agent message data
@@ -191,8 +256,55 @@ export interface IBotsStore {
   // User operations
   storeUser(userData: UserData): Promise<boolean>;
   getUserByTelegramId(telegramUserId: number): Promise<UserData | null>;
+  updateUser(telegramUserId: number, updates: Partial<UserData>): Promise<boolean>;
+  
+  // Admin profile operations
+  storeAdminProfile(adminData: AdminProfile): Promise<boolean>;
+  getAdminProfile(telegramUserId: number): Promise<AdminProfile | null>;
+  updateAdminProfile(telegramUserId: number, updates: Partial<AdminProfile>): Promise<boolean>;
+  deleteAdminProfile(telegramUserId: number): Promise<boolean>;
+  
+  // Setup session operations
+  storeSetupSession(sessionData: SetupSession): Promise<boolean>;
+  getSetupSession(sessionId: string): Promise<SetupSession | null>;
+  getActiveSetupSessionByAdmin(adminId: number): Promise<SetupSession | null>;
+  updateSetupSession(sessionId: string, updates: Partial<SetupSession>): Promise<boolean>;
+  deleteSetupSession(sessionId: string): Promise<boolean>;
+  cleanupExpiredSessions(): Promise<number>; // Returns count of cleaned sessions
+  
+  // DM setup session operations
+  storeDmSetupSession(sessionData: DmSetupSession): Promise<boolean>;
+  getDmSetupSession(sessionId: string): Promise<DmSetupSession | null>;
+  getActiveDmSetupSessionByAdmin(adminId: number): Promise<DmSetupSession | null>;
+  updateDmSetupSession(sessionId: string, updates: Partial<DmSetupSession>): Promise<boolean>;
+  deleteDmSetupSession(sessionId: string): Promise<boolean>;
+  cleanupExpiredDmSessions(): Promise<number>; // Returns count of cleaned sessions
   
   // Agent message operations
   storeAgentMessage(messageData: AgentMessageData): Promise<boolean>;
   getAgentMessage(messageId: number): Promise<AgentMessageData | null>;
+  
+  // Group configuration operations
+  storeGroupConfig(config: GroupConfig): Promise<boolean>;
+  getGroupConfig(chatId: number): Promise<GroupConfig | null>;
+  updateGroupConfig(chatId: number, updates: Partial<GroupConfig>): Promise<boolean>;
+  deleteGroupConfig(chatId: number): Promise<boolean>;
+  
+  // Batch group configuration operations
+  storeGroupConfigs(configs: GroupConfig[]): Promise<boolean>;
+  getGroupConfigs(chatIds: number[]): Promise<(GroupConfig | null)[]>;
+  updateGroupConfigs(updates: {chatId: number, updates: Partial<GroupConfig>}[]): Promise<boolean>;
+  deleteGroupConfigs(chatIds: number[]): Promise<boolean>;
+  
+  // Setup state operations
+  storeSetupState(state: SetupState): Promise<boolean>;
+  getSetupState(chatId: number): Promise<SetupState | null>;
+  updateSetupState(chatId: number, updates: Partial<SetupState>): Promise<boolean>;
+  clearSetupState(chatId: number): Promise<boolean>;
+  
+  // Batch setup state operations
+  storeSetupStates(states: SetupState[]): Promise<boolean>;
+  getSetupStates(chatIds: number[]): Promise<(SetupState | null)[]>;
+  updateSetupStates(updates: {chatId: number, updates: Partial<SetupState>}[]): Promise<boolean>;
+  clearSetupStates(chatIds: number[]): Promise<boolean>;
 }

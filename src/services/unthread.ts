@@ -39,7 +39,7 @@ import fetch from 'node-fetch';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import { TicketData, AgentMessageData, UserData } from '../sdk/types.js';
-import { getDefaultTicketPriority } from '../config/env.js';
+import { getDefaultTicketPriority, getCompanyName } from '../config/env.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -144,11 +144,19 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
         return 'Unknown Company';
     }
 
-    const companyName = process.env.COMPANY_NAME || 'Unthread';
+    const companyName = getCompanyName();
+    
+    // If no company name is configured (placeholder or empty), use full group chat name
+    if (!companyName) {
+        return formatCustomerNameForDisplay(groupChatTitle);
+    }
     
     // Convert both to lowercase for effective matching
     const lowerTitle = groupChatTitle.toLowerCase().trim();
     const lowerCompanyName = companyName.toLowerCase().trim();
+    
+    // Check if the admin's company name appears in the group title
+    let foundCompanyInTitle = false;
     
     // Regex patterns to match different separators (x, <>, ×, etc.)
     const separatorPatterns = [
@@ -170,10 +178,12 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
                 
                 if (part1 === lowerCompanyName && part2 !== lowerCompanyName && part2) {
                     // Our company is first, customer is second
-                    return capitalizeCompanyName(part2);
+                    foundCompanyInTitle = true;
+                    return formatCustomerNameForDisplay(part2);
                 } else if (part2 === lowerCompanyName && part1 !== lowerCompanyName && part1) {
                     // Customer is first, our company is second
-                    return capitalizeCompanyName(part1);
+                    foundCompanyInTitle = true;
+                    return formatCustomerNameForDisplay(part1);
                 }
             }
         }
@@ -187,12 +197,15 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
         result = result.replace(/^[x<>&×\s]+|[x<>&×\s]+$/g, '').trim();
         
         if (result && result !== lowerTitle) {
-            return capitalizeCompanyName(result);
+            foundCompanyInTitle = true;
+            return formatCustomerNameForDisplay(result);
         }
     }
     
-    // Final fallback: return the original title capitalized
-    return capitalizeCompanyName(groupChatTitle);
+    // If admin's company name is NOT found in the group title, 
+    // the group title likely represents the partner's name
+    // Example: Admin company = "Unthread", Group title = "ACME Global Corp" → suggest "ACME Global Corp"
+    return formatCustomerNameForDisplay(groupChatTitle);
 }
 
 /**
@@ -215,6 +228,24 @@ function capitalizeCompanyName(name: string): string {
         .replace(/[^a-zA-Z0-9-_]/g, '') // Remove invalid characters, keep only letters, numbers, hyphens, underscores
         .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
         .replace(/-{2,}/g, '-'); // Replace multiple consecutive hyphens with single hyphen
+}
+
+/**
+ * Formats a customer name for human readability (preserves spaces, proper capitalization)
+ * Used for customer suggestions in the setup flow.
+ *
+ * @param name - The customer name to format
+ * @returns The formatted customer name with proper capitalization and spaces
+ */
+function formatCustomerNameForDisplay(name: string): string {
+    if (!name) return 'Unknown Company';
+    
+    return name
+        .trim()
+        .replace(/\s+/g, ' ') // Normalize multiple spaces to single space
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
 }
 
 // API URLs and Auth Keys
@@ -525,13 +556,32 @@ export async function getTicketsForChat(chatId: number): Promise<TicketData[]> {
  */
 export async function getOrCreateCustomer(groupChatName: string, chatId: number): Promise<Customer> {
     try {
-        // First, check if we already have this customer in our database by chat ID
+        // Check if group is configured first
+        const groupConfig = await BotsStore.getGroupConfig(chatId);
+        
+        if (groupConfig && groupConfig.isConfigured && groupConfig.customerId) {
+            // Group is configured - use the configured customer
+            LogEngine.info('Using configured customer for group', {
+                customerId: groupConfig.customerId,
+                customerName: groupConfig.customerName,
+                chatId: chatId,
+                groupConfigured: true
+            });
+            
+            return {
+                id: groupConfig.customerId,
+                name: groupConfig.customerName || 'Unknown Customer'
+            };
+        }
+        
+        // Group not configured - check for legacy customer data
         const existingCustomer = await BotsStore.getCustomerByChatId(chatId);
         if (existingCustomer) {
-            LogEngine.info('Using existing customer from database', {
+            LogEngine.info('Using existing customer from legacy storage', {
                 customerId: existingCustomer.unthreadCustomerId,
                 customerName: existingCustomer.customerName || existingCustomer.name,
-                chatId: chatId
+                chatId: chatId,
+                groupConfigured: false
             });
             return {
                 id: existingCustomer.unthreadCustomerId,
@@ -539,61 +589,31 @@ export async function getOrCreateCustomer(groupChatName: string, chatId: number)
             };
         }
 
-        // Extract the actual customer company name from the group chat title
-        const customerName = extractCustomerCompanyName(groupChatName);
-        
-        // Create customer in Unthread API
-        const response = await fetch(`${API_BASE_URL}/customers`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-API-KEY': UNTHREAD_API_KEY!
-            },
-            body: JSON.stringify({
-                name: customerName
-            })
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to create customer: ${response.status} ${errorText}`);
-        }
-
-        const result = await response.json() as Customer;
-        
-        // Store customer in our database
-        await BotsStore.storeCustomer({
-            id: `customer_${chatId}`,
-            unthreadCustomerId: result.id,
-            telegramChatId: chatId,
-            chatId: chatId,
-            chatTitle: groupChatName,
-            customerName: customerName,
-            name: customerName,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+        // Prevent auto-creation for unconfigured groups
+        // This encourages proper setup through the /setup command
+        LogEngine.warn('Attempted ticket creation in unconfigured group', {
+            groupChatName,
+            chatId,
+            message: 'Group requires setup before ticket creation'
         });
         
-        LogEngine.info('Created and stored new customer', {
-            originalGroupChatName: groupChatName,
-            extractedCustomerName: customerName,
-            customerId: result.id,
-            chatId: chatId
-        });
-
-        return {
-            id: result.id,
-            name: customerName
-        };
+        throw new Error(
+            'GROUP_NOT_CONFIGURED: This group has not been configured for support tickets. ' +
+            'Please ask a group administrator to run /setup to link this group to a customer account.'
+        );
     } catch (error) {
+        const err = error as Error;
         LogEngine.error('Error getting or creating customer', {
-            error: (error as Error).message,
-            stack: (error as Error).stack,
+            error: err.message,
+            stack: err.stack,
             groupChatName,
             chatId,
             apiUrl: `${API_BASE_URL}/customers`
         });
-        throw error;
+        
+        // Ensure we always throw the error to maintain Promise<Customer> contract
+        // The function should either resolve with a Customer or reject with an error
+        throw err;
     }
 }
 
@@ -665,6 +685,220 @@ export async function getOrCreateUser(telegramUserId: number, username?: string)
         });
         throw error;
     }
+}
+
+/**
+ * Generates a customer name from a group chat title with [Telegram] prefix
+ * 
+ * This function takes a Telegram group chat title and creates a suitable customer name
+ * by extracting the company/customer portion and adding a [Telegram] prefix to distinguish
+ * it from other communication channels.
+ * 
+ * @param groupChatTitle - The Telegram group chat title
+ * @returns A formatted customer name with [Telegram] prefix
+ */
+export function generateCustomerName(groupChatTitle: string): string {
+    if (!groupChatTitle) {
+        return '[Telegram] Unknown Company';
+    }
+
+    // Use existing extraction logic to get the customer name
+    const extractedName = extractCustomerCompanyName(groupChatTitle);
+    
+    // Add [Telegram] prefix to distinguish from other channels
+    return `[Telegram] ${extractedName}`;
+}
+
+/**
+ * Customer Operations - API Integration Functions
+ */
+
+/**
+ * Validates if a customer exists in Unthread by customer ID
+ * 
+ * @param customerId - The customer ID to validate
+ * @returns Object with validation result and customer details if found
+ */
+export async function validateCustomerExists(customerId: string): Promise<{
+    exists: boolean;
+    customer?: Customer;
+    error?: string;
+}> {
+    try {
+        if (!customerId || customerId.trim() === '') {
+            return {
+                exists: false,
+                error: 'Customer ID cannot be empty'
+            };
+        }
+
+        const response = await fetch(`${API_BASE_URL}/customers/${customerId}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-KEY': UNTHREAD_API_KEY!
+            }
+        });
+
+        if (response.status === 404) {
+            LogEngine.info('Customer not found in Unthread', { customerId });
+            return {
+                exists: false,
+                error: 'Customer not found'
+            };
+        }
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            LogEngine.error('Error validating customer', {
+                customerId,
+                status: response.status,
+                error: errorText
+            });
+            return {
+                exists: false,
+                error: `API error: ${response.status} ${errorText}`
+            };
+        }
+
+        const customer = await response.json() as Customer;
+        
+        LogEngine.info('Customer validated successfully', {
+            customerId,
+            customerName: customer.name
+        });
+
+        return {
+            exists: true,
+            customer: customer
+        };
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Exception during customer validation', {
+            customerId,
+            error: err.message,
+            stack: err.stack
+        });
+        return {
+            exists: false,
+            error: `Validation failed: ${err.message}`
+        };
+    }
+}
+
+/**
+ * Gets detailed customer information from Unthread
+ * 
+ * @param customerId - The customer ID to get details for
+ * @returns Customer details or null if not found
+ */
+export async function getCustomerDetails(customerId: string): Promise<Customer | null> {
+    try {
+        const validation = await validateCustomerExists(customerId);
+        
+        if (validation.exists && validation.customer) {
+            return validation.customer;
+        }
+        
+        return null;
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error getting customer details', {
+            customerId,
+            error: err.message
+        });
+        return null;
+    }
+}
+
+/**
+ * Creates a customer in Unthread with the specified name
+ * 
+ * @param customerName - The name for the new customer
+ * @returns The created customer object
+ */
+export async function createCustomerWithName(customerName: string): Promise<Customer> {
+    try {
+        if (!customerName || customerName.trim() === '') {
+            throw new Error('Customer name cannot be empty');
+        }
+
+        const trimmedName = customerName.trim();
+
+        const response = await fetch(`${API_BASE_URL}/customers`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-KEY': UNTHREAD_API_KEY!
+            },
+            body: JSON.stringify({
+                name: trimmedName
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to create customer: ${response.status} ${errorText}`);
+        }
+
+        const result = await response.json() as Customer;
+        
+        LogEngine.info('Customer created successfully', {
+            customerName: trimmedName,
+            customerId: result.id
+        });
+
+        // Cache the customer to avoid duplicates
+        customerCache.set(trimmedName, result);
+
+        return result;
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error creating customer with name', {
+            customerName,
+            error: err.message
+        });
+        throw error;
+    }
+}
+
+/**
+ * Handles API errors gracefully with user-friendly messages
+ * 
+ * @param error - The error to handle
+ * @param operation - The operation that failed
+ * @returns User-friendly error message
+ */
+export function handleUnthreadApiError(error: any, operation: string): string {
+    const err = error as Error;
+    
+    // Network errors
+    if (err.message.includes('fetch')) {
+        return '🌐 **Connection Error**\n\nUnable to connect to Unthread servers. Please check your internet connection and try again.';
+    }
+    
+    // API key errors
+    if (err.message.includes('401') || err.message.includes('unauthorized')) {
+        return '🔑 **Authentication Error**\n\nInvalid API credentials. Please contact your system administrator.';
+    }
+    
+    // Rate limiting
+    if (err.message.includes('429') || err.message.includes('rate limit')) {
+        return '⏰ **Rate Limit Exceeded**\n\nToo many requests. Please wait a moment and try again.';
+    }
+    
+    // Server errors
+    if (err.message.includes('500') || err.message.includes('503')) {
+        return '🚨 **Server Error**\n\nUnthread servers are experiencing issues. Please try again later.';
+    }
+    
+    // Customer not found
+    if (err.message.includes('404') || err.message.includes('not found')) {
+        return '❌ **Customer Not Found**\n\nThe specified customer ID does not exist in your Unthread account.';
+    }
+    
+    // Generic error
+    return `❌ **${operation} Failed**\n\nAn unexpected error occurred: ${err.message}\n\nPlease try again or contact support if the issue persists.`;
 }
 
 // Export the customer cache for potential use in other modules
