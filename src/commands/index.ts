@@ -36,16 +36,14 @@ import {
 } from './admin/AdminCommands.js';
 
 // Processors
-import { 
+import {
     SupportConversationProcessor,
     SetupInputProcessor,
-    TemplateEditProcessor,
     DmSetupInputProcessor
 } from './processors/ConversationProcessors.js';
 import { 
     SupportCallbackProcessor,
     SetupCallbackProcessor,
-    TemplateCallbackProcessor,
     AdminCallbackProcessor
 } from './processors/CallbackProcessors.js';
 
@@ -74,13 +72,11 @@ export function initializeCommands(): void {
     // Register conversation processors
     commandRegistry.registerConversationProcessor(new SupportConversationProcessor());
     commandRegistry.registerConversationProcessor(new SetupInputProcessor());
-    commandRegistry.registerConversationProcessor(new TemplateEditProcessor());
     commandRegistry.registerConversationProcessor(new DmSetupInputProcessor());
 
     // Register callback processors
     commandRegistry.registerCallbackProcessor(new SupportCallbackProcessor());
     commandRegistry.registerCallbackProcessor(new SetupCallbackProcessor());
-    commandRegistry.registerCallbackProcessor(new TemplateCallbackProcessor());
     commandRegistry.registerCallbackProcessor(new AdminCallbackProcessor());
 
     const stats = commandRegistry.getStats();

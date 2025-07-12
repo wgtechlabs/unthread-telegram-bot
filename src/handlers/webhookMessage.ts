@@ -30,7 +30,7 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 import type { Telegraf } from 'telegraf';
 import type { BotContext } from '../types/index.js';
 import type { IBotsStore } from '../sdk/types.js';
-import { MessageFormatter, TemplateContext } from '../utils/messageFormatter.js';
+import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
 
 /**
@@ -40,12 +40,12 @@ import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
 export class TelegramWebhookHandler {
   private bot: Telegraf<BotContext>;
   private botsStore: IBotsStore; // SDK type, properly typed with IBotsStore interface
-  private messageFormatter: MessageFormatter;
+  private templateManager: GlobalTemplateManager;
 
   constructor(bot: Telegraf<BotContext>, botsStore: IBotsStore) {
     this.bot = bot;
     this.botsStore = botsStore;
-    this.messageFormatter = new MessageFormatter(botsStore as BotsStore);
+    this.templateManager = GlobalTemplateManager.getInstance();
   }
 
   /**
@@ -503,33 +503,22 @@ export class TelegramWebhookHandler {
    */
   async formatAgentMessageWithTemplate(text: string, ticketData: any, eventData: any): Promise<string> {
     try {
-      // Build template context
-      const context: TemplateContext = {
-        botName: 'Support Bot',
-        groupName: 'Support Team',
-        timestamp: new Date().toLocaleString(),
+      // Build template variables for global template system
+      const variables = {
         ticketId: ticketData.friendlyId,
-        ticketTitle: eventData.subject || 'Support Request',
-        ticketDescription: text,
-        ticketStatus: 'Open',
-        ticketUrl: eventData.url || undefined,
+        summary: eventData.subject || 'Support Request',
+        customerName: ticketData.userName || 'Customer',
+        status: 'Open',
         agentName: eventData.userName || eventData.agentName || 'Support Agent',
-        agentEmail: eventData.userEmail || eventData.agentEmail || undefined,
-        userName: ticketData.userName || undefined,
-        userEmail: ticketData.userEmail || undefined
+        response: text,
+        createdAt: new Date().toLocaleString(),
+        updatedAt: new Date().toLocaleString()
       };
 
-      // Get group chat ID for template lookup
-      const groupChatId = ticketData.chatId;
+      // Format using global template system
+      const formatted = await this.templateManager.renderTemplate('agent_response', variables);
 
-      // Format using template system
-      const formatted = await this.messageFormatter.formatMessage(
-        groupChatId,
-        'agent_response',
-        context
-      );
-
-      return formatted;
+      return formatted || text; // Fallback to plain text if template fails
     } catch (error) {
       LogEngine.warn('Failed to format message with template, using fallback', {
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -550,35 +539,25 @@ export class TelegramWebhookHandler {
    */
   async formatStatusUpdateWithTemplate(ticketData: any, status: string, eventData: any): Promise<string> {
     try {
-      // Build template context
-      const context: TemplateContext = {
-        botName: 'Support Bot',
-        groupName: 'Support Team',
-        timestamp: new Date().toLocaleString(),
+      // Build template variables for global template system
+      const variables = {
         ticketId: ticketData.friendlyId,
-        ticketTitle: eventData.subject || 'Support Request',
-        ticketStatus: status === 'closed' ? 'Closed' : 'Updated',
-        ticketUrl: eventData.url || undefined,
+        summary: eventData.subject || 'Support Request',
+        customerName: ticketData.userName || 'Customer',
+        status: status === 'closed' ? 'Closed' : 'Updated',
         agentName: eventData.userName || eventData.agentName || 'Support Agent',
-        agentEmail: eventData.userEmail || eventData.agentEmail || undefined,
-        userName: ticketData.userName || undefined,
-        userEmail: ticketData.userEmail || undefined
+        response: '', // For status updates, response might be empty
+        createdAt: new Date().toLocaleString(),
+        updatedAt: new Date().toLocaleString()
       };
 
-      // Get group chat ID for template lookup
-      const groupChatId = ticketData.chatId;
-
       // Choose template type based on status
-      const templateType = status === 'closed' ? 'ticket_closed' : 'ticket_updated';
+      const templateType = status === 'closed' ? 'ticket_closed' : 'ticket_created'; // Use ticket_created for updates since ticket_updated doesn't exist in global system
 
-      // Format using template system
-      const formatted = await this.messageFormatter.formatMessage(
-        groupChatId,
-        templateType,
-        context
-      );
+      // Format using global template system
+      const formatted = await this.templateManager.renderTemplate(templateType, variables);
 
-      return formatted;
+      return formatted || this.getFallbackStatusMessage(ticketData, status);
     } catch (error) {
       LogEngine.warn('Failed to format status update with template, using fallback', {
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -586,11 +565,15 @@ export class TelegramWebhookHandler {
         status
       });
       
-      // Fallback to simple status message
-      const statusIcon = status === 'closed' ? '✅' : '📝';
-      const statusText = status === 'closed' ? 'Closed' : 'Updated';
-      return `${statusIcon} **Ticket ${statusText}**\n\nTicket #${ticketData.friendlyId} has been ${status}.`;
+      return this.getFallbackStatusMessage(ticketData, status);
     }
+  }
+
+  private getFallbackStatusMessage(ticketData: any, status: string): string {
+    // Fallback to simple status message
+    const statusIcon = status === 'closed' ? '✅' : '📝';
+    const statusText = status === 'closed' ? 'Closed' : 'Updated';
+    return `${statusIcon} **Ticket ${statusText}**\n\nTicket #${ticketData.friendlyId} has been ${status}.`;
   }
 
   /**

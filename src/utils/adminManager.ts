@@ -424,7 +424,7 @@ export async function cancelDmSetupSession(sessionId: string): Promise<boolean> 
  * template updates, and other important events.
  */
 
-import { MessageFormatter } from './messageFormatter.js';
+import { GlobalTemplateManager } from './globalTemplateManager.js';
 
 interface NotificationContext {
   groupId: number;
@@ -519,12 +519,17 @@ export async function notifyAdminsOfConfigChange(
       timestamp: new Date().toISOString()
     };
 
-    const formatter = new MessageFormatter(BotsStore.getInstance());
-    const messageText = await formatter.formatMessage(
-      groupChatId,
-      'admin_config_changed',
-      context
-    );
+    // Simple admin notification message (could be enhanced with global templates later)
+    const messageText = `🔧 **Configuration Update**
+
+**Group:** ${context.groupTitle || `Group ${groupChatId}`}
+**Change:** ${changeType}
+**Details:** ${changeDetails}
+**Time:** ${context.timestamp}
+
+${context.adminName ? `**By:** ${context.adminName}` : ''}
+
+Group configuration has been updated.`;
 
     let successCount = 0;
     let failedCount = 0;
@@ -659,12 +664,19 @@ export async function reportNotificationFailures(
       timestamp: new Date().toISOString()
     };
 
-    const formatter = new MessageFormatter(BotsStore.getInstance());
-    const messageText = await formatter.formatMessage(
-      groupChatId,
-      'admin_notification_failed',
-      context
-    );
+    // Simple notification failure message (could be enhanced with global templates later)
+    const messageText = `⚠️ **Admin Notification: Delivery Issues**
+
+**Group:** Group ${groupChatId}
+**Issue:** Failed to deliver ${context.failedCount} admin notifications
+**Time:** ${context.timestamp}
+
+Some administrators may not have received configuration change notifications. This may be due to:
+• Blocked bot access
+• Deleted private chats
+• Network connectivity issues
+
+Please check your private chat with the bot.`;
 
     // Send failure report to working admins
     for (const admin of workingAdmins) {

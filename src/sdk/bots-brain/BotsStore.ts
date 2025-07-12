@@ -45,9 +45,7 @@ import type {
   SetupSession,
   DmSetupSession,
   IBotsStore,
-  StorageConfig,
-  MessageTemplate,
-  MessageTemplateType
+  StorageConfig
 } from '../types.js';
 import type { DatabaseConnection } from '../../database/connection.js';
 
@@ -1639,123 +1637,6 @@ export class BotsStore implements IBotsStore {
 
   static async deleteGlobalConfig(key: string): Promise<boolean> {
     return BotsStore.getInstance().deleteGlobalConfig(key);
-  }
-
-  // Message template storage methods
-  async saveMessageTemplate(template: MessageTemplate): Promise<void> {
-    const key = BotsStore.getMessageTemplateKey(template.groupChatId, template.id);
-    await this.storage.set(key, template);
-    
-    // Also store the template ID in the list for retrieval
-    const templateIdsKey = `template_ids:${template.groupChatId}`;
-    const existingIds = await this.getArrayFromStorage(templateIdsKey);
-    if (!existingIds.includes(template.id)) {
-      existingIds.push(template.id);
-      await this.storage.set(templateIdsKey, existingIds);
-    }
-  }
-
-  async getMessageTemplate(groupChatId: number, templateId: string): Promise<MessageTemplate | null> {
-    const key = BotsStore.getMessageTemplateKey(groupChatId, templateId);
-    return await this.storage.get(key);
-  }
-
-  async getMessageTemplatesByType(groupChatId: number, templateType: MessageTemplateType): Promise<MessageTemplate[]> {
-    const allTemplates = await this.getAllMessageTemplates(groupChatId);
-    return allTemplates.filter(template => 
-      template.templateType === templateType && template.isActive
-    );
-  }
-
-  async getAllMessageTemplates(groupChatId: number): Promise<MessageTemplate[]> {
-    const templateIdsKey = `template_ids:${groupChatId}`;
-    const templateIds = await this.getArrayFromStorage(templateIdsKey);
-    
-    if (templateIds.length === 0) {
-      return [];
-    }
-
-    // Use Promise.all for concurrent retrieval to reduce latency
-    const templatePromises = templateIds.map(async (templateId: string) => {
-      try {
-        return await this.getMessageTemplate(groupChatId, templateId);
-      } catch (error) {
-        LogEngine.warn('Failed to retrieve template', {
-          templateId,
-          groupChatId,
-          error: (error as Error).message
-        });
-        return null;
-      }
-    });
-    
-    const templateResults = await Promise.all(templatePromises);
-    const templates = templateResults.filter((template): template is MessageTemplate => template !== null);
-    
-    return templates.sort((a, b) => b.version - a.version);
-  }
-
-  async getDefaultMessageTemplate(groupChatId: number, templateType: MessageTemplateType): Promise<MessageTemplate | null> {
-    const templates = await this.getMessageTemplatesByType(groupChatId, templateType);
-    return templates.find(template => template.isDefault) || null;
-  }
-
-  async getActiveMessageTemplate(groupChatId: number, templateType: MessageTemplateType): Promise<MessageTemplate | null> {
-    const templates = await this.getMessageTemplatesByType(groupChatId, templateType);
-    return templates.find(template => template.isActive) || null;
-  }
-
-  async deleteMessageTemplate(groupChatId: number, templateId: string): Promise<void> {
-    const key = BotsStore.getMessageTemplateKey(groupChatId, templateId);
-    await this.storage.delete(key);
-    
-    // Also remove from the template IDs list
-    const templateIdsKey = `template_ids:${groupChatId}`;
-    const existingIds = await this.getArrayFromStorage(templateIdsKey);
-    const updatedIds = existingIds.filter((id: string) => id !== templateId);
-    await this.storage.set(templateIdsKey, updatedIds);
-  }
-
-  async updateMessageTemplate(groupChatId: number, templateId: string, updates: Partial<MessageTemplate>): Promise<MessageTemplate | null> {
-    const existing = await this.getMessageTemplate(groupChatId, templateId);
-    if (!existing) return null;
-
-    const updated: MessageTemplate = {
-      ...existing,
-      ...updates,
-      lastModifiedAt: new Date().toISOString(),
-      version: existing.version + 1
-    };
-
-    await this.saveMessageTemplate(updated);
-    return updated;
-  }
-
-  async setDefaultTemplate(groupChatId: number, templateType: MessageTemplateType, templateId: string): Promise<boolean> {
-    // First, unset any existing default
-    const allTemplates = await this.getMessageTemplatesByType(groupChatId, templateType);
-    for (const template of allTemplates) {
-      if (template.isDefault) {
-        await this.updateMessageTemplate(groupChatId, template.id, { isDefault: false });
-      }
-    }
-
-    // Set the new default
-    const updated = await this.updateMessageTemplate(groupChatId, templateId, { 
-      isDefault: true,
-      isActive: true 
-    });
-    return updated !== null;
-  }
-
-  // Static helpers for templates
-  static getMessageTemplateKey(groupChatId: number, templateId: string): string {
-    return `template:${groupChatId}:${templateId}`;
-  }
-
-  static generateTemplateId(templateType: MessageTemplateType, groupChatId: number): string {
-    const timestamp = Date.now();
-    return `${templateType}_${groupChatId}_${timestamp}`;
   }
 
   // =====================================================================

@@ -143,43 +143,6 @@ export interface DmSetupSession {
   messageIds?: number[]; // Track wizard messages for cleanup
 }
 
-// Message template interfaces
-export interface MessageTemplate {
-  id: string;
-  groupChatId: number;
-  templateType: MessageTemplateType;
-  name: string;
-  content: string;
-  variables: string[]; // Available variables for this template
-  isDefault: boolean;
-  isActive: boolean;
-  createdBy: number;
-  createdAt: string;
-  lastModifiedAt: string;
-  version: number;
-}
-
-export type MessageTemplateType = 
-  | 'ticket_created'
-  | 'ticket_updated'
-  | 'agent_response'
-  | 'ticket_closed'
-  | 'welcome_message'
-  | 'error_message'
-  | 'setup_complete'
-  | 'admin_config_changed'
-  | 'admin_template_changed'
-  | 'admin_setup_completed'
-  | 'admin_notification_failed';
-
-export interface TemplateVariable {
-  name: string;
-  description: string;
-  category: 'core' | 'ticket' | 'user' | 'group' | 'time';
-  example: string;
-  required: boolean;
-}
-
 // User state for conversations
 export interface UserState {
   currentField?: string;

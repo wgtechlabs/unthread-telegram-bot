@@ -91,45 +91,6 @@ export class SetupInputProcessor implements IConversationProcessor {
 }
 
 /**
- * Template Edit Processor
- * Handles text input during template editing
- */
-export class TemplateEditProcessor implements IConversationProcessor {
-    async canHandle(ctx: BotContext): Promise<boolean> {
-        const userId = ctx.from?.id;
-        if (!userId || ctx.chat?.type !== 'private') {
-            return false;
-        }
-
-        try {
-            // Check if user has an active template editing session
-            const templateSession = await BotsStore.getGlobalConfig(`template_edit_${userId}`);
-            return templateSession !== null;
-        } catch (error) {
-            logError(error, 'TemplateEditProcessor.canHandle', { userId });
-            return false;
-        }
-    }
-
-    async process(ctx: BotContext): Promise<boolean> {
-        try {
-            await ctx.reply(
-                "📝 **Template Edit Input**\n\n" +
-                "This is where template editing would be processed.\n\n" +
-                "*Clean separation of concerns in action!*",
-                { parse_mode: 'Markdown' }
-            );
-            return true;
-        } catch (error) {
-            logError(error, 'TemplateEditProcessor.process', { 
-                userId: ctx.from?.id 
-            });
-            return false;
-        }
-    }
-}
-
-/**
  * DM Setup Input Processor
  * Handles text input during DM-based setup flows (like custom customer names)
  */
@@ -567,46 +528,6 @@ Choose how you'd like to handle message templates:`;
                 }
             );
             return true;
-        }
-    }
-
-    /**
-     * Send setup completion notification to the group chat
-     */
-    private async sendGroupSetupNotification(session: any): Promise<void> {
-        try {
-            const bot = (global as any).bot;
-            if (!bot) {
-                logError(new Error('Bot instance not available for group notification'), 'DmSetupInputProcessor.sendGroupSetupNotification', { sessionId: session.sessionId });
-                return;
-            }
-
-            const customerName = session.stepData?.customerName || 
-                               session.stepData?.suggestedName || 
-                               (session.stepData?.existingCustomerId ? `Customer ${session.stepData.existingCustomerId.substring(0, 8)}...` : 'Unknown');
-
-            const setupType = session.stepData?.linkType === 'existing' ? 'linked to existing customer' : 'configured with new customer';
-
-            const groupNotification = `✅ **Setup Complete!**
-
-📋 **This group is now configured for support tickets.**
-
-**Customer:** ${customerName}  
-**Setup:** Successfully ${setupType}
-
-🎫 **Members can use** \`/support\` **to create support tickets and get help from our team.**
-
-⚡ **Quick Setup:** Just two simple choices in your DM!`;
-
-            await bot.telegram.sendMessage(session.groupChatId, groupNotification, { 
-                parse_mode: 'Markdown' 
-            });
-
-        } catch (error) {
-            logError(error, 'DmSetupInputProcessor.sendGroupSetupNotification', { 
-                sessionId: session.sessionId,
-                groupChatId: session.groupChatId 
-            });
         }
     }
 }
