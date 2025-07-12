@@ -20,12 +20,12 @@
  * @version 1.0.0
  * @since 2025
  */
-import { Context, Telegraf } from 'telegraf';
+import { Context, Telegraf } from "telegraf";
 import {
   Message,
   Update,
   UserFromGetMe,
-} from 'telegraf/typings/core/types/typegram';
+} from "telegraf/typings/core/types/typegram";
 
 // Bot context extensions - extending the base context
 export interface BotContext extends Context<Update> {
@@ -37,9 +37,9 @@ export type CommandHandler = (ctx: BotContext) => Promise<void>;
 
 // Support form types
 export enum SupportField {
-  SUMMARY = 'summary',
-  EMAIL = 'email',
-  COMPLETE = 'complete',,
+  SUMMARY = "summary",
+  EMAIL = "email",
+  COMPLETE = "complete",
   PROFILE_EMAIL_UPDATE = 'profile_email_update'
 }
 
