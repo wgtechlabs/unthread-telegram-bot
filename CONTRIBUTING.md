@@ -8,11 +8,11 @@ This project and everyone participating in it is governed by the project's [Code
 
 ## 💖 How to Contribute
 
-There are many ways to contribute to this open source project. Any contributions are welcome and appreciated. Be sure to read the details of each section for you to start contributing.
+There are many ways to contribute to this open source project. All contributions are welcome and appreciated. Be sure to read the details of each section to get started.
 
 ### 🧬 Development
 
-If you can write code then create a pull request to this repo and I will review your code. Please consider submitting your pull request to the `dev` branch. I will auto reject if you submit your pull request to the `main` branch.
+If you can write code, create a pull request to this repository and I will review your code. Please consider submitting your pull request to the `dev` branch. Pull requests to the `main` branch will be automatically rejected.
 
 #### 🔧 Development Setup
 

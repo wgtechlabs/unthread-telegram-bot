@@ -1,8 +1,32 @@
 /**
- * Bot Permission Utilities
+ * Unthread Telegram Bot - Bot Permission Management Module
  * 
- * This module handles checking if the bot has admin permissions in Telegram groups,
- * which is required for proper setup and operation.
+ * Provides comprehensive utilities for checking and managing bot permissions in
+ * Telegram groups and channels. This module ensures the bot has the necessary
+ * administrative privileges to perform its functions effectively.
+ * 
+ * Core Features:
+ * - Bot admin permission verification in groups
+ * - Permission requirement guidance for users
+ * - Automated permission checking with user-friendly feedback
+ * - Retry mechanisms for permission validation
+ * - Integration with group setup workflows
+ * 
+ * Permission Requirements:
+ * - Administrator status in target groups
+ * - Message sending and editing permissions
+ * - Access to group member information
+ * - Ability to read message history
+ * 
+ * Error Handling:
+ * - Clear messaging when permissions are insufficient
+ * - Step-by-step guidance for granting permissions
+ * - Graceful fallbacks when permission checks fail
+ * - Comprehensive logging for debugging permission issues
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ * @version 1.0.0
+ * @since 2025
  */
 
 import type { BotContext } from '../types/index.js';
