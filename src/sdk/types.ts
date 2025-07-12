@@ -2,31 +2,31 @@ import type { Pool } from 'pg';
 
 /**
  * Unthread Telegram Bot - SDK Type Definitions
- * 
+ *
  * Core TypeScript interfaces and type definitions for the Bots Brain and
  * Unthread Webhook SDKs. Provides comprehensive type safety and IntelliSense
  * support for all SDK components and integrations.
- * 
+ *
  * Type Categories:
  * - Storage Interfaces: Multi-layer storage system types
  * - Database Connections: PostgreSQL and Redis connection interfaces
  * - Ticket Management: Support ticket and customer data structures
  * - Webhook Events: Event types for Unthread platform integration
  * - User Management: User state and conversation data types
- * 
+ *
  * Key Interfaces:
  * - IBotsStore: High-level bot storage operations interface
  * - Storage: Low-level storage engine interface
  * - TicketData: Support ticket information and metadata
  * - WebhookEvent: Unthread platform webhook event structure
  * - UserState: Conversation state and form data management
- * 
+ *
  * Features:
  * - Type-safe database operations
  * - Comprehensive webhook event typing
  * - Storage layer abstraction interfaces
  * - User state management types * - Integration with external service types
- * 
+ *
  * @author Waren Gonzaga, WG Technology Labs
  * @version 1.0.0
  * @since 2025
@@ -232,7 +232,7 @@ export type EventHandler = (event: WebhookEvent) => Promise<void>;
 // BotsStore interface
 export interface IBotsStore {
   storage: Storage;
-  
+
   // Ticket operations
   storeTicket(ticketData: TicketData): Promise<boolean>;
   getTicketByConversationId(conversationId: string): Promise<TicketData | null>;
@@ -241,17 +241,17 @@ export interface IBotsStore {
   getTicketByTicketId(ticketId: string): Promise<TicketData | null>;
   getTicketsForChat(chatId: number): Promise<TicketData[]>;
   deleteTicket(conversationId: string): Promise<boolean>;
-  
+
   // User state operations
   storeUserState(telegramUserId: number, state: UserState): Promise<boolean>;
   getUserState(telegramUserId: number): Promise<UserState | null>;
   clearUserState(telegramUserId: number): Promise<boolean>;
-  
+
   // Customer operations
   storeCustomer(customerData: CustomerData): Promise<boolean>;
   getCustomerById(customerId: string): Promise<CustomerData | null>;
   getCustomerByChatId(chatId: number): Promise<CustomerData | null>;
-  
+
   // User operations
   storeUser(userData: UserData): Promise<boolean>;
   getUserByTelegramId(telegramUserId: number): Promise<UserData | null>;
@@ -278,7 +278,7 @@ export interface IBotsStore {
   updateDmSetupSession(sessionId: string, updates: Partial<DmSetupSession>): Promise<boolean>;
   deleteDmSetupSession(sessionId: string): Promise<boolean>;
   cleanupExpiredDmSessions(): Promise<number>; // Returns count of cleaned sessions
-  
+
   // Agent message operations
   storeAgentMessage(messageData: AgentMessageData): Promise<boolean>;
   getAgentMessage(messageId: number): Promise<AgentMessageData | null>;

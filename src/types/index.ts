@@ -1,27 +1,31 @@
 /**
  * Unthread Telegram Bot - Type Definitions
- * 
+ *
  * Core TypeScript interfaces and type definitions for the Unthread Telegram Bot
  * project. Provides type safety and IntelliSense support across the entire
  * application codebase.
- * 
+ *
  * Type Categories:
  * - Bot Context: Extended Telegraf context with bot-specific properties
  * - Command Handlers: Function signatures for bot command implementations
  * - Support Form: Types for multi-step support ticket creation flow
  * - Error Handling: Telegram-specific error types and error handling
- * 
+ *
  * Features:
  * - Type-safe bot context extensions
  * - Enum-based support form field definitions
  * - Comprehensive error type definitions * - Integration with Telegraf framework types
- * 
+ *
  * @author Waren Gonzaga, WG Technology Labs
  * @version 1.0.0
  * @since 2025
  */
 import { Context, Telegraf } from 'telegraf';
-import { Message, Update, UserFromGetMe } from 'telegraf/typings/core/types/typegram';
+import {
+  Message,
+  Update,
+  UserFromGetMe,
+} from 'telegraf/typings/core/types/typegram';
 
 // Bot context extensions - extending the base context
 export interface BotContext extends Context<Update> {
@@ -35,7 +39,7 @@ export type CommandHandler = (ctx: BotContext) => Promise<void>;
 export enum SupportField {
   SUMMARY = 'summary',
   EMAIL = 'email',
-  COMPLETE = 'complete',
+  COMPLETE = 'complete',,
   PROFILE_EMAIL_UPDATE = 'profile_email_update'
 }
 

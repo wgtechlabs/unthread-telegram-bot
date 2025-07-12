@@ -1,32 +1,32 @@
 /**
  * Unthread Telegram Bot - Webhook Consumer
- * 
+ *
  * Redis-based queue consumer that processes webhook events from the Unthread
  * platform and routes them to appropriate handlers. Designed for reliable
  * message delivery with comprehensive error handling and retry mechanisms.
- * 
+ *
  * Core Functionality:
  * - Polls Redis queue for incoming webhook events
  * - Validates event structure and content
  * - Routes events to registered handlers based on type and source
  * - Provides reliable delivery guarantees with retry logic
- * 
+ *
  * Supported Events:
  * - message_created: Agent messages from Unthread dashboard
  * - conversation_updated: Ticket status and metadata changes
- * 
+ *
  * Features:
  * - Configurable polling intervals for optimal performance
  * - Event validation before processing
  * - Graceful error handling and logging
  * - Connection management with automatic reconnection
  * - Queue monitoring and health checks
- * 
+ *
  * Configuration:
  * - Redis connection URL
  * - Custom queue names for different environments
  * - Polling interval adjustment for performance tuning * - Handler registration for different event types
- * 
+ *
  * @author Waren Gonzaga, WG Technology Labs
  * @version 1.0.0
  * @since 2025
@@ -52,7 +52,7 @@ export type EventHandler = (event: WebhookEvent) => Promise<void>;
 
 /**
  * WebhookConsumer - Simple Redis queue consumer for Unthread webhook events
- * 
+ *
  * Focused on reliably delivering agent messages from Unthread to Telegram.
  * Polls Redis queue, validates events, and routes message_created events to handlers.
  */
@@ -60,10 +60,10 @@ export class WebhookConsumer {
   private redisUrl: string;
   private queueName: string;
   private pollInterval: number;
-  
+
   // Event handlers map: "eventType:sourcePlatform" -> handler function
   private eventHandlers: Map<string, EventHandler> = new Map();
-  
+
   // Redis clients - separate clients for blocking and non-blocking operations
   private redisClient: RedisClientType | null = null;
   private blockingRedisClient: RedisClientType | null = null; // Dedicated client for blPop operations
@@ -75,7 +75,7 @@ export class WebhookConsumer {
     this.queueName = config.queueName || 'unthread-events';
     this.pollInterval = config.pollInterval || 1000; // 1 second default
   }
-  
+
   /**
    * Initialize Redis connection
    */
@@ -84,62 +84,68 @@ export class WebhookConsumer {
       if (!this.redisUrl) {
         throw new Error('Redis URL is required for webhook consumer');
       }
-      
+
       // Create main Redis client for general operations
       this.redisClient = createClient({ url: this.redisUrl });
       await this.redisClient.connect();
-      
+
       // Create dedicated Redis client for blocking operations (blPop)
       this.blockingRedisClient = createClient({ url: this.redisUrl });
       await this.blockingRedisClient.connect();
-      
-      LogEngine.info('Webhook consumer connected to Redis with isolated blocking client');
+
+      LogEngine.info(
+        'Webhook consumer connected to Redis with isolated blocking client'
+      );
       return true;
     } catch (error) {
       LogEngine.error('Webhook consumer Redis connection failed:', error);
       throw error;
     }
   }
-  
+
   /**
    * Disconnect from Redis
    */
   async disconnect(): Promise<void> {
     try {
       this.isRunning = false;
-      
+
       if (this.pollTimer) {
         clearTimeout(this.pollTimer);
         this.pollTimer = null;
       }
-      
+
       // Disconnect both Redis clients
       if (this.redisClient && this.redisClient.isOpen) {
         await this.redisClient.disconnect();
       }
-      
+
       if (this.blockingRedisClient && this.blockingRedisClient.isOpen) {
         await this.blockingRedisClient.disconnect();
       }
-      
+
       LogEngine.info('Webhook consumer disconnected from Redis');
     } catch (error) {
       LogEngine.error('Error disconnecting webhook consumer:', error);
     }
   }
-  
+
   /**
    * Subscribe to a specific event type and platform
    * @param eventType - Type of event to listen for (e.g., 'message_created')
    * @param sourcePlatform - Source platform to filter by (e.g., 'dashboard')
    * @param handler - Handler function to call for matching events
    */
-  subscribe(eventType: string, sourcePlatform: string, handler: EventHandler): void {
+  subscribe(
+    eventType: string,
+    sourcePlatform: string,
+    handler: EventHandler
+  ): void {
     const key = `${eventType}:${sourcePlatform}`;
     this.eventHandlers.set(key, handler);
     LogEngine.info(`Subscribed to ${eventType} events from ${sourcePlatform}`);
   }
-  
+
   /**
    * Start polling for events
    */
@@ -148,15 +154,15 @@ export class WebhookConsumer {
       LogEngine.warn('Webhook consumer is already running');
       return;
     }
-    
+
     await this.connect();
     this.isRunning = true;
     LogEngine.info('Webhook consumer started - polling for events');
-    
+
     // Start the polling loop
     this.scheduleNextPoll();
   }
-  
+
   /**
    * Stop polling for events
    */
@@ -165,13 +171,13 @@ export class WebhookConsumer {
     await this.disconnect();
     LogEngine.info('Webhook consumer stopped');
   }
-  
+
   /**
    * Schedule the next poll
    */
   private scheduleNextPoll(): void {
     if (!this.isRunning) return;
-    
+
     this.pollTimer = setTimeout(async () => {
       try {
         await this.pollForEvents();
@@ -195,18 +201,20 @@ export class WebhookConsumer {
 
     try {
       LogEngine.debug(`Polling Redis queue: ${this.queueName}`);
-      
+
       // Check queue length first for debugging
       if (this.redisClient && this.redisClient.isOpen) {
         const queueLength = await this.redisClient.lLen(this.queueName);
         if (queueLength > 0) {
-          LogEngine.info(`Found ${queueLength} events in queue ${this.queueName}`);
+          LogEngine.info(
+            `Found ${queueLength} events in queue ${this.queueName}`
+          );
         }
       }
-      
+
       // Get the next event from the queue using dedicated blocking client (1 second timeout)
       const result = await this.blockingRedisClient.blPop(this.queueName, 1);
-      
+
       if (result) {
         LogEngine.info(`Received event from queue: ${this.queueName}`);
         const eventData = result.element;
@@ -225,11 +233,11 @@ export class WebhookConsumer {
    */
   private async processEvent(eventData: string): Promise<void> {
     try {
-      LogEngine.info('🔄 Starting event processing', { 
+      LogEngine.info('🔄 Starting event processing', {
         eventDataLength: eventData.length,
-        eventPreview: eventData.substring(0, 200) + '...'
+        eventPreview: eventData.substring(0, 200) + '...',
       });
-      
+
       // Parse the event
       let event: unknown;
       try {
@@ -238,30 +246,32 @@ export class WebhookConsumer {
         LogEngine.info('✅ Event parsed successfully', {
           type: eventObj.type,
           sourcePlatform: eventObj.sourcePlatform,
-          conversationId: (eventObj.data as any)?.conversationId || (eventObj.data as any)?.id
+          conversationId:
+            (eventObj.data as any)?.conversationId ||
+            (eventObj.data as any)?.id,
         });
       } catch (parseError) {
         LogEngine.error('❌ Failed to parse event JSON', {
           error: (parseError as Error).message,
-          eventData: eventData.substring(0, 500)
+          eventData: eventData.substring(0, 500),
         });
         return;
       }
-      
+
       const eventObj = event as Record<string, unknown>;
       const data = eventObj.data as Record<string, unknown>;
-      
+
       LogEngine.info('🔍 Processing webhook event', {
         type: eventObj.type,
         sourcePlatform: eventObj.sourcePlatform,
         conversationId: data?.conversationId || data?.id,
         timestamp: eventObj.timestamp,
-        dataKeys: data ? Object.keys(data) : []
+        dataKeys: data ? Object.keys(data) : [],
       });
 
       // Log full event payload at debug level to avoid log bloat
       LogEngine.debug('🔍 Complete webhook event payload', {
-        completeEvent: JSON.stringify(event, null, 2)
+        completeEvent: JSON.stringify(event, null, 2),
       });
 
       // Validate the event
@@ -272,12 +282,12 @@ export class WebhookConsumer {
         conversationId: data?.conversationId || data?.id,
         hasContent: !!data?.content,
         hasText: !!data?.text,
-        eventDataKeys: data ? Object.keys(data) : []
+        eventDataKeys: data ? Object.keys(data) : [],
       });
 
       if (!EventValidator.validate(event)) {
-        LogEngine.warn('❌ Invalid event, skipping', { 
-          event: JSON.stringify(event, null, 2).substring(0, 1000) + '...'
+        LogEngine.warn('❌ Invalid event, skipping', {
+          event: JSON.stringify(event, null, 2).substring(0, 1000) + '...',
         });
         return;
       }
@@ -291,34 +301,40 @@ export class WebhookConsumer {
 
       if (!handler) {
         LogEngine.warn(`❌ No handler registered for ${handlerKey}`, {
-          availableHandlers: Array.from(this.eventHandlers.keys())
+          availableHandlers: Array.from(this.eventHandlers.keys()),
         });
         return;
       }
 
       // Execute the handler
-      LogEngine.info(`🚀 Executing handler for ${validatedEvent.type} event from ${validatedEvent.sourcePlatform}`);
+      LogEngine.info(
+        `🚀 Executing handler for ${validatedEvent.type} event from ${validatedEvent.sourcePlatform}`
+      );
       try {
         await handler(validatedEvent);
-        LogEngine.info(`✅ Event processed successfully: ${validatedEvent.type} from ${validatedEvent.sourcePlatform}`);
+        LogEngine.info(
+          `✅ Event processed successfully: ${validatedEvent.type} from ${validatedEvent.sourcePlatform}`
+        );
       } catch (handlerError) {
-        LogEngine.error(`❌ Handler execution failed for ${validatedEvent.type}:${validatedEvent.sourcePlatform}`, {
-          error: (handlerError as Error).message,
-          stack: (handlerError as Error).stack,
-          conversationId: data?.conversationId || data?.id
-        });
+        LogEngine.error(
+          `❌ Handler execution failed for ${validatedEvent.type}:${validatedEvent.sourcePlatform}`,
+          {
+            error: (handlerError as Error).message,
+            stack: (handlerError as Error).stack,
+            conversationId: data?.conversationId || data?.id,
+          }
+        );
         throw handlerError;
       }
-
     } catch (error) {
       LogEngine.error('❌ Error processing event:', {
         error: (error as Error).message,
         stack: (error as Error).stack,
-        eventDataPreview: eventData ? eventData.substring(0, 500) : 'null'
+        eventDataPreview: eventData ? eventData.substring(0, 500) : 'null',
       });
     }
   }
-  
+
   /**
    * Get connection status
    * @returns Status information
@@ -333,9 +349,10 @@ export class WebhookConsumer {
     return {
       isRunning: this.isRunning,
       isConnected: this.redisClient !== null && this.redisClient.isOpen,
-      isBlockingClientConnected: this.blockingRedisClient !== null && this.blockingRedisClient.isOpen,
+      isBlockingClientConnected:
+        this.blockingRedisClient !== null && this.blockingRedisClient.isOpen,
       subscribedEvents: Array.from(this.eventHandlers.keys()),
-      queueName: this.queueName
+      queueName: this.queueName,
     };
   }
 }
