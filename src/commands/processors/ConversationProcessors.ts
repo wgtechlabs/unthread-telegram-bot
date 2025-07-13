@@ -298,7 +298,7 @@ Choose how you'd like to handle message templates:`;
                     reply_markup: {
                         inline_keyboard: [
                             [
-                                { text: "🚀 Use Default Templates", callback_data: `setup_use_defaults_${session.sessionId}` },
+                                { text: "✅ Finish Setup", callback_data: `setup_use_defaults_${session.sessionId}` },
                                 { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${session.sessionId}` }
                             ],
                             [

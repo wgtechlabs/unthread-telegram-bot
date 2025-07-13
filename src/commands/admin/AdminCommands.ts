@@ -464,7 +464,7 @@ export class TemplatesCommand extends BaseCommand {
             
             const templateMessage = 
                 "📝 **Message Template Manager**\n\n" +
-                "Customize how the bot communicates with users and admins.\n\n" +
+                "Customize how the bot communicates with your customers.\n\n" +
                 `**Current Status:** ${statusMessage}\n` +
                 `**Last Activity:** ${activityInfo}\n\n` +
                 "**Available Templates:**\n" +

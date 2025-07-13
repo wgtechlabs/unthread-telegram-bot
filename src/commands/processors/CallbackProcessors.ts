@@ -658,7 +658,7 @@ Choose how you'd like to handle message templates:`;
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: "🚀 Use Default Templates", callback_data: `setup_use_defaults_${shortId}` },
+                            { text: "✅ Finish Setup", callback_data: `setup_use_defaults_${shortId}` },
                             { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${shortId}` }
                         ],
                         [
@@ -684,7 +684,7 @@ Failed to complete customer setup. Please try again.`
      * Handle using default templates during setup
      */
     private async handleUseDefaultTemplates(ctx: BotContext, sessionId: string): Promise<boolean> {
-        await ctx.answerCbQuery("🚀 Setting up with default templates...");
+        await ctx.answerCbQuery("✅ Finishing setup with default templates...");
         
         try {
             const { BotsStore } = await import('../../sdk/bots-brain/index.js');
@@ -896,7 +896,7 @@ Choose how you'd like to handle message templates:`;
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: "🚀 Use Default Templates", callback_data: `setup_use_defaults_${shortId}` },
+                            { text: "✅ Finish Setup", callback_data: `setup_use_defaults_${shortId}` },
                             { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${shortId}` }
                         ],
                         [
@@ -1470,10 +1470,35 @@ export class AdminCallbackProcessor implements ICallbackProcessor {
             const templateManager = GlobalTemplateManager.getInstance();
             const templates = await templateManager.getGlobalTemplates();
             
+            // Smart status calculation for user-friendly display (consistent with template manager)
+            const templateEntries = Object.entries(templates.templates);
+            const customizedTemplates = templateEntries.filter(([_, template]) => 
+                template.lastModifiedBy && template.lastModifiedAt
+            );
+            const totalTemplates = templateEntries.length;
+            const customizedCount = customizedTemplates.length;
+            
+            // Generate status message based on customization state
+            let statusMessage: string;
+            let activityInfo: string;
+            
+            if (customizedCount === 0) {
+                statusMessage = "Using default templates";
+                activityInfo = "Never modified";
+            } else if (customizedCount === totalTemplates) {
+                statusMessage = "All templates customized";
+                const lastModified = new Date(templates.lastUpdated).toLocaleDateString();
+                activityInfo = `Last modified: ${lastModified}`;
+            } else {
+                statusMessage = `${customizedCount} of ${totalTemplates} templates customized`;
+                const lastModified = new Date(templates.lastUpdated).toLocaleDateString();
+                activityInfo = `Last modified: ${lastModified}`;
+            }
+            
             const previewMessage = 
                 `📊 **Template Preview**\n\n` +
-                `**Current Status:** ${templates.version ? `v${templates.version}` : 'Default'} templates configured\n` +
-                `**Last Updated:** ${templates.lastUpdated ? new Date(templates.lastUpdated).toLocaleDateString() : 'Not set'}\n\n` +
+                `**Current Status:** ${statusMessage}\n` +
+                `**Last Activity:** ${activityInfo}\n\n` +
                 `**Available Templates:**\n\n` +
                 `🎫 **Ticket Created Template:**\n` +
                 `\`\`\`\n${templates.templates.ticket_created?.content || 'Using default template'}\n\`\`\`\n\n` +
