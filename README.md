@@ -56,6 +56,44 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
 - **🔒 Enterprise-Ready** - Secure, scalable architecture with comprehensive logging
 - **⚡ Easy Deployment** - Quick setup with Docker or manual installation
 - **🛠️ Template System** - Customizable message templates for consistent communication
+- **🔍 Advanced Logging** - Powered by @wgtechlabs/log-engine with PII redaction and security features
+- **🛡️ Supply Chain Security** - SBOM generation and build provenance for transparency
+
+## 🔍 Advanced Logging & Security
+
+### **Powered by @wgtechlabs/log-engine**
+
+The bot includes enterprise-grade logging with advanced security features:
+
+- **🔒 PII Redaction** - Automatically redacts sensitive information from logs
+- **📊 Structured Logging** - JSON-structured logs for better analysis
+- **🛡️ SBOM Generation** - Software Bill of Materials for supply chain transparency
+- **📋 Build Provenance** - Attestations for build security and verification
+
+### **Environment Variables for Debugging**
+
+```bash
+# Enable debug logging
+LOG_LEVEL=debug
+
+# Enable verbose logging for detailed troubleshooting
+VERBOSE_LOGGING=true
+
+# Production logging (default)
+LOG_LEVEL=info
+```
+
+### **SBOM Generation**
+
+Generate Software Bill of Materials for security analysis:
+
+```bash
+# Generate SBOM locally
+yarn sbom:generate
+
+# Docker build with SBOM and provenance
+yarn docker:build:sbom
+```
 
 ## 🚀 Quick Start
 
@@ -144,6 +182,8 @@ Deploy instantly to Railway with a single click:
 
 ### **📋 Required Configuration**
 
+The `.env` setup is seamless across local development, Docker, and production environments, with consistent service name conventions for Docker.
+
 Edit your `.env` file with these required values:
 
 ```bash
@@ -164,6 +204,10 @@ POSTGRES_URL=postgresql://postgres:postgres@postgres-platform:5432/unthread_tele
 # Required - Redis for bot operations (Docker will handle this automatically)
 WEBHOOK_REDIS_URL=redis://redis-webhook:6379  # Critical for agent response delivery
 PLATFORM_REDIS_URL=redis://redis-platform:6379  # Required for bot state management
+
+# Optional - Debug and logging configuration
+LOG_LEVEL=info  # Set to 'debug' for detailed troubleshooting
+VERBOSE_LOGGING=false  # Set to 'true' for verbose webhook logging
 ```
 
 > **💡 Pro Tip**: The Docker setup includes PostgreSQL and Redis automatically - no separate installation needed!
@@ -188,6 +232,14 @@ For detailed information about Railway's managed PostgreSQL and SSL handling, pl
 - `/support` - Create a new support ticket (customer/partner group chats only)
 - `/profile` - View and update your email preferences
 - `/version` - Show current bot version
+- `/cancel` - Cancel current operation
+- `/reset` - Reset conversation state
+
+**Admin Commands:**
+
+- `/activate` - Activate admin privileges for advanced features (private chat only)
+- `/setup` - Configure group chat for support (admin only)
+- `/templates` - Manage message templates (admin only)
 
 ### **Creating Support Tickets**
 
@@ -253,6 +305,42 @@ Bot: ✅ Email Updated Successfully!
 
 > **💡 Best Practice**: Use this bot for dedicated customer/partner support channels, not public community groups.
 
+## 🔧 Troubleshooting
+
+### **Common Issues**
+
+**Bot Not Responding:**
+- Verify `TELEGRAM_BOT_TOKEN` is correct and active
+- Check bot permissions in group chat (send messages, read messages)
+- Ensure bot is not blocked or removed from the chat
+
+**Database Connection Issues:**
+- Check `POSTGRES_URL` format and credentials
+- For local development, set `DATABASE_SSL_VALIDATE=false`
+- Verify PostgreSQL service is running
+
+**Webhook/Agent Response Issues:**
+- Verify `WEBHOOK_REDIS_URL` is accessible (critical for agent responses)
+- Check `UNTHREAD_WEBHOOK_SECRET` matches Unthread dashboard
+- Ensure webhook server is running and accessible
+
+**Redis Connection Problems:**
+- Verify both `PLATFORM_REDIS_URL` and `WEBHOOK_REDIS_URL` are correct
+- Check Redis services are running (both required)
+- For Docker: ensure Redis containers are started
+
+**Debug Mode:**
+Enable detailed logging for troubleshooting:
+```bash
+LOG_LEVEL=debug
+VERBOSE_LOGGING=true
+```
+
+**Admin Access Issues:**
+- Verify your Telegram user ID is in `ADMIN_USERS` environment variable
+- Get your user ID from [@userinfobot](https://t.me/userinfobot)
+- Use `/activate` command in private chat to enable admin features
+
 ## 💬 Community Discussions
 
 Join our community discussions to get help, share ideas, and connect with other users:
@@ -286,7 +374,15 @@ Your contributions to improving this project are greatly appreciated! 🙏✨
 
 ## 🎯 Contributing
 
-Contributions are welcome! Create a pull request to this repo and I will review your code. Please consider submitting your pull request to the `dev` branch. Thank you!
+**Important**: All pull requests must be submitted to the `dev` branch. PRs to `main` will be automatically rejected.
+
+Contributions are welcome! Create a pull request to the `dev` branch and your code will be reviewed. All code must pass build and type checks before merging.
+
+**Requirements:**
+- Code must pass `yarn build` and `yarn type-check`
+- Follow existing code style and patterns
+- Test your changes thoroughly
+- Submit PRs to `dev` branch only
 
 For detailed setup instructions, technical documentation, architecture details, and development guidelines, see our comprehensive [Contributing Guide](./CONTRIBUTING.md).
 
