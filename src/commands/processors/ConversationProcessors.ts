@@ -38,7 +38,16 @@ export class SupportConversationProcessor implements IConversationProcessor {
 
     async process(ctx: BotContext): Promise<boolean> {
         try {
-            const userId = ctx.from!.id;
+            // Defensive check for ctx.from
+            if (!ctx.from) {
+                LogEngine.warn('Message received without sender information', {
+                    chatId: ctx.chat?.id,
+                    hasMessage: !!ctx.message
+                });
+                return false;
+            }
+
+            const userId = ctx.from.id;
             const userInput = ('text' in ctx.message! ? ctx.message!.text : '') || '';
             const userState = await BotsStore.getUserState(userId);
 
@@ -62,7 +71,13 @@ export class SupportConversationProcessor implements IConversationProcessor {
     }
 
     private async handleSummaryInput(ctx: BotContext, summary: string, userState: any): Promise<boolean> {
-        const userId = ctx.from!.id;
+        // Defensive check for ctx.from
+        if (!ctx.from) {
+            LogEngine.warn('Summary input received without sender information');
+            return false;
+        }
+
+        const userId = ctx.from.id;
 
         if (summary.trim().length < 10) {
             await ctx.reply(
@@ -112,12 +127,13 @@ export class SupportConversationProcessor implements IConversationProcessor {
     }
 
     private async handleEmailInput(ctx: BotContext, email: string, userState: any): Promise<boolean> {
-        // Basic email validation
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email.trim())) {
+        // Use robust email validation from utility function
+        const emailValidation = await import('../utils/validation.js').then(module => module.validateEmail(email.trim()));
+        
+        if (!emailValidation.isValid) {
             await ctx.reply(
                 "❌ **Invalid Email Format**\n\n" +
-                "Please provide a valid email address.\n\n" +
+                (emailValidation.error || "Please provide a valid email address.") + "\n\n" +
                 "*Enter your email:*",
                 { 
                     parse_mode: 'Markdown',
@@ -131,13 +147,24 @@ export class SupportConversationProcessor implements IConversationProcessor {
         }
 
         // Store email and create ticket
-        userState.email = email.trim();
+        userState.email = emailValidation.sanitizedValue || email.trim();
         return await this.createTicket(ctx, userState);
     }
 
     private async createTicket(ctx: BotContext, userState: any): Promise<boolean> {
-        const userId = ctx.from!.id;
-        const chatId = ctx.chat!.id;
+        // Defensive checks for required context
+        if (!ctx.from) {
+            LogEngine.warn('Ticket creation attempted without sender information');
+            return false;
+        }
+
+        if (!ctx.chat) {
+            LogEngine.warn('Ticket creation attempted without chat information');
+            return false;
+        }
+
+        const userId = ctx.from.id;
+        const chatId = ctx.chat.id;
 
         try {
             // Show processing message
@@ -147,11 +174,9 @@ export class SupportConversationProcessor implements IConversationProcessor {
             );
 
             // Get or create customer for this chat
-            const chatTitle = ctx.chat!.type === 'group' || ctx.chat!.type === 'supergroup' 
-                ? (ctx.chat as any).title || 'Telegram Group'
-                : 'Private Chat';
+            const chatTitle = this.getChatTitle(ctx);
 
-            const customer = await unthreadService.getOrCreateCustomer(chatId.toString(), chatTitle);
+            const customer = await unthreadService.getOrCreateCustomer(chatTitle, chatId);
             
             // Get user data with email
             let userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
@@ -222,6 +247,32 @@ export class SupportConversationProcessor implements IConversationProcessor {
 
             return true;
         }
+    }
+
+    /**
+     * Type-safe method to get chat title
+     */
+    private getChatTitle(ctx: BotContext): string {
+        const chat = ctx.chat;
+        if (!chat) {
+            return 'Unknown Chat';
+        }
+
+        // Type guard for group chats that have titles
+        if ((chat.type === 'group' || chat.type === 'supergroup') && 'title' in chat) {
+            return chat.title || 'Telegram Group';
+        }
+
+        // For private chats or channels
+        if (chat.type === 'private') {
+            return 'Private Chat';
+        }
+
+        if (chat.type === 'channel' && 'title' in chat) {
+            return chat.title || 'Telegram Channel';
+        }
+
+        return 'Telegram Chat';
     }
 }
 

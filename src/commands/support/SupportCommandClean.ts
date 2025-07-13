@@ -5,10 +5,11 @@
  */
 
 import { BaseCommand, type CommandMetadata } from '../base/BaseCommand.js';
-import type { BotContext } from '../../types/index.js';
 import { BotsStore } from '../../sdk/bots-brain/index.js';
 import * as unthreadService from '../../services/unthread.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
+import { BotContext } from '../../types/index.js';
+import { UserState } from '../../sdk/types.js';
 
 export class SupportCommand extends BaseCommand {
     readonly metadata: CommandMetadata = {
@@ -60,7 +61,7 @@ export class SupportCommand extends BaseCommand {
         }
     }
 
-    private async handleExistingSession(ctx: BotContext, state: any): Promise<void> {
+    private async handleExistingSession(ctx: BotContext, state: UserState): Promise<void> {
         const message = 
             "🎫 **Support Ticket in Progress**\n\n" +
             "You already have a support ticket creation session active.\n\n" +
@@ -84,7 +85,21 @@ export class SupportCommand extends BaseCommand {
     }
 
     private async startTicketCreation(ctx: BotContext): Promise<void> {
-        const userId = ctx.from!.id;
+        // Defensive check for ctx.from
+        if (!ctx.from) {
+            LogEngine.warn('Support command executed without sender information');
+            await ctx.reply("❌ Unable to process request. Please try again.");
+            return;
+        }
+
+        // Defensive check for ctx.chat
+        if (!ctx.chat) {
+            LogEngine.warn('Support command executed without chat information');
+            await ctx.reply("❌ Unable to process request. Please try again.");
+            return;
+        }
+
+        const userId = ctx.from.id;
         
         // Check if user already has email stored
         const userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
@@ -96,7 +111,7 @@ export class SupportCommand extends BaseCommand {
             step: 1,
             totalSteps: hasEmail ? 1 : 2,
             hasEmail: !!hasEmail,
-            chatId: ctx.chat!.id,
+            chatId: ctx.chat.id,
             startedAt: new Date().toISOString()
         });
 

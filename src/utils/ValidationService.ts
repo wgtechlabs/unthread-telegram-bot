@@ -4,6 +4,7 @@ interface ValidationCheck {
     name: string;
     passed: boolean;
     details: string;
+    warning?: boolean;
 }
 
 interface ValidationResult {
@@ -81,18 +82,29 @@ export class ValidationService {
     private static async checkGroupPrivacySettings(ctx: BotContext, groupChatId: number): Promise<ValidationCheck> {
         try {
             const chat = await ctx.telegram.getChat(groupChatId);
-            const hasHistoryAccess = Boolean('all_members_are_administrators' in chat ? chat.all_members_are_administrators : true);
+            
+            // Check bot permissions in the group instead of using deprecated property
+            const botUser = await ctx.telegram.getMe();
+            const botMember = await ctx.telegram.getChatMember(groupChatId, botUser.id);
+            
+            // Check if bot has necessary permissions for message history access
+            const hasMessagePermissions = botMember.status === 'administrator' || 
+                                        botMember.status === 'creator' ||
+                                        (botMember.status === 'member' && 
+                                         'can_read_all_group_messages' in botMember && 
+                                         Boolean((botMember as any).can_read_all_group_messages));
             
             return {
                 name: "Group Privacy Settings",
-                passed: hasHistoryAccess,
-                details: hasHistoryAccess ? "Bot can access message history" : "Group privacy may block bot access"
+                passed: hasMessagePermissions,
+                details: hasMessagePermissions ? "Bot can access message history" : "Bot may need admin rights for full access"
             };
         } catch (error) {
             return {
                 name: "Group Privacy Settings",
-                passed: true, // Assume OK if can't check
-                details: "Privacy check completed (assumed OK)"
+                passed: false,
+                warning: true,
+                details: "Privacy check could not be verified - manual verification recommended"
             };
         }
     }

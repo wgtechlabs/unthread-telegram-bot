@@ -1143,7 +1143,7 @@ export class BotsStore implements IBotsStore {
       const existingIds = await this.getArrayFromStorage(adminIdsKey);
       if (!existingIds.includes(adminData.telegramUserId)) {
         existingIds.push(adminData.telegramUserId);
-        await this.storage.set(adminIdsKey, existingIds);
+        await this.storage.set(adminIdsKey, JSON.stringify(existingIds));
       }
       
       LogEngine.info(`Admin profile stored: ${adminData.telegramUserId}`);
@@ -1202,7 +1202,7 @@ export class BotsStore implements IBotsStore {
       const adminIdsKey = 'admin_profile_ids';
       const existingIds = await this.getArrayFromStorage(adminIdsKey);
       const updatedIds = existingIds.filter((id: number) => id !== telegramUserId);
-      await this.storage.set(adminIdsKey, updatedIds);
+      await this.storage.set(adminIdsKey, JSON.stringify(updatedIds));
       
       LogEngine.info(`Admin profile deleted: ${telegramUserId}`);
       return true;
@@ -1265,6 +1265,11 @@ export class BotsStore implements IBotsStore {
 
       // Store admin -> session mapping for blocking
       await this.storage.set(`session:admin:${sessionData.initiatingAdminId}`, sessionData.sessionId, 180);
+
+      // Store group -> session mapping for getActiveSetupSessionByGroup
+      if (sessionData.groupChatId) {
+        await this.storage.set(`session:group:${sessionData.groupChatId}`, sessionData.sessionId, 180);
+      }
 
       LogEngine.info(`Setup session stored: ${sessionData.sessionId}`);
       return true;

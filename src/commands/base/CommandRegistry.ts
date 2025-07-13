@@ -107,8 +107,35 @@ export class CommandRegistry {
             return false;
         }
 
-        await command.execute(ctx);
-        return true;
+        try {
+            await command.execute(ctx);
+            return true;
+        } catch (error) {
+            LogEngine.error(`Command execution failed: ${commandName}`, {
+                error: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined,
+                userId: ctx.from?.id,
+                chatId: ctx.chat?.id,
+                commandName
+            });
+            
+            // Attempt to notify user of the error gracefully
+            try {
+                await ctx.reply(
+                    "❌ An error occurred while processing your command. Please try again later.",
+                    { parse_mode: 'Markdown' }
+                );
+            } catch (replyError) {
+                LogEngine.error('Failed to send error message to user', {
+                    originalError: error instanceof Error ? error.message : String(error),
+                    replyError: replyError instanceof Error ? replyError.message : String(replyError),
+                    userId: ctx.from?.id,
+                    chatId: ctx.chat?.id
+                });
+            }
+            
+            return false;
+        }
     }
 
     /**

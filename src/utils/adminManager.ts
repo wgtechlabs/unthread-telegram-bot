@@ -520,14 +520,14 @@ export async function notifyAdminsOfConfigChange(
     };
 
     // Simple admin notification message (could be enhanced with global templates later)
-    const messageText = `🔧 **Configuration Update**
+    const messageText = `🔧 <b>Configuration Update</b>
 
-**Group:** ${context.groupTitle || `Group ${groupChatId}`}
-**Change:** ${changeType}
-**Details:** ${changeDetails}
-**Time:** ${context.timestamp}
+<b>Group:</b> ${context.groupTitle || `Group ${groupChatId}`}
+<b>Change:</b> ${changeType}
+<b>Details:</b> ${changeDetails}
+<b>Time:</b> ${context.timestamp}
 
-${context.adminName ? `**By:** ${context.adminName}` : ''}
+${context.adminName ? `<b>By:</b> ${context.adminName}` : ''}
 
 Group configuration has been updated.`;
 
