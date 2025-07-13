@@ -21,6 +21,7 @@
  * - WEBHOOK_POLL_INTERVAL: Webhook polling interval in milliseconds
  * - MY_COMPANY_NAME: Company name for ticket attribution
  * - UNTHREAD_DEFAULT_PRIORITY: Default priority for new tickets (3, 5, 7, or 9)
+ * - BOT_USERNAME: Bot username for performance optimization (eliminates API calls if set)
  * 
  * Security:
  * - Validates all critical environment variables at startup
@@ -326,7 +327,7 @@ export function isAdminUser(telegramUserId: number): boolean {
 }
 
 /**
- * Get the company name from environment variables.
+ * Get the company name for bot branding (if configured)
  * 
  * Used for automatic partner name extraction from group titles.
  * Returns null if not set or contains placeholder values, indicating
@@ -352,4 +353,42 @@ export function getCompanyName(): string | null {
     }
     
     return companyName;
+}
+
+/**
+ * Get the configured bot username directly (performance optimization)
+ * 
+ * This allows setting the actual bot username as a configuration value,
+ * completely eliminating the need for API calls to retrieve it.
+ * If not configured or contains placeholders, returns null to fall back to API.
+ * 
+ * @returns The configured bot username, or null if not set (use API instead)
+ */
+export function getConfiguredBotUsername(): string | null {
+    const configuredUsername = process.env.BOT_USERNAME?.trim();
+    
+    // Check for placeholder values that should be treated as unset
+    const placeholderValues = [
+        'your_bot_username_here',
+        'your_bot_username',
+        'bot_username_here',
+        'placeholder',
+        'change_me',
+        'replace_me'
+    ];
+    
+    if (!configuredUsername || placeholderValues.includes(configuredUsername.toLowerCase())) {
+        return null; // Not configured, fall back to API retrieval
+    }
+    
+    // Basic validation - Telegram usernames are 5-32 characters, alphanumeric + underscores
+    if (!/^[a-zA-Z0-9_]{5,32}$/.test(configuredUsername)) {
+        LogEngine.warn('Invalid BOT_USERNAME format, falling back to API retrieval', {
+            configuredUsername,
+            expectedFormat: 'alphanumeric + underscores, 5-32 characters'
+        });
+        return null;
+    }
+    
+    return configuredUsername;
 }

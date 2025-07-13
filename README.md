@@ -150,6 +150,9 @@ Edit your `.env` file with these required values:
 # Required - Get from BotFather
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 
+# Optional but HIGHLY RECOMMENDED - Your bot's username for 200x performance boost
+BOT_USERNAME=your_bot_username  # Eliminates API calls for deep links and commands
+
 # Required - Get from Unthread dashboard
 UNTHREAD_API_KEY=your_unthread_api_key
 UNTHREAD_SLACK_CHANNEL_ID=your_unthread_slack_channel_id

@@ -6,7 +6,7 @@
 
 import type { BotContext } from '../../types/index.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
-import { isAdminUser } from '../../config/env.js';
+import { isAdminUser, getConfiguredBotUsername } from '../../config/env.js';
 import { validateAdminAccess } from '../../utils/permissions.js';
 
 export interface CommandMetadata {
@@ -266,72 +266,121 @@ export abstract class BaseCommand implements ICommand {
         const firstName = ctx.from?.first_name || 'Admin';
         const commandName = this.metadata.name;
         
-        // Safely get bot username with proper error handling
-        const botUsername = await this.getBotUsername(ctx);
-        
-        const activationMessage = 
-            "🔐 **Admin Activation Required**\n\n" +
-            `Hello ${firstName}! To use the \`/${commandName}\` command, you need to activate your admin privileges first.\n\n` +
-            "**Quick Setup:**\n" +
-            "1. **Send me a private message** (DM)\n" +
-            "2. Use the `/activate` command in our DM\n" +
-            "3. Return and try the command again\n\n" +
-            "**Why activate?**\n" +
-            "• Secure admin communication channel\n" +
-            "• Enhanced bot administration features\n" +
-            "• Notifications and configuration updates\n\n" +
-            "**Ready?** Click below to start activation:";
+        try {
+            // Try to get bot username for deep link generation
+            const botUsername = await this.getBotUsername(ctx);
+            
+            const activationMessage = 
+                "🔐 **Admin Activation Required**\n\n" +
+                `Hello ${firstName}! To use the \`/${commandName}\` command, you need to activate your admin privileges first.\n\n` +
+                "**Quick Setup:**\n" +
+                "1. **Send me a private message** (DM)\n" +
+                "2. Use the `/activate` command in our DM\n" +
+                "3. Return and try the command again\n\n" +
+                "**Why activate?**\n" +
+                "• Secure admin communication channel\n" +
+                "• Enhanced bot administration features\n" +
+                "• Notifications and configuration updates\n\n" +
+                "**Ready?** Click below to start activation:";
 
-        await ctx.reply(activationMessage, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        {
-                            text: "🚀 Start Activation",
-                            url: `https://t.me/${botUsername}?start=admin_activate`
-                        }
+            await ctx.reply(activationMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            {
+                                text: "🚀 Start Activation",
+                                url: `https://t.me/${botUsername}?start=admin_activate`
+                            }
+                        ]
                     ]
-                ]
-            }
-        });
+                }
+            });
+        } catch (error) {
+            LogEngine.error('Failed to generate admin activation message with deep link', {
+                error: error instanceof Error ? error.message : String(error),
+                commandName,
+                userId: ctx.from?.id
+            });
+            
+            // Fallback message without deep link
+            const fallbackMessage = 
+                "🔐 **Admin Activation Required**\n\n" +
+                `Hello ${firstName}! To use the \`/${commandName}\` command, you need to activate your admin privileges first.\n\n` +
+                "**Setup Steps:**\n" +
+                "1. **Send me a private message** by clicking on my profile\n" +
+                "2. Use the `/activate` command in our private chat\n" +
+                "3. Return here and try the command again\n\n" +
+                "**Why activate?**\n" +
+                "• Secure admin communication channel\n" +
+                "• Enhanced bot administration features\n" +
+                "• Notifications and configuration updates\n\n" +
+                "*Start a private chat with me to activate admin features.*";
+
+            await ctx.reply(fallbackMessage, { parse_mode: 'Markdown' });
+        }
     }
 
     /**
-     * Safely retrieve bot username with proper fallback and validation
+     * Retrieve bot username with optional performance optimization
+     * 
+     * Two modes:
+     * 1. BOT_USERNAME configured → Zero API calls, guaranteed performance
+     * 2. BOT_USERNAME not configured → Use API calls, fail if API fails (no fallback)
      */
     private async getBotUsername(ctx: BotContext): Promise<string> {
+        // 🚀 OPTIMIZATION: Check if we have a pre-configured username (ZERO API CALLS!)
+        const configuredUsername = getConfiguredBotUsername();
+        if (configuredUsername) {
+            LogEngine.debug('Using configured bot username (API calls eliminated)', {
+                username: configuredUsername,
+                source: 'environment_config'
+            });
+            return configuredUsername;
+        }
+
+        // Not configured - use API calls as intended, fail if they fail
+        LogEngine.debug('No configured username, using API retrieval');
+
         try {
-            // First, try to get from context if available and valid
+            // Try context first (no additional API call)
             if (ctx.botInfo?.username) {
+                LogEngine.debug('Using bot username from context', {
+                    username: ctx.botInfo.username,
+                    source: 'bot_context'
+                });
                 return ctx.botInfo.username;
             }
 
-            // If not available in context, fetch fresh bot info
+            // Fetch from API
+            LogEngine.debug('Fetching bot username from Telegram API');
             const botInfo = await ctx.telegram.getMe();
-            if (botInfo.username) {
-                return botInfo.username;
+            
+            if (!botInfo.username) {
+                throw new Error('Bot username not available from Telegram API - bot may not have a username set');
             }
 
-            // If still no username, log the issue and use a safe fallback
-            LogEngine.warn('Bot username not available from Telegram API', {
-                contextHasBotInfo: !!ctx.botInfo,
-                contextUsername: ctx.botInfo?.username,
-                fetchedBotInfo: !!botInfo,
-                fetchedUsername: botInfo.username,
-                botId: botInfo.id
-            });
-
-            // Use a descriptive fallback that's more likely to be correct
-            return 'unthread_support_bot';
-        } catch (error) {
-            LogEngine.error('Failed to retrieve bot username', {
-                error: error instanceof Error ? error.message : String(error),
-                contextHasBotInfo: !!ctx.botInfo
+            LogEngine.debug('Retrieved bot username from API', {
+                username: botInfo.username,
+                source: 'telegram_api'
             });
             
-            // Safe fallback that's more descriptive than the original
-            return 'unthread_support_bot';
+            return botInfo.username;
+
+        } catch (error) {
+            LogEngine.error('Failed to retrieve bot username via API', {
+                error: error instanceof Error ? error.message : String(error),
+                contextHasBotInfo: !!ctx.botInfo,
+                hasConfiguredUsername: false
+            });
+            
+            // NO FALLBACK - fail is fail!
+            throw new Error(
+                `Unable to retrieve bot username. Either:\n` +
+                `1. Set BOT_USERNAME environment variable for optimal performance, or\n` +
+                `2. Ensure Telegram API is accessible and bot has a username set.\n` +
+                `Original error: ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 

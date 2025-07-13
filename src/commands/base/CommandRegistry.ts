@@ -19,10 +19,16 @@ export class CommandRegistry {
 
     /**
      * Register a command with the registry
+     * Throws an error if a command with the same name is already registered
      */
     register(command: ICommand): void {
         if (this.commands.has(command.metadata.name)) {
-            LogEngine.warn(`Command ${command.metadata.name} is already registered. Overwriting.`);
+            const errorMessage = `Command '${command.metadata.name}' is already registered. Cannot overwrite existing command.`;
+            LogEngine.error(errorMessage, {
+                existingCommand: command.metadata.name,
+                attemptedOverwrite: true
+            });
+            throw new Error(errorMessage);
         }
 
         this.commands.set(command.metadata.name, command);
@@ -31,6 +37,29 @@ export class CommandRegistry {
             privateOnly: command.metadata.privateOnly,
             groupOnly: command.metadata.groupOnly,
             requiresSetup: command.metadata.requiresSetup
+        });
+    }
+
+    /**
+     * Register a command with explicit overwrite permission
+     * Use this method when intentional overwriting is needed
+     */
+    registerWithOverwrite(command: ICommand): void {
+        const isOverwrite = this.commands.has(command.metadata.name);
+        
+        if (isOverwrite) {
+            LogEngine.warn(`Explicitly overwriting command: ${command.metadata.name}`, {
+                intentionalOverwrite: true
+            });
+        }
+
+        this.commands.set(command.metadata.name, command);
+        LogEngine.info(`${isOverwrite ? 'Overwritten' : 'Registered'} command: ${command.metadata.name}`, {
+            adminOnly: command.metadata.adminOnly,
+            privateOnly: command.metadata.privateOnly,
+            groupOnly: command.metadata.groupOnly,
+            requiresSetup: command.metadata.requiresSetup,
+            wasOverwritten: isOverwrite
         });
     }
 

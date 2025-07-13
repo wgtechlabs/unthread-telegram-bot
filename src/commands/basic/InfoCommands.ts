@@ -10,7 +10,15 @@
 import { BaseCommand, type CommandMetadata } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
 import { isAdminUser, getCompanyName } from '../../config/env.js';
-import packageJSON from '../../../package.json' with { type: 'json' };
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+// Read package.json in a compatible way
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJSONPath = join(__dirname, '../../../package.json');
+const packageJSON = JSON.parse(readFileSync(packageJSONPath, 'utf-8'));
 
 export class StartCommand extends BaseCommand {
     readonly metadata: CommandMetadata = {

@@ -24,6 +24,32 @@ export interface ValidationResult {
 }
 
 /**
+ * Interface representing the admin-specific properties of a chat member
+ * Based on Telegram Bot API ChatMemberAdministrator type
+ */
+export interface AdminChatMember {
+    status: 'administrator';
+    can_read_all_group_messages?: boolean;
+    can_send_messages?: boolean;
+    can_delete_messages?: boolean;
+    can_restrict_members?: boolean;
+    can_promote_members?: boolean;
+    can_change_info?: boolean;
+    can_invite_users?: boolean;
+    can_pin_messages?: boolean;
+    can_manage_topics?: boolean;
+    can_manage_chat?: boolean;
+    can_manage_video_chats?: boolean;
+}
+
+/**
+ * Type guard to check if a chat member is an administrator with admin properties
+ */
+function isAdminChatMember(member: any): member is AdminChatMember {
+    return member && member.status === 'administrator';
+}
+
+/**
  * Service class for performing setup validation
  * Clean Code: Single Responsibility - only handles validation logic
  */
@@ -133,19 +159,18 @@ export class ValidationService {
                 let hasRequiredPermissions = true;
                 let permissionDetails = `Bot is a ${botMember.status}`;
                 
-                if (botMember.status === 'administrator') {
-                    // Type assertion to access admin-specific properties
-                    const adminMember = botMember as any;
+                if (isAdminChatMember(botMember)) {
+                    // Type-safe access to admin-specific properties
                     const adminPermissions = [
-                        { key: 'can_read_all_group_messages', desc: 'read messages', required: true },
-                        { key: 'can_send_messages', desc: 'send messages', required: true },
-                        { key: 'can_delete_messages', desc: 'delete messages', required: false }
+                        { key: 'can_read_all_group_messages' as keyof AdminChatMember, desc: 'read messages', required: true },
+                        { key: 'can_send_messages' as keyof AdminChatMember, desc: 'send messages', required: true },
+                        { key: 'can_delete_messages' as keyof AdminChatMember, desc: 'delete messages', required: false }
                     ];
                     
                     const missingPermissions: string[] = [];
                     
                     adminPermissions.forEach(perm => {
-                        if (perm.required && !adminMember[perm.key]) {
+                        if (perm.required && !botMember[perm.key]) {
                             hasRequiredPermissions = false;
                             missingPermissions.push(perm.desc);
                         }

@@ -630,19 +630,27 @@ export async function reportNotificationFailures(
     const admins = await getActivatedAdmins(groupChatId);
     const workingAdmins: AdminProfile[] = [];
 
-    // Find admins who can receive notifications
+    // Find admins who can receive notifications using non-intrusive check
     for (const admin of admins) {
       if (admin.dmChatId) {
         try {
-          // Test if we can send to this admin
-          await bot.sendMessage(admin.dmChatId, '🔍 Testing notification delivery...', { 
-            parse_mode: 'HTML' 
-          });
-          workingAdmins.push(admin);
+          // Non-intrusive check: verify chat accessibility without sending visible messages
+          await bot.api.getChat(admin.dmChatId);
+          
+          // Additional check: verify bot can send messages by checking chat permissions
+          // This doesn't send a message but checks if the chat allows messaging
+          const chatMember = await bot.api.getChatMember(admin.dmChatId, bot.botInfo.id);
+          const canSendMessages = chatMember.status !== 'kicked' && chatMember.status !== 'left';
+          
+          if (canSendMessages) {
+            workingAdmins.push(admin);
+          }
         } catch (error) {
-          // Admin's DM is not working
+          // Admin's DM is not accessible - chat doesn't exist, bot is blocked, etc.
           LogEngine.warn('Admin DM not accessible for failure report', {
-            adminId: admin.telegramUserId
+            adminId: admin.telegramUserId,
+            dmChatId: admin.dmChatId,
+            error: error instanceof Error ? error.message : String(error)
           });
         }
       }

@@ -1807,7 +1807,26 @@ export class BotsStore implements IBotsStore {
    */
   private async getArrayFromStorage(key: string): Promise<any[]> {
     const data = await this.storage.get(key);
-    return Array.isArray(data) ? data : [];
+    
+    if (!data) {
+      return [];
+    }
+    
+    // Handle JSON string data by parsing it first
+    let parsedData = data;
+    if (typeof data === 'string') {
+      try {
+        parsedData = JSON.parse(data);
+      } catch (error) {
+        LogEngine.warn('Failed to parse JSON string from storage, returning empty array', {
+          key,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        return [];
+      }
+    }
+    
+    return Array.isArray(parsedData) ? parsedData : [];
   }
 }
 

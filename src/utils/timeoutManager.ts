@@ -22,6 +22,7 @@ export class TimeoutManager {
     private static timeouts: Map<string, ManagedTimeout> = new Map();
     private static isShuttingDown = false;
     private static cleanupInterval: NodeJS.Timeout | null = null;
+    private static cleanupPerformed = false;
 
     /**
      * Initialize the timeout manager with periodic cleanup
@@ -113,7 +114,13 @@ export class TimeoutManager {
      * Clear all managed timeouts (for cleanup/shutdown)
      */
     static clearAllTimeouts(): void {
+        // Prevent multiple cleanup calls
+        if (this.cleanupPerformed) {
+            return;
+        }
+        
         this.isShuttingDown = true;
+        this.cleanupPerformed = true;
         
         // Clear the cleanup interval first
         if (this.cleanupInterval) {
@@ -190,10 +197,8 @@ process.on('exit', () => {
 
 process.on('SIGINT', () => {
     TimeoutManager.clearAllTimeouts();
-    process.exit(0);
 });
 
 process.on('SIGTERM', () => {
     TimeoutManager.clearAllTimeouts();
-    process.exit(0);
 });

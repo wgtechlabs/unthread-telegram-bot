@@ -421,8 +421,6 @@ export class TemplatesCommand extends BaseCommand {
 
     private async showTemplateManager(ctx: BotContext): Promise<void> {
         try {
-            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
-            
             // Get current template statistics
             const templateManager = GlobalTemplateManager.getInstance();
             const templates = await templateManager.getGlobalTemplates();
