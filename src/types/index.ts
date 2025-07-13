@@ -40,7 +40,7 @@ export enum SupportField {
   SUMMARY = 'summary',
   EMAIL = 'email',
   COMPLETE = 'complete',
-  PROFILE_EMAIL_UPDATE = 'profile_email_update'
+  PROFILE_EMAIL_UPDATE = 'profile_email_update',
 }
 
 export interface SupportFormState {
@@ -55,22 +55,12 @@ export interface SupportFormState {
 
 // Profile update state for managing email updates
 export interface ProfileUpdateState {
-  field: SupportField.PROFILE_EMAIL_UPDATE;
-  initiatedBy: number; // Track who initiated the profile update
-  initiatedInChat: number; // Track which chat the update was initiated in
-  currentEmail?: string; // Store current email for reference
-  newEmail?: string; // Store new email during update process
-  messageId?: number; // For message editing
-}
-
-// Profile update state for managing email updates
-export interface ProfileUpdateState {
-  field: SupportField.PROFILE_EMAIL_UPDATE;
-  initiatedBy: number; // Track who initiated the profile update
-  initiatedInChat: number; // Track which chat the update was initiated in
-  currentEmail?: string; // Store current email for reference
-  newEmail?: string; // Store new email during update process
-  messageId?: number; // For message editing
+  field: SupportField.PROFILE_EMAIL_UPDATE
+  initiatedBy: number // Track who initiated the profile update
+  initiatedInChat: number // Track which chat the update was initiated in
+  currentEmail?: string // Store current email for reference
+  newEmail?: string // Store new email during update process
+  messageId?: number // For message editing
 }
 
 // Error types

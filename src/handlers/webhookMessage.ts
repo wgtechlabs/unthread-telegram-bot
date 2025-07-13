@@ -30,8 +30,8 @@ import { LogEngine } from '@wgtechlabs/log-engine'
 import type { Telegraf } from 'telegraf'
 import type { BotContext } from '../types/index.js'
 import type { IBotsStore } from '../sdk/types.js'
-import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
-import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
+import { GlobalTemplateManager } from '../utils/globalTemplateManager.js'
+import { BotsStore } from '../sdk/bots-brain/BotsStore.js'
 
 /**
  * Handles incoming webhook messages from Unthread agents
@@ -40,12 +40,12 @@ import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
 export class TelegramWebhookHandler {
   private bot: Telegraf<BotContext>
   private botsStore: IBotsStore // SDK type, properly typed with IBotsStore interface
-  private templateManager: GlobalTemplateManager;
+  private templateManager: GlobalTemplateManager
 
   constructor(bot: Telegraf<BotContext>, botsStore: IBotsStore) {
     this.bot = bot
     this.botsStore = botsStore
-    this.templateManager = GlobalTemplateManager.getInstance();
+    this.templateManager = GlobalTemplateManager.getInstance()
   }
 
   /**
@@ -165,12 +165,10 @@ export class TelegramWebhookHandler {
 
       // 4. Format agent message using template system
       const formattedMessage = await this.formatAgentMessageWithTemplate(
-        
         messageText,
-        
-        ticketData, 
+
+        ticketData,
         event.data
-      
       )
 
       LogEngine.info('✅ Message formatted for Telegram', {
@@ -392,8 +390,8 @@ export class TelegramWebhookHandler {
 
       // 3. Format status update message using template system
       const statusMessage = await this.formatStatusUpdateWithTemplate(
-        ticketData, 
-        newStatus, 
+        ticketData,
+        newStatus,
         event.data
       )
 
@@ -541,7 +539,11 @@ export class TelegramWebhookHandler {
    * @param eventData - The webhook event data
    * @returns Formatted message
    */
-  async formatAgentMessageWithTemplate(text: string, ticketData: any, eventData: any): Promise<string> {
+  async formatAgentMessageWithTemplate(
+    text: string,
+    ticketData: any,
+    eventData: any
+  ): Promise<string> {
     try {
       // Build template variables for global template system
       const variables = {
@@ -552,21 +554,24 @@ export class TelegramWebhookHandler {
         agentName: eventData.userName || eventData.agentName || 'Support Agent',
         response: text,
         createdAt: new Date().toLocaleString(),
-        updatedAt: new Date().toLocaleString()
-      };
+        updatedAt: new Date().toLocaleString(),
+      }
 
       // Format using global template system
-      const formatted = await this.templateManager.renderTemplate('agent_response', variables);
+      const formatted = await this.templateManager.renderTemplate(
+        'agent_response',
+        variables
+      )
 
-      return formatted || text; // Fallback to plain text if template fails
+      return formatted || text // Fallback to plain text if template fails
     } catch (error) {
       LogEngine.warn('Failed to format message with template, using fallback', {
         error: error instanceof Error ? error.message : 'Unknown error',
-        ticketId: ticketData.friendlyId
-      });
-      
+        ticketId: ticketData.friendlyId,
+      })
+
       // Fallback to original formatting
-      return this.formatAgentMessage(text, ticketData.friendlyId);
+      return this.formatAgentMessage(text, ticketData.friendlyId)
     }
   }
 
@@ -577,7 +582,11 @@ export class TelegramWebhookHandler {
    * @param eventData - The webhook event data
    * @returns Formatted message
    */
-  async formatStatusUpdateWithTemplate(ticketData: any, status: string, eventData: any): Promise<string> {
+  async formatStatusUpdateWithTemplate(
+    ticketData: any,
+    status: string,
+    eventData: any
+  ): Promise<string> {
     try {
       // Build template variables for global template system
       const variables = {
@@ -588,32 +597,38 @@ export class TelegramWebhookHandler {
         agentName: eventData.userName || eventData.agentName || 'Support Agent',
         response: '', // For status updates, response might be empty
         createdAt: new Date().toLocaleString(),
-        updatedAt: new Date().toLocaleString()
-      };
+        updatedAt: new Date().toLocaleString(),
+      }
 
       // Choose template type based on status
-      const templateType = 'ticket_status'; // Always use ticket_status for any status update
+      const templateType = 'ticket_status' // Always use ticket_status for any status update
 
       // Format using global template system
-      const formatted = await this.templateManager.renderTemplate(templateType, variables);
+      const formatted = await this.templateManager.renderTemplate(
+        templateType,
+        variables
+      )
 
-      return formatted || this.getFallbackStatusMessage(ticketData, status);
+      return formatted || this.getFallbackStatusMessage(ticketData, status)
     } catch (error) {
-      LogEngine.warn('Failed to format status update with template, using fallback', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        ticketId: ticketData.friendlyId,
-        status
-      });
-      
-      return this.getFallbackStatusMessage(ticketData, status);
+      LogEngine.warn(
+        'Failed to format status update with template, using fallback',
+        {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          ticketId: ticketData.friendlyId,
+          status,
+        }
+      )
+
+      return this.getFallbackStatusMessage(ticketData, status)
     }
   }
 
   private getFallbackStatusMessage(ticketData: any, status: string): string {
     // Fallback to simple status message
-    const statusIcon = status === 'closed' ? '✅' : '📝';
-    const statusText = status === 'closed' ? 'Closed' : 'Updated';
-    return `${statusIcon} *Ticket ${statusText}*\n\nTicket #${ticketData.friendlyId} has been ${status}.`;
+    const statusIcon = status === 'closed' ? '✅' : '📝'
+    const statusText = status === 'closed' ? 'Closed' : 'Updated'
+    return `${statusIcon} *Ticket ${statusText}*\n\nTicket #${ticketData.friendlyId} has been ${status}.`
   }
 
   /**

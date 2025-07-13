@@ -27,6 +27,8 @@ export default [
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
       'no-undef': 'off',
+      'no-useless-escape': 'off',
+      'no-control-regex': 'off',
     },
   },
   {
