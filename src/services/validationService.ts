@@ -87,8 +87,8 @@ export class ValidationService {
     }
 
     /**
-     * Check group privacy settings
-     * Clean Code: Focused method with clear intent
+     * Check group privacy settings with comprehensive permission validation
+     * Clean Code: Focused method with clear intent and robust permission checking
      */
     private static async checkGroupPrivacySettings(
         ctx: BotContext, 
@@ -97,15 +97,94 @@ export class ValidationService {
     ): Promise<void> {
         try {
             const chat = await ctx.telegram.getChat(groupChatId);
-            // Check if the bot has proper permissions to access message history
-            // Note: This is a simplified check - in practice, we'd need to verify the bot's actual permissions
-            const hasHistoryAccess = Boolean(chat.type === 'group' || chat.type === 'supergroup');
             
-            checks.push({
-                name: "Group Privacy Settings",
-                passed: hasHistoryAccess,
-                details: hasHistoryAccess ? "Bot can access message history" : "Group privacy may block bot access"
-            });
+            // First check if it's a group chat
+            const isGroupChat = chat.type === 'group' || chat.type === 'supergroup';
+            
+            if (!isGroupChat) {
+                checks.push({
+                    name: "Group Privacy Settings",
+                    passed: false,
+                    details: "Chat is not a group or supergroup"
+                });
+                return;
+            }
+
+            // Get bot's membership information to check actual permissions
+            try {
+                const botInfo = await ctx.telegram.getMe();
+                const botMember = await ctx.telegram.getChatMember(groupChatId, botInfo.id);
+                
+                // Check if bot is properly added to the group
+                const isMember = botMember.status === 'member' || 
+                               botMember.status === 'administrator' || 
+                               botMember.status === 'creator';
+                
+                if (!isMember) {
+                    checks.push({
+                        name: "Group Privacy Settings",
+                        passed: false,
+                        details: "Bot is not a member of the group"
+                    });
+                    return;
+                }
+
+                // Check specific permissions for administrators
+                let hasRequiredPermissions = true;
+                let permissionDetails = `Bot is a ${botMember.status}`;
+                
+                if (botMember.status === 'administrator') {
+                    // Type assertion to access admin-specific properties
+                    const adminMember = botMember as any;
+                    const adminPermissions = [
+                        { key: 'can_read_all_group_messages', desc: 'read messages', required: true },
+                        { key: 'can_send_messages', desc: 'send messages', required: true },
+                        { key: 'can_delete_messages', desc: 'delete messages', required: false }
+                    ];
+                    
+                    const missingPermissions: string[] = [];
+                    
+                    adminPermissions.forEach(perm => {
+                        if (perm.required && !adminMember[perm.key]) {
+                            hasRequiredPermissions = false;
+                            missingPermissions.push(perm.desc);
+                        }
+                    });
+                    
+                    if (missingPermissions.length > 0) {
+                        permissionDetails += ` but missing required permissions: ${missingPermissions.join(', ')}`;
+                    } else {
+                        permissionDetails += ' with all required permissions';
+                    }
+                }
+                
+                // For supergroups, provide additional context about message history
+                if (chat.type === 'supergroup') {
+                    permissionDetails += '. Message history access depends on group settings';
+                }
+                
+                const checkResult: ValidationCheck = {
+                    name: "Group Privacy Settings",
+                    passed: hasRequiredPermissions && isMember,
+                    details: permissionDetails
+                };
+                
+                if (!hasRequiredPermissions) {
+                    checkResult.warning = true;
+                }
+                
+                checks.push(checkResult);
+                
+            } catch (memberError) {
+                // If we can't get member info, the bot likely doesn't have access
+                checks.push({
+                    name: "Group Privacy Settings",
+                    passed: false,
+                    warning: true,
+                    details: "Cannot verify bot permissions - bot may not have proper access to the group"
+                });
+            }
+            
         } catch (error) {
             checks.push({
                 name: "Group Privacy Settings",

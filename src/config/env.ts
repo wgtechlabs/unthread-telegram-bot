@@ -326,7 +326,7 @@ export function isAdminUser(telegramUserId: number): boolean {
 }
 
 /**
- * Retrieves the company name from the environment variable.
+ * Get the company name from environment variables.
  * 
  * Used for automatic partner name extraction from group titles.
  * Returns null if not set or contains placeholder values, indicating

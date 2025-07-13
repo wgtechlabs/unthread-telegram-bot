@@ -6,7 +6,7 @@
 			"type": "shell",
 			"command": "yarn build",
 			"group": "build",
-			"isBackground": true,
+			"isBackground": false,
 			"problemMatcher": [
 				"$tsc"
 			]

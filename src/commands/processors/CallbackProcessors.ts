@@ -100,9 +100,14 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         return true;
     }
 
-    private async handleRestart(ctx: BotContext): Promise<boolean> {
-        await ctx.answerCbQuery("🔄 Restarting support form...");
-        
+    /**
+     * Shared logic for initializing support ticket flow
+     */
+    private async initializeSupportFlow(ctx: BotContext, options: {
+        title: string;
+        emoji: string;
+        stepDescription: string;
+    }): Promise<boolean> {
         const userId = ctx.from?.id;
         if (!userId) return false;
 
@@ -124,12 +129,22 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         });
 
         await ctx.editMessageText(
-            `🔄 **Support Ticket Restarted**\n\n` +
-            `**Step 1 of ${hasEmail ? 1 : 2}:** Please describe your issue.\n\n` +
+            `${options.emoji} **${options.title}**\n\n` +
+            `**Step 1 of ${hasEmail ? 1 : 2}:** ${options.stepDescription}\n\n` +
             "*Type your message below:*",
             { parse_mode: 'Markdown' }
         );
         return true;
+    }
+
+    private async handleRestart(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("🔄 Restarting support form...");
+        
+        return await this.initializeSupportFlow(ctx, {
+            title: "Support Ticket Restarted",
+            emoji: "🔄",
+            stepDescription: "Please describe your issue."
+        });
     }
 
     private async handleCancel(ctx: BotContext): Promise<boolean> {
@@ -153,33 +168,11 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
     private async handleCreateNew(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("🎫 Creating new ticket...");
         
-        const userId = ctx.from?.id;
-        if (!userId) return false;
-
-        // Clear any existing state
-        await BotsStore.clearUserState(userId);
-
-        // Check if user has email
-        const userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
-        const hasEmail = userData?.email;
-
-        // Set new state
-        await BotsStore.setUserState(userId, {
-            field: 'summary',
-            step: 1,
-            totalSteps: hasEmail ? 1 : 2,
-            hasEmail: !!hasEmail,
-            chatId: ctx.chat!.id,
-            startedAt: new Date().toISOString()
+        return await this.initializeSupportFlow(ctx, {
+            title: "Create New Support Ticket",
+            emoji: "🎫",
+            stepDescription: "Please describe your issue or question."
         });
-
-        await ctx.editMessageText(
-            `🎫 **Create New Support Ticket**\n\n` +
-            `**Step 1 of ${hasEmail ? 1 : 2}:** Please describe your issue or question.\n\n` +
-            "*Type your message below:*",
-            { parse_mode: 'Markdown' }
-        );
-        return true;
     }
 }
 
@@ -242,6 +235,40 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
      */
     private static resolveCallbackId(shortId: string): string | undefined {
         return SetupCallbackProcessor.callbackSessionMap.get(shortId);
+    }
+
+    /**
+     * Extract session ID from callback data parts based on action type
+     */
+    private extractSessionId(action: string, parts: string[]): string {
+        if (action === 'existing' && parts[2] === 'customer') {
+            // Format: setup_existing_customer_setup_chatId_timestamp
+            return parts.slice(3).join('_');
+        } else if (action === 'customize' && parts[2] === 'templates') {
+            // Format: setup_customize_templates_[shortId OR setup_chatId_timestamp]
+            return parts.slice(3).join('_');
+        } else if (action === 'use' && parts[2] === 'defaults') {
+            // Format: setup_use_defaults_[shortId OR setup_chatId_timestamp]
+            return parts.slice(3).join('_');
+        } else if (action === 'use' && parts[2] === 'suggested') {
+            // Format: setup_use_suggested_[sessionId]
+            return parts.slice(3).join('_');
+        } else if (action === 'template' && parts[2] === 'info') {
+            // Format: setup_template_info_[shortId OR setup_chatId_timestamp]
+            return parts.slice(3).join('_');
+        } else if (action === 'back' && parts[2] === 'to' && parts[3] === 'completion') {
+            // Format: setup_back_to_completion_[shortId OR setup_chatId_timestamp]
+            return parts.slice(4).join('_');
+        } else if (action === 'back' && parts[2] === 'to' && parts[3] === 'customer' && parts[4] === 'selection') {
+            // Format: setup_back_to_customer_selection_[sessionId]
+            return parts.slice(5).join('_');
+        } else if (action === 'finish' && parts[2] === 'custom') {
+            // Format: setup_finish_custom_[shortId OR setup_chatId_timestamp]
+            return parts.slice(3).join('_');
+        } else {
+            // Standard format: session ID is the last part
+            return parts[parts.length - 1] || '';
+        }
     }
 
     async process(ctx: BotContext, callbackData: string): Promise<boolean> {
@@ -356,42 +383,13 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             
             // Handle setup_ prefixed callbacks
             const parts = callbackData.split('_');
-            const action = parts[1];
+            const action = parts[1] || '';
             
-            // Session ID extraction depends on the callback format
-            let sessionId: string;
-            let rawSessionId: string;
-            
-            if (action === 'existing' && parts[2] === 'customer') {
-                // Format: setup_existing_customer_setup_chatId_timestamp
-                rawSessionId = parts.slice(3).join('_'); 
-            } else if (action === 'customize' && parts[2] === 'templates') {
-                // Format: setup_customize_templates_[shortId OR setup_chatId_timestamp]
-                rawSessionId = parts.slice(3).join('_'); 
-            } else if (action === 'use' && parts[2] === 'defaults') {
-                // Format: setup_use_defaults_[shortId OR setup_chatId_timestamp]
-                rawSessionId = parts.slice(3).join('_'); 
-            } else if (action === 'use' && parts[2] === 'suggested') {
-                // Format: setup_use_suggested_[sessionId]
-                rawSessionId = parts.slice(3).join('_'); 
-            } else if (action === 'template' && parts[2] === 'info') {
-                // Format: setup_template_info_[shortId OR setup_chatId_timestamp]
-                rawSessionId = parts.slice(3).join('_'); 
-            } else if (action === 'back' && parts[2] === 'to' && parts[3] === 'completion') {
-                // Format: setup_back_to_completion_[shortId OR setup_chatId_timestamp]
-                rawSessionId = parts.slice(4).join('_'); 
-            } else if (action === 'back' && parts[2] === 'to' && parts[3] === 'customer' && parts[4] === 'selection') {
-                // Format: setup_back_to_customer_selection_[sessionId]
-                rawSessionId = parts.slice(5).join('_'); 
-            } else if (action === 'finish' && parts[2] === 'custom') {
-                // Format: setup_finish_custom_[shortId OR setup_chatId_timestamp]
-                rawSessionId = parts.slice(3).join('_'); 
-            } else {
-                // Standard format: session ID is the last part
-                rawSessionId = parts[parts.length - 1] || '';
-            }
+            // Extract session ID using dedicated method
+            const rawSessionId = this.extractSessionId(action, parts);
             
             // Check if this is a short callback ID (starts with 'cb') that needs resolution
+            let sessionId: string;
             if (rawSessionId.startsWith('cb') && /^cb\d+$/.test(rawSessionId)) {
                 sessionId = SetupCallbackProcessor.resolveCallbackId(rawSessionId) || '';
                 if (!sessionId) {
@@ -702,105 +700,128 @@ Group setup has been cancelled. You can start over anytime by using \`/setup\` i
         }
     }
 
-    public async completeCustomerSetup(ctx: BotContext, sessionId: string, customerName: string | null, session: DmSetupSession, existingCustomerId?: string): Promise<void> {
+    /**
+     * Create a new customer via Unthread API and store locally
+     */
+    private async createNewCustomer(customerName: string, session: DmSetupSession, sessionId: string): Promise<{customerId: string, finalCustomerName: string}> {
+        if (!customerName) {
+            throw new Error('Customer name is required for new customer creation');
+        }
+        
         try {
+            // Import and use the proper Unthread service to create customer
+            const { createCustomerWithName } = await import('../../services/unthread.js');
             const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            const createdCustomer = await createCustomerWithName(customerName);
             
-            let customerId: string;
-            let finalCustomerName: string;
-            let isExistingCustomer = false;
-
-            if (existingCustomerId) {
-                // Linking to existing customer - get actual customer name from Unthread
-                customerId = existingCustomerId;
-                isExistingCustomer = true;
-                
-                try {
-                    // Import and use validateCustomerExists to get the actual customer name
-                    const { validateCustomerExists } = await import('../../services/unthread.js');
-                    const validationResult = await validateCustomerExists(existingCustomerId);
-                    
-                    if (validationResult.exists && validationResult.customer?.name) {
-                        finalCustomerName = validationResult.customer.name;
-                    } else {
-                        // Fail fast - don't generate fake names
-                        throw new Error(`Customer validation failed: Customer ID ${existingCustomerId} not found or has no name`);
-                    }
-                } catch (error) {
-                    logError(error, 'CallbackProcessors.completeCustomerSetup.validateCustomer', { existingCustomerId });
-                    // Fail fast - don't generate fake names
-                    throw new Error(`Customer validation failed: ${(error as Error).message}`);
-                }
-                
-            } else {
-                // Creating new customer - use Unthread API to create proper customer
-                if (!customerName) {
-                    throw new Error('Customer name is required for new customer creation');
-                }
-                
-                try {
-                    // Import and use the proper Unthread service to create customer
-                    const { createCustomerWithName } = await import('../../services/unthread.js');
-                    const createdCustomer = await createCustomerWithName(customerName);
-                    
-                    customerId = createdCustomer.id; // Use the real UUID from Unthread
-                    finalCustomerName = createdCustomer.name || customerName;
-                    
-                } catch (apiError) {
-                    logError(apiError, 'CallbackProcessors.completeCustomerSetup.createCustomer', { 
-                        customerName,
-                        sessionId 
-                    });
-                    
-                    // Fail fast - do not generate fake data
-                    throw new Error(`Failed to create customer via Unthread API: ${(apiError as Error).message}`);
-                }
-                
-                // Create customer record in local storage
-                const customerData = {
-                    id: customerId,
-                    unthreadCustomerId: customerId,
-                    telegramChatId: session.groupChatId,
-                    chatId: session.groupChatId,
-                    chatTitle: session.groupChatName,
-                    customerName: finalCustomerName,
-                    name: finalCustomerName,
-                    company: finalCustomerName,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                };
-
-                await BotsStore.storeCustomer(customerData);
-            }
-
-            // Create group configuration (same for both new and existing customers)
-            const groupConfig = {
+            const customerId = createdCustomer.id; // Use the real UUID from Unthread
+            const finalCustomerName = createdCustomer.name || customerName;
+            
+            // Create customer record in local storage
+            const customerData = {
+                id: customerId,
+                unthreadCustomerId: customerId,
+                telegramChatId: session.groupChatId,
                 chatId: session.groupChatId,
                 chatTitle: session.groupChatName,
-                isConfigured: true,
-                customerId,
                 customerName: finalCustomerName,
-                setupBy: session.adminId,
-                setupAt: new Date().toISOString(),
-                botIsAdmin: true,
-                lastAdminCheck: new Date().toISOString(),
-                setupVersion: '2.0',
-                metadata: {
-                    setupSessionId: sessionId,
-                    isExistingCustomer
-                }
+                name: finalCustomerName,
+                company: finalCustomerName,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
             };
 
-            await BotsStore.storeGroupConfig(groupConfig);
-
-            // Complete the setup
-            await BotsStore.updateDmSetupSession(sessionId, {
-                status: 'completed',
-                currentStep: 'completed'
+            await BotsStore.storeCustomer(customerData);
+            
+            return { customerId, finalCustomerName };
+            
+        } catch (apiError) {
+            logError(apiError, 'CallbackProcessors.createNewCustomer', { 
+                customerName,
+                sessionId 
             });
+            
+            // Fail fast - do not generate fake data
+            throw new Error(`Failed to create customer via Unthread API: ${(apiError as Error).message}`);
+        }
+    }
 
-            const setupType = isExistingCustomer ? 'Linked to Existing Customer' : 'New Customer Created';
-            const successMessage = `🎉 **Setup Complete!**
+    /**
+     * Link to existing customer and validate
+     */
+    private async linkExistingCustomer(existingCustomerId: string): Promise<{customerId: string, finalCustomerName: string}> {
+        try {
+            // Import and use validateCustomerExists to get the actual customer name
+            const { validateCustomerExists } = await import('../../services/unthread.js');
+            const validationResult = await validateCustomerExists(existingCustomerId);
+            
+            if (validationResult.exists && validationResult.customer?.name) {
+                return {
+                    customerId: existingCustomerId,
+                    finalCustomerName: validationResult.customer.name
+                };
+            } else {
+                // Fail fast - don't generate fake names
+                throw new Error(`Customer validation failed: Customer ID ${existingCustomerId} not found or has no name`);
+            }
+        } catch (error) {
+            logError(error, 'CallbackProcessors.linkExistingCustomer', { existingCustomerId });
+            // Fail fast - don't generate fake names
+            throw new Error(`Customer validation failed: ${(error as Error).message}`);
+        }
+    }
+
+    /**
+     * Create group configuration
+     */
+    private async createGroupConfiguration(
+        session: DmSetupSession, 
+        customerId: string, 
+        finalCustomerName: string, 
+        sessionId: string, 
+        isExistingCustomer: boolean
+    ): Promise<void> {
+        const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+        
+        const groupConfig = {
+            chatId: session.groupChatId,
+            chatTitle: session.groupChatName,
+            isConfigured: true,
+            customerId,
+            customerName: finalCustomerName,
+            setupBy: session.adminId,
+            setupAt: new Date().toISOString(),
+            botIsAdmin: true,
+            lastAdminCheck: new Date().toISOString(),
+            setupVersion: '2.0',
+            metadata: {
+                setupSessionId: sessionId,
+                isExistingCustomer
+            }
+        };
+
+        await BotsStore.storeGroupConfig(groupConfig);
+
+        // Complete the setup
+        await BotsStore.updateDmSetupSession(sessionId, {
+            status: 'completed',
+            currentStep: 'completed'
+        });
+    }
+
+    /**
+     * Send completion message with template options
+     */
+    private async sendCompletionMessage(
+        ctx: BotContext, 
+        sessionId: string, 
+        session: DmSetupSession, 
+        customerId: string, 
+        finalCustomerName: string, 
+        isExistingCustomer: boolean
+    ): Promise<void> {
+        const setupType = isExistingCustomer ? 'Linked to Existing Customer' : 'New Customer Created';
+        const successMessage = `🎉 **Setup Complete!**
 
 **${setupType}**
 **Customer:** ${finalCustomerName}
@@ -816,37 +837,62 @@ Group setup has been cancelled. You can start over anytime by using \`/setup\` i
 
 Choose how you'd like to handle message templates:`;
 
-            // Generate short callback ID for this session
-            const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+        // Generate short callback ID for this session
+        const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
 
-            try {
-                await ctx.editMessageText(successMessage, {
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                { text: "✅ Finish Setup", callback_data: `setup_use_defaults_${shortId}` },
-                                { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${shortId}` }
-                            ]
+        try {
+            await ctx.editMessageText(successMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "✅ Finish Setup", callback_data: `setup_use_defaults_${shortId}` },
+                            { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${shortId}` }
                         ]
-                    }
-                });
-            } catch (editError) {
-                // If edit fails (e.g., message too old or from text input), send a new message
-                await ctx.reply(successMessage, {
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                { text: "✅ Finish Setup", callback_data: `setup_use_defaults_${shortId}` },
-                                { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${shortId}` }
-                            ]
+                    ]
+                }
+            });
+        } catch (editError) {
+            // If edit fails (e.g., message too old or from text input), send a new message
+            await ctx.reply(successMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "✅ Finish Setup", callback_data: `setup_use_defaults_${shortId}` },
+                            { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${shortId}` }
                         ]
-                    }
-                });
+                    ]
+                }
+            });
+        }
+    }
+
+    public async completeCustomerSetup(ctx: BotContext, sessionId: string, customerName: string | null, session: DmSetupSession, existingCustomerId?: string): Promise<void> {
+        try {
+            let customerId: string;
+            let finalCustomerName: string;
+            let isExistingCustomer = false;
+
+            // Step 1: Handle customer creation or linking
+            if (existingCustomerId) {
+                // Link to existing customer
+                isExistingCustomer = true;
+                const result = await this.linkExistingCustomer(existingCustomerId);
+                customerId = result.customerId;
+                finalCustomerName = result.finalCustomerName;
+            } else {
+                // Create new customer
+                const result = await this.createNewCustomer(customerName!, session, sessionId);
+                customerId = result.customerId;
+                finalCustomerName = result.finalCustomerName;
             }
 
-            // Note: Session cleanup will be handled by template choice handlers
+            // Step 2: Create group configuration
+            await this.createGroupConfiguration(session, customerId, finalCustomerName, sessionId, isExistingCustomer);
+
+            // Step 3: Send completion message
+            await this.sendCompletionMessage(ctx, sessionId, session, customerId, finalCustomerName, isExistingCustomer);
 
         } catch (error) {
             logError(error, 'SetupCallbackProcessor.completeCustomerSetup', { sessionId, customerName, existingCustomerId });
@@ -1209,14 +1255,80 @@ Choose how you'd like to handle message templates:`;
         }
     }
 
-    // Simplified validation method for callback processor
+    // Enhanced validation method that performs actual validation logic
     private async performSetupValidation(ctx: BotContext, sessionId: string, groupChatId: number, groupTitle: string): Promise<void> {
-        // This is a simplified version - in production, you'd extract this to a shared service
-        await ctx.editMessageText(
-            `🔄 **Validation Retry**
+        try {
+            // Import and use existing validation service
+            const { ValidationService } = await import('../../services/validationService.js');
+            
+            // Perform actual setup validation
+            const validationResult = await ValidationService.performSetupValidation(ctx, groupChatId, groupTitle);
+            
+            if (validationResult.allPassed) {
+                // Validation passed - continue with setup completion
+                await ctx.editMessageText(
+                    `✅ **Validation Successful**
+
+Group "${groupTitle}" is properly configured and ready for setup completion.
+
+${validationResult.message}
+
+Please proceed with the next step in the setup process.`
+                );
+            } else {
+                // Validation failed - provide specific error information
+                const failedChecks = validationResult.checks
+                    .filter(check => !check.passed)
+                    .map(check => `• ${check.name}: ${check.details}`)
+                    .join('\n');
+                
+                await ctx.editMessageText(
+                    `❌ **Validation Failed**
+
+${validationResult.message}
+
+**Issues Found:**
+${failedChecks}
+
+Please return to the group and run \`/setup\` again after resolving these issues.`
+                );
+            }
+            
+        } catch (error) {
+            // Fallback validation logic if service is unavailable
+            logError(error, 'SetupCallbackProcessor.performSetupValidation', { 
+                sessionId, 
+                groupChatId, 
+                groupTitle 
+            });
+            
+            // Basic fallback validation - check if group exists and bot has access
+            try {
+                const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+                const existingConfig = await BotsStore.getGroupConfig(groupChatId);
+                
+                if (existingConfig?.isConfigured) {
+                    await ctx.editMessageText(
+                        `⚠️ **Setup Already Complete**
+
+This group appears to already be configured. If you're experiencing issues, please contact support.`
+                    );
+                } else {
+                    await ctx.editMessageText(
+                        `🔄 **Validation Retry Required**
+
+Unable to complete validation automatically. Please return to the group and run \`/setup\` again to retry the validation process.`
+                    );
+                }
+            } catch (fallbackError) {
+                // Ultimate fallback
+                await ctx.editMessageText(
+                    `🔄 **Validation Retry Required**
 
 Please return to the group and run \`/setup\` again to retry the validation process.`
-        );
+                );
+            }
+        }
     }
 
     /**

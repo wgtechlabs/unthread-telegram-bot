@@ -1123,6 +1123,69 @@ export class BotsStore implements IBotsStore {
   // Admin Profile Operations
   // =====================================================================
 
+  private static updateLocks = new Map<string, Promise<void>>();
+
+  /**
+   * Perform atomic updates to arrays using a locking mechanism
+   */
+  private async atomicArrayUpdate<T>(
+    key: string, 
+    updater: (currentArray: T[]) => T[]
+  ): Promise<void> {
+    // Check if there's already an update in progress for this key
+    const existingLock = BotsStore.updateLocks.get(key);
+    if (existingLock) {
+      // Wait for the existing update to complete
+      await existingLock;
+    }
+
+    // Create a new lock for this update
+    const updatePromise = this.performAtomicUpdate(key, updater);
+    BotsStore.updateLocks.set(key, updatePromise);
+
+    try {
+      await updatePromise;
+    } finally {
+      // Clean up the lock when done
+      BotsStore.updateLocks.delete(key);
+    }
+  }
+
+  /**
+   * Internal method to perform the actual atomic update
+   */
+  private async performAtomicUpdate<T>(
+    key: string, 
+    updater: (currentArray: T[]) => T[]
+  ): Promise<void> {
+    const maxRetries = 3;
+    let attempt = 0;
+
+    while (attempt < maxRetries) {
+      try {
+        // Read current state
+        const currentArray = await this.getArrayFromStorage(key) as T[];
+        
+        // Apply the update function
+        const updatedArray = updater(currentArray);
+        
+        // Write back atomically
+        await this.storage.set(key, JSON.stringify(updatedArray));
+        
+        // Success - exit retry loop
+        return;
+      } catch (error) {
+        attempt++;
+        if (attempt >= maxRetries) {
+          throw error;
+        }
+        
+        // Brief delay before retry to reduce contention
+        await new Promise(resolve => setTimeout(resolve, 50 * attempt));
+      }
+    }
+  }
+
   /**
    * Store admin profile data with ID tracking
    */
@@ -1138,13 +1201,15 @@ export class BotsStore implements IBotsStore {
 
       await this.storage.set(`admin:profile:${adminData.telegramUserId}`, JSON.stringify(enrichedData));
       
-      // Track admin ID in list for retrieval
+      // Atomically update admin ID list for retrieval
       const adminIdsKey = 'admin_profile_ids';
-      const existingIds = await this.getArrayFromStorage(adminIdsKey);
-      if (!existingIds.includes(adminData.telegramUserId)) {
-        existingIds.push(adminData.telegramUserId);
-        await this.storage.set(adminIdsKey, JSON.stringify(existingIds));
-      }
+      await this.atomicArrayUpdate<number>(adminIdsKey, (existingIds) => {
+        // Only add if not already present to prevent duplicates
+        if (!existingIds.includes(adminData.telegramUserId)) {
+          return [...existingIds, adminData.telegramUserId];
+        }
+        return existingIds;
+      });
       
       LogEngine.info(`Admin profile stored: ${adminData.telegramUserId}`);
       return true;

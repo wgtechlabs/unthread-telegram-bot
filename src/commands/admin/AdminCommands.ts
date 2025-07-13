@@ -74,7 +74,7 @@ export class ActivateCommand extends BaseCommand {
     }
 
     private async activateAdmin(ctx: BotContext, userId: number): Promise<void> {
-        const companyName = getCompanyName();
+        const companyName = getCompanyName() || 'Support';
         
         // Create admin profile
         const adminProfile = {

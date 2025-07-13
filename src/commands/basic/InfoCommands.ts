@@ -97,18 +97,28 @@ export class VersionCommand extends BaseCommand {
     };
 
     protected async executeCommand(ctx: BotContext): Promise<void> {
-        const versionInfo = `📊 **Bot Version Information**\n\n` +
+        const isProduction = process.env.NODE_ENV === 'production';
+        
+        let versionInfo = `📊 **Bot Version Information**\n\n` +
             `**Version:** ${packageJSON.version}\n` +
             `**Name:** ${packageJSON.name}\n` +
             `**Description:** ${packageJSON.description}\n` +
             `**Author:** ${packageJSON.author}\n` +
-            `**License:** ${packageJSON.license}\n\n` +
-            `**Build Info:**\n` +
-            `• Node.js: ${process.version}\n` +
-            `• Platform: ${process.platform}\n` +
-            `• Architecture: ${process.arch}\n` +
-            `• Environment: ${process.env.NODE_ENV || 'development'}\n\n` +
-            `**Repository:**\n` +
+            `**License:** ${packageJSON.license}\n\n`;
+        
+        // Only show detailed system information in non-production environments
+        if (!isProduction) {
+            versionInfo += `**Build Info:**\n` +
+                `• Node.js: ${process.version}\n` +
+                `• Platform: ${process.platform}\n` +
+                `• Architecture: ${process.arch}\n` +
+                `• Environment: ${process.env.NODE_ENV || 'development'}\n\n`;
+        } else {
+            versionInfo += `**Build Info:**\n` +
+                `• Environment: Production\n\n`;
+        }
+        
+        versionInfo += `**Repository:**\n` +
             `Check our GitHub for updates and documentation\n\n` +
             `Built with ❤️ by ${packageJSON.author}`;
 

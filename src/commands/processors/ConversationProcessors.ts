@@ -468,111 +468,14 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 expiresAt: extendedExpiresAt.toISOString()
             });
             
-            // Validate customer ID format (UUID-like format)
-            const customerIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-            
-            if (!customerIdPattern.test(customerId.trim())) {
-                await ctx.reply(
-                    `❌ **Invalid Customer ID Format**\n\nThe customer ID must be in UUID format (e.g., ee19d165-a170-4261-8a4b-569c6a1bbcb7)\n\nPlease enter a valid customer ID:`,
-                    {
-                        parse_mode: 'Markdown',
-                        reply_markup: {
-                            inline_keyboard: [
-                                [
-                                    { text: "⬅️ Back to Options", callback_data: `setup_back_to_customer_selection_${session.sessionId}` }
-                                ],
-                                [
-                                    { text: "❌ Cancel Setup", callback_data: `setup_cancel_${session.sessionId}` }
-                                ]
-                            ]
-                        }
-                    }
-                );
-                return true;
+            // Validate customer ID and check existence
+            const validation = await this.validateCustomerId(ctx, customerId, session);
+            if (!validation.isValid) {
+                return true; // Error already handled in validation method
             }
 
-            // Send validation message
-            const validationMsg = await ctx.reply("🔍 Validating customer ID with Unthread...", { parse_mode: 'Markdown' });
-
-            // Validate customer exists and get customer details
             const trimmedCustomerId = customerId.trim();
-            let customerName: string;
-            
-            try {
-                const { validateCustomerExists } = await import('../../services/unthread.js');
-                const validationResult = await validateCustomerExists(trimmedCustomerId);
-
-                if (!validationResult.exists) {
-                    // Clean up validation message
-                    try {
-                        await ctx.deleteMessage(validationMsg.message_id);
-                    } catch (deleteError) {
-                        // Ignore deletion errors
-                    }
-                    
-                    await ctx.reply(
-                        `❌ **Customer Not Found**\n\n${validationResult.error || 'The customer ID was not found in your Unthread workspace.'}\n\nPlease check the customer ID and try again:`,
-                        {
-                            parse_mode: 'Markdown',
-                            reply_markup: {
-                                inline_keyboard: [
-                                    [
-                                        { text: "⬅️ Back to Options", callback_data: `setup_back_to_customer_selection_${session.sessionId}` }
-                                    ],
-                                    [
-                                        { text: "❌ Cancel Setup", callback_data: `setup_cancel_${session.sessionId}` }
-                                    ]
-                                ]
-                            }
-                        }
-                    );
-                    return true;
-                }
-
-                customerName = validationResult.customer?.name || `Customer ${trimmedCustomerId.substring(0, 8)}...`;
-                
-                // Clean up validation message and show success
-                try {
-                    await ctx.deleteMessage(validationMsg.message_id);
-                } catch (deleteError) {
-                    // Ignore deletion errors
-                }
-                
-                // Clean up any stale cancel button messages from the session
-                const { BotsStore } = await import('../../sdk/bots-brain/index.js');
-                const currentSession = await BotsStore.getDmSetupSession(session.sessionId);
-                if (currentSession?.messageIds) {
-                    for (const messageId of currentSession.messageIds) {
-                        try {
-                            // Try to edit the message to remove buttons
-                            await ctx.telegram.editMessageReplyMarkup(
-                                ctx.chat!.id,
-                                messageId,
-                                undefined,
-                                { inline_keyboard: [] }
-                            );
-                        } catch (editError) {
-                            // If edit fails, ignore - the message might be too old or already deleted
-                        }
-                    }
-                    
-                    // Clear the tracked message IDs since they've been cleaned up
-                    await BotsStore.updateDmSetupSession(session.sessionId, { 
-                        messageIds: [] 
-                    });
-                }
-                
-                await ctx.reply(`✅ Customer found: **${customerName}**\n\nLinking to existing customer...`, { parse_mode: 'Markdown' });
-
-            } catch (validationError) {
-                logError(validationError, 'DmSetupInputProcessor.validateCustomer', { 
-                    customerId: trimmedCustomerId,
-                    sessionId: session.sessionId 
-                });
-                
-                // Fail fast - don't generate fake names or proceed with invalid data
-                throw new Error(`Customer validation failed: ${(validationError as Error).message}`);
-            }
+            const customerName = validation.customerName!;
 
             // Update session with the customer ID
             await BotsStore.updateDmSetupSession(session.sessionId, {
@@ -584,60 +487,11 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 }
             });
 
-            // Complete the setup by creating the group configuration directly
+            // Complete the setup by creating the group configuration
             try {
-                const { BotsStore } = await import('../../sdk/bots-brain/index.js');
-                
-                // Create group configuration for existing customer
-                const groupConfig = {
-                    chatId: session.groupChatId,
-                    chatTitle: session.groupChatName,
-                    isConfigured: true,
-                    customerId: trimmedCustomerId,
-                    customerName: customerName, // Use the actual customer name from Unthread
-                    setupBy: session.adminId,
-                    setupAt: new Date().toISOString(),
-                    botIsAdmin: true,
-                    lastAdminCheck: new Date().toISOString(),
-                    setupVersion: '2.0',
-                    metadata: {
-                        setupSessionId: session.sessionId,
-                        isExistingCustomer: true
-                    }
-                };
+                await this.createGroupConfigForCustomer(session, trimmedCustomerId, customerName);
 
-                await BotsStore.storeGroupConfig(groupConfig);
-
-                // Update session to template configuration step (don't mark as completed yet)
-                // Also extend the session expiration time to give user more time for template customization
-                const now = new Date();
-                const currentExpiry = new Date(session.expiresAt);
-                
-                // Extend to 30 minutes from now, or add 30 minutes to current expiry, whichever is later
-                const newExpiryFromNow = new Date(now.getTime() + 30 * 60 * 1000);
-                const newExpiryFromCurrent = new Date(currentExpiry.getTime() + 30 * 60 * 1000);
-                const extendedExpiresAt = newExpiryFromNow > newExpiryFromCurrent ? newExpiryFromNow : newExpiryFromCurrent;
-                
-                await BotsStore.updateDmSetupSession(session.sessionId, {
-                    currentStep: 'template_configuration',
-                    expiresAt: extendedExpiresAt.toISOString() // Extend session expiration
-                });
-
-                const successMessage = `🎉 **Setup Complete!**
-
-**Linked to Existing Customer**
-**Customer:** ${customerName}
-**Customer ID:** \`${trimmedCustomerId}\`
-**Group:** ${session.groupChatName}
-
-✅ **What's configured:**
-• Group linked to existing customer account
-• Support ticket system enabled
-• Bot admin permissions verified
-
-📝 **Template Configuration** (Optional)
-
-Choose how you'd like to handle message templates:`;
+                const successMessage = this.generateSetupSuccessMessage(customerName, trimmedCustomerId, session.groupChatName);
 
                 await ctx.reply(successMessage, {
                     parse_mode: 'Markdown',
@@ -956,5 +810,184 @@ Choose how you'd like to handle message templates:`;
             );
             return true;
         }
+    }
+
+    /**
+     * Validate customer ID format and existence
+     */
+    private async validateCustomerId(ctx: BotContext, customerId: string, session: any): Promise<{
+        isValid: boolean;
+        customerName?: string;
+        error?: string;
+        validationMsg?: any;
+    }> {
+        // Validate customer ID format (UUID-like format)
+        const customerIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        
+        if (!customerIdPattern.test(customerId.trim())) {
+            await ctx.reply(
+                `❌ **Invalid Customer ID Format**\n\nThe customer ID must be in UUID format (e.g., ee19d165-a170-4261-8a4b-569c6a1bbcb7)\n\nPlease enter a valid customer ID:`,
+                {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "⬅️ Back to Options", callback_data: `setup_back_to_customer_selection_${session.sessionId}` }
+                            ],
+                            [
+                                { text: "❌ Cancel Setup", callback_data: `setup_cancel_${session.sessionId}` }
+                            ]
+                        ]
+                    }
+                }
+            );
+            return { isValid: false, error: 'Invalid format' };
+        }
+
+        // Send validation message
+        const validationMsg = await ctx.reply("🔍 Validating customer ID with Unthread...", { parse_mode: 'Markdown' });
+
+        // Validate customer exists and get customer details
+        const trimmedCustomerId = customerId.trim();
+        
+        try {
+            const { validateCustomerExists } = await import('../../services/unthread.js');
+            const validationResult = await validateCustomerExists(trimmedCustomerId);
+
+            if (!validationResult.exists) {
+                // Clean up validation message
+                try {
+                    await ctx.deleteMessage(validationMsg.message_id);
+                } catch (deleteError) {
+                    // Ignore deletion errors
+                }
+                
+                await ctx.reply(
+                    `❌ **Customer Not Found**\n\n${validationResult.error || 'The customer ID was not found in your Unthread workspace.'}\n\nPlease check the customer ID and try again:`,
+                    {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "⬅️ Back to Options", callback_data: `setup_back_to_customer_selection_${session.sessionId}` }
+                                ],
+                                [
+                                    { text: "❌ Cancel Setup", callback_data: `setup_cancel_${session.sessionId}` }
+                                ]
+                            ]
+                        }
+                    }
+                );
+                return { isValid: false, error: 'Customer not found' };
+            }
+
+            const customerName = validationResult.customer?.name || `Customer ${trimmedCustomerId.substring(0, 8)}...`;
+            
+            // Clean up validation message and show success
+            try {
+                await ctx.deleteMessage(validationMsg.message_id);
+            } catch (deleteError) {
+                // Ignore deletion errors
+            }
+            
+            // Clean up any stale cancel button messages from the session
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            const currentSession = await BotsStore.getDmSetupSession(session.sessionId);
+            if (currentSession?.messageIds) {
+                for (const messageId of currentSession.messageIds) {
+                    try {
+                        // Try to edit the message to remove buttons
+                        await ctx.telegram.editMessageReplyMarkup(
+                            ctx.chat!.id,
+                            messageId,
+                            undefined,
+                            { inline_keyboard: [] }
+                        );
+                    } catch (editError) {
+                        // If edit fails, ignore - the message might be too old or already deleted
+                    }
+                }
+                
+                // Clear the tracked message IDs since they've been cleaned up
+                await BotsStore.updateDmSetupSession(session.sessionId, { 
+                    messageIds: [] 
+                });
+            }
+            
+            await ctx.reply(`✅ Customer found: **${customerName}**\n\nLinking to existing customer...`, { parse_mode: 'Markdown' });
+
+            return { isValid: true, customerName, validationMsg };
+
+        } catch (validationError) {
+            logError(validationError, 'DmSetupInputProcessor.validateCustomerId', { 
+                customerId: trimmedCustomerId,
+                sessionId: session.sessionId 
+            });
+            
+            throw new Error(`Customer validation failed: ${(validationError as Error).message}`);
+        }
+    }
+
+    /**
+     * Create group configuration for existing customer
+     */
+    private async createGroupConfigForCustomer(session: any, customerId: string, customerName: string): Promise<void> {
+        const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+        
+        // Create group configuration for existing customer
+        const groupConfig = {
+            chatId: session.groupChatId,
+            chatTitle: session.groupChatName,
+            isConfigured: true,
+            customerId: customerId,
+            customerName: customerName, // Use the actual customer name from Unthread
+            setupBy: session.adminId,
+            setupAt: new Date().toISOString(),
+            botIsAdmin: true,
+            lastAdminCheck: new Date().toISOString(),
+            setupVersion: '2.0',
+            metadata: {
+                setupSessionId: session.sessionId,
+                isExistingCustomer: true
+            }
+        };
+
+        await BotsStore.storeGroupConfig(groupConfig);
+
+        // Update session to template configuration step (don't mark as completed yet)
+        // Also extend the session expiration time to give user more time for template customization
+        const now = new Date();
+        const currentExpiry = new Date(session.expiresAt);
+        
+        // Extend to 30 minutes from now, or add 30 minutes to current expiry, whichever is later
+        const newExpiryFromNow = new Date(now.getTime() + 30 * 60 * 1000);
+        const newExpiryFromCurrent = new Date(currentExpiry.getTime() + 30 * 60 * 1000);
+        const extendedExpiresAt = newExpiryFromNow > newExpiryFromCurrent ? newExpiryFromNow : newExpiryFromCurrent;
+        
+        await BotsStore.updateDmSetupSession(session.sessionId, {
+            currentStep: 'template_configuration',
+            expiresAt: extendedExpiresAt.toISOString() // Extend session expiration
+        });
+    }
+
+    /**
+     * Generate setup success message for existing customer link
+     */
+    private generateSetupSuccessMessage(customerName: string, customerId: string, groupName: string): string {
+        return `🎉 **Setup Complete!**
+
+**Linked to Existing Customer**
+**Customer:** ${customerName}
+**Customer ID:** \`${customerId}\`
+**Group:** ${groupName}
+
+✅ **What's configured:**
+• Group linked to existing customer account
+• Support ticket system enabled
+• Bot admin permissions verified
+
+📝 **Template Configuration** (Optional)
+
+Choose how you'd like to handle message templates:`;
     }
 }
