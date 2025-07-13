@@ -276,46 +276,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
     }
 }
 
-/**
- * Setup Input Processor
- * Handles text input during group setup flows
- */
-export class SetupInputProcessor implements IConversationProcessor {
-    async canHandle(ctx: BotContext): Promise<boolean> {
-        const chatId = ctx.chat?.id;
-        if (!chatId || ctx.chat?.type === 'private') {
-            return false;
-        }
 
-        try {
-            const setupSession = await BotsStore.getSetupSession(`setup_${chatId}`);
-            return setupSession !== null;
-        } catch (error) {
-            logError(error, 'SetupInputProcessor.canHandle', { chatId });
-            return false;
-        }
-    }
-
-    async process(ctx: BotContext): Promise<boolean> {
-        try {
-            // TODO: Implement actual group setup input processing logic
-            // This is a placeholder for the phased rollout - full implementation pending
-            // Should handle: group validation, admin permissions, webhook configuration
-            await ctx.reply(
-                "⚙️ **Setup Input Received**\n\n" +
-                "This is where group setup input processing would happen.\n\n" +
-                "*The clean architecture makes complex flows manageable!*",
-                { parse_mode: 'Markdown' }
-            );
-            return true;
-        } catch (error) {
-            logError(error, 'SetupInputProcessor.process', { 
-                chatId: ctx.chat?.id 
-            });
-            return false;
-        }
-    }
-}
 
 /**
  * DM Setup Input Processor
