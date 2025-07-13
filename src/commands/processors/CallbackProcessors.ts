@@ -1046,18 +1046,11 @@ Please return to the group and run \`/setup\` again to retry the validation proc
                                session.stepData?.suggestedName || 
                                (session.stepData?.existingCustomerId ? `Customer ${session.stepData.existingCustomerId.substring(0, 8)}...` : 'Unknown');
 
-            const setupType = session.stepData?.linkType === 'existing' ? 'linked to existing customer' : 'configured with new customer';
-
             const groupNotification = `✅ **Setup Complete!**
 
-📋 **This group is now configured for support tickets.**
+📋 **This group is now configured for support tickets for ${customerName}.**
 
-**Customer:** ${customerName}  
-**Setup:** Successfully ${setupType}
-
-🎫 **Members can use** \`/support\` **to create support tickets and get help from our team.**
-
-⚡ **Quick Setup:** Just two simple choices in your DM!`;
+🎫 **Members can use** \`/support\` **to create support tickets and get help from our team.**`;
 
             await ctx.telegram.sendMessage(session.groupChatId, groupNotification, { 
                 parse_mode: 'Markdown' 
