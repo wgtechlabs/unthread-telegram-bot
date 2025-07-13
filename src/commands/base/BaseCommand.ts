@@ -266,6 +266,9 @@ export abstract class BaseCommand implements ICommand {
         const firstName = ctx.from?.first_name || 'Admin';
         const commandName = this.metadata.name;
         
+        // Safely get bot username with proper error handling
+        const botUsername = await this.getBotUsername(ctx);
+        
         const activationMessage = 
             "🔐 **Admin Activation Required**\n\n" +
             `Hello ${firstName}! To use the \`/${commandName}\` command, you need to activate your admin privileges first.\n\n` +
@@ -286,12 +289,50 @@ export abstract class BaseCommand implements ICommand {
                     [
                         {
                             text: "🚀 Start Activation",
-                            url: `https://t.me/${ctx.botInfo?.username || 'unthread_bot'}?start=admin_activate`
+                            url: `https://t.me/${botUsername}?start=admin_activate`
                         }
                     ]
                 ]
             }
         });
+    }
+
+    /**
+     * Safely retrieve bot username with proper fallback and validation
+     */
+    private async getBotUsername(ctx: BotContext): Promise<string> {
+        try {
+            // First, try to get from context if available and valid
+            if (ctx.botInfo?.username) {
+                return ctx.botInfo.username;
+            }
+
+            // If not available in context, fetch fresh bot info
+            const botInfo = await ctx.telegram.getMe();
+            if (botInfo.username) {
+                return botInfo.username;
+            }
+
+            // If still no username, log the issue and use a safe fallback
+            LogEngine.warn('Bot username not available from Telegram API', {
+                contextHasBotInfo: !!ctx.botInfo,
+                contextUsername: ctx.botInfo?.username,
+                fetchedBotInfo: !!botInfo,
+                fetchedUsername: botInfo.username,
+                botId: botInfo.id
+            });
+
+            // Use a descriptive fallback that's more likely to be correct
+            return 'unthread_support_bot';
+        } catch (error) {
+            LogEngine.error('Failed to retrieve bot username', {
+                error: error instanceof Error ? error.message : String(error),
+                contextHasBotInfo: !!ctx.botInfo
+            });
+            
+            // Safe fallback that's more descriptive than the original
+            return 'unthread_support_bot';
+        }
     }
 
     /**

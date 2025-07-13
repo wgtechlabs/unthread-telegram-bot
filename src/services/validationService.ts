@@ -14,6 +14,7 @@ export interface ValidationCheck {
     name: string;
     passed: boolean;
     details: string;
+    warning?: boolean;
 }
 
 export interface ValidationResult {
@@ -109,6 +110,7 @@ export class ValidationService {
             checks.push({
                 name: "Group Privacy Settings",
                 passed: false,
+                warning: true,
                 details: "Privacy check failed or could not be verified"
             });
         }

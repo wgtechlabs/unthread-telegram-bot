@@ -122,10 +122,11 @@ export class GlobalTemplateManager {
 
       let content = template.content;
       
-      // Replace all variables in the format {{variableName}}
+      // Replace all variables in the format {{variableName}} with sanitized values
       for (const [key, value] of Object.entries(variables)) {
         const placeholder = `{{${key}}}`;
-        content = content.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value || '');
+        const sanitizedValue = this.sanitizeTemplateValue(value || '');
+        content = content.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), sanitizedValue);
       }
       
       // Clean up any remaining unreplaced variables
@@ -136,6 +137,72 @@ export class GlobalTemplateManager {
       LogEngine.error('Failed to render template', { event, error });
       return null;
     }
+  }
+
+  /**
+   * Sanitize template values to prevent injection attacks
+   * This function removes or escapes potentially dangerous content
+   */
+  private sanitizeTemplateValue(value: string): string {
+    if (typeof value !== 'string') {
+      return String(value || '');
+    }
+
+    // Remove null bytes and control characters that could cause issues
+    let sanitized = value.replace(/[\x00-\x1F\x7F]/g, '');
+    
+    // Escape HTML/XML special characters to prevent markup injection
+    sanitized = sanitized
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#x27;')
+      .replace(/\//g, '&#x2F;');
+    
+    // Remove or escape Markdown special characters that could break formatting
+    sanitized = sanitized
+      .replace(/\*/g, '\\*')
+      .replace(/_/g, '\\_')
+      .replace(/\[/g, '\\[')
+      .replace(/\]/g, '\\]')
+      .replace(/`/g, '\\`')
+      .replace(/~/g, '\\~');
+    
+    // Limit length to prevent buffer overflow or excessive content
+    const maxLength = 1000;
+    if (sanitized.length > maxLength) {
+      sanitized = sanitized.substring(0, maxLength) + '...';
+      LogEngine.warn('Template value truncated due to excessive length', {
+        originalLength: value.length,
+        truncatedLength: sanitized.length
+      });
+    }
+    
+    // Log suspicious patterns for security monitoring
+    const suspiciousPatterns = [
+      /javascript:/i,
+      /data:/i,
+      /vbscript:/i,
+      /on\w+\s*=/i,
+      /<script/i,
+      /<iframe/i,
+      /eval\s*\(/i,
+      /document\./i,
+      /window\./i
+    ];
+    
+    for (const pattern of suspiciousPatterns) {
+      if (pattern.test(value)) {
+        LogEngine.warn('Suspicious content detected in template value', {
+          pattern: pattern.toString(),
+          originalValue: value.substring(0, 100) // Log only first 100 chars for privacy
+        });
+        break;
+      }
+    }
+    
+    return sanitized;
   }
 
   /**
@@ -205,7 +272,7 @@ export class GlobalTemplateManager {
   }
 
   /**
-   * Validate template content
+   * Validate template content for security and syntax
    */
   private validateTemplate(content: string): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
@@ -216,6 +283,29 @@ export class GlobalTemplateManager {
     
     if (content.length > 4000) {
       errors.push('Template content too long (max 4000 characters)');
+    }
+    
+    // Security validation: Check for potentially dangerous content
+    const dangerousPatterns = [
+      { pattern: /javascript:/i, message: 'JavaScript URLs are not allowed' },
+      { pattern: /data:/i, message: 'Data URLs are not allowed' },
+      { pattern: /vbscript:/i, message: 'VBScript URLs are not allowed' },
+      { pattern: /<script/i, message: 'Script tags are not allowed' },
+      { pattern: /<iframe/i, message: 'Iframe tags are not allowed' },
+      { pattern: /on\w+\s*=/i, message: 'Event handlers are not allowed' },
+      { pattern: /eval\s*\(/i, message: 'Eval functions are not allowed' },
+      { pattern: /document\./i, message: 'Document object access is not allowed' },
+      { pattern: /window\./i, message: 'Window object access is not allowed' }
+    ];
+    
+    for (const { pattern, message } of dangerousPatterns) {
+      if (pattern.test(content)) {
+        errors.push(message);
+        LogEngine.warn('Dangerous pattern detected in template content', {
+          pattern: pattern.toString(),
+          contentPreview: content.substring(0, 100)
+        });
+      }
     }
     
     // Check for valid variable syntax
@@ -232,6 +322,14 @@ export class GlobalTemplateManager {
         if (!allVariables.includes(variableName)) {
           errors.push(`Unknown variable: ${variableName}`);
         }
+      }
+    }
+    
+    // Check for nested template patterns that could cause recursion
+    if (content.includes('{{') && content.includes('}}')) {
+      const nestedPatterns = content.match(/\{\{[^}]*\{\{[^}]*\}\}[^}]*\}\}/g);
+      if (nestedPatterns) {
+        errors.push('Nested template variables are not allowed');
       }
     }
     

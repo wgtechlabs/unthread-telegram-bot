@@ -44,6 +44,15 @@ export class TimeoutManager {
         delay: number,
         description: string = 'unnamed timeout'
     ): string {
+        // Prevent new timeouts during shutdown to avoid race conditions
+        if (this.isShuttingDown) {
+            LogEngine.warn('Timeout creation rejected - system is shutting down', {
+                description,
+                delay
+            });
+            return ''; // Return empty string to indicate no timeout was created
+        }
+
         const timeoutKey = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         
         const wrappedCallback = async () => {

@@ -15,6 +15,20 @@ export interface ValidationResult {
 }
 
 /**
+ * Shared UUID validation pattern (used by multiple functions)
+ * Ensures consistency across the application
+ */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Validate UUID format (helper function)
+ * Centralized UUID validation to ensure consistency across the codebase
+ */
+export function isValidUUID(value: string): boolean {
+    return UUID_REGEX.test(value);
+}
+
+/**
  * Validate customer name input
  * 
  * Performs basic validation (length, reserved words) but leaves
@@ -127,7 +141,8 @@ export function validateEmail(email: string): ValidationResult {
 }
 
 /**
- * Validate customer ID
+ * Validate customer ID (UUID format)
+ * Updated to match ConversationProcessors.ts expectations
  */
 export function validateCustomerId(customerId: string): ValidationResult {
     if (!customerId || typeof customerId !== 'string') {
@@ -148,29 +163,18 @@ export function validateCustomerId(customerId: string): ValidationResult {
         };
     }
 
-    // Basic alphanumeric check
-    const idRegex = /^[a-zA-Z0-9_-]+$/;
-    
-    if (!idRegex.test(trimmedId)) {
+    // UUID format validation (must match ConversationProcessors.ts pattern)
+    if (!isValidUUID(trimmedId)) {
         return {
             isValid: false,
             error: 'Invalid customer ID format',
-            details: 'Customer ID can only contain letters, numbers, hyphens, and underscores'
-        };
-    }
-
-    // Length validation
-    if (trimmedId.length < 3 || trimmedId.length > 50) {
-        return {
-            isValid: false,
-            error: 'Invalid customer ID length',
-            details: 'Customer ID must be between 3 and 50 characters'
+            details: 'Customer ID must be in UUID format (e.g., ee19d165-a170-4261-8a4b-569c6a1bbcb7)'
         };
     }
 
     return {
         isValid: true,
-        sanitizedValue: trimmedId
+        sanitizedValue: trimmedId.toLowerCase() // Normalize to lowercase
     };
 }
 

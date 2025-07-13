@@ -573,7 +573,7 @@ export class TelegramWebhookHandler {
     // Fallback to simple status message
     const statusIcon = status === 'closed' ? '✅' : '📝';
     const statusText = status === 'closed' ? 'Closed' : 'Updated';
-    return `${statusIcon} **Ticket ${statusText}**\n\nTicket #${ticketData.friendlyId} has been ${status}.`;
+    return `${statusIcon} *Ticket ${statusText}*\n\nTicket #${ticketData.friendlyId} has been ${status}.`;
   }
 
   /**

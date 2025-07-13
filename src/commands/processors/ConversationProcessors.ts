@@ -48,7 +48,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
             }
 
             const userId = ctx.from.id;
-            const userInput = ('text' in ctx.message! ? ctx.message!.text : '') || '';
+            const userInput = (ctx.message && 'text' in ctx.message ? ctx.message.text : '') || '';
             const userState = await BotsStore.getUserState(userId);
 
             if (!userState) {
