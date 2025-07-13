@@ -297,9 +297,23 @@ export class DmSetupInputProcessor implements IConversationProcessor {
         try {
             // Get the active session
             const session = await BotsStore.getActiveDmSetupSessionByAdmin(userId);
+            
+            // Add debugging for session lookup
+            logError(`Debug: DmSetupInputProcessor session lookup for user ${userId}`, 'Debug', {
+                sessionFound: !!session,
+                currentStep: session?.currentStep,
+                inputText: inputText.substring(0, 50),
+                sessionId: session?.sessionId
+            });
+            
             if (!session || (session.currentStep !== 'awaiting_custom_name' && 
                            session.currentStep !== 'awaiting_customer_id' && 
                            session.currentStep !== 'awaiting_template_content')) {
+                logError(`Debug: Session not found or wrong step`, 'Debug', {
+                    sessionFound: !!session,
+                    currentStep: session?.currentStep,
+                    expectedSteps: ['awaiting_custom_name', 'awaiting_customer_id', 'awaiting_template_content']
+                });
                 return false;
             }
 
@@ -314,7 +328,19 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             }
 
             // Handle custom name input (existing logic)
-            return await this.handleCustomNameInput(ctx, session, inputText);
+            logError(`Debug: Processing custom name input`, 'Debug', {
+                sessionId: session.sessionId,
+                inputText: inputText.substring(0, 50)
+            });
+            
+            const result = await this.handleCustomNameInput(ctx, session, inputText);
+            
+            logError(`Debug: Custom name input result: ${result}`, 'Debug', {
+                sessionId: session.sessionId,
+                processingResult: result
+            });
+            
+            return result;
         } catch (error) {
             logError(error, 'DmSetupInputProcessor.process', { userId, inputText });
             await ctx.reply(

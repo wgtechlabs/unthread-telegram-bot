@@ -495,12 +495,39 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             const { BotsStore } = await import('../../sdk/bots-brain/index.js');
             const session = await BotsStore.getDmSetupSession(sessionId);
             
-            if (!session || !session.stepData?.suggestedName) {
-                await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
+            // Add comprehensive debugging
+            logError(`Debug: handleUseSuggested session lookup`, 'Debug', {
+                sessionId,
+                sessionFound: !!session,
+                currentStep: session?.currentStep,
+                stepData: session?.stepData,
+                suggestedName: session?.stepData?.suggestedName,
+                expiresAt: session?.expiresAt,
+                status: session?.status
+            });
+            
+            if (!session) {
+                logError(`Debug: Session not found for ID: ${sessionId}`, 'Debug', { sessionId });
+                await ctx.editMessageText("❌ Setup session not found. Please start over with `/setup` in the group.");
+                return true;
+            }
+            
+            if (!session.stepData?.suggestedName) {
+                logError(`Debug: Missing suggestedName in session stepData`, 'Debug', { 
+                    sessionId,
+                    stepData: session.stepData,
+                    currentStep: session.currentStep
+                });
+                await ctx.editMessageText("❌ Setup session missing customer name. Please start over with `/setup` in the group.");
                 return true;
             }
 
             const customerName = session.stepData.suggestedName;
+            
+            logError(`Debug: Proceeding with suggested name: ${customerName}`, 'Debug', {
+                sessionId,
+                customerName
+            });
             
             // Create customer and complete setup
             await this.completeCustomerSetup(ctx, sessionId, customerName, session);

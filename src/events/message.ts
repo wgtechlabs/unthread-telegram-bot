@@ -104,9 +104,10 @@ export async function handleMessage(ctx: BotContext, next: () => Promise<void>):
             }
         }
 
-        // Handle different chat types
+        // Handle different chat types - only if not handled by conversation processors
         if (isPrivateChat(ctx)) {
-            LogEngine.debug('Processing as private message');
+            LogEngine.debug('Processing as private message (no conversation processor handled it)');
+            // Only send about message if no conversation processor handled it
             await handlePrivateMessage(ctx);
         } else if (isGroupChat(ctx)) {
             LogEngine.debug('Processing as group message - NO AUTO RESPONSES');
