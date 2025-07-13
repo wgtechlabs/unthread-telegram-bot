@@ -27,7 +27,14 @@ export interface RetryResult<T> {
 }
 
 /**
- * Executes an async operation with exponential backoff retry logic
+ * Attempts an asynchronous operation multiple times using exponential backoff and jitter to handle transient failures.
+ *
+ * Retries the provided async operation up to the specified maximum attempts, waiting between attempts with an exponentially increasing delay and random jitter to reduce contention. Returns a result object indicating success or failure, the result or error, the number of attempts made, and the total elapsed time.
+ *
+ * @param operation - The asynchronous function to execute and retry on failure
+ * @param options - Optional retry configuration including maximum attempts, delays, backoff, and jitter
+ * @param context - Optional string for identifying the operation in logs
+ * @returns An object describing the outcome of the retry process, including success status, result or error, attempt count, and total elapsed time
  */
 export async function retryWithExponentialBackoff<T>(
     operation: () => Promise<T>,
@@ -122,8 +129,11 @@ export async function retryWithExponentialBackoff<T>(
 }
 
 /**
- * Specialized retry for database/storage operations
- * with appropriate defaults for that context
+ * Retries a storage or database operation with exponential backoff and jitter using defaults suitable for storage contexts.
+ *
+ * @param operation - The asynchronous storage or database operation to execute with retries
+ * @param context - Optional context string for logging and diagnostics
+ * @returns The result of the retry operation, including success status, result or error, attempt count, and total elapsed time
  */
 export async function retryStorageOperation<T>(
     operation: () => Promise<T>,
@@ -139,7 +149,11 @@ export async function retryStorageOperation<T>(
 }
 
 /**
- * Specialized retry for API calls with longer delays
+ * Retries an asynchronous API call with exponential backoff and jitter, using parameters optimized for API reliability.
+ *
+ * @param operation - The asynchronous API call to execute
+ * @param context - Optional context string for logging purposes; defaults to "API call"
+ * @returns A `RetryResult` containing the outcome of the retry attempts, including success status, result or error, attempt count, and total elapsed time
  */
 export async function retryApiCall<T>(
     operation: () => Promise<T>,

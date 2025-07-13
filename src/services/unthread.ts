@@ -134,10 +134,12 @@ interface CreateTicketPayload {
 }
 
 /**
- * Extracts and formats the customer company name from a Telegram group chat title by removing the bot's company name and handling various separators.
+ * Extracts the customer company name from a Telegram group chat title by removing the bot's company name and handling common separators.
  *
- * @param groupChatTitle - The original group chat title
- * @returns The extracted and capitalized customer company name, or "Unknown Company" if extraction fails
+ * Returns a formatted and capitalized customer name, or "Unknown Company" if extraction is not possible.
+ *
+ * @param groupChatTitle - The original group chat title from Telegram
+ * @returns The extracted customer company name for display
  */
 function extractCustomerCompanyName(groupChatTitle: string): string {
     if (!groupChatTitle) {
@@ -209,12 +211,12 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
 }
 
 /**
- * Formats a company name by capitalizing each word, replacing spaces with hyphens, and removing invalid characters.
+ * Normalizes a company name by capitalizing each word, replacing spaces with hyphens, and removing invalid characters.
  *
  * Returns 'Unknown-Company' if the input is empty.
  *
- * @param name - The company name to format
- * @returns The formatted and capitalized company name
+ * @param name - The company name to normalize and format
+ * @returns The formatted company name suitable for API usage
  */
 function capitalizeCompanyName(name: string): string {
     if (!name) return 'Unknown-Company';
@@ -231,11 +233,12 @@ function capitalizeCompanyName(name: string): string {
 }
 
 /**
- * Formats a customer name for human readability (preserves spaces, proper capitalization)
- * Used for customer suggestions in the setup flow.
+ * Formats a customer name for display by normalizing spaces and capitalizing each word.
+ *
+ * Returns 'Unknown Company' if the input is empty.
  *
  * @param name - The customer name to format
- * @returns The formatted customer name with proper capitalization and spaces
+ * @returns The formatted customer name with proper capitalization and spacing
  */
 function formatCustomerNameForDisplay(name: string): string {
     if (!name) return 'Unknown Company';
@@ -548,11 +551,13 @@ export async function getTicketsForChat(chatId: number): Promise<TicketData[]> {
 }
 
 /**
- * Retrieves an existing customer by Telegram chat ID or creates a new customer in Unthread and stores it locally.
+ * Retrieves the Unthread customer associated with a Telegram group chat, using group configuration or legacy storage.
  *
- * @param groupChatName - The name of the Telegram group chat.
- * @param chatId - The Telegram chat ID.
- * @returns The customer object containing the Unthread customer ID and name.
+ * If the group is properly configured, returns the configured customer. If legacy customer data exists, returns that customer. Throws an error if the group is not configured for support tickets.
+ *
+ * @param groupChatName - The name of the Telegram group chat
+ * @param chatId - The Telegram chat ID
+ * @returns The customer object containing the Unthread customer ID and name
  */
 export async function getOrCreateCustomer(groupChatName: string, chatId: number): Promise<Customer> {
     try {
@@ -618,9 +623,9 @@ export async function getOrCreateCustomer(groupChatName: string, chatId: number)
 }
 
 /**
- * Retrieves user information for a given Telegram user ID, creating and storing a new user if one does not exist.
+ * Retrieves user information for a Telegram user ID, creating and storing a new user if not found.
  *
- * If the user is not found, a new user is generated with a name and email based on the Telegram user ID and optional username.
+ * If the user does not exist, generates a new user with a name and email based on the Telegram user ID and optional username, and persists the user data.
  *
  * @param telegramUserId - The Telegram user ID to look up or create
  * @param username - Optional Telegram username (without @) to use for the new user
@@ -688,14 +693,10 @@ export async function getOrCreateUser(telegramUserId: number, username?: string)
 }
 
 /**
- * Generates a customer name from a group chat title with [Telegram] prefix
- * 
- * This function takes a Telegram group chat title and creates a suitable customer name
- * by extracting the company/customer portion and adding a [Telegram] prefix to distinguish
- * it from other communication channels.
- * 
- * @param groupChatTitle - The Telegram group chat title
- * @returns A formatted customer name with [Telegram] prefix
+ * Creates a customer name for Unthread by extracting the company name from a Telegram group chat title and prefixing it with "[Telegram]".
+ *
+ * @param groupChatTitle - The Telegram group chat title to extract the company name from
+ * @returns The formatted customer name with a "[Telegram]" prefix
  */
 export function generateCustomerName(groupChatTitle: string): string {
     if (!groupChatTitle) {
@@ -714,10 +715,12 @@ export function generateCustomerName(groupChatTitle: string): string {
  */
 
 /**
- * Validates if a customer exists in Unthread by customer ID
- * 
- * @param customerId - The customer ID to validate
- * @returns Object with validation result and customer details if found
+ * Checks whether a customer exists in Unthread by customer ID.
+ *
+ * Returns an object indicating existence, with customer details if found, or an error message if not.
+ *
+ * @param customerId - The customer ID to check
+ * @returns An object with `exists` (boolean), `customer` (if found), and `error` (if applicable)
  */
 export async function validateCustomerExists(customerId: string): Promise<{
     exists: boolean;
@@ -787,10 +790,12 @@ export async function validateCustomerExists(customerId: string): Promise<{
 }
 
 /**
- * Gets detailed customer information from Unthread
- * 
- * @param customerId - The customer ID to get details for
- * @returns Customer details or null if not found
+ * Retrieves detailed information for a customer from Unthread by customer ID.
+ *
+ * Returns the customer details if the customer exists, or null if not found or on error.
+ *
+ * @param customerId - The ID of the customer to retrieve
+ * @returns The customer details, or null if the customer does not exist or an error occurs
  */
 export async function getCustomerDetails(customerId: string): Promise<Customer | null> {
     try {
@@ -812,10 +817,11 @@ export async function getCustomerDetails(customerId: string): Promise<Customer |
 }
 
 /**
- * Creates a customer in Unthread with the specified name
- * 
- * @param customerName - The name for the new customer
+ * Creates a new customer in Unthread with the given name and caches the result to prevent duplicate entries.
+ *
+ * @param customerName - The name to assign to the new customer
  * @returns The created customer object
+ * @throws If the customer name is empty or the Unthread API request fails
  */
 export async function createCustomerWithName(customerName: string): Promise<Customer> {
     try {
@@ -863,11 +869,11 @@ export async function createCustomerWithName(customerName: string): Promise<Cust
 }
 
 /**
- * Handles API errors gracefully with user-friendly messages
- * 
- * @param error - The error to handle
- * @param operation - The operation that failed
- * @returns User-friendly error message
+ * Converts Unthread API or network errors into user-friendly messages based on the error type and operation.
+ *
+ * @param error - The error object encountered during the operation
+ * @param operation - A description of the operation that failed
+ * @returns A formatted, user-friendly error message describing the issue
  */
 export function handleUnthreadApiError(error: any, operation: string): string {
     const err = error as Error;

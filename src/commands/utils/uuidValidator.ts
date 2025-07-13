@@ -8,11 +8,9 @@
  */
 
 /**
- * Validates if a string is a properly formatted UUID (v4)
- * 
- * This function performs strict validation to ensure only properly
- * formatted UUIDs are processed, preventing potential security issues
- * from malformed input.
+ * Checks whether the input string is a valid UUID version 4.
+ *
+ * Returns `true` if the string matches the strict UUID v4 format; otherwise, returns `false`.
  */
 export function isValidUUID(uuid: string): boolean {
     if (!uuid || typeof uuid !== 'string') {
@@ -27,10 +25,14 @@ export function isValidUUID(uuid: string): boolean {
 }
 
 /**
- * Validates and sanitizes a UUID string
- * 
- * Returns the UUID if valid, or throws an error if invalid.
- * This provides a secure way to validate UUIDs before processing.
+ * Validates that a string is a valid UUID v4 and returns it in lowercase.
+ *
+ * Throws an error with the provided context if the input is not a valid UUID v4.
+ *
+ * @param uuid - The string to validate as a UUID v4
+ * @param context - A label used in the error message to indicate the context of validation
+ * @returns The validated UUID string, normalized to lowercase
+ * @throws Error if the input is not a valid UUID v4
  */
 export function validateAndSanitizeUUID(uuid: string, context: string = 'UUID'): string {
     if (!isValidUUID(uuid)) {
@@ -42,7 +44,11 @@ export function validateAndSanitizeUUID(uuid: string, context: string = 'UUID'):
 }
 
 /**
- * Type guard for UUID validation
+ * Determines whether a value is a string that matches the UUID v4 format.
+ *
+ * Acts as a type guard to narrow the type to `string` if the value is a valid UUID.
+ *
+ * @returns `true` if the value is a valid UUID v4 string; otherwise, `false`.
  */
 export function isUUID(value: unknown): value is string {
     return typeof value === 'string' && isValidUUID(value);

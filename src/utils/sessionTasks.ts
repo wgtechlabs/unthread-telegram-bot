@@ -13,8 +13,11 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 import { cleanupExpiredSessions } from './adminManager.js';
 
 /**
- * Cleanup expired setup sessions
- * This function should be called periodically (e.g., every minute)
+ * Removes expired setup sessions and returns the number of sessions cleaned up.
+ *
+ * This function should be called periodically to maintain session hygiene. If an error occurs during cleanup, zero is returned.
+ *
+ * @returns The number of expired sessions that were removed
  */
 export async function performSessionCleanup(): Promise<number> {
   try {
@@ -38,8 +41,9 @@ export async function performSessionCleanup(): Promise<number> {
 }
 
 /**
- * Start periodic session cleanup
- * Cleans up expired sessions every minute
+ * Starts a background task that periodically removes expired setup sessions every minute.
+ *
+ * @returns The interval ID for the scheduled cleanup task
  */
 export function startSessionCleanupTask(): NodeJS.Timeout {
   LogEngine.info('Starting session cleanup task', {
@@ -53,7 +57,9 @@ export function startSessionCleanupTask(): NodeJS.Timeout {
 }
 
 /**
- * Stop session cleanup task
+ * Stops the periodic session cleanup task associated with the given interval ID.
+ *
+ * @param intervalId - The interval identifier returned by `setInterval` for the cleanup task
  */
 export function stopSessionCleanupTask(intervalId: NodeJS.Timeout): void {
   clearInterval(intervalId);

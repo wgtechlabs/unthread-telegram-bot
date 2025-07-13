@@ -47,7 +47,9 @@ import {
 } from './processors/CallbackProcessors.js';
 
 /**
- * Initialize the complete command system
+ * Registers all commands, conversation processors, and callback processors with the command system.
+ *
+ * This function sets up the complete command architecture, including basic, support, and admin commands, as well as conversation and callback processors, preparing the bot for operation.
  */
 export function initializeCommands(): void {
     LogEngine.info('🚀 Initializing Clean Command Architecture...');
@@ -88,14 +90,19 @@ export function initializeCommands(): void {
 }
 
 /**
- * Process a text message through the conversation processors
+ * Processes a text message context using registered conversation processors.
+ *
+ * @param ctx - The bot context containing the message to process
+ * @returns True if a conversation processor handled the message; otherwise, false
  */
 export async function processConversation(ctx: BotContext): Promise<boolean> {
     return await commandRegistry.processConversation(ctx);
 }
 
 /**
- * Process a callback query through the callback processors
+ * Processes a callback query using the registered callback processors.
+ *
+ * @returns True if the callback was handled; otherwise, false.
  */
 export async function processCallback(ctx: BotContext): Promise<boolean> {
     const callbackQuery = ctx.callbackQuery;
@@ -105,21 +112,29 @@ export async function processCallback(ctx: BotContext): Promise<boolean> {
 }
 
 /**
- * Execute a command by name
+ * Executes a registered command by its name for the given context.
+ *
+ * @param commandName - The name of the command to execute
+ * @param ctx - The bot context in which to execute the command
+ * @returns True if the command was successfully executed; otherwise, false
  */
 export async function executeCommand(commandName: string, ctx: BotContext): Promise<boolean> {
     return await commandRegistry.execute(commandName, ctx);
 }
 
 /**
- * Generate help text for the current context
+ * Generates help text tailored to the current bot context.
+ *
+ * @returns A string containing help instructions relevant to the user's context and permissions.
  */
 export function generateHelp(ctx: BotContext): string {
     return commandRegistry.generateHelpText(ctx);
 }
 
 /**
- * Get command statistics
+ * Retrieves statistics about the registered commands and processors.
+ *
+ * @returns An object containing counts and details of commands, admin commands, conversation processors, callback processors, and setup-required commands.
  */
 export function getCommandStats() {
     return commandRegistry.getStats();

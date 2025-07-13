@@ -16,14 +16,20 @@ import type { AdminProfile, SetupSession, DmSetupSession } from '../sdk/types.js
 import { v4 as uuidv4 } from 'uuid';
 
 /**
- * Check if a user is a valid admin (in environment variable)
+ * Determines whether the specified Telegram user ID is listed as an admin in the environment configuration.
+ *
+ * @param telegramUserId - The Telegram user ID to check
+ * @returns True if the user ID is recognized as an admin; otherwise, false
  */
 export function isValidAdmin(telegramUserId: number): boolean {
   return isAdminUser(telegramUserId);
 }
 
 /**
- * Check if an admin has activated their profile for DM access
+ * Determines whether the specified admin has an activated profile for direct message access.
+ *
+ * @param telegramUserId - The Telegram user ID of the admin to check
+ * @returns True if the admin's profile exists and is activated; otherwise, false
  */
 export async function isActivatedAdmin(telegramUserId: number): Promise<boolean> {
   try {
@@ -39,7 +45,10 @@ export async function isActivatedAdmin(telegramUserId: number): Promise<boolean>
 }
 
 /**
- * Check if admin can start a new setup session (no active sessions)
+ * Determines whether an admin is eligible to start a new setup session by verifying that no active session currently exists for the admin.
+ *
+ * @param adminId - The Telegram user ID of the admin to check
+ * @returns `true` if the admin has no active setup session; otherwise, `false`
  */
 export async function canStartSetup(adminId: number): Promise<boolean> {
   try {
@@ -55,7 +64,14 @@ export async function canStartSetup(adminId: number): Promise<boolean> {
 }
 
 /**
- * Create admin profile for DM access
+ * Creates and stores an activated admin profile for DM access.
+ *
+ * Initializes the admin profile with activation and last active timestamps, and optionally includes the Telegram username.
+ *
+ * @param telegramUserId - The Telegram user ID of the admin
+ * @param dmChatId - The direct message chat ID for the admin
+ * @param username - Optional Telegram username of the admin
+ * @returns True if the profile was created successfully; otherwise, false
  */
 export async function createAdminProfile(telegramUserId: number, dmChatId: number, username?: string): Promise<boolean> {
   try {
@@ -93,7 +109,9 @@ export async function createAdminProfile(telegramUserId: number, dmChatId: numbe
 }
 
 /**
- * Update admin last active time
+ * Updates the last active timestamp for the specified admin profile.
+ *
+ * @param telegramUserId - The Telegram user ID of the admin whose activity timestamp is updated
  */
 export async function updateAdminLastActive(telegramUserId: number): Promise<void> {
   try {
@@ -109,7 +127,12 @@ export async function updateAdminLastActive(telegramUserId: number): Promise<voi
 }
 
 /**
- * Create setup session
+ * Creates a new setup session for a group chat with a 3-minute expiration and initial step set to 'customer_selection'.
+ *
+ * @param groupChatId - The unique identifier of the group chat where the setup is initiated
+ * @param groupChatName - The display name of the group chat
+ * @param initiatingAdminId - The Telegram user ID of the admin starting the setup session
+ * @returns The session ID if creation succeeds, or null if the session could not be created
  */
 export async function createSetupSession(
   groupChatId: number, 
@@ -157,7 +180,11 @@ export async function createSetupSession(
 }
 
 /**
- * Send notification to other admins (excluding the initiator)
+ * Sends a message to all activated admins except the initiating admin using a provided sendMessage function.
+ *
+ * @param initiatingAdminId - The Telegram user ID of the admin initiating the notification
+ * @param message - The message text to send to other admins
+ * @param sendMessage - A function to send a message to a specific chat ID
  */
 export async function notifyOtherAdmins(
   initiatingAdminId: number, 
@@ -193,7 +220,9 @@ export async function notifyOtherAdmins(
 }
 
 /**
- * Check if a session has expired
+ * Determines whether a setup session has expired based on its expiration timestamp.
+ *
+ * @returns `true` if the session is expired; otherwise, `false`.
  */
 export function isSessionExpired(session: SetupSession): boolean {
   const now = new Date();
@@ -202,7 +231,9 @@ export function isSessionExpired(session: SetupSession): boolean {
 }
 
 /**
- * Cleanup expired sessions and return count
+ * Removes expired setup sessions from storage and returns the number of sessions cleaned up.
+ *
+ * @returns The count of expired sessions that were removed. Returns 0 if an error occurs.
  */
 export async function cleanupExpiredSessions(): Promise<number> {
   try {
@@ -216,7 +247,10 @@ export async function cleanupExpiredSessions(): Promise<number> {
 }
 
 /**
- * Get session time remaining in minutes
+ * Returns the remaining time in minutes before a setup session expires.
+ *
+ * @param session - The setup session to check
+ * @returns The number of minutes remaining until expiration, or 0 if expired
  */
 export function getSessionTimeRemaining(session: SetupSession): number {
   const now = new Date();
@@ -230,7 +264,12 @@ export function getSessionTimeRemaining(session: SetupSession): number {
 // ================================
 
 /**
- * Create a DM setup session
+ * Creates a new direct message (DM) setup session for an admin in a group, with a 20-minute expiration.
+ *
+ * @param adminId - The Telegram user ID of the admin initiating the session
+ * @param groupChatId - The group chat ID associated with the setup session
+ * @param groupChatName - The name of the group chat
+ * @returns The session ID if creation succeeds, or null if it fails
  */
 export async function createDmSetupSession(
   adminId: number, 
@@ -279,7 +318,9 @@ export async function createDmSetupSession(
 }
 
 /**
- * Check if admin can start a new DM setup session
+ * Determines whether an admin is eligible to start a new DM setup session.
+ *
+ * Returns `true` if the admin does not have an active DM setup session; otherwise, returns `false`.
  */
 export async function canStartDmSetup(adminId: number): Promise<boolean> {
   try {
@@ -295,7 +336,9 @@ export async function canStartDmSetup(adminId: number): Promise<boolean> {
 }
 
 /**
- * Check if a DM session has expired
+ * Determines whether a DM setup session has expired based on its expiration timestamp.
+ *
+ * @returns `true` if the session has expired; otherwise, `false`.
  */
 export function isDmSessionExpired(session: DmSetupSession): boolean {
   const now = new Date();
@@ -304,7 +347,10 @@ export function isDmSessionExpired(session: DmSetupSession): boolean {
 }
 
 /**
- * Get DM session time remaining in minutes
+ * Returns the remaining time in minutes before a DM setup session expires.
+ *
+ * @param session - The DM setup session to check
+ * @returns The number of minutes remaining until expiration, or 0 if expired
  */
 export function getDmSessionTimeRemaining(session: DmSetupSession): number {
   const now = new Date();
@@ -314,7 +360,12 @@ export function getDmSessionTimeRemaining(session: DmSetupSession): number {
 }
 
 /**
- * Update DM session step
+ * Updates the current step and optional step data of a DM setup session.
+ *
+ * @param sessionId - The unique identifier of the DM setup session
+ * @param step - The new step to set for the session
+ * @param stepData - Optional data associated with the new step
+ * @returns True if the session was successfully updated; otherwise, false
  */
 export async function updateDmSetupSessionStep(
   sessionId: string, 
@@ -350,7 +401,11 @@ export async function updateDmSetupSessionStep(
 }
 
 /**
- * Add message ID to DM session for cleanup tracking
+ * Appends a message ID to the list of message IDs tracked in a DM setup session.
+ *
+ * @param sessionId - The identifier of the DM setup session
+ * @param messageId - The message ID to add for tracking
+ * @returns True if the message ID was successfully added; otherwise, false
  */
 export async function addDmSessionMessageId(sessionId: string, messageId: number): Promise<boolean> {
   try {
@@ -372,7 +427,10 @@ export async function addDmSessionMessageId(sessionId: string, messageId: number
 }
 
 /**
- * Complete DM setup session
+ * Marks a DM setup session as completed by updating its status and current step.
+ *
+ * @param sessionId - The unique identifier of the DM setup session to complete
+ * @returns True if the session was successfully marked as completed; otherwise, false
  */
 export async function completeDmSetupSession(sessionId: string): Promise<boolean> {
   try {
@@ -395,7 +453,10 @@ export async function completeDmSetupSession(sessionId: string): Promise<boolean
 }
 
 /**
- * Cancel DM setup session
+ * Cancels a DM setup session by updating its status and current step to 'cancelled'.
+ *
+ * @param sessionId - The identifier of the DM setup session to cancel
+ * @returns True if the session was successfully cancelled; otherwise, false
  */
 export async function cancelDmSetupSession(sessionId: string): Promise<boolean> {
   try {
@@ -436,7 +497,10 @@ interface NotificationContext {
 }
 
 /**
- * Get all activated admin profiles for a group
+ * Retrieves all activated admin profiles.
+ *
+ * @param groupChatId - Optional group chat ID for logging context
+ * @returns An array of admin profiles that are marked as activated
  */
 export async function getActivatedAdmins(groupChatId?: number): Promise<AdminProfile[]> {
   try {
@@ -452,7 +516,13 @@ export async function getActivatedAdmins(groupChatId?: number): Promise<AdminPro
 }
 
 /**
- * Send notification to a single admin
+ * Sends a formatted notification message to an admin's direct message chat.
+ *
+ * Skips sending if the admin does not have a DM chat ID. Returns true if the message was sent successfully, or false if skipped or an error occurred.
+ *
+ * @param adminProfile - The admin's profile containing DM chat information
+ * @param messageText - The message to send, formatted as HTML
+ * @returns True if the notification was sent, false otherwise
  */
 async function sendNotificationToAdmin(
   adminProfile: AdminProfile, 
@@ -488,7 +558,17 @@ async function sendNotificationToAdmin(
 }
 
 /**
- * Notify all admins except the initiating admin about a configuration change
+ * Notifies all activated admins, except the initiating admin, about a configuration change in a group.
+ *
+ * Sends a formatted message describing the change to each eligible admin's direct message chat. Returns counts of successful, failed, and skipped notifications.
+ *
+ * @param groupChatId - The ID of the group where the configuration change occurred
+ * @param initiatingAdminId - The Telegram user ID of the admin who initiated the change
+ * @param changeType - A brief description of the type of configuration change
+ * @param changeDetails - Additional details about the configuration change
+ * @param bot - The Telegram bot instance used to send notifications
+ * @param groupTitle - Optional group title for message context
+ * @returns An object containing the counts of successful, failed, and skipped notifications
  */
 export async function notifyAdminsOfConfigChange(
   groupChatId: number,
@@ -571,7 +651,18 @@ Group configuration has been updated.`;
 }
 
 /**
- * Notify all admins about template changes
+ * Notifies all activated admins, except the initiator, about a template change in a group.
+ *
+ * Constructs and sends a notification describing the template action (created, updated, deleted, or activated) to relevant admins via direct message.
+ *
+ * @param groupChatId - The group chat where the template change occurred
+ * @param initiatingAdminId - The admin who performed the template action
+ * @param templateType - The type of template affected
+ * @param action - The action performed on the template ('created', 'updated', 'deleted', or 'activated')
+ * @param templateName - The name of the template involved
+ * @param bot - The Telegram bot instance used to send notifications
+ * @param groupTitle - Optional group title for context in the notification
+ * @returns An object with counts of successful, failed, and skipped notifications
  */
 export async function notifyAdminsOfTemplateChange(
   groupChatId: number,
@@ -595,7 +686,13 @@ export async function notifyAdminsOfTemplateChange(
 }
 
 /**
- * Notify all admins about setup completion
+ * Notifies all activated admins, except the completing admin, that group setup and configuration have been completed.
+ *
+ * @param groupChatId - The ID of the group chat where setup was completed
+ * @param completingAdminId - The admin ID of the user who completed the setup
+ * @param bot - The Telegram bot instance used to send notifications
+ * @param groupTitle - Optional name of the group chat
+ * @returns An object containing counts of successful, failed, and skipped notifications
  */
 export async function notifyAdminsOfSetupCompletion(
   groupChatId: number,
@@ -616,7 +713,9 @@ export async function notifyAdminsOfSetupCompletion(
 }
 
 /**
- * Report notification failures to admins who can receive them
+ * Reports notification delivery failures to activated admins who can still receive messages.
+ *
+ * Attempts to identify admins with accessible DM chats and notifies them about failed admin notifications for a group. If no admins are reachable, logs an error. The notification includes group information, failure count, change type, and a timestamp.
  */
 export async function reportNotificationFailures(
   groupChatId: number,
