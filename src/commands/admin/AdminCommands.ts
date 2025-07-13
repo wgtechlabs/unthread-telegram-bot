@@ -15,6 +15,11 @@ import { logError, createUserErrorMessage } from '../utils/errorHandler.js';
 import { getCompanyName } from '../../config/env.js';
 import { GlobalTemplateManager } from '../../utils/globalTemplateManager.js';
 import { ValidationService } from '../../services/validationService.js';
+import type { AdminProfile, GroupConfig } from '../../sdk/types.js';
+import type { GlobalTemplate } from '../../config/globalTemplates.js';
+
+// Clean Code: Extract magic numbers to named constants
+const SETUP_SESSION_TIMEOUT_MINUTES = 10;
 
 export class ActivateCommand extends BaseCommand {
     readonly metadata: CommandMetadata = {
@@ -49,7 +54,7 @@ export class ActivateCommand extends BaseCommand {
         }
     }
 
-    private async handleAlreadyActivated(ctx: BotContext, adminProfile: any): Promise<void> {
+    private async handleAlreadyActivated(ctx: BotContext, adminProfile: AdminProfile): Promise<void> {
         const lastActiveDate = new Date(adminProfile.lastActiveAt).toLocaleDateString();
         
         const message = 
@@ -149,8 +154,8 @@ export class SetupCommand extends BaseCommand {
         }
     }
 
-    private async handleExistingSetup(ctx: BotContext, config: any): Promise<void> {
-        const setupDate = new Date(config.setupAt).toLocaleDateString();
+    private async handleExistingSetup(ctx: BotContext, config: GroupConfig): Promise<void> {
+        const setupDate = config.setupAt ? new Date(config.setupAt).toLocaleDateString() : 'Unknown';
         
         const message = 
             "⚙️ **Group Already Configured**\n\n" +
@@ -197,7 +202,7 @@ export class SetupCommand extends BaseCommand {
 
             // Store setup session
             const now = new Date();
-            const expiresAt = new Date(now.getTime() + 10 * 60 * 1000); // 10 minutes from now
+            const expiresAt = new Date(now.getTime() + SETUP_SESSION_TIMEOUT_MINUTES * 60 * 1000);
             
             const setupSession = {
                 sessionId,
@@ -422,16 +427,50 @@ export class TemplatesCommand extends BaseCommand {
             // Get current template statistics
             const templateManager = GlobalTemplateManager.getInstance();
             const templates = await templateManager.getGlobalTemplates();
-            const templateCount = Object.keys(templates.templates).length;
+            
+            // Smart status calculation for user-friendly display
+            const templateEntries = Object.entries(templates.templates);
+            const customizedTemplates = templateEntries.filter(([_, template]) => 
+                template.lastModifiedBy && template.lastModifiedAt
+            );
+            const totalTemplates = templateEntries.length;
+            const customizedCount = customizedTemplates.length;
+            
+            // Generate status message based on customization state
+            let statusMessage: string;
+            let activityInfo: string;
+            
+            if (customizedCount === 0) {
+                statusMessage = "Using default templates";
+                activityInfo = "Never modified";
+            } else if (customizedCount === totalTemplates) {
+                statusMessage = "All templates customized";
+                const lastModified = new Date(templates.lastUpdated).toLocaleDateString();
+                activityInfo = `Last modified: ${lastModified}`;
+            } else {
+                statusMessage = `${customizedCount} of ${totalTemplates} templates customized`;
+                const lastModified = new Date(templates.lastUpdated).toLocaleDateString();
+                activityInfo = `Last modified: ${lastModified}`;
+            }
+            
+            // Generate individual template status indicators
+            const getTemplateStatus = (template: GlobalTemplate): string => {
+                if (!template.lastModifiedBy || !template.lastModifiedAt) {
+                    return "📋 Default template";
+                }
+                const modifiedDate = new Date(template.lastModifiedAt).toLocaleDateString();
+                return `✏️ Customized (${modifiedDate})`;
+            };
             
             const templateMessage = 
                 "📝 **Message Template Manager**\n\n" +
                 "Customize how the bot communicates with users and admins.\n\n" +
-                `**Current Status:** ${templateCount} templates configured\n\n` +
+                `**Current Status:** ${statusMessage}\n` +
+                `**Last Activity:** ${activityInfo}\n\n` +
                 "**Available Templates:**\n" +
-                "• 🎫 **Ticket Created** - New support ticket notifications\n" +
-                "• �‍💼 **Agent Response** - When agents reply to tickets\n" +
-                "• ✅ **Ticket Closed** - Support ticket resolution messages\n\n" +
+                `• 🎫 **Ticket Created** - ${getTemplateStatus(templates.templates.ticket_created)}\n` +
+                `• � **Agent Response** - ${getTemplateStatus(templates.templates.agent_response)}\n` +
+                `• ✅ **Ticket Status** - ${getTemplateStatus(templates.templates.ticket_status)}\n\n` +
                 "**Management Options:**";
 
             await ctx.reply(templateMessage, {
