@@ -73,7 +73,6 @@ const SetupStateSchema = z.object({
   initiatedBy: z.number(),
   startedAt: z.string(),
   suggestedCustomerName: z.string().optional(),
-  tempCustomerId: z.string().optional(),
   userInput: z.string().optional(),
   retryCount: z.number().optional(),
   metadata: z.record(z.any()).optional(),

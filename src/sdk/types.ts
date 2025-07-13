@@ -174,7 +174,6 @@ export interface SetupState {
   initiatedBy: number;
   startedAt: string;
   suggestedCustomerName?: string;
-  tempCustomerId?: string;
   userInput?: string;
   retryCount?: number;
   metadata?: Record<string, any>;

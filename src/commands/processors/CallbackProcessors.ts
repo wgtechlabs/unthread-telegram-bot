@@ -582,9 +582,32 @@ Please type the customer name you'd like to use:
         // Update session to expect custom name input
         try {
             const { BotsStore } = await import('../../sdk/bots-brain/index.js');
-            await BotsStore.updateDmSetupSession(sessionId, {
+            
+            logError(`Debug: handleCustomName updating session step`, 'Debug', {
+                sessionId,
+                newStep: 'awaiting_custom_name',
+                beforeUpdate: true
+            });
+            
+            const updateResult = await BotsStore.updateDmSetupSession(sessionId, {
                 currentStep: 'awaiting_custom_name'
             });
+            
+            logError(`Debug: handleCustomName session update result`, 'Debug', {
+                sessionId,
+                updateResult,
+                newStep: 'awaiting_custom_name'
+            });
+            
+            // Verify the update by fetching the session
+            const verifySession = await BotsStore.getDmSetupSession(sessionId);
+            logError(`Debug: handleCustomName session verification`, 'Debug', {
+                sessionId,
+                sessionFound: !!verifySession,
+                currentStep: verifySession?.currentStep,
+                status: verifySession?.status
+            });
+            
         } catch (error) {
             logError(error, 'SetupCallbackProcessor.handleCustomName', { sessionId });
         }
@@ -689,33 +712,60 @@ Group setup has been cancelled. You can start over anytime by using \`/setup\` i
                     if (validationResult.exists && validationResult.customer?.name) {
                         finalCustomerName = validationResult.customer.name;
                     } else {
-                        // Fallback to generic name if validation fails or customer not found
-                        finalCustomerName = `Customer ${existingCustomerId.substring(0, 8)}...`;
+                        // Fail fast - don't generate fake names
+                        throw new Error(`Customer validation failed: Customer ID ${existingCustomerId} not found or has no name`);
                     }
                 } catch (error) {
                     logError(error, 'CallbackProcessors.completeCustomerSetup.validateCustomer', { existingCustomerId });
-                    // Fallback to generic name if validation fails
-                    finalCustomerName = `Customer ${existingCustomerId.substring(0, 8)}...`;
+                    // Fail fast - don't generate fake names
+                    throw new Error(`Customer validation failed: ${(error as Error).message}`);
                 }
                 
             } else {
-                // Creating new customer
+                // Creating new customer - use Unthread API to create proper customer
                 if (!customerName) {
                     throw new Error('Customer name is required for new customer creation');
                 }
-                customerId = `cust_${Date.now()}`;
-                finalCustomerName = customerName;
                 
-                // Create customer record
+                logError(`Debug: Creating new customer via Unthread API`, 'Debug', {
+                    customerName,
+                    sessionId
+                });
+                
+                try {
+                    // Import and use the proper Unthread service to create customer
+                    const { createCustomerWithName } = await import('../../services/unthread.js');
+                    const createdCustomer = await createCustomerWithName(customerName);
+                    
+                    customerId = createdCustomer.id; // Use the real UUID from Unthread
+                    finalCustomerName = createdCustomer.name || customerName;
+                    
+                    logError(`Debug: Customer created successfully via Unthread API`, 'Debug', {
+                        customerId,
+                        customerName: finalCustomerName,
+                        sessionId
+                    });
+                    
+                } catch (apiError) {
+                    logError(apiError, 'CallbackProcessors.completeCustomerSetup.createCustomer', { 
+                        customerName,
+                        sessionId 
+                    });
+                    
+                    // Fail fast - do not generate fake data
+                    throw new Error(`Failed to create customer via Unthread API: ${(apiError as Error).message}`);
+                }
+                
+                // Create customer record in local storage
                 const customerData = {
                     id: customerId,
                     unthreadCustomerId: customerId,
                     telegramChatId: session.groupChatId,
                     chatId: session.groupChatId,
                     chatTitle: session.groupChatName,
-                    customerName,
-                    name: customerName,
-                    company: customerName,
+                    customerName: finalCustomerName,
+                    name: finalCustomerName,
+                    company: finalCustomerName,
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString()
                 };

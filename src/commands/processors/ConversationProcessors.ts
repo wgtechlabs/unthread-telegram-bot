@@ -270,18 +270,42 @@ export class DmSetupInputProcessor implements IConversationProcessor {
     async canHandle(ctx: BotContext): Promise<boolean> {
         const userId = ctx.from?.id;
         if (!userId || ctx.chat?.type !== 'private' || !ctx.message || !('text' in ctx.message)) {
+            logError(`Debug: DmSetupInputProcessor.canHandle early exit`, 'Debug', {
+                userId,
+                chatType: ctx.chat?.type,
+                hasMessage: !!ctx.message,
+                hasText: ctx.message && 'text' in ctx.message
+            });
             return false;
         }
 
         try {
             // Check if user has an active DM setup session
             const activeSessions = await BotsStore.getActiveDmSetupSessionByAdmin(userId);
+            
+            logError(`Debug: DmSetupInputProcessor.canHandle session lookup`, 'Debug', {
+                userId,
+                sessionFound: !!activeSessions,
+                currentStep: activeSessions?.currentStep,
+                sessionId: activeSessions?.sessionId,
+                inputText: ctx.message && 'text' in ctx.message ? ctx.message.text?.substring(0, 50) : 'N/A'
+            });
+            
             if (!activeSessions) return false;
 
             // Check if we're waiting for text input
-            return activeSessions.currentStep === 'awaiting_custom_name' || 
-                   activeSessions.currentStep === 'awaiting_customer_id' ||
-                   activeSessions.currentStep === 'awaiting_template_content';
+            const canHandle = activeSessions.currentStep === 'awaiting_custom_name' || 
+                              activeSessions.currentStep === 'awaiting_customer_id' ||
+                              activeSessions.currentStep === 'awaiting_template_content';
+            
+            logError(`Debug: DmSetupInputProcessor.canHandle result`, 'Debug', {
+                userId,
+                currentStep: activeSessions.currentStep,
+                canHandle,
+                expectedSteps: ['awaiting_custom_name', 'awaiting_customer_id', 'awaiting_template_content']
+            });
+            
+            return canHandle;
         } catch (error) {
             logError(error, 'DmSetupInputProcessor.canHandle', { userId });
             return false;
@@ -292,7 +316,21 @@ export class DmSetupInputProcessor implements IConversationProcessor {
         const userId = ctx.from?.id;
         const inputText = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
 
-        if (!userId || !inputText) return false;
+        logError(`Debug: DmSetupInputProcessor.process called`, 'Debug', {
+            userId,
+            inputText: inputText.substring(0, 50),
+            hasUserId: !!userId,
+            hasInputText: !!inputText,
+            messageExists: !!ctx.message
+        });
+
+        if (!userId || !inputText) {
+            logError(`Debug: DmSetupInputProcessor.process early return - missing userId or inputText`, 'Debug', {
+                userId,
+                hasInputText: !!inputText
+            });
+            return false;
+        }
 
         try {
             // Get the active session with enhanced debugging
@@ -334,7 +372,10 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             // Handle custom name input (existing logic)
             logError(`Debug: Processing custom name input`, 'Debug', {
                 sessionId: session.sessionId,
-                inputText: inputText.substring(0, 50)
+                inputText: inputText.substring(0, 50),
+                currentStep: session.currentStep,
+                expectedStep: 'awaiting_custom_name',
+                stepMatches: session.currentStep === 'awaiting_custom_name'
             });
             
             const result = await this.handleCustomNameInput(ctx, session, inputText);
@@ -462,12 +503,8 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                     sessionId: session.sessionId 
                 });
                 
-                // Fallback to generic name if validation fails
-                customerName = `Customer ${trimmedCustomerId.substring(0, 8)}...`;
-                await ctx.reply(
-                    `⚠️ **Validation Warning**\n\nCould not verify customer details with Unthread, but proceeding with the setup.\n\nLinking to customer ID: \`${trimmedCustomerId}\`...`,
-                    { parse_mode: 'Markdown' }
-                );
+                // Fail fast - don't generate fake names or proceed with invalid data
+                throw new Error(`Customer validation failed: ${(validationError as Error).message}`);
             }
 
             // Update session with the customer ID
