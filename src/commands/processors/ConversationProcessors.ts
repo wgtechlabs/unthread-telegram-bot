@@ -271,12 +271,6 @@ export class DmSetupInputProcessor implements IConversationProcessor {
     async canHandle(ctx: BotContext): Promise<boolean> {
         const userId = ctx.from?.id;
         if (!userId || ctx.chat?.type !== 'private' || !ctx.message || !('text' in ctx.message)) {
-            logError(`Debug: DmSetupInputProcessor.canHandle early exit`, 'Debug', {
-                userId,
-                chatType: ctx.chat?.type,
-                hasMessage: !!ctx.message,
-                hasText: ctx.message && 'text' in ctx.message
-            });
             return false;
         }
 
@@ -284,17 +278,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             // Check if user has an active DM setup session
             const activeSessions = await BotsStore.getActiveDmSetupSessionByAdmin(userId);
             
-            logError(`Debug: DmSetupInputProcessor.canHandle session lookup`, 'Debug', {
-                userId,
-                sessionFound: !!activeSessions,
-                currentStep: activeSessions?.currentStep,
-                sessionId: activeSessions?.sessionId,
-                inputText: ctx.message && 'text' in ctx.message ? ctx.message.text?.substring(0, 50) : 'N/A',
-                sessionExpiry: activeSessions?.expiresAt
-            });
-            
             if (!activeSessions) {
-                logError(`Debug: No active session found for user ${userId}`, 'Debug', { userId });
                 return false;
             }
 
@@ -302,14 +286,6 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             const now = new Date();
             const sessionExpiry = new Date(activeSessions.expiresAt);
             if (sessionExpiry <= now) {
-                logError(`Debug: Session expired but found in storage, attempting recovery`, 'Warning', {
-                    userId,
-                    sessionId: activeSessions.sessionId,
-                    expiresAt: activeSessions.expiresAt,
-                    currentTime: now.toISOString(),
-                    timeDifference: now.getTime() - sessionExpiry.getTime()
-                });
-                
                 // Attempt to extend expired session if it's within 5 minutes of expiry
                 const timeDiffMinutes = (now.getTime() - sessionExpiry.getTime()) / (1000 * 60);
                 if (timeDiffMinutes <= 5) {
@@ -317,18 +293,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                     await BotsStore.updateDmSetupSession(activeSessions.sessionId, {
                         expiresAt: newExpiresAt.toISOString()
                     });
-                    
-                    logError(`Debug: Session recovered and extended`, 'Info', {
-                        userId,
-                        sessionId: activeSessions.sessionId,
-                        newExpiresAt: newExpiresAt.toISOString()
-                    });
                 } else {
-                    logError(`Debug: Session too old to recover`, 'Warning', {
-                        userId,
-                        sessionId: activeSessions.sessionId,
-                        timeDiffMinutes
-                    });
                     return false;
                 }
             }
@@ -337,18 +302,6 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             const canHandle = activeSessions.currentStep === 'awaiting_custom_name' || 
                               activeSessions.currentStep === 'awaiting_customer_id' ||
                               activeSessions.currentStep === 'awaiting_template_content';
-            
-            logError(`Debug: DmSetupInputProcessor.canHandle result`, 'Debug', {
-                userId,
-                currentStep: activeSessions.currentStep,
-                canHandle,
-                expectedSteps: ['awaiting_custom_name', 'awaiting_customer_id', 'awaiting_template_content'],
-                stepMatches: {
-                    customName: activeSessions.currentStep === 'awaiting_custom_name',
-                    customerId: activeSessions.currentStep === 'awaiting_customer_id',
-                    templateContent: activeSessions.currentStep === 'awaiting_template_content'
-                }
-            });
             
             return canHandle;
         } catch (error) {
@@ -361,19 +314,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
         const userId = ctx.from?.id;
         const inputText = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
 
-        logError(`Debug: DmSetupInputProcessor.process called`, 'Debug', {
-            userId,
-            inputText: inputText.substring(0, 50),
-            hasUserId: !!userId,
-            hasInputText: !!inputText,
-            messageExists: !!ctx.message
-        });
-
         if (!userId || !inputText) {
-            logError(`Debug: DmSetupInputProcessor.process early return - missing userId or inputText`, 'Debug', {
-                userId,
-                hasInputText: !!inputText
-            });
             return false;
         }
 
@@ -381,20 +322,8 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             // Get the active session with enhanced debugging and recovery
             let session = await BotsStore.getActiveDmSetupSessionByAdmin(userId);
             
-            // Add debugging for session lookup
-            logError(`Debug: DmSetupInputProcessor session lookup for user ${userId}`, 'Debug', {
-                sessionFound: !!session,
-                currentStep: session?.currentStep,
-                inputText: inputText.substring(0, 50),
-                sessionId: session?.sessionId,
-                sessionStatus: session?.status,
-                sessionExpiresAt: session?.expiresAt,
-                currentTime: new Date().toISOString()
-            });
-            
             // If session not found, try to recover by checking if there was a recent session
             if (!session) {
-                logError(`Debug: No session found, checking for recovery options`, 'Warning', { userId });
                 return false;
             }
             
@@ -407,16 +336,9 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                     expiresAt: newExpiresAt.toISOString()
                 });
                 
-                logError(`Debug: Extended session expiry during text processing`, 'Info', {
-                    sessionId: session.sessionId,
-                    oldExpiry: session.expiresAt,
-                    newExpiry: newExpiresAt.toISOString()
-                });
-                
                 // Refresh session data
                 session = await BotsStore.getDmSetupSession(session.sessionId);
                 if (!session) {
-                    logError(`Debug: Session lost after expiry extension`, 'Error', { userId });
                     return false;
                 }
             }
@@ -425,22 +347,9 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 session.currentStep !== 'awaiting_customer_id' && 
                 session.currentStep !== 'awaiting_template_content') {
                 
-                logError(`Debug: Session not in expected step, attempting recovery`, 'Warning', {
-                    sessionFound: !!session,
-                    currentStep: session?.currentStep,
-                    expectedSteps: ['awaiting_custom_name', 'awaiting_customer_id', 'awaiting_template_content'],
-                    inputText: inputText.substring(0, 50)
-                });
-                
                 // Check if this looks like a custom name input and try to recover
                 if (inputText.trim().length > 0 && inputText.trim().length <= 100 && 
                     session.currentStep === 'customer_setup') {
-                    
-                    logError(`Debug: Attempting to recover session for custom name input`, 'Info', {
-                        sessionId: session?.sessionId,
-                        currentStep: session?.currentStep,
-                        inputText: inputText.substring(0, 50)
-                    });
                     
                     // Force update to awaiting_custom_name
                     if (session?.sessionId) {
@@ -450,20 +359,14 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                         
                         // Refresh session data
                         session = await BotsStore.getDmSetupSession(session.sessionId);
-                        
-                        logError(`Debug: Session recovery result`, 'Info', {
-                            sessionId: session?.sessionId,
-                            newStep: session?.currentStep,
-                            recoverySuccess: session?.currentStep === 'awaiting_custom_name'
-                        });
                     }
                 } else {
                     return false;
-                }            }
+                }
+            }
             
             // Ensure session is not null after recovery
             if (!session) {
-                logError(`Debug: Session is null after recovery attempts`, 'Error', { userId });
                 return false;
             }
             
@@ -478,20 +381,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             }
 
             // Handle custom name input (existing logic)
-            logError(`Debug: Processing custom name input`, 'Debug', {
-                sessionId: session.sessionId,
-                inputText: inputText.substring(0, 50),
-                currentStep: session.currentStep,
-                expectedStep: 'awaiting_custom_name',
-                stepMatches: session.currentStep === 'awaiting_custom_name'
-            });
-            
             const result = await this.handleCustomNameInput(ctx, session, inputText);
-            
-            logError(`Debug: Custom name input result: ${result}`, 'Debug', {
-                sessionId: session.sessionId,
-                processingResult: result
-            });
             
             return result;
         } catch (error) {
@@ -522,12 +412,6 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             
             await BotsStore.updateDmSetupSession(session.sessionId, {
                 expiresAt: extendedExpiresAt.toISOString()
-            });
-            
-            logError(`Debug: Extended session expiry in handleCustomerIdInput`, 'Debug', {
-                sessionId: session.sessionId,
-                newExpiry: extendedExpiresAt.toISOString(),
-                extensionMinutes: 30
             });
             
             // Validate customer ID format (UUID-like format)
@@ -680,13 +564,6 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 const newExpiryFromCurrent = new Date(currentExpiry.getTime() + 30 * 60 * 1000);
                 const extendedExpiresAt = newExpiryFromNow > newExpiryFromCurrent ? newExpiryFromNow : newExpiryFromCurrent;
                 
-                logError(`Debug: Extended session expiry after customer ID validation`, 'Debug', {
-                    sessionId: session.sessionId,
-                    oldExpiry: session.expiresAt,
-                    newExpiry: extendedExpiresAt.toISOString(),
-                    extensionMinutes: 30
-                });
-                
                 await BotsStore.updateDmSetupSession(session.sessionId, {
                     currentStep: 'template_configuration',
                     expiresAt: extendedExpiresAt.toISOString() // Extend session expiration
@@ -793,23 +670,9 @@ Choose how you'd like to handle message templates:`;
                 expiresAt: extendedExpiresAt.toISOString()
             });
             
-            logError(`Debug: Extended session expiry in handleCustomNameInput`, 'Debug', {
-                sessionId: session.sessionId,
-                newExpiry: extendedExpiresAt.toISOString(),
-                extensionMinutes: 30
-            });
-            
             // Validate the customer name input
             const { validateCustomerName } = await import('../utils/validation.js');
             const validation = validateCustomerName(inputText);
-
-            logError(`Debug: Customer name validation result`, 'Debug', {
-                sessionId: session.sessionId,
-                inputText: inputText.length > 50 ? inputText.substring(0, 50) + '...' : inputText,
-                isValid: validation.isValid,
-                error: validation.error,
-                sanitizedValue: validation.sanitizedValue
-            });
 
             if (!validation.isValid) {
                 // Generate short callback IDs to stay within Telegram's 64-byte limit
@@ -839,12 +702,6 @@ Choose how you'd like to handle message templates:`;
             // Process the valid customer name
             await ctx.reply("✅ Processing your custom customer name...", { parse_mode: 'Markdown' });
 
-            logError(`Debug: Starting customer creation process`, 'Debug', {
-                sessionId: session.sessionId,
-                customerName: validation.sanitizedValue,
-                sessionStep: session.currentStep
-            });
-
             // Update session with the custom name and extend expiry for completion process
             const finalExpiresAt = new Date(now.getTime() + 30 * 60 * 1000); // Another 30 minutes for completion
             await BotsStore.updateDmSetupSession(session.sessionId, {
@@ -856,20 +713,9 @@ Choose how you'd like to handle message templates:`;
                 }
             });
             
-            logError(`Debug: Extended session expiry for customer setup completion`, 'Debug', {
-                sessionId: session.sessionId,
-                newExpiry: finalExpiresAt.toISOString(),
-                extensionMinutes: 30
-            });
-
             // Import and use the callback processor to complete the setup
             const { SetupCallbackProcessor } = await import('./CallbackProcessors.js');
             const callbackProcessor = new SetupCallbackProcessor();
-            
-            logError(`Debug: About to call completeCustomerSetup`, 'Debug', {
-                sessionId: session.sessionId,
-                customerName: validation.sanitizedValue
-            });
             
             // Complete the customer setup using the callback processor's method
             const customerName = validation.sanitizedValue || inputText.trim();

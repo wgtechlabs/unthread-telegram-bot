@@ -212,14 +212,6 @@ export class SetupCommand extends BaseCommand {
                 return;
             }
 
-            logError(`Debug: Setup session created`, 'Debug', {
-                sessionId,
-                userId,
-                chatId,
-                chatTitle,
-                dmChatId: adminProfile.dmChatId
-            });
-
             // Send confirmation in group
             const groupMessage = 
                 "✅ **Setup Started**\n\n" +

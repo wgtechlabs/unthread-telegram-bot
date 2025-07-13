@@ -402,34 +402,7 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                 sessionId = rawSessionId;
             }
             
-            // Add debugging for session ID resolution
-            logError(`Debug: Callback session ID parsing`, 'Debug', {
-                callbackData,
-                action,
-                parts: parts.slice(0, 5), // First 5 parts for debugging
-                rawSessionId,
-                finalSessionId: sessionId,
-                isShortId: rawSessionId.startsWith('cb')
-            });
-            
-            // Add additional debugging for session lookup immediately after parsing
-            try {
-                const { BotsStore } = await import('../../sdk/bots-brain/index.js');
-                const sessionCheck = await BotsStore.getDmSetupSession(sessionId);
-                logError(`Debug: Session lookup immediately after parsing`, 'Debug', {
-                    sessionId,
-                    sessionFound: !!sessionCheck,
-                    currentStep: sessionCheck?.currentStep,
-                    expiresAt: sessionCheck?.expiresAt,
-                    currentTime: new Date().toISOString(),
-                    isExpired: sessionCheck ? new Date(sessionCheck.expiresAt) < new Date() : 'N/A'
-                });
-            } catch (sessionCheckError) {
-                logError(`Debug: Error checking session immediately after parsing`, 'Debug', {
-                    sessionId,
-                    error: (sessionCheckError as Error).message
-                });
-            }
+            // Session ID resolution complete - ready for processing
             
             if (!sessionId) {
                 await ctx.answerCbQuery("❌ Invalid setup session.");
@@ -532,39 +505,17 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             const { BotsStore } = await import('../../sdk/bots-brain/index.js');
             const session = await BotsStore.getDmSetupSession(sessionId);
             
-            // Add comprehensive debugging
-            logError(`Debug: handleUseSuggested session lookup`, 'Debug', {
-                sessionId,
-                sessionFound: !!session,
-                currentStep: session?.currentStep,
-                stepData: session?.stepData,
-                suggestedName: session?.stepData?.suggestedName,
-                expiresAt: session?.expiresAt,
-                status: session?.status
-            });
-            
             if (!session) {
-                logError(`Debug: Session not found for ID: ${sessionId}`, 'Debug', { sessionId });
                 await ctx.editMessageText("❌ Setup session not found. Please start over with `/setup` in the group.");
                 return true;
             }
             
             if (!session.stepData?.suggestedName) {
-                logError(`Debug: Missing suggestedName in session stepData`, 'Debug', { 
-                    sessionId,
-                    stepData: session.stepData,
-                    currentStep: session.currentStep
-                });
                 await ctx.editMessageText("❌ Setup session missing customer name. Please start over with `/setup` in the group.");
                 return true;
             }
 
             const customerName = session.stepData.suggestedName;
-            
-            logError(`Debug: Proceeding with suggested name: ${customerName}`, 'Debug', {
-                sessionId,
-                customerName
-            });
             
             // Create customer and complete setup
             await this.completeCustomerSetup(ctx, sessionId, customerName, session);
@@ -587,9 +538,6 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             // Get current session and extend expiry immediately
             const currentSession = await BotsStore.getDmSetupSession(sessionId);
             if (!currentSession) {
-                logError(`Debug: Session not found in handleCustomName`, 'Warning', {
-                    sessionId
-                });
                 await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
                 return true;
             }
@@ -598,23 +546,9 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             const now = new Date();
             const extendedExpiresAt = new Date(now.getTime() + CALLBACK_CONSTANTS.SESSION.EXPIRY_EXTENSION_MINUTES * 60 * 1000);
             
-            logError(`Debug: Extending session expiry in handleCustomName`, 'Debug', {
-                sessionId,
-                currentExpiry: currentSession.expiresAt,
-                newExpiry: extendedExpiresAt.toISOString(),
-                extensionMinutes: CALLBACK_CONSTANTS.SESSION.EXPIRY_EXTENSION_MINUTES,
-                currentStep: currentSession.currentStep
-            });
-            
             const updateResult = await BotsStore.updateDmSetupSession(sessionId, {
                 expiresAt: extendedExpiresAt.toISOString(),
                 currentStep: 'awaiting_custom_name'
-            });
-            
-            logError(`Debug: Session update result in handleCustomName`, 'Debug', {
-                sessionId,
-                updateResult,
-                requestedStep: 'awaiting_custom_name'
             });
             
             // Verify the update with multiple attempts if needed
@@ -623,13 +557,6 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             
             // Retry verification up to 3 times if step update failed
             while (verifySession?.currentStep !== 'awaiting_custom_name' && attemptCount <= 3) {
-                logError(`Debug: Session step verification failed, retrying...`, 'Warning', {
-                    sessionId,
-                    attempt: attemptCount,
-                    actualStep: verifySession?.currentStep,
-                    expectedStep: 'awaiting_custom_name'
-                });
-                
                 // Wait 100ms and retry
                 await new Promise(resolve => setTimeout(resolve, 100));
                 
@@ -641,14 +568,6 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                 verifySession = await BotsStore.getDmSetupSession(sessionId);
                 attemptCount++;
             }
-            
-            logError(`Debug: Final session verification in handleCustomName`, 'Debug', {
-                sessionId,
-                updateSuccessful: !!verifySession,
-                finalStep: verifySession?.currentStep,
-                newExpiry: verifySession?.expiresAt,
-                attempts: attemptCount
-            });
             
             if (verifySession?.currentStep !== 'awaiting_custom_name') {
                 logError(`Critical: Session step update failed after retries`, 'Error', {
@@ -699,9 +618,6 @@ Please type the customer name you'd like to use:
             // Get current session and extend expiry immediately
             const session = await BotsStore.getDmSetupSession(sessionId);
             if (!session) {
-                logError(`Debug: Session not found in handleExistingCustomer`, 'Warning', {
-                    sessionId
-                });
                 await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
                 return true;
             }
@@ -709,13 +625,6 @@ Please type the customer name you'd like to use:
             // Extend session expiry to 30 minutes from now
             const now = new Date();
             const extendedExpiresAt = new Date(now.getTime() + CALLBACK_CONSTANTS.SESSION.EXPIRY_EXTENSION_MINUTES * 60 * 1000);
-            
-            logError(`Debug: Extending session expiry in handleExistingCustomer`, 'Debug', {
-                sessionId,
-                currentExpiry: session.expiresAt,
-                newExpiry: extendedExpiresAt.toISOString(),
-                extensionMinutes: CALLBACK_CONSTANTS.SESSION.EXPIRY_EXTENSION_MINUTES
-            });
             
             // Update session to expect customer ID input and extend expiry
             await BotsStore.updateDmSetupSession(sessionId, {
@@ -725,12 +634,6 @@ Please type the customer name you'd like to use:
             
             // Verify the update
             const verifySession = await BotsStore.getDmSetupSession(sessionId);
-            logError(`Debug: Session update verification in handleExistingCustomer`, 'Debug', {
-                sessionId,
-                updateSuccessful: !!verifySession,
-                newStep: verifySession?.currentStep,
-                newExpiry: verifySession?.expiresAt
-            });
             
             // Generate short callback IDs to stay within Telegram's 64-byte limit
             const shortBackId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
@@ -835,11 +738,6 @@ Group setup has been cancelled. You can start over anytime by using \`/setup\` i
                     throw new Error('Customer name is required for new customer creation');
                 }
                 
-                logError(`Debug: Creating new customer via Unthread API`, 'Debug', {
-                    customerName,
-                    sessionId
-                });
-                
                 try {
                     // Import and use the proper Unthread service to create customer
                     const { createCustomerWithName } = await import('../../services/unthread.js');
@@ -847,12 +745,6 @@ Group setup has been cancelled. You can start over anytime by using \`/setup\` i
                     
                     customerId = createdCustomer.id; // Use the real UUID from Unthread
                     finalCustomerName = createdCustomer.name || customerName;
-                    
-                    logError(`Debug: Customer created successfully via Unthread API`, 'Debug', {
-                        customerId,
-                        customerName: finalCustomerName,
-                        sessionId
-                    });
                     
                 } catch (apiError) {
                     logError(apiError, 'CallbackProcessors.completeCustomerSetup.createCustomer', { 
@@ -941,11 +833,6 @@ Choose how you'd like to handle message templates:`;
                 });
             } catch (editError) {
                 // If edit fails (e.g., message too old or from text input), send a new message
-                logError(`Debug: Message edit failed, sending new message instead`, 'Warning', {
-                    sessionId,
-                    editError: editError instanceof Error ? editError.message : 'Unknown error'
-                });
-                
                 await ctx.reply(successMessage, {
                     parse_mode: 'Markdown',
                     reply_markup: {
@@ -1715,12 +1602,6 @@ ${currentTemplate?.content || 'Loading...'}
             await BotsStore.updateDmSetupSession(sessionId, {
                 currentStep: 'customer_setup',
                 expiresAt: extendedExpiresAt.toISOString()
-            });
-            
-            logError(`Debug: Extended session expiry on back navigation`, 'Debug', {
-                sessionId,
-                newExpiry: extendedExpiresAt.toISOString(),
-                extensionMinutes: CALLBACK_CONSTANTS.SESSION.EXPIRY_EXTENSION_MINUTES
             });
 
             const suggestedName = session.stepData?.suggestedName || 'Unknown';
