@@ -220,14 +220,8 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                     return true;
                 }
                 
-                // Map short codes back to full template types
-                const codeToTemplateMap: Record<string, string> = {
-                    'tc': 'ticket_created',
-                    'ar': 'agent_response', 
-                    'ts': 'ticket_status'
-                };
-                
-                const templateType = shortCode ? codeToTemplateMap[shortCode] : undefined;
+                // Clean Code: Use helper method instead of duplicated mapping
+                const templateType = shortCode ? this.getTemplateTypeFromCode(shortCode) : undefined;
                 if (!templateType) {
                     await ctx.answerCbQuery("❌ Invalid template edit request.");
                     return true;
@@ -256,14 +250,8 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                     return true;
                 }
                 
-                // Map short codes back to full template types
-                const codeToTemplateMap: Record<string, string> = {
-                    'tc': 'ticket_created',
-                    'ar': 'agent_response', 
-                    'ts': 'ticket_status'
-                };
-                
-                const templateType = shortCode ? codeToTemplateMap[shortCode] : undefined;
+                // Clean Code: Use helper method instead of duplicated mapping  
+                const templateType = shortCode ? this.getTemplateTypeFromCode(shortCode) : undefined;
                 if (!templateType) {
                     await ctx.answerCbQuery("❌ Invalid template edit request.");
                     return true;
@@ -292,14 +280,8 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                     return true;
                 }
                 
-                // Map short codes back to full template types
-                const codeToTemplateMap: Record<string, string> = {
-                    'tc': 'ticket_created',
-                    'ar': 'agent_response', 
-                    'ts': 'ticket_status'
-                };
-                
-                const templateType = shortCode ? codeToTemplateMap[shortCode] : undefined;
+                // Clean Code: Use helper method instead of duplicated mapping
+                const templateType = shortCode ? this.getTemplateTypeFromCode(shortCode) : undefined;
                 if (!templateType) {
                     await ctx.answerCbQuery("❌ Invalid template cancel request.");
                     return true;

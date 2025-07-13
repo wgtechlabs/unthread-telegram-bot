@@ -14,6 +14,7 @@ import { checkAndPromptBotAdmin, isBotAdmin } from '../../utils/botPermissions.j
 import { logError, createUserErrorMessage } from '../utils/errorHandler.js';
 import { getCompanyName } from '../../config/env.js';
 import { GlobalTemplateManager } from '../../utils/globalTemplateManager.js';
+import { ValidationService } from '../../services/validationService.js';
 
 export class ActivateCommand extends BaseCommand {
     readonly metadata: CommandMetadata = {
@@ -299,109 +300,19 @@ export class SetupCommand extends BaseCommand {
 
     private async performSetupValidation(ctx: BotContext, sessionId: string, dmChatId: number, groupChatId: number, groupTitle: string, messageId: number): Promise<void> {
         try {
-            let validationMessage = 
-                "🔍 **Setup Validation Results**\n\n" +
-                `**Group:** ${groupTitle}\n` +
-                `**Chat ID:** \`${groupChatId}\`\n\n`;
+            // Clean Code: Delegate complex validation logic to dedicated service
+            const validationResult = await ValidationService.performSetupValidation(ctx, groupChatId, groupTitle);
 
-            interface ValidationCheck {
-                name: string;
-                passed: boolean;
-                details: string;
-            }
-
-            const checks: ValidationCheck[] = [];
-            let allPassed = true;
-
-            // Check 1: Bot admin status
-            try {
-                const botUser = await ctx.telegram.getMe();
-                const chatMember = await ctx.telegram.getChatMember(groupChatId, botUser.id);
-                const isBotAdmin = chatMember.status === 'administrator' || chatMember.status === 'creator';
-                
-                checks.push({
-                    name: "Bot Admin Status",
-                    passed: isBotAdmin,
-                    details: isBotAdmin ? "Bot has admin privileges" : "Bot needs admin privileges"
-                });
-                
-                if (!isBotAdmin) allPassed = false;
-            } catch (error) {
-                checks.push({
-                    name: "Bot Admin Status",
-                    passed: false,
-                    details: "Unable to check bot permissions"
-                });
-                allPassed = false;
-            }
-
-            // Check 2: Group privacy settings
-            try {
-                const chat = await ctx.telegram.getChat(groupChatId);
-                const hasHistoryAccess = Boolean('all_members_are_administrators' in chat ? chat.all_members_are_administrators : true);
-                
-                checks.push({
-                    name: "Group Privacy Settings",
-                    passed: hasHistoryAccess,
-                    details: hasHistoryAccess ? "Bot can access message history" : "Group privacy may block bot access"
-                });
-                
-                if (!hasHistoryAccess) allPassed = false;
-            } catch (error) {
-                checks.push({
-                    name: "Group Privacy Settings",
-                    passed: true, // Assume OK if can't check
-                    details: "Privacy check completed (assumed OK)"
-                });
-            }
-
-            // Check 3: Bot can send messages
-            try {
-                await ctx.telegram.sendChatAction(groupChatId, 'typing');
-                checks.push({
-                    name: "Message Sending",
-                    passed: true,
-                    details: "Bot can send messages to group"
-                });
-            } catch (error) {
-                checks.push({
-                    name: "Message Sending",
-                    passed: false,
-                    details: "Bot cannot send messages to group"
-                });
-                allPassed = false;
-            }
-
-            // Build validation results message
-            validationMessage += "**Validation Checks:**\n\n";
-            for (const check of checks) {
-                const icon = check.passed ? "✅" : "❌";
-                validationMessage += `${icon} **${check.name}**\n`;
-                validationMessage += `   ${check.details}\n\n`;
-            }
-
-            if (allPassed) {
-                validationMessage += 
-                    "🎉 **All Checks Passed!**\n\n" +
-                    "Ready to proceed with customer setup.";
-                
+            if (validationResult.allPassed) {
                 // Update session and proceed to customer setup
                 await BotsStore.updateDmSetupSession(sessionId, {
                     currentStep: 'validation_passed',
-                    stepData: { validationResults: checks }
+                    stepData: { validationResults: validationResult.checks }
                 });
 
                 await this.proceedToCustomerSetup(ctx, sessionId, dmChatId, groupChatId, groupTitle, messageId);
             } else {
-                validationMessage += 
-                    "⚠️ **Setup Issues Found**\n\n" +
-                    "Please resolve the issues above before continuing.\n\n" +
-                    "**Common Solutions:**\n" +
-                    "• Make the bot an admin in the group\n" +
-                    "• Check group privacy settings\n" +
-                    "• Ensure bot has message permissions";
-
-                await ctx.telegram.editMessageText(dmChatId, messageId, undefined, validationMessage, {
+                await ctx.telegram.editMessageText(dmChatId, messageId, undefined, validationResult.message, {
                     parse_mode: 'Markdown',
                     reply_markup: {
                         inline_keyboard: [
