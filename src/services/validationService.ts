@@ -96,7 +96,9 @@ export class ValidationService {
     ): Promise<void> {
         try {
             const chat = await ctx.telegram.getChat(groupChatId);
-            const hasHistoryAccess = Boolean('all_members_are_administrators' in chat ? chat.all_members_are_administrators : true);
+            // Check if the bot has proper permissions to access message history
+            // Note: This is a simplified check - in practice, we'd need to verify the bot's actual permissions
+            const hasHistoryAccess = Boolean(chat.type === 'group' || chat.type === 'supergroup');
             
             checks.push({
                 name: "Group Privacy Settings",
@@ -106,8 +108,8 @@ export class ValidationService {
         } catch (error) {
             checks.push({
                 name: "Group Privacy Settings",
-                passed: true, // Assume OK if can't check
-                details: "Privacy check completed (assumed OK)"
+                passed: false,
+                details: "Privacy check failed or could not be verified"
             });
         }
     }

@@ -1903,9 +1903,14 @@ export class AdminCallbackProcessor implements ICallbackProcessor {
         
         try {
             // Import and call the template manager from AdminCommands
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            const templateManager = GlobalTemplateManager.getInstance();
+            const templates = await templateManager.getGlobalTemplates();
+            const templateCount = Object.keys(templates.templates).length;
+            
             const templateMessage = 
                 "📝 **Message Template Manager**\n\n" +
-                "**Current Status:** 3 templates configured\n\n" +
+                `**Current Status:** ${templateCount} templates configured\n\n` +
                 "**Available Templates:**\n" +
                 "• 🎫 **Ticket Created** - New support ticket notifications\n" +
                 "• 👨‍💼 **Agent Response** - When agents reply to tickets\n" +

@@ -21,6 +21,20 @@ interface ManagedTimeout {
 export class TimeoutManager {
     private static timeouts: Map<string, ManagedTimeout> = new Map();
     private static isShuttingDown = false;
+    private static cleanupInterval: NodeJS.Timeout | null = null;
+
+    /**
+     * Initialize the timeout manager with periodic cleanup
+     */
+    static initializeCleanup(): void {
+        if (!this.cleanupInterval) {
+            this.cleanupInterval = setInterval(() => {
+                this.cleanupStaleTimeouts();
+            }, 5 * 60 * 1000); // Every 5 minutes
+            
+            LogEngine.debug('TimeoutManager cleanup interval initialized');
+        }
+    }
 
     /**
      * Create a managed timeout that can be properly cleaned up
@@ -92,6 +106,12 @@ export class TimeoutManager {
     static clearAllTimeouts(): void {
         this.isShuttingDown = true;
         
+        // Clear the cleanup interval first
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
+        }
+        
         for (const [key, timeout] of this.timeouts.entries()) {
             clearTimeout(timeout.id);
         }
@@ -151,6 +171,9 @@ export class TimeoutManager {
     }
 }
 
+// Initialize cleanup when the module is loaded
+TimeoutManager.initializeCleanup();
+
 // Set up cleanup on process exit
 process.on('exit', () => {
     TimeoutManager.clearAllTimeouts();
@@ -165,8 +188,3 @@ process.on('SIGTERM', () => {
     TimeoutManager.clearAllTimeouts();
     process.exit(0);
 });
-
-// Periodic cleanup of stale timeouts (every 5 minutes)
-setInterval(() => {
-    TimeoutManager.cleanupStaleTimeouts();
-}, 5 * 60 * 1000);

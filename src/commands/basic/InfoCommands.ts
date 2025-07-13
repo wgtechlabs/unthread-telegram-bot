@@ -21,7 +21,7 @@ export class StartCommand extends BaseCommand {
     };
 
     protected async executeCommand(ctx: BotContext): Promise<void> {
-        const companyName = getCompanyName();
+        const companyName = getCompanyName() || 'Support';
         const welcomeMessage = `🤖 **Welcome to ${companyName} Support Bot!**\n\n` +
             `I'm here to help you create support tickets and get assistance.\n\n` +
             `**Quick Start:**\n` +
@@ -124,7 +124,7 @@ export class AboutCommand extends BaseCommand {
     };
 
     protected async executeCommand(ctx: BotContext): Promise<void> {
-        const companyName = getCompanyName();
+        const companyName = getCompanyName() || 'Support';
         const aboutMessage = `ℹ️ **About ${companyName} Support Bot**\n\n` +
             `This bot helps you create and manage support tickets efficiently. ` +
             `It integrates with our Unthread platform to provide seamless customer support.\n\n` +

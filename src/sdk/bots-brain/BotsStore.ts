@@ -1261,14 +1261,14 @@ export class BotsStore implements IBotsStore {
       };
 
       // Store by session ID
-      await this.storage.set(`session:setup:${sessionData.sessionId}`, JSON.stringify(enrichedData), 180); // 3 minutes TTL
+      await this.storage.set(`session:setup:${sessionData.sessionId}`, JSON.stringify(enrichedData), 600); // 10 minutes TTL
 
       // Store admin -> session mapping for blocking
-      await this.storage.set(`session:admin:${sessionData.initiatingAdminId}`, sessionData.sessionId, 180);
+      await this.storage.set(`session:admin:${sessionData.initiatingAdminId}`, sessionData.sessionId, 600);
 
       // Store group -> session mapping for getActiveSetupSessionByGroup
       if (sessionData.groupChatId) {
-        await this.storage.set(`session:group:${sessionData.groupChatId}`, sessionData.sessionId, 180);
+        await this.storage.set(`session:group:${sessionData.groupChatId}`, sessionData.sessionId, 600);
       }
 
       LogEngine.info(`Setup session stored: ${sessionData.sessionId}`);
@@ -1409,18 +1409,21 @@ export class BotsStore implements IBotsStore {
       // If TTL is still too short after minimum enforcement, extend the expiry
       if (ttlSeconds <= 300) {
         const newExpiresAt = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes from now
-        sessionData.expiresAt = newExpiresAt.toISOString();
+        const extendedSessionData = {
+          ...sessionData,
+          expiresAt: newExpiresAt.toISOString()
+        };
         const newTtlSeconds = Math.floor((newExpiresAt.getTime() - now.getTime()) / 1000);
         
         LogEngine.warn('Session expiry was too short, extending automatically', {
           sessionId: sessionData.sessionId,
           originalExpiry: expiresAt.toISOString(),
-          newExpiry: sessionData.expiresAt,
+          newExpiry: extendedSessionData.expiresAt,
           newTTL: newTtlSeconds
         });
         
-        // Store with extended TTL
-        await this.storage.set(key, sessionData, newTtlSeconds);
+        // Store with extended TTL using the copied data
+        await this.storage.set(key, extendedSessionData, newTtlSeconds);
         
         // Create admin mapping for easy lookup with same TTL
         await this.storage.set(

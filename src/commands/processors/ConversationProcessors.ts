@@ -298,6 +298,9 @@ export class SetupInputProcessor implements IConversationProcessor {
 
     async process(ctx: BotContext): Promise<boolean> {
         try {
+            // TODO: Implement actual group setup input processing logic
+            // This is a placeholder for the phased rollout - full implementation pending
+            // Should handle: group validation, admin permissions, webhook configuration
             await ctx.reply(
                 "⚙️ **Setup Input Received**\n\n" +
                 "This is where group setup input processing would happen.\n\n" +
