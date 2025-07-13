@@ -724,9 +724,6 @@ Choose how you'd like to handle message templates:`;
                         [
                             { text: "✅ Finish Setup", callback_data: `setup_use_defaults_${shortId}` },
                             { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${shortId}` }
-                        ],
-                        [
-                            { text: "ℹ️ Learn About Templates", callback_data: `setup_template_info_${shortId}` }
                         ]
                     ]
                 }
@@ -962,9 +959,6 @@ Choose how you'd like to handle message templates:`;
                         [
                             { text: "✅ Finish Setup", callback_data: `setup_use_defaults_${shortId}` },
                             { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${shortId}` }
-                        ],
-                        [
-                            { text: "ℹ️ Learn About Templates", callback_data: `setup_template_info_${shortId}` }
                         ]
                     ]
                 }
@@ -1176,7 +1170,8 @@ Each template has access to relevant data like ticket details, customer info, ag
                             { text: "👨‍💼 Agent Response", callback_data: `template_edit_ar_${shortId}` }
                         ],
                         [
-                            { text: "✅ Ticket Status", callback_data: `template_edit_ts_${shortId}` }
+                            { text: "✅ Ticket Status", callback_data: `template_edit_ts_${shortId}` },
+                            { text: "ℹ️ Learn About Templates", callback_data: `setup_template_info_${shortId}` }
                         ],
                         [
                             { text: "🚀 Use Defaults Instead", callback_data: `setup_use_defaults_${shortId}` },

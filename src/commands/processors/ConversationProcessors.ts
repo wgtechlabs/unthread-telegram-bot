@@ -472,9 +472,6 @@ Choose how you'd like to handle message templates:`;
                             [
                                 { text: "✅ Finish Setup", callback_data: `setup_use_defaults_${session.sessionId}` },
                                 { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${session.sessionId}` }
-                            ],
-                            [
-                                { text: "ℹ️ Learn About Templates", callback_data: `setup_template_info_${session.sessionId}` }
                             ]
                         ]
                     }
