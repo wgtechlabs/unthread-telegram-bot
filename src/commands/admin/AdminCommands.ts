@@ -469,7 +469,7 @@ export class TemplatesCommand extends BaseCommand {
                 `**Last Activity:** ${activityInfo}\n\n` +
                 "**Available Templates:**\n" +
                 `• 🎫 **Ticket Created** - ${getTemplateStatus(templates.templates.ticket_created)}\n` +
-                `• � **Agent Response** - ${getTemplateStatus(templates.templates.agent_response)}\n` +
+                `• 👨‍💼 **Agent Response** - ${getTemplateStatus(templates.templates.agent_response)}\n` +
                 `• ✅ **Ticket Status** - ${getTemplateStatus(templates.templates.ticket_status)}\n\n` +
                 "**Management Options:**";
 
@@ -479,7 +479,7 @@ export class TemplatesCommand extends BaseCommand {
                     inline_keyboard: [
                         [
                             { text: "🎫 Edit Ticket Created", callback_data: "template_edit_ticket_created" },
-                            { text: "�‍💼 Edit Agent Response", callback_data: "template_edit_agent_response" }
+                            { text: "👨‍💼 Edit Agent Response", callback_data: "template_edit_agent_response" }
                         ],
                         [
                             { text: "✅ Edit Ticket Status", callback_data: "template_edit_ticket_status" },
