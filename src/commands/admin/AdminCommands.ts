@@ -536,8 +536,7 @@ export class TemplatesCommand extends BaseCommand {
                             { text: "📊 Template Preview", callback_data: "template_preview_all" }
                         ],
                         [
-                            { text: "� Reset to Defaults", callback_data: "template_reset_confirm" },
-                            { text: "� Export Templates", callback_data: "template_export" }
+                            { text: "🔄 Reset to Defaults", callback_data: "template_reset_confirm" }
                         ],
                         [
                             { text: "❌ Close", callback_data: "template_close" }
