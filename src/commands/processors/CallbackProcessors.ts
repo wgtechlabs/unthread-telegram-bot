@@ -371,6 +371,9 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             } else if (action === 'use' && parts[2] === 'defaults') {
                 // Format: setup_use_defaults_[shortId OR setup_chatId_timestamp]
                 rawSessionId = parts.slice(3).join('_'); 
+            } else if (action === 'use' && parts[2] === 'suggested') {
+                // Format: setup_use_suggested_[sessionId]
+                rawSessionId = parts.slice(3).join('_'); 
             } else if (action === 'template' && parts[2] === 'info') {
                 // Format: setup_template_info_[shortId OR setup_chatId_timestamp]
                 rawSessionId = parts.slice(3).join('_'); 
@@ -395,6 +398,16 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             } else {
                 sessionId = rawSessionId;
             }
+            
+            // Add debugging for session ID resolution
+            logError(`Debug: Callback session ID parsing`, 'Debug', {
+                callbackData,
+                action,
+                parts: parts.slice(0, 5), // First 5 parts for debugging
+                rawSessionId,
+                finalSessionId: sessionId,
+                isShortId: rawSessionId.startsWith('cb')
+            });
             
             if (!sessionId) {
                 await ctx.answerCbQuery("❌ Invalid setup session.");
@@ -427,6 +440,8 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                 case 'back':
                     if (parts[2] === 'to' && parts[3] === 'completion') {
                         return await this.handleBackToCompletion(ctx, sessionId);
+                    } else if (parts[2] === 'to' && parts[3] === 'customer' && parts[4] === 'selection') {
+                        return await this.handleBackToCustomerSelection(ctx, sessionId);
                     }
                     break;
                 case 'custom':
@@ -553,6 +568,9 @@ Please type the customer name you'd like to use:
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
+                        [
+                            { text: "⬅️ Back to Options", callback_data: `setup_back_to_customer_selection_${sessionId}` }
+                        ],
                         [
                             { text: "❌ Cancel Setup", callback_data: `setup_cancel_${sessionId}` }
                         ]
@@ -1486,6 +1504,66 @@ ${currentTemplate?.content || 'Loading...'}
         } catch (error) {
             logError(error, 'SetupCallbackProcessor.handleTemplateCancelEdit', { sessionId, templateType });
             await ctx.editMessageText("❌ Failed to cancel template edit. Please try again.");
+            return true;
+        }
+    }
+
+    /**
+     * Handle returning to customer selection screen
+     */
+    private async handleBackToCustomerSelection(ctx: BotContext, sessionId: string): Promise<boolean> {
+        await ctx.answerCbQuery("⬅️ Returning to customer setup options...");
+        
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            const session = await BotsStore.getDmSetupSession(sessionId);
+            
+            if (!session) {
+                await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
+                return true;
+            }
+
+            const suggestedName = session.stepData?.suggestedName || 'Unknown';
+            const groupTitle = session.stepData?.groupTitle || session.groupChatName || 'Unknown Group';
+
+            const customerSetupMessage = `🎯 **Customer Setup**
+
+**Group:** ${groupTitle}
+
+Please choose how you'd like to set up the customer for this group:
+
+**Suggested Customer Name:**
+\`${suggestedName}\`
+
+**Choose your preferred option:**`;
+
+            await ctx.editMessageText(customerSetupMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: `✅ Use "${suggestedName}"`, callback_data: `setup_use_suggested_${sessionId}` }
+                        ],
+                        [
+                            { text: "✏️ Use Different Name", callback_data: `setup_custom_name_${sessionId}` },
+                            { text: "🔗 Existing Customer ID", callback_data: `setup_existing_customer_${sessionId}` }
+                        ],
+                        [
+                            { text: "❌ Cancel Setup", callback_data: `setup_cancel_${sessionId}` }
+                        ]
+                    ]
+                }
+            });
+
+            // Reset session step
+            await BotsStore.updateDmSetupSession(sessionId, {
+                currentStep: 'customer_setup'
+            });
+            
+            return true;
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.handleBackToCustomerSelection', { sessionId });
+            await ctx.editMessageText("❌ Failed to return to customer setup. Please try again.");
             return true;
         }
     }

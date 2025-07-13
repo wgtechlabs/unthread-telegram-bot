@@ -295,7 +295,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
         if (!userId || !inputText) return false;
 
         try {
-            // Get the active session
+            // Get the active session with enhanced debugging
             const session = await BotsStore.getActiveDmSetupSessionByAdmin(userId);
             
             // Add debugging for session lookup
@@ -303,7 +303,10 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 sessionFound: !!session,
                 currentStep: session?.currentStep,
                 inputText: inputText.substring(0, 50),
-                sessionId: session?.sessionId
+                sessionId: session?.sessionId,
+                sessionStatus: session?.status,
+                sessionExpiresAt: session?.expiresAt,
+                currentTime: new Date().toISOString()
             });
             
             if (!session || (session.currentStep !== 'awaiting_custom_name' && 
@@ -312,7 +315,8 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 logError(`Debug: Session not found or wrong step`, 'Debug', {
                     sessionFound: !!session,
                     currentStep: session?.currentStep,
-                    expectedSteps: ['awaiting_custom_name', 'awaiting_customer_id', 'awaiting_template_content']
+                    expectedSteps: ['awaiting_custom_name', 'awaiting_customer_id', 'awaiting_template_content'],
+                    inputText
                 });
                 return false;
             }
