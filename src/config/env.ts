@@ -65,9 +65,9 @@ const ENV_VAR_HELP: Record<string, string> = {
 };
 
 /**
- * Ensures all required environment variables are set before application startup.
+ * Validates that all required environment variables are present and correctly configured before starting the application.
  *
- * Logs detailed error messages and terminates the process if any required variables are missing; otherwise, logs successful validation and the current runtime environment.
+ * Logs detailed error messages and setup instructions for any missing or improperly set variables, including detection of placeholder values. Terminates the process if validation fails; otherwise, logs successful validation and the current runtime environment.
  */
 export function validateEnvironment(): void {
     const missingVars: string[] = [];
@@ -116,8 +116,11 @@ export function validateEnvironment(): void {
 }
 
 /**
- * Validates Redis URL configurations to catch placeholder values
- * @throws Error if placeholder values are detected in Redis URLs
+ * Checks Redis URL environment variables for placeholder values and throws an error if any are detected.
+ *
+ * Ensures that `PLATFORM_REDIS_URL` and `WEBHOOK_REDIS_URL` are set to valid, non-placeholder connection strings before the application starts.
+ *
+ * @throws Error if a Redis URL contains a known placeholder value.
  */
 function validateRedisUrls(): void {
     const redisUrls = [
@@ -150,8 +153,11 @@ function validateRedisUrls(): void {
 }
 
 /**
- * Validates required API tokens and secrets to catch placeholder values
- * @throws Error if placeholder values are detected in API tokens
+ * Validates critical API tokens and secrets for placeholder values and correct formatting.
+ *
+ * Checks the `TELEGRAM_BOT_TOKEN`, `UNTHREAD_API_KEY`, and `UNTHREAD_WEBHOOK_SECRET` environment variables for common placeholder patterns and ensures the Telegram bot token matches the expected format. Throws an error if any token contains a placeholder or is incorrectly formatted.
+ *
+ * @throws Error if a required token contains a placeholder value or, for `TELEGRAM_BOT_TOKEN`, if the format is invalid
  */
 function validateRequiredTokens(): void {
     const tokens = [
@@ -227,11 +233,11 @@ export function isDevelopment(): boolean {
 }
 
 /**
- * Retrieves the default ticket priority from the `UNTHREAD_DEFAULT_PRIORITY` environment variable.
+ * Returns the default ticket priority specified in the `UNTHREAD_DEFAULT_PRIORITY` environment variable if it is set to 3, 5, 7, or 9.
  *
- * Parses and validates the value against allowed priorities (3, 5, 7, 9). Returns the valid priority or `undefined` if the variable is unset or invalid.
+ * If the variable is unset or contains an invalid value, returns `undefined` and logs a warning.
  *
- * @returns The ticket priority (3, 5, 7, or 9), or `undefined` if not set or invalid.
+ * @returns The valid ticket priority (3, 5, 7, or 9), or `undefined` if not set or invalid.
  */
 export function getDefaultTicketPriority(): 3 | 5 | 7 | 9 | undefined {
     const priority = process.env.UNTHREAD_DEFAULT_PRIORITY;
@@ -252,14 +258,12 @@ export function getDefaultTicketPriority(): 3 | 5 | 7 | 9 | undefined {
 }
 
 /**
- * Retrieves the list of authorized bot administrator user IDs from the environment variable.
+ * Returns an array of authorized Telegram user IDs parsed from the ADMIN_USERS environment variable.
  *
- * Parses the ADMIN_USERS environment variable (comma-separated Telegram user IDs) and validates
- * that all values are valid numbers. Invalid IDs are filtered out with warnings.
- * Since this is now a required variable, it will throw an error if not properly configured.
+ * Throws an error if ADMIN_USERS is missing, contains only placeholder values, or no valid numeric IDs are found. Invalid IDs are skipped with a warning.
  *
- * @returns An array of Telegram user IDs that are authorized to manage the bot
- * @throws Error if ADMIN_USERS contains only placeholder values or invalid configuration
+ * @returns An array of Telegram user IDs authorized to manage the bot.
+ * @throws Error if ADMIN_USERS is missing, contains placeholders, or no valid IDs are found.
  */
 export function getAdminUsers(): number[] {
     const adminUsers = process.env.ADMIN_USERS;
@@ -316,10 +320,10 @@ export function getAdminUsers(): number[] {
 }
 
 /**
- * Checks if a given Telegram user ID is authorized to perform bot administration tasks.
+ * Determines whether the specified Telegram user ID is authorized as a bot administrator.
  *
  * @param telegramUserId - The Telegram user ID to check
- * @returns True if the user is an authorized bot administrator, false otherwise
+ * @returns True if the user ID is listed as an administrator; otherwise, false
  */
 export function isAdminUser(telegramUserId: number): boolean {
     const adminUsers = getAdminUsers();
@@ -327,13 +331,11 @@ export function isAdminUser(telegramUserId: number): boolean {
 }
 
 /**
- * Get the company name for bot branding (if configured)
- * 
- * Used for automatic partner name extraction from group titles.
- * Returns null if not set or contains placeholder values, indicating
- * that the full group chat name should be used instead of extraction.
- * 
- * @returns The company name string, or null if not configured properly
+ * Retrieves the company name for bot branding from the environment variable.
+ *
+ * Returns the configured company name, or `null` if the value is unset or contains a known placeholder, indicating that the full group chat name should be used instead.
+ *
+ * @returns The company name string, or null if not configured or set to a placeholder value
  */
 export function getCompanyName(): string | null {
     const companyName = process.env.MY_COMPANY_NAME?.trim();
@@ -356,13 +358,11 @@ export function getCompanyName(): string | null {
 }
 
 /**
- * Get the configured bot username directly (performance optimization)
- * 
- * This allows setting the actual bot username as a configuration value,
- * completely eliminating the need for API calls to retrieve it.
- * If not configured or contains placeholders, returns null to fall back to API.
- * 
- * @returns The configured bot username, or null if not set (use API instead)
+ * Retrieves the bot username from the BOT_USERNAME environment variable if set and valid.
+ *
+ * Returns the configured bot username for performance optimization, or `null` if the variable is unset, contains a placeholder, or fails basic format validation. If `null` is returned, the bot username should be retrieved via the Telegram API instead.
+ *
+ * @returns The configured bot username, or `null` if not set or invalid
  */
 export function getConfiguredBotUsername(): string | null {
     const configuredUsername = process.env.BOT_USERNAME?.trim();

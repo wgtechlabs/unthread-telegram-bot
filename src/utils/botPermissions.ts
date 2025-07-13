@@ -34,28 +34,31 @@ import { InlineKeyboardMarkup } from 'telegraf/typings/core/types/typegram';
 import { LogEngine } from '@wgtechlabs/log-engine';
 
 /**
- * Type guard to check if a chat has a title property (group/supergroup chats)
- * @param chat - The chat object to check
- * @returns True if the chat has a title property
+ * Determines whether the provided chat object represents a group or supergroup by checking for a string `title` property.
+ *
+ * @param chat - The chat object to evaluate
+ * @returns True if the chat has a string `title` property, indicating it is a group or supergroup
  */
 function chatHasTitle(chat: any): chat is { title: string } {
   return chat && typeof chat === 'object' && 'title' in chat && typeof chat.title === 'string';
 }
 
 /**
- * Safely get chat title with fallback
- * @param ctx - Bot context
- * @param fallback - Fallback title if chat doesn't have a title
- * @returns Chat title or fallback
+ * Returns the chat title if available, or a fallback string if the chat has no title.
+ *
+ * @param fallback - The string to use if the chat does not have a title
+ * @returns The chat's title or the provided fallback
  */
 function getChatTitle(ctx: BotContext, fallback: string = 'this chat'): string {
   return chatHasTitle(ctx.chat) ? ctx.chat.title : fallback;
 }
 
 /**
- * Check if the bot has admin permissions in the current chat
- * @param ctx Telegram bot context
- * @returns Promise<boolean> - true if bot is admin, false otherwise
+ * Determines whether the bot has administrative privileges in the current chat.
+ *
+ * Returns `true` for private chats. For group or supergroup chats, checks the bot's membership status and returns `true` if the bot is an administrator or creator, otherwise returns `false`. Logs errors and returns `false` if the check cannot be completed.
+ *
+ * @returns A promise that resolves to `true` if the bot is an admin in the current chat, or `false` otherwise.
  */
 export async function isBotAdmin(ctx: BotContext): Promise<boolean> {
   try {
@@ -89,9 +92,9 @@ export async function isBotAdmin(ctx: BotContext): Promise<boolean> {
 }
 
 /**
- * Check bot admin status and prompt user if not admin
- * @param ctx Telegram bot context
- * @returns Promise<boolean> - true if bot is admin or check succeeded, false if not admin
+ * Checks if the bot has admin privileges in the current chat and prompts the user with instructions if not.
+ *
+ * @returns `true` if the bot is an admin; otherwise, sends a message requesting admin rights and returns `false`.
  */
 export async function checkAndPromptBotAdmin(ctx: BotContext): Promise<boolean> {
   const isAdmin = await isBotAdmin(ctx);
@@ -105,8 +108,9 @@ export async function checkAndPromptBotAdmin(ctx: BotContext): Promise<boolean> 
 }
 
 /**
- * Send message indicating bot needs admin permissions with retry option
- * @param ctx Telegram bot context
+ * Sends a message to the chat explaining that the bot requires admin permissions, including step-by-step instructions and options to retry or view help.
+ *
+ * If sending the message with Markdown formatting fails, a plain text fallback is sent instead.
  */
 async function sendBotNotAdminMessage(ctx: BotContext): Promise<void> {
   const chatType = ctx.chat?.type || 'unknown';
@@ -172,8 +176,7 @@ Once you've made me an admin, click the button below to continue setup.`;
 }
 
 /**
- * Send detailed help message about making the bot an admin
- * @param ctx Telegram bot context
+ * Sends a detailed help message to the chat explaining how to make the bot an admin, including step-by-step instructions for mobile and desktop apps, required permissions, and troubleshooting tips. Provides interactive buttons for retrying the admin check or returning to setup. Falls back to a plain text message if sending with Markdown fails.
  */
 export async function sendBotAdminHelpMessage(ctx: BotContext): Promise<void> {
   // Answer callback query if this was triggered by a callback
@@ -248,11 +251,11 @@ Need more help? Contact your Unthread administrator.`;
 }
 
 /**
- * Safely answer a callback query with timeout and robust error handling
- * @param ctx Telegram bot context
- * @param text Text to show in the callback query answer
- * @param timeoutMs Timeout in milliseconds (default: 5000ms)
- * @returns Promise<boolean> - true if successful, false if failed
+ * Attempts to answer a Telegram callback query with the provided text, enforcing a timeout and handling errors gracefully.
+ *
+ * @param text - The message to display in the callback query response
+ * @param timeoutMs - Maximum time in milliseconds to wait for the response (default: 5000)
+ * @returns `true` if the callback query was answered successfully; `false` if the context does not support answering, times out, or encounters an error
  */
 async function safeAnswerCallbackQuery(
   ctx: BotContext, 
@@ -298,8 +301,9 @@ async function safeAnswerCallbackQuery(
 }
 
 /**
- * Handle retry bot admin check callback
- * @param ctx Telegram bot context (from callback query)
+ * Handles the retry action for checking if the bot has admin permissions in a Telegram group.
+ *
+ * Responds to the callback query, re-checks the bot's admin status, and sends an appropriate message to the chat based on the result. If the bot is now an admin, prompts the user to continue setup; otherwise, re-sends the admin permission prompt. Provides robust error handling and fallback messaging if issues occur during the process.
  */
 export async function handleRetryBotAdminCheck(ctx: BotContext): Promise<void> {
   try {
@@ -370,9 +374,11 @@ Setup can continue. Type /setup to proceed with linking this group to your Unthr
 }
 
 /**
- * Get a summary of bot permissions for debugging/logging
- * @param ctx Telegram bot context
- * @returns Promise<object> - Permission summary object
+ * Returns a summary of the bot's permissions and status in the current chat for debugging or logging purposes.
+ *
+ * The summary includes chat ID, chat type, the bot's status, whether the bot is an admin, and any available permissions.
+ *
+ * @returns An object containing the chat ID, chat type, bot status, admin status, and permissions if available.
  */
 export async function getBotPermissionSummary(ctx: BotContext): Promise<{
   chatId: number;

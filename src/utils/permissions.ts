@@ -33,13 +33,12 @@ import { safeReply } from '../bot.js';
 import type { BotContext } from '../types/index.js';
 
 /**
- * Validates that the current user has admin access and provides appropriate feedback if not.
+ * Checks if the current user has admin access and sends feedback if access is denied.
  *
- * Checks if the user making the request is listed in the ADMIN_USERS environment variable.
- * If not authorized, sends an informative error message to the user explaining admin access requirements.
+ * If the user is not authorized or user information is missing, sends an appropriate error message to the user and returns false. Returns true if the user is an authorized admin.
  *
- * @param ctx - The Telegram bot context containing user information
- * @returns True if the user is authorized as an admin, false otherwise
+ * @param ctx - Telegram bot context containing user information
+ * @returns True if the user is an authorized admin, false otherwise
  */
 export async function validateAdminAccess(ctx: BotContext): Promise<boolean> {
     if (!ctx.from) {
@@ -91,13 +90,11 @@ export async function validateAdminAccess(ctx: BotContext): Promise<boolean> {
 }
 
 /**
- * Checks if the current user has admin access without sending any messages.
+ * Determines whether the user in the given Telegram bot context is an admin.
  *
- * Useful for conditional UI elements or feature availability checks where you don't want
- * to notify the user about permission restrictions.
+ * Returns true if the user's Telegram ID is listed as an admin; otherwise, returns false. Does not send any messages or notifications.
  *
- * @param ctx - The Telegram bot context containing user information
- * @returns True if the user is authorized as an admin, false otherwise
+ * @returns True if the user has admin privileges, false otherwise.
  */
 export function hasAdminAccess(ctx: BotContext): boolean {
     if (!ctx.from) {
@@ -108,13 +105,11 @@ export function hasAdminAccess(ctx: BotContext): boolean {
 }
 
 /**
- * Decorator function to require admin access for command functions.
+ * Wraps a command handler to enforce admin access validation before execution.
  *
- * Wraps command handler functions to automatically validate admin access before execution.
- * If the user is not authorized, the wrapped function is not called and an error message is sent.
+ * Prevents execution of the command handler if the user is not an authorized admin, sending an error message automatically.
  *
- * @param commandHandler - The command handler function to protect with admin access
- * @returns A wrapped function that validates admin access before execution
+ * @returns A function that checks admin access and executes the command handler only if access is granted.
  */
 export function requireAdminAccess(commandHandler: (ctx: BotContext) => Promise<void>) {
     return async (ctx: BotContext): Promise<void> => {
@@ -131,10 +126,11 @@ export function requireAdminAccess(commandHandler: (ctx: BotContext) => Promise<
 }
 
 /**
- * Gets the current user's admin status and user information for logging and display purposes.
+ * Returns the user's admin status and identifying information from the Telegram bot context.
  *
- * @param ctx - The Telegram bot context containing user information
- * @returns Object containing admin status and user details, or null if no user context
+ * If user information is unavailable in the context, returns null. Otherwise, provides an object with admin status, Telegram user ID, and available username, first name, and last name.
+ *
+ * @returns An object with admin status and user details, or null if user information is missing
  */
 export function getUserPermissionInfo(ctx: BotContext): {
     isAdmin: boolean;
@@ -166,12 +162,11 @@ export function getUserPermissionInfo(ctx: BotContext): {
 }
 
 /**
- * Logs permission-related events for security audit purposes.
+ * Logs a permission-related event with user and chat context for auditing purposes.
  *
  * @param event - The type of permission event (e.g., 'admin_access_granted', 'unauthorized_attempt')
- * @param ctx - The Telegram bot context
- * @param command - The command or action that triggered the permission check (e.g., '/setup', 'bot_admin_check')
- * @param additionalData - Any additional data to include in the log
+ * @param command - The command or action that triggered the permission check
+ * @param additionalData - Optional extra data to include in the log entry
  */
 export function logPermissionEvent(
     event: string,

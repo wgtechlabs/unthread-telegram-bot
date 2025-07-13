@@ -54,9 +54,9 @@ export function isPrivateChat(ctx: BotContext): boolean {
 }
 
 /**
- * Main handler for incoming Telegram messages, routing them to appropriate processors based on chat type and message context.
+ * Handles incoming Telegram messages and routes them to the appropriate processor based on chat type and message context.
  *
- * Determines whether to process the message as a command, support conversation, ticket reply, private chat, or group chat, and delegates handling accordingly. Prevents automatic responses in group chats and ensures that only relevant handlers are invoked for each message type.
+ * Determines whether the message should be handled as a command, setup wizard input, conversation flow, ticket reply, private chat, or group chat, and delegates processing accordingly. Prevents automatic responses in group chats and ensures only relevant handlers are invoked for each message type. Continues the middleware chain for private chats not handled by earlier steps.
  */
 export async function handleMessage(ctx: BotContext, next: () => Promise<void>): Promise<void> {
     try {
@@ -445,9 +445,9 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
 }
 
 /**
- * Processes incoming messages from private chats and responds with an about message for non-command texts.
+ * Handles incoming messages from private chats, ignoring commands and non-conversation messages.
  *
- * Skips messages that are commands, allowing them to be handled by their respective handlers.
+ * Skips processing for command messages, allowing them to be handled by command-specific handlers. Non-command messages that are not part of an active conversation are ignored without response.
  */
 export async function handlePrivateMessage(ctx: BotContext): Promise<void> {
     try {

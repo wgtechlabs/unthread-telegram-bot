@@ -470,9 +470,9 @@ bot.catch(async (error: any, ctx?: BotContext) => {
 });
 
 /**
- * Shuts down all services and resources used by the bot, ensuring a clean exit.
+ * Performs a graceful shutdown of the bot, stopping all background tasks and closing resources before exiting the process.
  *
- * Stops the webhook consumer if running, shuts down the BotsStore, closes database connections, and exits the process. Logs each shutdown step and exits with an error code if any shutdown operation fails.
+ * Stops the session cleanup task, webhook consumer (if running), BotsStore, and database connections. Exits the process with code 0 on success or 1 if an error occurs during shutdown.
  */
 async function gracefulShutdown(): Promise<void> {
     try {

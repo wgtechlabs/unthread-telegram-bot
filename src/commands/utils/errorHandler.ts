@@ -76,7 +76,9 @@ export const ERROR_CODES = {
 } as const;
 
 /**
- * Type guard to check if an error has error category property
+ * Determines whether the given error object has a valid `errorCategory` property.
+ *
+ * @returns `true` if the error has an `errorCategory` property matching a value in `ErrorCategory`; otherwise, `false`.
  */
 function hasErrorCategory(error: unknown): error is { errorCategory: ErrorCategory } {
     return typeof error === 'object' && error !== null && 'errorCategory' in error &&
@@ -84,7 +86,9 @@ function hasErrorCategory(error: unknown): error is { errorCategory: ErrorCatego
 }
 
 /**
- * Type guard to check if an error has severity property
+ * Determines whether the given error object has a valid `severity` property of type `ErrorSeverity`.
+ *
+ * @returns `true` if the error has a recognized severity; otherwise, `false`.
  */
 function hasErrorSeverity(error: unknown): error is { severity: ErrorSeverity } {
     return typeof error === 'object' && error !== null && 'severity' in error &&
@@ -92,14 +96,18 @@ function hasErrorSeverity(error: unknown): error is { severity: ErrorSeverity } 
 }
 
 /**
- * Type guard to check if an error has a 'code' property
+ * Determines whether the provided error object contains a 'code' property.
+ *
+ * @returns True if the error has a 'code' property of type string or number; otherwise, false.
  */
 function hasErrorCode(error: unknown): error is { code: string | number } {
     return typeof error === 'object' && error !== null && 'code' in error;
 }
 
 /**
- * Type guard to check if an error has a 'statusCode' property
+ * Determines whether the given error object contains a numeric `statusCode` property.
+ *
+ * @returns `true` if the error has a `statusCode` property of type number; otherwise, `false`.
  */
 function hasStatusCode(error: unknown): error is { statusCode: number } {
     return typeof error === 'object' && error !== null && 'statusCode' in error &&
@@ -107,14 +115,18 @@ function hasStatusCode(error: unknown): error is { statusCode: number } {
 }
 
 /**
- * Type guard to check if an error has a 'cause' property
+ * Determines whether the given error object has a 'cause' property.
+ *
+ * @returns True if the error has a 'cause' property; otherwise, false.
  */
 function hasCause(error: unknown): error is { cause: unknown } {
     return typeof error === 'object' && error !== null && 'cause' in error;
 }
 
 /**
- * Type guard to check if an error has an 'isOperational' property
+ * Determines whether the given error object has a boolean 'isOperational' property.
+ *
+ * @returns True if the error has an 'isOperational' property of type boolean; otherwise, false.
  */
 function hasIsOperational(error: unknown): error is { isOperational: boolean } {
     return typeof error === 'object' && error !== null && 'isOperational' in error &&
@@ -122,21 +134,29 @@ function hasIsOperational(error: unknown): error is { isOperational: boolean } {
 }
 
 /**
- * Type guard to check if an object has a 'message' property
+ * Determines whether the given object has a 'message' property.
+ *
+ * @returns True if the object contains a 'message' property; otherwise, false.
  */
 function hasMessage(obj: unknown): obj is { message: unknown } {
     return typeof obj === 'object' && obj !== null && 'message' in obj;
 }
 
 /**
- * Type guard to check if an object has a 'name' property
+ * Determines whether the given object has a 'name' property.
+ *
+ * @returns True if the object is non-null and contains a 'name' property.
  */
 function hasName(obj: unknown): obj is { name: unknown } {
     return typeof obj === 'object' && obj !== null && 'name' in obj;
 }
 
 /**
- * Sanitize error values to prevent sensitive information exposure
+ * Returns a sanitized string representation of an error value to avoid exposing sensitive or detailed information.
+ *
+ * For objects and arrays, returns generic placeholders. For strings, truncates and summarizes the value. For primitives, returns type-based placeholders.
+ *
+ * @returns A sanitized string describing the error value without revealing sensitive data.
  */
 function sanitizeErrorValue(error: unknown): string {
     // Don't expose the actual error value - use generic placeholders
@@ -173,7 +193,10 @@ function sanitizeErrorValue(error: unknown): string {
 }
 
 /**
- * Classify error into appropriate category and severity
+ * Determines the error category and severity based on explicit properties, error codes, HTTP status codes, operational flags, and error name patterns.
+ *
+ * @param errorDetails - Extracted details of the error used for classification
+ * @returns An object containing the determined error category and severity
  */
 function classifyError(error: unknown, errorDetails: ErrorDetails): {
     category: ErrorCategory;
@@ -258,7 +281,13 @@ function classifyError(error: unknown, errorDetails: ErrorDetails): {
 }
 
 /**
- * Extract detailed error information while preserving original error types
+ * Extracts comprehensive error details from various error types, preserving original error information and classifying the error by category and severity.
+ *
+ * Handles Error instances, string errors, objects with a message property, and primitive or unknown types, ensuring consistent structure for downstream processing.
+ *
+ * @param error - The error value to extract details from
+ * @param context - Optional context string for additional error context
+ * @returns An ErrorDetails object containing extracted and classified error information
  */
 export function getErrorDetails(error: unknown, context?: string): ErrorDetails {
     const timestamp = new Date().toISOString();
@@ -363,7 +392,11 @@ export function getErrorDetails(error: unknown, context?: string): ErrorDetails 
 }
 
 /**
- * Sanitize log data to prevent sensitive information leakage
+ * Recursively sanitizes log data to remove or mask sensitive information such as credentials and file paths.
+ *
+ * In production, stack traces are sanitized to remove absolute file paths. Sensitive fields like password, token, apiKey, secret, and authorization are redacted. Nested objects are sanitized recursively.
+ *
+ * @returns The sanitized log data with sensitive information masked or removed.
  */
 function sanitizeLogData(logData: any): any {
     const sanitized = { ...logData };
@@ -397,7 +430,14 @@ function sanitizeLogData(logData: any): any {
 }
 
 /**
- * Log error with enhanced details and optional context
+ * Logs an error with detailed classification, sanitization, and contextual information.
+ *
+ * Determines the appropriate log level based on error category and severity, sanitizes sensitive data, and returns structured error details.
+ *
+ * @param error - The error to be logged, which can be of any type
+ * @param context - A string describing the context in which the error occurred
+ * @param additionalData - Optional additional data to include in the log entry
+ * @returns The extracted and classified error details
  */
 export function logError(error: unknown, context: string, additionalData?: Record<string, any>): ErrorDetails {
     const errorDetails = getErrorDetails(error, context);
@@ -429,7 +469,11 @@ export function logError(error: unknown, context: string, additionalData?: Recor
 }
 
 /**
- * Create a user-friendly error message based on error type
+ * Generates a user-friendly error message tailored to the error type or status code.
+ *
+ * Returns specific messages for rate limiting, not found, server errors, validation errors, and operational errors. Falls back to a generic message for unexpected errors.
+ *
+ * @returns A user-facing error message string appropriate for the given error.
  */
 export function createUserErrorMessage(error: unknown): string {
     const details = getErrorDetails(error);

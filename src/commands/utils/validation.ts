@@ -21,18 +21,22 @@ export interface ValidationResult {
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Validate UUID format (helper function)
- * Centralized UUID validation to ensure consistency across the codebase
+ * Checks whether a string is a valid UUID.
+ *
+ * @param value - The string to validate as a UUID
+ * @returns True if the input matches the UUID format; otherwise, false
  */
 export function isValidUUID(value: string): boolean {
     return UUID_REGEX.test(value);
 }
 
 /**
- * Validate customer name input
- * 
- * Performs basic validation (length, reserved words) but leaves
- * character validation to the Unthread API.
+ * Validates a customer name input for presence, length, and reserved words.
+ *
+ * Ensures the input is a non-empty string between 2 and 100 characters and is not a reserved word. Returns a validation result with a sanitized (trimmed) name or an error message.
+ *
+ * @param input - The customer name to validate
+ * @returns A ValidationResult indicating validity, sanitized value, or error details
  */
 export function validateCustomerName(input: string): ValidationResult {
     // Step 1: Basic null/undefined checks
@@ -93,7 +97,12 @@ export function validateCustomerName(input: string): ValidationResult {
 }
 
 /**
- * Validate email format
+ * Validates an email address for presence, format, and length.
+ *
+ * Trims whitespace, converts to lowercase, checks for non-empty input, validates against a basic email pattern, and ensures the address does not exceed 254 characters.
+ *
+ * @param email - The email address to validate
+ * @returns A ValidationResult indicating validity, with a sanitized email or error details
  */
 export function validateEmail(email: string): ValidationResult {
     if (!email || typeof email !== 'string') {
@@ -141,8 +150,9 @@ export function validateEmail(email: string): ValidationResult {
 }
 
 /**
- * Validate customer ID (UUID format)
- * Updated to match ConversationProcessors.ts expectations
+ * Validates a customer ID to ensure it is a non-empty string in UUID format.
+ *
+ * Returns a ValidationResult indicating validity, with a sanitized lowercase UUID if valid, or an error message if invalid.
  */
 export function validateCustomerId(customerId: string): ValidationResult {
     if (!customerId || typeof customerId !== 'string') {
@@ -179,7 +189,12 @@ export function validateCustomerId(customerId: string): ValidationResult {
 }
 
 /**
- * Validate support ticket summary
+ * Validates a support ticket summary for presence and appropriate length.
+ *
+ * Ensures the summary is a non-empty string between 5 and 500 characters after trimming whitespace.
+ *
+ * @param summary - The support ticket summary to validate
+ * @returns A ValidationResult indicating validity, with a sanitized summary or error details
  */
 export function validateSupportSummary(summary: string): ValidationResult {
     if (!summary || typeof summary !== 'string') {
