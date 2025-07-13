@@ -28,12 +28,26 @@ import dotenv from 'dotenv';
 // Load environment variables from .env file
 dotenv.config();
 
+// Configure LogEngine to use local timezone only before any logging
+import { LogEngine } from '@wgtechlabs/log-engine';
+LogEngine.configure({
+    format: {
+        includeIsoTimestamp: false,
+        includeLocalTime: true
+    }
+});
+
 // Validate environment configuration before proceeding
 import { validateEnvironment } from './config/env.js';
 validateEnvironment();
 
 import { createBot, startPolling, safeReply, cleanupBlockedUser } from './bot.js';
 import { 
+    initializeCommands,
+    processConversation,
+    processCallback,
+    executeCommand,
+    // Legacy compatibility imports
     startCommand, 
     helpCommand, 
     versionCommand, 
@@ -42,15 +56,16 @@ import {
     cancelCommand, 
     resetCommand,
     setupCommand,
-    processSupportConversation 
+    activateCommand,
+    templatesCommand
 } from './commands/index.js';
 import { handleMessage } from './events/message.js';
 import { db } from './database/connection.js';
 import { BotsStore } from './sdk/bots-brain/index.js';
 import { WebhookConsumer } from './sdk/unthread-webhook/index.js';
 import { TelegramWebhookHandler } from './handlers/webhookMessage.js';
+import { startSessionCleanupTask, stopSessionCleanupTask } from './utils/sessionTasks.js';
 import packageJSON from '../package.json' with { type: 'json' };
-import { LogEngine } from '@wgtechlabs/log-engine';
 import type { BotContext } from './types/index.js';
 
 /**
@@ -58,6 +73,11 @@ import type { BotContext } from './types/index.js';
  */
 const telegramToken = process.env.TELEGRAM_BOT_TOKEN!;
 const bot = createBot(telegramToken);
+
+/**
+ * Initialize the clean command architecture
+ */
+initializeCommands();
 
 /**
  * Global middleware for logging incoming messages
@@ -101,16 +121,15 @@ bot.use(async (ctx: BotContext, next) => {
 });
 
 /**
- * Command handler registration
+ * Command handler registration with clean architecture
  * 
- * Commands are restricted to private chats only to prevent spam in group chats
+ * The new command system handles authorization, validation, and error handling
+ * internally through the BaseCommand and CommandRegistry architecture.
  */
 
-// Middleware for command handling with proper chat type support
+// Simple command middleware for logging
 const commandMiddleware = async (ctx: BotContext, next: () => Promise<void>) => {
     try {
-        // Allow all commands in both private and group chats
-        // The individual command handlers will determine the appropriate response
         return await next();
     } catch (error) {
         const err = error as Error;
@@ -122,47 +141,30 @@ const commandMiddleware = async (ctx: BotContext, next: () => Promise<void>) => 
     }
 };
 
-// Wrap command handlers with error handling
-const wrapCommandHandler = (handler: (ctx: BotContext) => Promise<void>, commandName: string) => {
+// Clean command handler - delegates to the architecture
+const wrapCommandHandler = (commandName: string) => {
     return async (ctx: BotContext) => {
-        try {
-            LogEngine.debug(`Executing ${commandName} command`, {
-                chatId: ctx.chat?.id,
-                chatType: ctx.chat?.type,
-                userId: ctx.from?.id
-            });
-            await handler(ctx);
-        } catch (error) {
-            const err = error as Error;
-            LogEngine.error(`Error in ${commandName} command`, {
-                error: err.message,
-                stack: err.stack,
-                chatId: ctx.chat?.id,
-                userId: ctx.from?.id
-            });
-            
-            // Try to send error message safely
-            try {
-                await safeReply(ctx, `Sorry, there was an error processing the ${commandName} command.`);
-            } catch (replyError) {
-                const replyErr = replyError as Error;
-                LogEngine.error(`Failed to send error reply for ${commandName}`, {
-                    error: replyErr.message,
-                    chatId: ctx.chat?.id
-                });
-            }
-        }
+        LogEngine.debug(`Executing ${commandName} command`, {
+            chatId: ctx.chat?.id,
+            chatType: ctx.chat?.type,
+            userId: ctx.from?.id
+        });
+        
+        // Execute through the clean architecture (handles all error management internally)
+        await executeCommand(commandName, ctx);
     };
 };
 
-bot.start(commandMiddleware, wrapCommandHandler(startCommand, 'start'));
-bot.help(commandMiddleware, wrapCommandHandler(helpCommand, 'help'));
-bot.command('version', commandMiddleware, wrapCommandHandler(versionCommand, 'version'));
-bot.command('about', commandMiddleware, wrapCommandHandler(aboutCommand, 'about'));
-bot.command('support', commandMiddleware, wrapCommandHandler(supportCommand, 'support'));
-bot.command('cancel', commandMiddleware, wrapCommandHandler(cancelCommand, 'cancel'));
-bot.command('reset', commandMiddleware, wrapCommandHandler(resetCommand, 'reset'));
-bot.command('setup', commandMiddleware, wrapCommandHandler(setupCommand, 'setup'));
+bot.start(commandMiddleware, wrapCommandHandler('start'));
+bot.help(commandMiddleware, wrapCommandHandler('help'));
+bot.command('version', commandMiddleware, wrapCommandHandler('version'));
+bot.command('about', commandMiddleware, wrapCommandHandler('about'));
+bot.command('support', commandMiddleware, wrapCommandHandler('support'));
+bot.command('cancel', commandMiddleware, wrapCommandHandler('cancel'));
+bot.command('reset', commandMiddleware, wrapCommandHandler('reset'));
+bot.command('setup', commandMiddleware, wrapCommandHandler('setup'));
+bot.command('activate', commandMiddleware, wrapCommandHandler('activate'));
+bot.command('templates', commandMiddleware, wrapCommandHandler('templates'));
 
 // Register message handlers with middleware
 bot.on('text', async (ctx, next) => {
@@ -187,8 +189,8 @@ bot.on('message', async (ctx, next) => {
 // Register callback query handler for buttons
 bot.on('callback_query', async (ctx) => {
     try {
-        // Route callback queries through the processSupportConversation function
-        await processSupportConversation(ctx);
+        // Route callback queries through the new clean architecture
+        await processCallback(ctx);
     } catch (error) {
         const err = error as Error;
         LogEngine.error('Error handling callback query', {
@@ -400,6 +402,11 @@ LogEngine.info('Bot is running and listening for messages...');
 startPolling(bot);
 
 /**
+ * Start session cleanup task
+ */
+const sessionCleanupTask = startSessionCleanupTask();
+
+/**
  * Global error handling middleware for Telegram API errors
  * 
  * Catches and handles common Telegram API errors like:
@@ -469,6 +476,10 @@ bot.catch(async (error: any, ctx?: BotContext) => {
  */
 async function gracefulShutdown(): Promise<void> {
     try {
+        // Stop session cleanup task
+        stopSessionCleanupTask(sessionCleanupTask);
+        LogEngine.info('Session cleanup task stopped');
+        
         if (webhookConsumer) {
             await webhookConsumer.stop();
             LogEngine.info('Webhook consumer stopped');

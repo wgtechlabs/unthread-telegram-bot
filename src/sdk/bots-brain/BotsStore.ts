@@ -41,6 +41,9 @@ import type {
   TicketInfo,
   GroupConfig,
   SetupState,
+  AdminProfile,
+  SetupSession,
+  DmSetupSession,
   IBotsStore,
   StorageConfig
 } from '../types.js';
@@ -70,7 +73,6 @@ const SetupStateSchema = z.object({
   initiatedBy: z.number(),
   startedAt: z.string(),
   suggestedCustomerName: z.string().optional(),
-  tempCustomerId: z.string().optional(),
   userInput: z.string().optional(),
   retryCount: z.number().optional(),
   metadata: z.record(z.any()).optional(),
@@ -165,8 +167,7 @@ export class BotsStore implements IBotsStore {
   static async updateUser(telegramUserId: number, updates: Partial<UserData>): Promise<boolean> {
     return BotsStore.getInstance().updateUser(telegramUserId, updates);
   }
-  
-  static async shutdown(): Promise<void> {
+    static async shutdown(): Promise<void> {
     if (BotsStore.instance) {
       await BotsStore.instance.storage.disconnect();
       BotsStore.instance = null;
@@ -777,11 +778,13 @@ export class BotsStore implements IBotsStore {
         return false;
       }
 
+      // Exclude immutable fields from updates
+      const safeUpdates = BotsStore.excludeImmutableFields(updates, ['chatId', 'customerId']);
+
       const updatedConfig: GroupConfig = {
         ...existingConfig,
-        ...updates,
-        chatId, // Ensure chatId cannot be overridden
-      } as GroupConfig;
+        ...safeUpdates
+      };
 
       const success = await this.storeGroupConfig(updatedConfig);
       
@@ -819,6 +822,116 @@ export class BotsStore implements IBotsStore {
       LogEngine.error('Failed to delete group configuration', {
         error: err.message,
         chatId
+      });
+      return false;
+    }
+  }
+
+  // Batch group configuration operations
+  async storeGroupConfigs(configs: GroupConfig[]): Promise<boolean> {
+    try {
+      const results = await Promise.all(configs.map(config => this.storeGroupConfig(config)));
+      return results.every(result => result === true);
+    } catch (error) {
+      LogEngine.error('Failed to store group configurations', { error: (error as Error).message });
+      return false;
+    }
+  }
+
+  async getGroupConfigs(chatIds: number[]): Promise<(GroupConfig | null)[]> {
+    try {
+      return await Promise.all(chatIds.map(chatId => this.getGroupConfig(chatId)));
+    } catch (error) {
+      LogEngine.error('Failed to get group configurations', { error: (error as Error).message });
+      return chatIds.map(() => null);
+    }
+  }
+
+  async updateGroupConfigs(updates: {chatId: number, updates: Partial<GroupConfig>}[]): Promise<boolean> {
+    try {
+      const results = await Promise.all(updates.map(update => this.updateGroupConfig(update.chatId, update.updates)));
+      return results.every(result => result === true);
+    } catch (error) {
+      LogEngine.error('Failed to update group configurations', { error: (error as Error).message });
+      return false;
+    }
+  }
+
+  async deleteGroupConfigs(chatIds: number[]): Promise<boolean> {
+    try {
+      const results = await Promise.all(chatIds.map(chatId => this.deleteGroupConfig(chatId)));
+      return results.every(result => result === true);
+    } catch (error) {
+      LogEngine.error('Failed to delete group configurations', { error: (error as Error).message });
+      return false;
+    }
+  }
+
+  // ===========================================
+  // GLOBAL CONFIGURATION OPERATIONS
+  // ===========================================
+
+  /**
+   * Get global configuration value by key
+   */
+  async getGlobalConfig(key: string): Promise<any | null> {
+    try {
+      const globalKey = `global_config:${key}`;
+      const data = await this.storage.get(globalKey);
+      
+      if (!data) {
+        LogEngine.debug('No global configuration found', { key });
+        return null;
+      }
+
+      return typeof data === 'string' ? JSON.parse(data) : data;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to get global configuration', {
+        error: err.message,
+        key
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Set global configuration value by key
+   */
+  async setGlobalConfig(key: string, value: any): Promise<boolean> {
+    try {
+      const globalKey = `global_config:${key}`;
+      const dataToStore = typeof value === 'object' ? JSON.stringify(value) : value;
+      
+      await this.storage.set(globalKey, dataToStore);
+      
+      LogEngine.info('Global configuration saved successfully', { key });
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to set global configuration', {
+        error: err.message,
+        key
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Delete global configuration by key
+   */
+  async deleteGlobalConfig(key: string): Promise<boolean> {
+    try {
+      const globalKey = `global_config:${key}`;
+      await this.storage.delete(globalKey);
+      
+      LogEngine.info('Global configuration deleted successfully', { key });
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to delete global configuration', {
+        error: err.message,
+        key
       });
       return false;
     }
@@ -916,10 +1029,12 @@ export class BotsStore implements IBotsStore {
         return false;
       }
 
+      // Exclude immutable fields from updates
+      const safeUpdates = BotsStore.excludeImmutableFields(updates, ['chatId']);
+
       const updatedState: SetupState = {
         ...existingState,
-        ...updates,
-        chatId, // Ensure chatId cannot be overridden
+        ...safeUpdates
       } as SetupState;
 
       const success = await this.storeSetupState(updatedState);
@@ -964,38 +1079,569 @@ export class BotsStore implements IBotsStore {
     }
   }
 
-  // ===========================================
-  // STATIC METHODS FOR GROUP CONFIGURATION
-  // ===========================================
+  // Batch setup state operations
+  async storeSetupStates(states: SetupState[]): Promise<boolean> {
+    try {
+      const results = await Promise.all(states.map(state => this.storeSetupState(state)));
+      return results.every(result => result === true);
+    } catch (error) {
+      LogEngine.error('Failed to store setup states', { error: (error as Error).message });
+      return false;
+    }
+  }
+
+  async getSetupStates(chatIds: number[]): Promise<(SetupState | null)[]> {
+    try {
+      return await Promise.all(chatIds.map(chatId => this.getSetupState(chatId)));
+    } catch (error) {
+      LogEngine.error('Failed to get setup states', { error: (error as Error).message });
+      return chatIds.map(() => null);
+    }
+  }
+
+  async updateSetupStates(updates: {chatId: number, updates: Partial<SetupState>}[]): Promise<boolean> {
+    try {
+      const results = await Promise.all(updates.map(update => this.updateSetupState(update.chatId, update.updates)));
+      return results.every(result => result === true);
+    } catch (error) {
+      LogEngine.error('Failed to update setup states', { error: (error as Error).message });
+      return false;
+    }
+  }
+
+  async clearSetupStates(chatIds: number[]): Promise<boolean> {
+    try {
+      const results = await Promise.all(chatIds.map(chatId => this.clearSetupState(chatId)));
+      return results.every(result => result === true);
+    } catch (error) {
+      LogEngine.error('Failed to clear setup states', { error: (error as Error).message });
+      return false;
+    }
+  }
+
+  // =====================================================================
+  // Admin Profile Operations
+  // =====================================================================
+
+  private static updateLocks = new Map<string, Promise<void>>();
 
   /**
-   * Static methods for group configuration operations
+   * Perform atomic updates to arrays using a locking mechanism
    */
-  static async storeGroupConfig(config: GroupConfig): Promise<boolean> {
-    return BotsStore.getInstance().storeGroupConfig(config);
-  }
+  private async atomicArrayUpdate<T>(
+    key: string, 
+    updater: (currentArray: T[]) => T[]
+  ): Promise<void> {
+    // Check if there's already an update in progress for this key
+    const existingLock = BotsStore.updateLocks.get(key);
+    if (existingLock) {
+      // Wait for the existing update to complete
+      await existingLock;
+    }
 
-  static async getGroupConfig(chatId: number): Promise<GroupConfig | null> {
-    return BotsStore.getInstance().getGroupConfig(chatId);
-  }
+    // Create a new lock for this update
+    const updatePromise = this.performAtomicUpdate(key, updater);
+    BotsStore.updateLocks.set(key, updatePromise);
 
-  static async updateGroupConfig(chatId: number, updates: Partial<GroupConfig>): Promise<boolean> {
-    return BotsStore.getInstance().updateGroupConfig(chatId, updates);
-  }
-
-  static async deleteGroupConfig(chatId: number): Promise<boolean> {
-    return BotsStore.getInstance().deleteGroupConfig(chatId);
+    try {
+      await updatePromise;
+    } finally {
+      // Clean up the lock when done
+      BotsStore.updateLocks.delete(key);
+    }
   }
 
   /**
-   * Static methods for setup state operations
+   * Internal method to perform the actual atomic update
    */
-  static async storeSetupState(state: SetupState): Promise<boolean> {
-    return BotsStore.getInstance().storeSetupState(state);
+  private async performAtomicUpdate<T>(
+    key: string, 
+    updater: (currentArray: T[]) => T[]
+  ): Promise<void> {
+    const maxRetries = 3;
+    let attempt = 0;
+
+    while (attempt < maxRetries) {
+      try {
+        // Read current state
+        const currentArray = await this.getArrayFromStorage(key) as T[];
+        
+        // Apply the update function
+        const updatedArray = updater(currentArray);
+        
+        // Write back atomically
+        await this.storage.set(key, JSON.stringify(updatedArray));
+        
+        // Success - exit retry loop
+        return;
+      } catch (error) {
+        attempt++;
+        if (attempt >= maxRetries) {
+          throw error;
+        }
+        
+        // Brief delay before retry to reduce contention
+        await new Promise(resolve => setTimeout(resolve, 50 * attempt));
+      }
+    }
   }
+
+  /**
+   * Store admin profile data with ID tracking
+   */
+  async storeAdminProfile(adminData: AdminProfile): Promise<boolean> {
+    try {
+      const enrichedData = {
+        ...adminData,
+        platform: 'telegram',
+        type: 'admin_profile',
+        storedAt: new Date().toISOString(),
+        version: '1.0'
+      };
+
+      await this.storage.set(`admin:profile:${adminData.telegramUserId}`, JSON.stringify(enrichedData));
+      
+      // Atomically update admin ID list for retrieval
+      const adminIdsKey = 'admin_profile_ids';
+      await this.atomicArrayUpdate<number>(adminIdsKey, (existingIds) => {
+        // Only add if not already present to prevent duplicates
+        if (!existingIds.includes(adminData.telegramUserId)) {
+          return [...existingIds, adminData.telegramUserId];
+        }
+        return existingIds;
+      });
+      
+      LogEngine.info(`Admin profile stored: ${adminData.telegramUserId}`);
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to store admin profile', {
+        error: err.message,
+        telegramUserId: adminData.telegramUserId
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Get admin profile by Telegram user ID
+   */
+  async getAdminProfile(telegramUserId: number): Promise<AdminProfile | null> {
+    const data = await this.storage.get(`admin:profile:${telegramUserId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
+  }
+
+  /**
+   * Update admin profile
+   */
+  async updateAdminProfile(telegramUserId: number, updates: Partial<AdminProfile>): Promise<boolean> {
+    try {
+      const existing = await this.getAdminProfile(telegramUserId);
+      if (!existing) return false;
+
+      const updated = {
+        ...existing,
+        ...updates,
+        lastActiveAt: new Date().toISOString()
+      };
+
+      return await this.storeAdminProfile(updated);
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to update admin profile', {
+        error: err.message,
+        telegramUserId
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Delete admin profile
+   */
+  async deleteAdminProfile(telegramUserId: number): Promise<boolean> {
+    try {
+      await this.storage.delete(`admin:profile:${telegramUserId}`);
+      
+      // Remove from admin IDs list
+      const adminIdsKey = 'admin_profile_ids';
+      const existingIds = await this.getArrayFromStorage(adminIdsKey);
+      const updatedIds = existingIds.filter((id: number) => id !== telegramUserId);
+      await this.storage.set(adminIdsKey, JSON.stringify(updatedIds));
+      
+      LogEngine.info(`Admin profile deleted: ${telegramUserId}`);
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to delete admin profile', {
+        error: err.message,
+        telegramUserId
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Get all admin profiles
+   */
+  async getAllAdminProfiles(): Promise<AdminProfile[]> {
+    try {
+      // Since there's no listKeys method, we'll track admin IDs separately
+      const adminIdsKey = 'admin_profile_ids';
+      const adminIds = await this.getArrayFromStorage(adminIdsKey);
+      
+      const profiles: AdminProfile[] = [];
+      for (const adminId of adminIds) {
+        const profile = await this.getAdminProfile(adminId);
+        if (profile) {
+          profiles.push(profile);
+        }
+      }
+      
+      return profiles;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to get all admin profiles', {
+        error: err.message
+      });
+      return [];
+    }
+  }
+
+  // =====================================================================
+  // Setup Session Operations
+  // =====================================================================
+
+  /**
+   * Store setup session data
+   */
+  async storeSetupSession(sessionData: SetupSession): Promise<boolean> {
+    try {
+      const enrichedData = {
+        ...sessionData,
+        platform: 'telegram',
+        type: 'setup_session',
+        storedAt: new Date().toISOString(),
+        version: '1.0'
+      };
+
+      // Store by session ID
+      await this.storage.set(`session:setup:${sessionData.sessionId}`, JSON.stringify(enrichedData), 600); // 10 minutes TTL
+
+      // Store admin -> session mapping for blocking
+      await this.storage.set(`session:admin:${sessionData.initiatingAdminId}`, sessionData.sessionId, 600);
+
+      // Store group -> session mapping for getActiveSetupSessionByGroup
+      if (sessionData.groupChatId) {
+        await this.storage.set(`session:group:${sessionData.groupChatId}`, sessionData.sessionId, 600);
+      }
+
+      LogEngine.info(`Setup session stored: ${sessionData.sessionId}`);
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to store setup session', {
+        error: err.message,
+        sessionId: sessionData.sessionId
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Get setup session by session ID
+   */
+  async getSetupSession(sessionId: string): Promise<SetupSession | null> {
+    const data = await this.storage.get(`session:setup:${sessionId}`);
+    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
+  }
+
+  /**
+   * Get active setup session for admin (for blocking)
+   */
+  async getActiveSetupSessionByAdmin(adminId: number): Promise<SetupSession | null> {
+    const sessionId = await this.storage.get(`session:admin:${adminId}`);
+    if (!sessionId) return null;
+
+    return await this.getSetupSession(sessionId);
+  }
+
+  /**
+   * Get active setup session for group (for blocking)
+   */
+  async getActiveSetupSessionByGroup(groupChatId: number): Promise<SetupSession | null> {
+    const sessionId = await this.storage.get(`session:group:${groupChatId}`);
+    if (!sessionId) return null;
+
+    return await this.getSetupSession(sessionId);
+  }
+
+  /**
+   * Update setup session
+   */
+  async updateSetupSession(sessionId: string, updates: Partial<SetupSession>): Promise<boolean> {
+    try {
+      const existing = await this.getSetupSession(sessionId);
+      if (!existing) return false;
+
+      const updated = {
+        ...existing,
+        ...updates
+      };
+
+      return await this.storeSetupSession(updated);
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to update setup session', {
+        error: err.message,
+        sessionId
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Delete setup session
+   */
+  async deleteSetupSession(sessionId: string): Promise<boolean> {
+    try {
+      const session = await this.getSetupSession(sessionId);
+      if (session) {
+        // Remove admin mapping
+        await this.storage.delete(`session:admin:${session.initiatingAdminId}`);
+      }
+
+      // Remove session data
+      await this.storage.delete(`session:setup:${sessionId}`);
+      LogEngine.info(`Setup session deleted: ${sessionId}`);
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to delete setup session', {
+        error: err.message,
+        sessionId
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Clean up expired sessions
+   */
+  async cleanupExpiredSessions(): Promise<number> {
+    // Note: With TTL in Redis, sessions should auto-expire
+    // This method is for manual cleanup if needed
+    let cleanedCount = 0;
+    try {
+      // Implementation would depend on storage backend
+      // For now, rely on TTL for automatic cleanup
+      LogEngine.debug('Session cleanup completed (TTL-based)');
+      return cleanedCount;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to cleanup expired sessions', {
+        error: err.message
+      });
+      return 0;
+    }
+  }
+
+  // ================================
+  // DM Setup Session Management
+  // ================================
+
+  /**
+   * Create and store a DM setup session
+   */
+  async storeDmSetupSession(sessionData: DmSetupSession): Promise<boolean> {
+    try {
+      const key = `dm_session:${sessionData.sessionId}`;
+      
+      // Calculate TTL based on the expiresAt field in the session data
+      const now = new Date();
+      const expiresAt = new Date(sessionData.expiresAt);
+      const ttlSeconds = Math.max(300, Math.floor((expiresAt.getTime() - now.getTime()) / 1000)); // Minimum 5 minutes TTL
+      
+      // Log TTL calculation for debugging
+      LogEngine.info('Calculating session TTL', {
+        sessionId: sessionData.sessionId,
+        currentTime: now.toISOString(),
+        expiresAt: sessionData.expiresAt,
+        calculatedTTL: ttlSeconds,
+        minimumTTL: 300
+      });
+      
+      // If TTL is still too short after minimum enforcement, extend the expiry
+      if (ttlSeconds <= 300) {
+        const newExpiresAt = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes from now
+        const extendedSessionData = {
+          ...sessionData,
+          expiresAt: newExpiresAt.toISOString()
+        };
+        const newTtlSeconds = Math.floor((newExpiresAt.getTime() - now.getTime()) / 1000);
+        
+        LogEngine.warn('Session expiry was too short, extending automatically', {
+          sessionId: sessionData.sessionId,
+          originalExpiry: expiresAt.toISOString(),
+          newExpiry: extendedSessionData.expiresAt,
+          newTTL: newTtlSeconds
+        });
+        
+        // Store with extended TTL using the copied data
+        await this.storage.set(key, extendedSessionData, newTtlSeconds);
+        
+        // Create admin mapping for easy lookup with same TTL
+        await this.storage.set(
+          `dm_session:admin:${sessionData.adminId}`, 
+          sessionData.sessionId, 
+          newTtlSeconds
+        );
+      } else {
+        // Store with calculated TTL
+        await this.storage.set(key, sessionData, ttlSeconds);
+        
+        // Create admin mapping for easy lookup with same TTL
+        await this.storage.set(
+          `dm_session:admin:${sessionData.adminId}`, 
+          sessionData.sessionId, 
+          ttlSeconds
+        );
+      }
+
+      LogEngine.info('DM setup session stored', {
+        sessionId: sessionData.sessionId,
+        adminId: sessionData.adminId,
+        groupChatId: sessionData.groupChatId,
+        step: sessionData.currentStep,
+        expiresAt: sessionData.expiresAt,
+        finalTTL: ttlSeconds > 300 ? ttlSeconds : Math.floor((new Date(sessionData.expiresAt).getTime() - now.getTime()) / 1000)
+      });
+      
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to store DM setup session', {
+        error: err.message,
+        sessionId: sessionData.sessionId
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Retrieve a DM setup session by ID
+   */
+  async getDmSetupSession(sessionId: string): Promise<DmSetupSession | null> {
+    try {
+      const key = `dm_session:${sessionId}`;
+      return await this.storage.get(key);
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to get DM setup session', {
+        error: err.message,
+        sessionId
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Get active DM setup session by admin ID
+   */
+  async getActiveDmSetupSessionByAdmin(adminId: number): Promise<DmSetupSession | null> {
+    try {
+      const sessionId = await this.storage.get(`dm_session:admin:${adminId}`);
+      if (!sessionId) return null;
+      
+      return await this.getDmSetupSession(sessionId);
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to get active DM setup session by admin', {
+        error: err.message,
+        adminId
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Update a DM setup session
+   */
+  async updateDmSetupSession(sessionId: string, updates: Partial<DmSetupSession>): Promise<boolean> {
+    try {
+      const existing = await this.getDmSetupSession(sessionId);
+      if (!existing) return false;
+
+      const updated: DmSetupSession = {
+        ...existing,
+        ...updates
+      };
+
+      return await this.storeDmSetupSession(updated);
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to update DM setup session', {
+        error: err.message,
+        sessionId
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Delete a DM setup session
+   */
+  async deleteDmSetupSession(sessionId: string): Promise<boolean> {
+    try {
+      const session = await this.getDmSetupSession(sessionId);
+      if (session) {
+        // Remove admin mapping
+        await this.storage.delete(`dm_session:admin:${session.adminId}`);
+      }
+
+      // Remove session data
+      await this.storage.delete(`dm_session:${sessionId}`);
+      LogEngine.info(`DM setup session deleted: ${sessionId}`);
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to delete DM setup session', {
+        error: err.message,
+        sessionId
+      });
+      return false;
+    }
+  }
+
+  /**
+   * Clean up expired DM sessions (mainly for manual cleanup as TTL handles auto-expiration)
+   */
+  async cleanupExpiredDmSessions(): Promise<number> {
+    let cleanedCount = 0;
+    try {
+      // Implementation would depend on storage backend
+      // For now, rely on TTL for automatic cleanup
+      LogEngine.debug('DM session cleanup completed (TTL-based)');
+      return cleanedCount;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to cleanup expired DM sessions', {
+        error: err.message
+      });
+      return 0;
+    }
+  }
+
+  // =====================================================================
+  // Static Helper Methods
+  // =====================================================================
 
   static async getSetupState(chatId: number): Promise<SetupState | null> {
     return BotsStore.getInstance().getSetupState(chatId);
+  }
+
+  static async storeSetupState(setupState: SetupState): Promise<boolean> {
+    return BotsStore.getInstance().storeSetupState(setupState);
   }
 
   static async updateSetupState(chatId: number, updates: Partial<SetupState>): Promise<boolean> {
@@ -1006,116 +1652,181 @@ export class BotsStore implements IBotsStore {
     return BotsStore.getInstance().clearSetupState(chatId);
   }
 
-  // Batch group configuration operations
-  async storeGroupConfigs(configs: GroupConfig[]): Promise<boolean> {
-    try {
-      await Promise.all(configs.map(config => this.storeGroupConfig(config)));
-      return true;
-    } catch (error) {
-      LogEngine.error('Error storing group configs:', error);
-      return false;
+  static async storeAdminProfile(adminData: AdminProfile): Promise<boolean> {
+    return BotsStore.getInstance().storeAdminProfile(adminData);
+  }
+
+  static async getAdminProfile(telegramUserId: number): Promise<AdminProfile | null> {
+    return BotsStore.getInstance().getAdminProfile(telegramUserId);
+  }
+
+  static async updateAdminProfile(telegramUserId: number, updates: Partial<AdminProfile>): Promise<boolean> {
+    return BotsStore.getInstance().updateAdminProfile(telegramUserId, updates);
+  }
+
+  static async deleteAdminProfile(telegramUserId: number): Promise<boolean> {
+    return BotsStore.getInstance().deleteAdminProfile(telegramUserId);
+  }
+
+  static async getAllAdminProfiles(): Promise<AdminProfile[]> {
+    return BotsStore.getInstance().getAllAdminProfiles();
+  }
+
+  static async storeSetupSession(sessionData: SetupSession): Promise<boolean> {
+    return BotsStore.getInstance().storeSetupSession(sessionData);
+  }
+
+  static async getSetupSession(sessionId: string): Promise<SetupSession | null> {
+    return BotsStore.getInstance().getSetupSession(sessionId);
+  }
+
+  static async getActiveSetupSessionByAdmin(adminId: number): Promise<SetupSession | null> {
+    return BotsStore.getInstance().getActiveSetupSessionByAdmin(adminId);
+  }
+
+  static async getActiveSetupSessionByGroup(groupChatId: number): Promise<SetupSession | null> {
+    return BotsStore.getInstance().getActiveSetupSessionByGroup(groupChatId);
+  }
+
+  static async updateSetupSession(sessionId: string, updates: Partial<SetupSession>): Promise<boolean> {
+    return BotsStore.getInstance().updateSetupSession(sessionId, updates);
+  }
+
+  static async deleteSetupSession(sessionId: string): Promise<boolean> {
+    return BotsStore.getInstance().deleteSetupSession(sessionId);
+  }
+
+  static async cleanupExpiredSessions(): Promise<number> {
+    return BotsStore.getInstance().cleanupExpiredSessions();
+  }
+
+  // Static methods for DM setup sessions
+  static async storeDmSetupSession(sessionData: DmSetupSession): Promise<boolean> {
+    return BotsStore.getInstance().storeDmSetupSession(sessionData);
+  }
+
+  static async getDmSetupSession(sessionId: string): Promise<DmSetupSession | null> {
+    return BotsStore.getInstance().getDmSetupSession(sessionId);
+  }
+
+  static async getActiveDmSetupSessionByAdmin(adminId: number): Promise<DmSetupSession | null> {
+    return BotsStore.getInstance().getActiveDmSetupSessionByAdmin(adminId);
+  }
+
+  static async updateDmSetupSession(sessionId: string, updates: Partial<DmSetupSession>): Promise<boolean> {
+    return BotsStore.getInstance().updateDmSetupSession(sessionId, updates);
+  }
+
+  static async deleteDmSetupSession(sessionId: string): Promise<boolean> {
+    return BotsStore.getInstance().deleteDmSetupSession(sessionId);
+  }
+
+  static async cleanupExpiredDmSessions(): Promise<number> {
+    return BotsStore.getInstance().cleanupExpiredDmSessions();
+  }
+
+  // Static methods for group configuration
+  static async storeGroupConfig(groupConfig: GroupConfig): Promise<boolean> {
+    return BotsStore.getInstance().storeGroupConfig(groupConfig);
+  }
+
+  static async getGroupConfig(chatId: number): Promise<GroupConfig | null> {
+    return BotsStore.getInstance().getGroupConfig(chatId);
+  }
+
+  static async updateGroupConfig(chatId: number, updates: Partial<GroupConfig>): Promise<boolean> {
+    return BotsStore.getInstance().updateGroupConfig(chatId, updates);
+  }
+
+  // Static methods for global configuration
+  static async getGlobalConfig(key: string): Promise<any | null> {
+    return BotsStore.getInstance().getGlobalConfig(key);
+  }
+
+  static async setGlobalConfig(key: string, value: any): Promise<boolean> {
+    return BotsStore.getInstance().setGlobalConfig(key, value);
+  }
+
+  static async deleteGlobalConfig(key: string): Promise<boolean> {
+    return BotsStore.getInstance().deleteGlobalConfig(key);
+  }
+
+  // =====================================================================
+  // Helper Methods for Immutable Field Protection
+  // =====================================================================
+
+  /**
+   * Create a safe update object that excludes immutable fields
+   * This ensures certain fields cannot be overridden during updates
+   */
+  private static excludeImmutableFields<T extends Record<string, any>>(
+    updates: Partial<T>, 
+    immutableFields: (keyof T)[]
+  ): Partial<T> {
+    const safeUpdates = { ...updates };
+    
+    // Remove any immutable fields from the updates object
+    for (const field of immutableFields) {
+      if (field in safeUpdates) {
+        delete safeUpdates[field];
+        LogEngine.warn(`Attempted to update immutable field '${String(field)}' - ignoring`, {
+          field: String(field),
+          attemptedValue: updates[field]
+        });
+      }
     }
+    
+    return safeUpdates;
   }
 
-  async getGroupConfigs(chatIds: number[]): Promise<(GroupConfig | null)[]> {
-    try {
-      return await Promise.all(chatIds.map(chatId => this.getGroupConfig(chatId)));
-    } catch (error) {
-      LogEngine.error('Error getting group configs:', error);
-      return chatIds.map(() => null);
+  /**
+   * Validate that critical immutable fields match expected values
+   */
+  private static validateImmutableFields<T extends Record<string, any>>(
+    existingData: T,
+    updates: Partial<T>,
+    fieldValidations: { field: keyof T; expectedValue: any }[]
+  ): boolean {
+    for (const { field, expectedValue } of fieldValidations) {
+      if (field in updates && updates[field] !== expectedValue) {
+        LogEngine.error(`Immutable field validation failed for '${String(field)}'`, {
+          field: String(field),
+          expectedValue,
+          attemptedValue: updates[field],
+          existingValue: existingData[field]
+        });
+        return false;
+      }
     }
+    return true;
   }
 
-  async updateGroupConfigs(updates: {chatId: number, updates: Partial<GroupConfig>}[]): Promise<boolean> {
-    try {
-      await Promise.all(updates.map(update => this.updateGroupConfig(update.chatId, update.updates)));
-      return true;
-    } catch (error) {
-      LogEngine.error('Error updating group configs:', error);
-      return false;
+  /**
+   * Safely retrieve an array from storage, ensuring it's always an array
+   * This prevents runtime errors when storage returns unexpected types
+   */
+  private async getArrayFromStorage(key: string): Promise<any[]> {
+    const data = await this.storage.get(key);
+    
+    if (!data) {
+      return [];
     }
-  }
-
-  async deleteGroupConfigs(chatIds: number[]): Promise<boolean> {
-    try {
-      await Promise.all(chatIds.map(chatId => this.deleteGroupConfig(chatId)));
-      return true;
-    } catch (error) {
-      LogEngine.error('Error deleting group configs:', error);
-      return false;
+    
+    // Handle JSON string data by parsing it first
+    let parsedData = data;
+    if (typeof data === 'string') {
+      try {
+        parsedData = JSON.parse(data);
+      } catch (error) {
+        LogEngine.warn('Failed to parse JSON string from storage, returning empty array', {
+          key,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        return [];
+      }
     }
-  }
-
-  // Batch setup state operations
-  async storeSetupStates(states: SetupState[]): Promise<boolean> {
-    try {
-      await Promise.all(states.map(state => this.storeSetupState(state)));
-      return true;
-    } catch (error) {
-      LogEngine.error('Error storing setup states:', error);
-      return false;
-    }
-  }
-
-  async getSetupStates(chatIds: number[]): Promise<(SetupState | null)[]> {
-    try {
-      return await Promise.all(chatIds.map(chatId => this.getSetupState(chatId)));
-    } catch (error) {
-      LogEngine.error('Error getting setup states:', error);
-      return chatIds.map(() => null);
-    }
-  }
-
-  async updateSetupStates(updates: {chatId: number, updates: Partial<SetupState>}[]): Promise<boolean> {
-    try {
-      await Promise.all(updates.map(update => this.updateSetupState(update.chatId, update.updates)));
-      return true;
-    } catch (error) {
-      LogEngine.error('Error updating setup states:', error);
-      return false;
-    }
-  }
-
-  async clearSetupStates(chatIds: number[]): Promise<boolean> {
-    try {
-      await Promise.all(chatIds.map(chatId => this.clearSetupState(chatId)));
-      return true;
-    } catch (error) {
-      LogEngine.error('Error clearing setup states:', error);
-      return false;
-    }
-  }
-
-  // Static batch methods
-  static async storeGroupConfigs(configs: GroupConfig[]): Promise<boolean> {
-    return BotsStore.getInstance().storeGroupConfigs(configs);
-  }
-
-  static async getGroupConfigs(chatIds: number[]): Promise<(GroupConfig | null)[]> {
-    return BotsStore.getInstance().getGroupConfigs(chatIds);
-  }
-
-  static async updateGroupConfigs(updates: {chatId: number, updates: Partial<GroupConfig>}[]): Promise<boolean> {
-    return BotsStore.getInstance().updateGroupConfigs(updates);
-  }
-
-  static async deleteGroupConfigs(chatIds: number[]): Promise<boolean> {
-    return BotsStore.getInstance().deleteGroupConfigs(chatIds);
-  }
-
-  static async storeSetupStates(states: SetupState[]): Promise<boolean> {
-    return BotsStore.getInstance().storeSetupStates(states);
-  }
-
-  static async getSetupStates(chatIds: number[]): Promise<(SetupState | null)[]> {
-    return BotsStore.getInstance().getSetupStates(chatIds);
-  }
-
-  static async updateSetupStates(updates: {chatId: number, updates: Partial<SetupState>}[]): Promise<boolean> {
-    return BotsStore.getInstance().updateSetupStates(updates);
-  }
-
-  static async clearSetupStates(chatIds: number[]): Promise<boolean> {
-    return BotsStore.getInstance().clearSetupStates(chatIds);
+    
+    return Array.isArray(parsedData) ? parsedData : [];
   }
 }
+

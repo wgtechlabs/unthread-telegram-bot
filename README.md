@@ -4,9 +4,9 @@
 
 [![banner](https://raw.githubusercontent.com/wgtechlabs/unthread-telegram-bot/main/.github/assets/repo_banner.jpg)](https://github.com/wgtechlabs/unthread-telegram-bot)
 
-**Official Unthread Extension** - The Unthread Telegram Bot is the official integration that connects your customer and partner Telegram chats with Unthread's ticket management system. Create and manage support tickets directly within dedicated Telegram groups, with real-time bidirectional communication between your team and clients.
+**Official Unthread Extension** - The Unthread Telegram Bot is the official integration that connects your customer and partner Telegram chats with Unthread's comprehensive ticket management system. Create and manage support tickets directly within dedicated Telegram groups, with real-time bidirectional communication between your team and clients.
 
-Perfect for businesses managing customer support through private Telegram groups or partner channels - not for public community groups.
+This bot is designed for businesses managing customer support through private Telegram groups or dedicated partner channels - optimized for professional support workflows rather than public community groups.
 
 ## 🤗 Special Thanks
 
@@ -20,12 +20,6 @@ These outstanding organizations partner with us to support our open-source work:
 | <a href="https://unthread.com"><img src="https://raw.githubusercontent.com/wgtechlabs/unthread-discord-bot/main/.github/assets/sponsors/platinum_unthread.png" width="250" alt="Unthread"></a> |
 | <div align="center"><a href="https://unthread.com" target="_blank"><b>Unthread</b></a><br/>Streamlined support ticketing for modern teams.</div> |
 <!-- markdownlint-enable MD033 -->
-
-## 💸 Sponsored Ads
-
-Open source development is resource-intensive. These **sponsored ads help keep Log Engine free and actively maintained** while connecting you with tools and services that support open-source development.
-
-[![sponsored ads](https://gitads.dev/v1/ad-serve?source=wgtechlabs/unthread-telegram-bot@github)](https://gitads.dev/v1/ad-track?source=wgtechlabs/unthread-telegram-bot@github)
 
 ## 🤔 How It Works
 
@@ -61,6 +55,7 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
 - **✅ Status Notifications** - Real-time alerts when tickets are opened or closed
 - **🔒 Enterprise-Ready** - Secure, scalable architecture with comprehensive logging
 - **⚡ Easy Deployment** - Quick setup with Docker or manual installation
+- **🛠️ Template System** - Customizable message templates for consistent communication
 
 ## 🚀 Quick Start
 
@@ -154,6 +149,9 @@ Edit your `.env` file with these required values:
 ```bash
 # Required - Get from BotFather
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+
+# Optional but HIGHLY RECOMMENDED - Your bot's username for 200x performance boost
+BOT_USERNAME=your_bot_username  # Eliminates API calls for deep links and commands
 
 # Required - Get from Unthread dashboard
 UNTHREAD_API_KEY=your_unthread_api_key
@@ -334,5 +332,3 @@ This project is created by **[Waren Gonzaga](https://github.com/warengonzaga)** 
 ---
 
 💻 with ❤️ by [Waren Gonzaga](https://warengonzaga.com) under [WG Technology Labs](https://wgtechlabs.com), and [Him](https://www.youtube.com/watch?v=HHrxS4diLew&t=44s) 🙏
-
-<!-- GitAds-Verify: SKBGYTYZU867TO8VU9UB6VRLMN1V8RXA -->

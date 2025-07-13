@@ -30,7 +30,7 @@
  */
 
 import { LogEngine } from '@wgtechlabs/log-engine';
-import { processSupportConversation, aboutCommand, processSetupTextInput } from '../commands/index.js';
+import { processConversation, aboutCommand } from '../commands/index.js';
 import * as unthreadService from '../services/unthread.js';
 import { safeReply, safeEditMessageText } from '../bot.js';
 import type { BotContext } from '../types/index.js';
@@ -85,22 +85,13 @@ export async function handleMessage(ctx: BotContext, next: () => Promise<void>):
             return;  // Don't call next() for commands, let Telegraf handle them
         }
         
-        // Check if this is part of setup wizard text input (BEFORE support conversation)
-        const isSetupInput = await processSetupTextInput(ctx);
+        // Check if this is part of any conversation flow (setup, support, templates, etc.)
+        const isConversationMessage = await processConversation(ctx);
         
-        if (isSetupInput) {
-            // Skip other handlers if this was setup input
-            LogEngine.debug('Message processed as setup wizard input');
-            return;  // Don't call next() for setup input, we're done
-        }
-        
-        // Check if this is part of a support conversation (BEFORE handling different chat types)
-        const isSupportMessage = await processSupportConversation(ctx);
-        
-        if (isSupportMessage) {
-            // Skip other handlers if this was a support conversation message
-            LogEngine.debug('Message processed as support conversation');
-            return;  // Don't call next() for support messages, we're done
+        if (isConversationMessage) {
+            // Skip other handlers if this was processed by any conversation processor
+            LogEngine.debug('Message processed by conversation processor');
+            return;  // Don't call next() for conversation messages, we're done
         }
         
         // Check if this is a reply to a ticket confirmation
@@ -113,9 +104,10 @@ export async function handleMessage(ctx: BotContext, next: () => Promise<void>):
             }
         }
 
-        // Handle different chat types
+        // Handle different chat types - only if not handled by conversation processors
         if (isPrivateChat(ctx)) {
-            LogEngine.debug('Processing as private message');
+            LogEngine.debug('Processing as private message (no conversation processor handled it)');
+            // Only send about message if no conversation processor handled it
             await handlePrivateMessage(ctx);
         } else if (isGroupChat(ctx)) {
             LogEngine.debug('Processing as group message - NO AUTO RESPONSES');
@@ -478,8 +470,10 @@ export async function handlePrivateMessage(ctx: BotContext): Promise<void> {
             return;
         }
         
-        // Send the about message for any non-command private message
-        await aboutCommand(ctx);
+        // Do nothing for non-command private messages
+        // If someone sends a message and it's not a command and not handled by conversation processors,
+        // we simply ignore it instead of sending the about message
+        LogEngine.debug('Private message received but no action taken - not a command and not part of active conversation');
         
     } catch (error) {
         const err = error as Error;
