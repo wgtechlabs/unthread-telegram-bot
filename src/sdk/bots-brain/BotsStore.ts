@@ -1390,27 +1390,50 @@ export class BotsStore implements IBotsStore {
       // Calculate TTL based on the expiresAt field in the session data
       const now = new Date();
       const expiresAt = new Date(sessionData.expiresAt);
-      const ttlSeconds = Math.max(0, Math.floor((expiresAt.getTime() - now.getTime()) / 1000));
+      const ttlSeconds = Math.max(300, Math.floor((expiresAt.getTime() - now.getTime()) / 1000)); // Minimum 5 minutes TTL
       
-      // If TTL is 0 or negative, the session has already expired
-      if (ttlSeconds <= 0) {
-        LogEngine.warn('Attempted to store expired DM setup session', {
+      // Log TTL calculation for debugging
+      LogEngine.info('Calculating session TTL', {
+        sessionId: sessionData.sessionId,
+        currentTime: now.toISOString(),
+        expiresAt: sessionData.expiresAt,
+        calculatedTTL: ttlSeconds,
+        minimumTTL: 300
+      });
+      
+      // If TTL is still too short after minimum enforcement, extend the expiry
+      if (ttlSeconds <= 300) {
+        const newExpiresAt = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes from now
+        sessionData.expiresAt = newExpiresAt.toISOString();
+        const newTtlSeconds = Math.floor((newExpiresAt.getTime() - now.getTime()) / 1000);
+        
+        LogEngine.warn('Session expiry was too short, extending automatically', {
           sessionId: sessionData.sessionId,
-          expiresAt: sessionData.expiresAt,
-          currentTime: now.toISOString()
+          originalExpiry: expiresAt.toISOString(),
+          newExpiry: sessionData.expiresAt,
+          newTTL: newTtlSeconds
         });
-        return false;
+        
+        // Store with extended TTL
+        await this.storage.set(key, sessionData, newTtlSeconds);
+        
+        // Create admin mapping for easy lookup with same TTL
+        await this.storage.set(
+          `dm_session:admin:${sessionData.adminId}`, 
+          sessionData.sessionId, 
+          newTtlSeconds
+        );
+      } else {
+        // Store with calculated TTL
+        await this.storage.set(key, sessionData, ttlSeconds);
+        
+        // Create admin mapping for easy lookup with same TTL
+        await this.storage.set(
+          `dm_session:admin:${sessionData.adminId}`, 
+          sessionData.sessionId, 
+          ttlSeconds
+        );
       }
-      
-      // Store with calculated TTL based on expiresAt
-      await this.storage.set(key, sessionData, ttlSeconds);
-      
-      // Create admin mapping for easy lookup with same TTL
-      await this.storage.set(
-        `dm_session:admin:${sessionData.adminId}`, 
-        sessionData.sessionId, 
-        ttlSeconds
-      );
 
       LogEngine.info('DM setup session stored', {
         sessionId: sessionData.sessionId,
@@ -1418,7 +1441,7 @@ export class BotsStore implements IBotsStore {
         groupChatId: sessionData.groupChatId,
         step: sessionData.currentStep,
         expiresAt: sessionData.expiresAt,
-        ttlSeconds
+        finalTTL: ttlSeconds > 300 ? ttlSeconds : Math.floor((new Date(sessionData.expiresAt).getTime() - now.getTime()) / 1000)
       });
       
       return true;

@@ -13,6 +13,7 @@ import { BotsStore } from '../../sdk/bots-brain/index.js';
 import { SupportCommand } from '../support/SupportCommandClean.js';
 import { logError } from '../utils/errorHandler.js';
 import * as unthreadService from '../../services/unthread.js';
+import { SetupCallbackProcessor } from './CallbackProcessors.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 
 /**
@@ -288,10 +289,49 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 sessionFound: !!activeSessions,
                 currentStep: activeSessions?.currentStep,
                 sessionId: activeSessions?.sessionId,
-                inputText: ctx.message && 'text' in ctx.message ? ctx.message.text?.substring(0, 50) : 'N/A'
+                inputText: ctx.message && 'text' in ctx.message ? ctx.message.text?.substring(0, 50) : 'N/A',
+                sessionExpiry: activeSessions?.expiresAt
             });
             
-            if (!activeSessions) return false;
+            if (!activeSessions) {
+                logError(`Debug: No active session found for user ${userId}`, 'Debug', { userId });
+                return false;
+            }
+
+            // Check if session is expired and attempt recovery
+            const now = new Date();
+            const sessionExpiry = new Date(activeSessions.expiresAt);
+            if (sessionExpiry <= now) {
+                logError(`Debug: Session expired but found in storage, attempting recovery`, 'Warning', {
+                    userId,
+                    sessionId: activeSessions.sessionId,
+                    expiresAt: activeSessions.expiresAt,
+                    currentTime: now.toISOString(),
+                    timeDifference: now.getTime() - sessionExpiry.getTime()
+                });
+                
+                // Attempt to extend expired session if it's within 5 minutes of expiry
+                const timeDiffMinutes = (now.getTime() - sessionExpiry.getTime()) / (1000 * 60);
+                if (timeDiffMinutes <= 5) {
+                    const newExpiresAt = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes from now
+                    await BotsStore.updateDmSetupSession(activeSessions.sessionId, {
+                        expiresAt: newExpiresAt.toISOString()
+                    });
+                    
+                    logError(`Debug: Session recovered and extended`, 'Info', {
+                        userId,
+                        sessionId: activeSessions.sessionId,
+                        newExpiresAt: newExpiresAt.toISOString()
+                    });
+                } else {
+                    logError(`Debug: Session too old to recover`, 'Warning', {
+                        userId,
+                        sessionId: activeSessions.sessionId,
+                        timeDiffMinutes
+                    });
+                    return false;
+                }
+            }
 
             // Check if we're waiting for text input
             const canHandle = activeSessions.currentStep === 'awaiting_custom_name' || 
@@ -302,7 +342,12 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 userId,
                 currentStep: activeSessions.currentStep,
                 canHandle,
-                expectedSteps: ['awaiting_custom_name', 'awaiting_customer_id', 'awaiting_template_content']
+                expectedSteps: ['awaiting_custom_name', 'awaiting_customer_id', 'awaiting_template_content'],
+                stepMatches: {
+                    customName: activeSessions.currentStep === 'awaiting_custom_name',
+                    customerId: activeSessions.currentStep === 'awaiting_customer_id',
+                    templateContent: activeSessions.currentStep === 'awaiting_template_content'
+                }
             });
             
             return canHandle;
@@ -333,8 +378,8 @@ export class DmSetupInputProcessor implements IConversationProcessor {
         }
 
         try {
-            // Get the active session with enhanced debugging
-            const session = await BotsStore.getActiveDmSetupSessionByAdmin(userId);
+            // Get the active session with enhanced debugging and recovery
+            let session = await BotsStore.getActiveDmSetupSessionByAdmin(userId);
             
             // Add debugging for session lookup
             logError(`Debug: DmSetupInputProcessor session lookup for user ${userId}`, 'Debug', {
@@ -347,18 +392,81 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 currentTime: new Date().toISOString()
             });
             
-            if (!session || (session.currentStep !== 'awaiting_custom_name' && 
-                           session.currentStep !== 'awaiting_customer_id' && 
-                           session.currentStep !== 'awaiting_template_content')) {
-                logError(`Debug: Session not found or wrong step`, 'Debug', {
+            // If session not found, try to recover by checking if there was a recent session
+            if (!session) {
+                logError(`Debug: No session found, checking for recovery options`, 'Warning', { userId });
+                return false;
+            }
+            
+            // Extend session expiry on text input to prevent timeout during processing
+            const now = new Date();
+            const sessionExpiry = new Date(session.expiresAt);
+            if (sessionExpiry.getTime() - now.getTime() < 5 * 60 * 1000) { // Less than 5 minutes remaining
+                const newExpiresAt = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes from now
+                await BotsStore.updateDmSetupSession(session.sessionId, {
+                    expiresAt: newExpiresAt.toISOString()
+                });
+                
+                logError(`Debug: Extended session expiry during text processing`, 'Info', {
+                    sessionId: session.sessionId,
+                    oldExpiry: session.expiresAt,
+                    newExpiry: newExpiresAt.toISOString()
+                });
+                
+                // Refresh session data
+                session = await BotsStore.getDmSetupSession(session.sessionId);
+                if (!session) {
+                    logError(`Debug: Session lost after expiry extension`, 'Error', { userId });
+                    return false;
+                }
+            }
+            
+            if (session.currentStep !== 'awaiting_custom_name' && 
+                session.currentStep !== 'awaiting_customer_id' && 
+                session.currentStep !== 'awaiting_template_content') {
+                
+                logError(`Debug: Session not in expected step, attempting recovery`, 'Warning', {
                     sessionFound: !!session,
                     currentStep: session?.currentStep,
                     expectedSteps: ['awaiting_custom_name', 'awaiting_customer_id', 'awaiting_template_content'],
-                    inputText
+                    inputText: inputText.substring(0, 50)
                 });
+                
+                // Check if this looks like a custom name input and try to recover
+                if (inputText.trim().length > 0 && inputText.trim().length <= 100 && 
+                    session.currentStep === 'customer_setup') {
+                    
+                    logError(`Debug: Attempting to recover session for custom name input`, 'Info', {
+                        sessionId: session?.sessionId,
+                        currentStep: session?.currentStep,
+                        inputText: inputText.substring(0, 50)
+                    });
+                    
+                    // Force update to awaiting_custom_name
+                    if (session?.sessionId) {
+                        await BotsStore.updateDmSetupSession(session.sessionId, {
+                            currentStep: 'awaiting_custom_name'
+                        });
+                        
+                        // Refresh session data
+                        session = await BotsStore.getDmSetupSession(session.sessionId);
+                        
+                        logError(`Debug: Session recovery result`, 'Info', {
+                            sessionId: session?.sessionId,
+                            newStep: session?.currentStep,
+                            recoverySuccess: session?.currentStep === 'awaiting_custom_name'
+                        });
+                    }
+                } else {
+                    return false;
+                }            }
+            
+            // Ensure session is not null after recovery
+            if (!session) {
+                logError(`Debug: Session is null after recovery attempts`, 'Error', { userId });
                 return false;
             }
-
+            
             // Handle template content input
             if (session.currentStep === 'awaiting_template_content') {
                 return await this.handleTemplateContentInput(ctx, session, inputText);
@@ -407,6 +515,21 @@ export class DmSetupInputProcessor implements IConversationProcessor {
 
     private async handleCustomerIdInput(ctx: BotContext, session: any, customerId: string): Promise<boolean> {
         try {
+            // First, extend session expiry to prevent timeout during customer validation
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            const now = new Date();
+            const extendedExpiresAt = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes from now
+            
+            await BotsStore.updateDmSetupSession(session.sessionId, {
+                expiresAt: extendedExpiresAt.toISOString()
+            });
+            
+            logError(`Debug: Extended session expiry in handleCustomerIdInput`, 'Debug', {
+                sessionId: session.sessionId,
+                newExpiry: extendedExpiresAt.toISOString(),
+                extensionMinutes: 30
+            });
+            
             // Validate customer ID format (UUID-like format)
             const customerIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             
@@ -418,7 +541,10 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                         reply_markup: {
                             inline_keyboard: [
                                 [
-                                    { text: "❌ Cancel Setup", callback_data: `dmsetup_cancel_${session.sessionId}` }
+                                    { text: "⬅️ Back to Options", callback_data: `setup_back_to_customer_selection_${session.sessionId}` }
+                                ],
+                                [
+                                    { text: "❌ Cancel Setup", callback_data: `setup_cancel_${session.sessionId}` }
                                 ]
                             ]
                         }
@@ -453,7 +579,10 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                             reply_markup: {
                                 inline_keyboard: [
                                     [
-                                        { text: "❌ Cancel Setup", callback_data: `dmsetup_cancel_${session.sessionId}` }
+                                        { text: "⬅️ Back to Options", callback_data: `setup_back_to_customer_selection_${session.sessionId}` }
+                                    ],
+                                    [
+                                        { text: "❌ Cancel Setup", callback_data: `setup_cancel_${session.sessionId}` }
                                     ]
                                 ]
                             }
@@ -546,10 +675,17 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 const now = new Date();
                 const currentExpiry = new Date(session.expiresAt);
                 
-                // Extend to 15 minutes from now, or add 15 minutes to current expiry, whichever is later
-                const newExpiryFromNow = new Date(now.getTime() + 15 * 60 * 1000);
-                const newExpiryFromCurrent = new Date(currentExpiry.getTime() + 15 * 60 * 1000);
+                // Extend to 30 minutes from now, or add 30 minutes to current expiry, whichever is later
+                const newExpiryFromNow = new Date(now.getTime() + 30 * 60 * 1000);
+                const newExpiryFromCurrent = new Date(currentExpiry.getTime() + 30 * 60 * 1000);
                 const extendedExpiresAt = newExpiryFromNow > newExpiryFromCurrent ? newExpiryFromNow : newExpiryFromCurrent;
+                
+                logError(`Debug: Extended session expiry after customer ID validation`, 'Debug', {
+                    sessionId: session.sessionId,
+                    oldExpiry: session.expiresAt,
+                    newExpiry: extendedExpiresAt.toISOString(),
+                    extensionMinutes: 30
+                });
                 
                 await BotsStore.updateDmSetupSession(session.sessionId, {
                     currentStep: 'template_configuration',
@@ -599,11 +735,14 @@ Choose how you'd like to handle message templates:`;
                         reply_markup: {
                             inline_keyboard: [
                                 [
-                                    { text: "🔄 Retry Setup", callback_data: `setup_existing_customer_${session.sessionId}` },
+                                    { text: "🔄 Retry Customer ID", callback_data: `setup_existing_customer_${session.sessionId}` },
                                     { text: "✏️ Use Different Name", callback_data: `setup_custom_name_${session.sessionId}` }
                                 ],
                                 [
-                                    { text: "❌ Cancel Setup", callback_data: `dmsetup_cancel_${session.sessionId}` }
+                                    { text: "⬅️ Back to Options", callback_data: `setup_back_to_customer_selection_${session.sessionId}` }
+                                ],
+                                [
+                                    { text: "❌ Cancel Setup", callback_data: `setup_cancel_${session.sessionId}` }
                                 ]
                             ]
                         }
@@ -626,11 +765,14 @@ Choose how you'd like to handle message templates:`;
                     reply_markup: {
                         inline_keyboard: [
                             [
-                                { text: "🔄 Try Again", callback_data: `setup_existing_customer_${session.sessionId}` },
+                                { text: "🔄 Try Different ID", callback_data: `setup_existing_customer_${session.sessionId}` },
                                 { text: "✏️ Use Different Name", callback_data: `setup_custom_name_${session.sessionId}` }
                             ],
                             [
-                                { text: "❌ Cancel Setup", callback_data: `dmsetup_cancel_${session.sessionId}` }
+                                { text: "⬅️ Back to Options", callback_data: `setup_back_to_customer_selection_${session.sessionId}` }
+                            ],
+                            [
+                                { text: "❌ Cancel Setup", callback_data: `setup_cancel_${session.sessionId}` }
                             ]
                         ]
                     }
@@ -642,11 +784,39 @@ Choose how you'd like to handle message templates:`;
 
     private async handleCustomNameInput(ctx: BotContext, session: any, inputText: string): Promise<boolean> {
         try {
+            // First, extend session expiry to prevent timeout during customer creation
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            const now = new Date();
+            const extendedExpiresAt = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes from now
+            
+            await BotsStore.updateDmSetupSession(session.sessionId, {
+                expiresAt: extendedExpiresAt.toISOString()
+            });
+            
+            logError(`Debug: Extended session expiry in handleCustomNameInput`, 'Debug', {
+                sessionId: session.sessionId,
+                newExpiry: extendedExpiresAt.toISOString(),
+                extensionMinutes: 30
+            });
+            
             // Validate the customer name input
             const { validateCustomerName } = await import('../utils/validation.js');
             const validation = validateCustomerName(inputText);
 
+            logError(`Debug: Customer name validation result`, 'Debug', {
+                sessionId: session.sessionId,
+                inputText: inputText.length > 50 ? inputText.substring(0, 50) + '...' : inputText,
+                isValid: validation.isValid,
+                error: validation.error,
+                sanitizedValue: validation.sanitizedValue
+            });
+
             if (!validation.isValid) {
+                // Generate short callback IDs to stay within Telegram's 64-byte limit
+                const { SetupCallbackProcessor } = await import('./CallbackProcessors.js');
+                const shortBackId = SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
+                const shortCancelId = SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
+                
                 await ctx.reply(
                     `❌ **Invalid Customer Name**\n\n${validation.error}\n\n${validation.details}\n\nPlease try again:`,
                     {
@@ -654,7 +824,10 @@ Choose how you'd like to handle message templates:`;
                         reply_markup: {
                             inline_keyboard: [
                                 [
-                                    { text: "❌ Cancel Setup", callback_data: `setup_cancel_${session.sessionId}` }
+                                    { text: "⬅️ Back to Options", callback_data: `setup_back_to_customer_selection_${shortBackId}` }
+                                ],
+                                [
+                                    { text: "❌ Cancel Setup", callback_data: `setup_cancel_${shortCancelId}` }
                                 ]
                             ]
                         }
@@ -666,19 +839,38 @@ Choose how you'd like to handle message templates:`;
             // Process the valid customer name
             await ctx.reply("✅ Processing your custom customer name...", { parse_mode: 'Markdown' });
 
-            // Import and use the callback processor to complete the setup
-            const { SetupCallbackProcessor } = await import('./CallbackProcessors.js');
-            const callbackProcessor = new SetupCallbackProcessor();
-            
-            // Update session with the custom name and complete setup
+            logError(`Debug: Starting customer creation process`, 'Debug', {
+                sessionId: session.sessionId,
+                customerName: validation.sanitizedValue,
+                sessionStep: session.currentStep
+            });
+
+            // Update session with the custom name and extend expiry for completion process
+            const finalExpiresAt = new Date(now.getTime() + 30 * 60 * 1000); // Another 30 minutes for completion
             await BotsStore.updateDmSetupSession(session.sessionId, {
                 currentStep: 'customer_setup_complete',
+                expiresAt: finalExpiresAt.toISOString(),
                 stepData: {
                     ...session.stepData,
                     customerName: validation.sanitizedValue
                 }
             });
+            
+            logError(`Debug: Extended session expiry for customer setup completion`, 'Debug', {
+                sessionId: session.sessionId,
+                newExpiry: finalExpiresAt.toISOString(),
+                extensionMinutes: 30
+            });
 
+            // Import and use the callback processor to complete the setup
+            const { SetupCallbackProcessor } = await import('./CallbackProcessors.js');
+            const callbackProcessor = new SetupCallbackProcessor();
+            
+            logError(`Debug: About to call completeCustomerSetup`, 'Debug', {
+                sessionId: session.sessionId,
+                customerName: validation.sanitizedValue
+            });
+            
             // Complete the customer setup using the callback processor's method
             const customerName = validation.sanitizedValue || inputText.trim();
             await callbackProcessor.completeCustomerSetup(ctx, session.sessionId, customerName, session);
@@ -690,14 +882,27 @@ Choose how you'd like to handle message templates:`;
                 inputText,
                 sessionId: session.sessionId 
             });
+            // Generate short callback IDs for error handling
+            const shortCustomId = SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
+            const shortExistingId = SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
+            const shortBackId = SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
+            const shortCancelId = SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
+            
             await ctx.reply(
-                "❌ **Setup Error**\n\nFailed to process your input. Please try again or cancel setup.",
+                "❌ **Customer Name Setup Failed**\n\nFailed to process your custom name. This could be due to:\n• Network connection issues\n• Invalid session state\n• System configuration problems\n\nWhat would you like to do?",
                 {
                     parse_mode: 'Markdown',
                     reply_markup: {
                         inline_keyboard: [
                             [
-                                { text: "❌ Cancel Setup", callback_data: `setup_cancel_${session.sessionId}` }
+                                { text: "🔄 Try Different Name", callback_data: `setup_custom_name_${shortCustomId}` },
+                                { text: "🔗 Use Existing Customer", callback_data: `setup_existing_customer_${shortExistingId}` }
+                            ],
+                            [
+                                { text: "⬅️ Back to Options", callback_data: `setup_back_to_customer_selection_${shortBackId}` }
+                            ],
+                            [
+                                { text: "❌ Cancel Setup", callback_data: `setup_cancel_${shortCancelId}` }
                             ]
                         ]
                     }

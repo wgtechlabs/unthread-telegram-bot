@@ -17,6 +17,7 @@ import { GlobalTemplateManager } from '../../utils/globalTemplateManager.js';
 import { ValidationService } from '../../services/validationService.js';
 import type { AdminProfile, GroupConfig } from '../../sdk/types.js';
 import type { GlobalTemplate } from '../../config/globalTemplates.js';
+import { SetupCallbackProcessor } from '../processors/CallbackProcessors.js';
 
 // Clean Code: Extract magic numbers to named constants
 const SETUP_SESSION_TIMEOUT_MINUTES = 10;
@@ -186,8 +187,19 @@ export class SetupCommand extends BaseCommand {
 
     private async startSetupWizard(ctx: BotContext, userId: number, chatId: number, chatTitle: string): Promise<void> {
         try {
-            // Create a setup session and initiate DM-based setup
-            const sessionId = `setup_${chatId}_${Date.now()}`;
+            // Create a setup session using the proper adminManager function
+            const { createDmSetupSession } = await import('../../utils/adminManager.js');
+            const sessionId = await createDmSetupSession(userId, chatId, chatTitle);
+            
+            if (!sessionId) {
+                await ctx.reply(
+                    "❌ **Setup Error**\n\n" +
+                    "Failed to create setup session. Please try again.",
+                    { parse_mode: 'Markdown' }
+                );
+                return;
+            }
+            
             const adminProfile = await BotsStore.getAdminProfile(userId);
             
             if (!adminProfile?.dmChatId) {
@@ -200,24 +212,13 @@ export class SetupCommand extends BaseCommand {
                 return;
             }
 
-            // Store setup session
-            const now = new Date();
-            const expiresAt = new Date(now.getTime() + SETUP_SESSION_TIMEOUT_MINUTES * 60 * 1000);
-            
-            const setupSession = {
+            logError(`Debug: Setup session created`, 'Debug', {
                 sessionId,
-                adminId: userId,
-                groupChatId: chatId,
-                groupChatName: chatTitle,
-                status: 'active' as const,
-                startedAt: now.toISOString(),
-                expiresAt: expiresAt.toISOString(),
-                currentStep: 'initiated',
-                stepData: {},
-                messageIds: []
-            };
-
-            await BotsStore.storeDmSetupSession(setupSession);
+                userId,
+                chatId,
+                chatTitle,
+                dmChatId: adminProfile.dmChatId
+            });
 
             // Send confirmation in group
             const groupMessage = 
@@ -355,19 +356,25 @@ export class SetupCommand extends BaseCommand {
                 `**Suggested Customer Name:**\n\`${suggestedName}\`\n\n` +
                 "**Choose an option below:**";
 
+            // Generate short callback IDs to stay within Telegram's 64-byte limit
+            const shortSuggestedId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortCustomId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortExistingId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortCancelId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+
             await ctx.telegram.editMessageText(dmChatId, messageId, undefined, customerSetupMessage, {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: `✅ Use "${suggestedName}"`, callback_data: `setup_use_suggested_${sessionId}` }
+                            { text: `✅ Use "${suggestedName}"`, callback_data: `setup_use_suggested_${shortSuggestedId}` }
                         ],
                         [
-                            { text: "✏️ Use Different Name", callback_data: `setup_custom_name_${sessionId}` },
-                            { text: "🔗 Existing Customer ID", callback_data: `setup_existing_customer_${sessionId}` }
+                            { text: "✏️ Use Different Name", callback_data: `setup_custom_name_${shortCustomId}` },
+                            { text: "🔗 Existing Customer ID", callback_data: `setup_existing_customer_${shortExistingId}` }
                         ],
                         [
-                            { text: "❌ Cancel Setup", callback_data: `setup_cancel_${sessionId}` }
+                            { text: "❌ Cancel Setup", callback_data: `setup_cancel_${shortCancelId}` }
                         ]
                     ]
                 }

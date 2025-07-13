@@ -18,7 +18,7 @@ import * as unthreadService from '../../services/unthread.js';
 // Clean Code: Extract constants to avoid magic strings and numbers
 const CALLBACK_CONSTANTS = {
     SESSION: {
-        EXPIRY_EXTENSION_MINUTES: 15,
+        EXPIRY_EXTENSION_MINUTES: 30, // Increased from 15 to 30 minutes for better UX
         MAX_CACHED_MAPPINGS: 100
     },
     TEMPLATE_CODES: {
@@ -214,7 +214,7 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
     /**
      * Generate a short callback ID for long session IDs to work within Telegram's 64-byte limit
      */
-    private static generateShortCallbackId(sessionId: string): string {
+    public static generateShortCallbackId(sessionId: string): string {
         // Check if we already have a mapping for this session
         for (const [shortId, fullId] of SetupCallbackProcessor.callbackSessionMap.entries()) {
             if (fullId === sessionId) {
@@ -380,6 +380,9 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             } else if (action === 'back' && parts[2] === 'to' && parts[3] === 'completion') {
                 // Format: setup_back_to_completion_[shortId OR setup_chatId_timestamp]
                 rawSessionId = parts.slice(4).join('_'); 
+            } else if (action === 'back' && parts[2] === 'to' && parts[3] === 'customer' && parts[4] === 'selection') {
+                // Format: setup_back_to_customer_selection_[sessionId]
+                rawSessionId = parts.slice(5).join('_'); 
             } else if (action === 'finish' && parts[2] === 'custom') {
                 // Format: setup_finish_custom_[shortId OR setup_chatId_timestamp]
                 rawSessionId = parts.slice(3).join('_'); 
@@ -408,6 +411,25 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                 finalSessionId: sessionId,
                 isShortId: rawSessionId.startsWith('cb')
             });
+            
+            // Add additional debugging for session lookup immediately after parsing
+            try {
+                const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+                const sessionCheck = await BotsStore.getDmSetupSession(sessionId);
+                logError(`Debug: Session lookup immediately after parsing`, 'Debug', {
+                    sessionId,
+                    sessionFound: !!sessionCheck,
+                    currentStep: sessionCheck?.currentStep,
+                    expiresAt: sessionCheck?.expiresAt,
+                    currentTime: new Date().toISOString(),
+                    isExpired: sessionCheck ? new Date(sessionCheck.expiresAt) < new Date() : 'N/A'
+                });
+            } catch (sessionCheckError) {
+                logError(`Debug: Error checking session immediately after parsing`, 'Debug', {
+                    sessionId,
+                    error: (sessionCheckError as Error).message
+                });
+            }
             
             if (!sessionId) {
                 await ctx.answerCbQuery("❌ Invalid setup session.");
@@ -558,6 +580,92 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
     private async handleCustomName(ctx: BotContext, sessionId: string): Promise<boolean> {
         await ctx.answerCbQuery("✏️ Enter custom name...");
         
+        // First, extend session expiry before any operations to prevent expiration
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            
+            // Get current session and extend expiry immediately
+            const currentSession = await BotsStore.getDmSetupSession(sessionId);
+            if (!currentSession) {
+                logError(`Debug: Session not found in handleCustomName`, 'Warning', {
+                    sessionId
+                });
+                await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
+                return true;
+            }
+            
+            // Extend session expiry to 30 minutes from now
+            const now = new Date();
+            const extendedExpiresAt = new Date(now.getTime() + CALLBACK_CONSTANTS.SESSION.EXPIRY_EXTENSION_MINUTES * 60 * 1000);
+            
+            logError(`Debug: Extending session expiry in handleCustomName`, 'Debug', {
+                sessionId,
+                currentExpiry: currentSession.expiresAt,
+                newExpiry: extendedExpiresAt.toISOString(),
+                extensionMinutes: CALLBACK_CONSTANTS.SESSION.EXPIRY_EXTENSION_MINUTES,
+                currentStep: currentSession.currentStep
+            });
+            
+            const updateResult = await BotsStore.updateDmSetupSession(sessionId, {
+                expiresAt: extendedExpiresAt.toISOString(),
+                currentStep: 'awaiting_custom_name'
+            });
+            
+            logError(`Debug: Session update result in handleCustomName`, 'Debug', {
+                sessionId,
+                updateResult,
+                requestedStep: 'awaiting_custom_name'
+            });
+            
+            // Verify the update with multiple attempts if needed
+            let verifySession = await BotsStore.getDmSetupSession(sessionId);
+            let attemptCount = 1;
+            
+            // Retry verification up to 3 times if step update failed
+            while (verifySession?.currentStep !== 'awaiting_custom_name' && attemptCount <= 3) {
+                logError(`Debug: Session step verification failed, retrying...`, 'Warning', {
+                    sessionId,
+                    attempt: attemptCount,
+                    actualStep: verifySession?.currentStep,
+                    expectedStep: 'awaiting_custom_name'
+                });
+                
+                // Wait 100ms and retry
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // Try updating again
+                await BotsStore.updateDmSetupSession(sessionId, {
+                    currentStep: 'awaiting_custom_name'
+                });
+                
+                verifySession = await BotsStore.getDmSetupSession(sessionId);
+                attemptCount++;
+            }
+            
+            logError(`Debug: Final session verification in handleCustomName`, 'Debug', {
+                sessionId,
+                updateSuccessful: !!verifySession,
+                finalStep: verifySession?.currentStep,
+                newExpiry: verifySession?.expiresAt,
+                attempts: attemptCount
+            });
+            
+            if (verifySession?.currentStep !== 'awaiting_custom_name') {
+                logError(`Critical: Session step update failed after retries`, 'Error', {
+                    sessionId,
+                    finalStep: verifySession?.currentStep,
+                    expectedStep: 'awaiting_custom_name'
+                });
+            }
+            
+        } catch (error) {
+            logError(error, 'SetupCallbackProcessor.handleCustomName.sessionUpdate', { sessionId });
+        }
+        
+        // Generate short callback IDs to stay within Telegram's 64-byte limit
+        const shortBackId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+        const shortCancelId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+        
         await ctx.editMessageText(
             `✏️ **Custom Customer Name**
 
@@ -569,48 +677,15 @@ Please type the customer name you'd like to use:
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: "⬅️ Back to Options", callback_data: `setup_back_to_customer_selection_${sessionId}` }
+                            { text: "⬅️ Back to Options", callback_data: `setup_back_to_customer_selection_${shortBackId}` }
                         ],
                         [
-                            { text: "❌ Cancel Setup", callback_data: `setup_cancel_${sessionId}` }
+                            { text: "❌ Cancel Setup", callback_data: `setup_cancel_${shortCancelId}` }
                         ]
                     ]
                 }
             }
         );
-        
-        // Update session to expect custom name input
-        try {
-            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
-            
-            logError(`Debug: handleCustomName updating session step`, 'Debug', {
-                sessionId,
-                newStep: 'awaiting_custom_name',
-                beforeUpdate: true
-            });
-            
-            const updateResult = await BotsStore.updateDmSetupSession(sessionId, {
-                currentStep: 'awaiting_custom_name'
-            });
-            
-            logError(`Debug: handleCustomName session update result`, 'Debug', {
-                sessionId,
-                updateResult,
-                newStep: 'awaiting_custom_name'
-            });
-            
-            // Verify the update by fetching the session
-            const verifySession = await BotsStore.getDmSetupSession(sessionId);
-            logError(`Debug: handleCustomName session verification`, 'Debug', {
-                sessionId,
-                sessionFound: !!verifySession,
-                currentStep: verifySession?.currentStep,
-                status: verifySession?.status
-            });
-            
-        } catch (error) {
-            logError(error, 'SetupCallbackProcessor.handleCustomName', { sessionId });
-        }
         
         return true;
     }
@@ -620,18 +695,46 @@ Please type the customer name you'd like to use:
         
         try {
             const { BotsStore } = await import('../../sdk/bots-brain/index.js');
-            const store = BotsStore.getInstance();
-            const session = await store.getDmSetupSession(sessionId);
             
+            // Get current session and extend expiry immediately
+            const session = await BotsStore.getDmSetupSession(sessionId);
             if (!session) {
-                await ctx.editMessageText("❌ Session expired. Please start the setup again with /setup");
+                logError(`Debug: Session not found in handleExistingCustomer`, 'Warning', {
+                    sessionId
+                });
+                await ctx.editMessageText("❌ Setup session expired. Please start over with `/setup` in the group.");
                 return true;
             }
-
-            // Update session to expect customer ID input
-            await store.updateDmSetupSession(sessionId, {
-                currentStep: 'awaiting_customer_id'
+            
+            // Extend session expiry to 30 minutes from now
+            const now = new Date();
+            const extendedExpiresAt = new Date(now.getTime() + CALLBACK_CONSTANTS.SESSION.EXPIRY_EXTENSION_MINUTES * 60 * 1000);
+            
+            logError(`Debug: Extending session expiry in handleExistingCustomer`, 'Debug', {
+                sessionId,
+                currentExpiry: session.expiresAt,
+                newExpiry: extendedExpiresAt.toISOString(),
+                extensionMinutes: CALLBACK_CONSTANTS.SESSION.EXPIRY_EXTENSION_MINUTES
             });
+            
+            // Update session to expect customer ID input and extend expiry
+            await BotsStore.updateDmSetupSession(sessionId, {
+                currentStep: 'awaiting_customer_id',
+                expiresAt: extendedExpiresAt.toISOString()
+            });
+            
+            // Verify the update
+            const verifySession = await BotsStore.getDmSetupSession(sessionId);
+            logError(`Debug: Session update verification in handleExistingCustomer`, 'Debug', {
+                sessionId,
+                updateSuccessful: !!verifySession,
+                newStep: verifySession?.currentStep,
+                newExpiry: verifySession?.expiresAt
+            });
+            
+            // Generate short callback IDs to stay within Telegram's 64-byte limit
+            const shortBackId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortCancelId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
             
             const customerIdMsg = await ctx.editMessageText(
                 `🔗 **Enter Existing Customer ID**
@@ -649,7 +752,12 @@ Please type the existing customer ID you'd like to link to this group.
                 {
                     reply_markup: {
                         inline_keyboard: [
-                            [{ text: "❌ Cancel", callback_data: `dmsetup_cancel_${sessionId}` }]
+                            [
+                                { text: "⬅️ Back to Options", callback_data: `setup_back_to_customer_selection_${shortBackId}` }
+                            ],
+                            [
+                                { text: "❌ Cancel Setup", callback_data: `setup_cancel_${shortCancelId}` }
+                            ]
                         ]
                     }
                 }
@@ -659,12 +767,12 @@ Please type the existing customer ID you'd like to link to this group.
             const messageIds = session.messageIds || [];
             if (customerIdMsg && typeof customerIdMsg === 'object' && 'message_id' in customerIdMsg) {
                 messageIds.push(customerIdMsg.message_id);
-                await store.updateDmSetupSession(sessionId, { messageIds });
+                await BotsStore.updateDmSetupSession(sessionId, { messageIds });
             }
             
             return true;
         } catch (error) {
-            logError(error, 'CallbackProcessors.handleExistingCustomer', { sessionId });
+            logError(error, 'SetupCallbackProcessor.handleExistingCustomer', { sessionId });
             await ctx.editMessageText("❌ An error occurred. Please try again with /setup");
             return true;
         }
@@ -819,27 +927,53 @@ Choose how you'd like to handle message templates:`;
             // Generate short callback ID for this session
             const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
 
-            await ctx.editMessageText(successMessage, {
-                parse_mode: 'Markdown',
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            { text: "✅ Finish Setup", callback_data: `setup_use_defaults_${shortId}` },
-                            { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${shortId}` }
+            try {
+                await ctx.editMessageText(successMessage, {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "✅ Finish Setup", callback_data: `setup_use_defaults_${shortId}` },
+                                { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${shortId}` }
+                            ]
                         ]
-                    ]
-                }
-            });
+                    }
+                });
+            } catch (editError) {
+                // If edit fails (e.g., message too old or from text input), send a new message
+                logError(`Debug: Message edit failed, sending new message instead`, 'Warning', {
+                    sessionId,
+                    editError: editError instanceof Error ? editError.message : 'Unknown error'
+                });
+                
+                await ctx.reply(successMessage, {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "✅ Finish Setup", callback_data: `setup_use_defaults_${shortId}` },
+                                { text: "🎨 Customize Templates", callback_data: `setup_customize_templates_${shortId}` }
+                            ]
+                        ]
+                    }
+                });
+            }
 
             // Note: Session cleanup will be handled by template choice handlers
 
         } catch (error) {
             logError(error, 'SetupCallbackProcessor.completeCustomerSetup', { sessionId, customerName, existingCustomerId });
-            await ctx.editMessageText(
-                `❌ **Setup Failed**
+            
+            try {
+                await ctx.editMessageText(`❌ **Setup Failed**
 
-Failed to complete customer setup. Please try again.`
-            );
+Failed to complete customer setup. Please try again.`);
+            } catch (editError) {
+                // If edit fails, send a new message
+                await ctx.reply(`❌ **Setup Failed**
+
+Failed to complete customer setup. Please try again.`);
+            }
         }
     }
 
@@ -1573,6 +1707,22 @@ ${currentTemplate?.content || 'Loading...'}
                 return true;
             }
 
+            // Extend session expiry when navigating back to prevent expiration
+            const now = new Date();
+            const extendedExpiresAt = new Date(now.getTime() + CALLBACK_CONSTANTS.SESSION.EXPIRY_EXTENSION_MINUTES * 60 * 1000);
+            
+            // Update session step and extend expiry
+            await BotsStore.updateDmSetupSession(sessionId, {
+                currentStep: 'customer_setup',
+                expiresAt: extendedExpiresAt.toISOString()
+            });
+            
+            logError(`Debug: Extended session expiry on back navigation`, 'Debug', {
+                sessionId,
+                newExpiry: extendedExpiresAt.toISOString(),
+                extensionMinutes: CALLBACK_CONSTANTS.SESSION.EXPIRY_EXTENSION_MINUTES
+            });
+
             const suggestedName = session.stepData?.suggestedName || 'Unknown';
             const groupTitle = session.stepData?.groupTitle || session.groupChatName || 'Unknown Group';
 
@@ -1587,27 +1737,28 @@ Please choose how you'd like to set up the customer for this group:
 
 **Choose your preferred option:**`;
 
+            // Generate short callback IDs to stay within Telegram's 64-byte limit
+            const shortSuggestedId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortCustomId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortExistingId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortCancelId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+
             await ctx.editMessageText(customerSetupMessage, {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: `✅ Use "${suggestedName}"`, callback_data: `setup_use_suggested_${sessionId}` }
+                            { text: `✅ Use "${suggestedName}"`, callback_data: `setup_use_suggested_${shortSuggestedId}` }
                         ],
                         [
-                            { text: "✏️ Use Different Name", callback_data: `setup_custom_name_${sessionId}` },
-                            { text: "🔗 Existing Customer ID", callback_data: `setup_existing_customer_${sessionId}` }
+                            { text: "✏️ Use Different Name", callback_data: `setup_custom_name_${shortCustomId}` },
+                            { text: "🔗 Existing Customer ID", callback_data: `setup_existing_customer_${shortExistingId}` }
                         ],
                         [
-                            { text: "❌ Cancel Setup", callback_data: `setup_cancel_${sessionId}` }
+                            { text: "❌ Cancel Setup", callback_data: `setup_cancel_${shortCancelId}` }
                         ]
                     ]
                 }
-            });
-
-            // Reset session step
-            await BotsStore.updateDmSetupSession(sessionId, {
-                currentStep: 'customer_setup'
             });
             
             return true;

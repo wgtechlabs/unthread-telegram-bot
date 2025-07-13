@@ -470,8 +470,10 @@ export async function handlePrivateMessage(ctx: BotContext): Promise<void> {
             return;
         }
         
-        // Send the about message for any non-command private message
-        await aboutCommand(ctx);
+        // Do nothing for non-command private messages
+        // If someone sends a message and it's not a command and not handled by conversation processors,
+        // we simply ignore it instead of sending the about message
+        LogEngine.debug('Private message received but no action taken - not a command and not part of active conversation');
         
     } catch (error) {
         const err = error as Error;
