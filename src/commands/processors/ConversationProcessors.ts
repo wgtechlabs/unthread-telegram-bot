@@ -12,6 +12,8 @@ import type { BotContext } from '../../types/index.js';
 import { BotsStore } from '../../sdk/bots-brain/index.js';
 import { SupportCommand } from '../support/SupportCommandClean.js';
 import { logError } from '../utils/errorHandler.js';
+import * as unthreadService from '../../services/unthread.js';
+import { LogEngine } from '@wgtechlabs/log-engine';
 
 /**
  * Support Form Conversation Processor
@@ -35,19 +37,189 @@ export class SupportConversationProcessor implements IConversationProcessor {
 
     async process(ctx: BotContext): Promise<boolean> {
         try {
-            // For now, just acknowledge the input
-            await ctx.reply(
-                "📝 **Form Input Received**\n\n" +
-                "This is where the support form processing would happen in the complete implementation.\n\n" +
-                "*Clean architecture makes this easy to implement!*",
-                { parse_mode: 'Markdown' }
-            );
-            return true;
+            const userId = ctx.from!.id;
+            const userInput = ('text' in ctx.message! ? ctx.message!.text : '') || '';
+            const userState = await BotsStore.getUserState(userId);
+
+            if (!userState) {
+                return false;
+            }
+
+            if (userState.field === 'summary') {
+                return await this.handleSummaryInput(ctx, userInput, userState);
+            } else if (userState.field === 'email') {
+                return await this.handleEmailInput(ctx, userInput, userState);
+            }
+
+            return false;
         } catch (error) {
             logError(error, 'SupportConversationProcessor.process', { 
                 userId: ctx.from?.id 
             });
             return false;
+        }
+    }
+
+    private async handleSummaryInput(ctx: BotContext, summary: string, userState: any): Promise<boolean> {
+        const userId = ctx.from!.id;
+
+        if (summary.trim().length < 10) {
+            await ctx.reply(
+                "📝 **Please provide more details**\n\n" +
+                "Your issue description should be at least 10 characters long to help our team assist you better.\n\n" +
+                "*Please describe your issue:*",
+                { 
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        force_reply: true,
+                        input_field_placeholder: "Describe your issue in detail..."
+                    }
+                }
+            );
+            return true;
+        }
+
+        // Store the summary
+        userState.summary = summary;
+
+        if (userState.hasEmail) {
+            // User has email, create ticket immediately
+            return await this.createTicket(ctx, userState);
+        } else {
+            // Ask for email
+            await BotsStore.setUserState(userId, {
+                ...userState,
+                field: 'email',
+                step: 2
+            });
+
+            await ctx.reply(
+                "📧 **Step 2 of 2:** Email Address\n\n" +
+                "Please provide your email address so our support team can follow up with you.\n\n" +
+                "*This will be saved for future tickets:*",
+                { 
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        force_reply: true,
+                        input_field_placeholder: "your@email.com"
+                    }
+                }
+            );
+        }
+
+        return true;
+    }
+
+    private async handleEmailInput(ctx: BotContext, email: string, userState: any): Promise<boolean> {
+        // Basic email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+            await ctx.reply(
+                "❌ **Invalid Email Format**\n\n" +
+                "Please provide a valid email address.\n\n" +
+                "*Enter your email:*",
+                { 
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        force_reply: true,
+                        input_field_placeholder: "your@email.com"
+                    }
+                }
+            );
+            return true;
+        }
+
+        // Store email and create ticket
+        userState.email = email.trim();
+        return await this.createTicket(ctx, userState);
+    }
+
+    private async createTicket(ctx: BotContext, userState: any): Promise<boolean> {
+        const userId = ctx.from!.id;
+        const chatId = ctx.chat!.id;
+
+        try {
+            // Show processing message
+            const statusMsg = await ctx.reply(
+                "🎫 **Creating Your Ticket**\n\n⏳ Please wait while I create your support ticket...",
+                { parse_mode: 'Markdown' }
+            );
+
+            // Get or create customer for this chat
+            const chatTitle = ctx.chat!.type === 'group' || ctx.chat!.type === 'supergroup' 
+                ? (ctx.chat as any).title || 'Telegram Group'
+                : 'Private Chat';
+
+            const customer = await unthreadService.getOrCreateCustomer(chatId.toString(), chatTitle);
+            
+            // Get user data with email
+            let userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
+            
+            // Update user with email if provided
+            if (userState.email && (!userData.email || userData.email !== userState.email)) {
+                await BotsStore.updateUser(userId, { email: userState.email });
+                userData = { ...userData, email: userState.email };
+            }
+
+            // Create the ticket
+            const ticketResponse = await unthreadService.createTicket({
+                groupChatName: chatTitle,
+                customerId: customer.id,
+                summary: userState.summary,
+                onBehalfOf: {
+                    name: userData.name || ctx.from?.first_name || 'Telegram User',
+                    email: userData.email || userState.email
+                }
+            });
+
+            // Register ticket confirmation for bidirectional messaging
+            await unthreadService.registerTicketConfirmation({
+                messageId: statusMsg.message_id,
+                ticketId: ticketResponse.id,
+                friendlyId: ticketResponse.friendlyId,
+                customerId: customer.id,
+                chatId: chatId,
+                telegramUserId: userId
+            });
+
+            // Clear user state
+            await BotsStore.clearUserState(userId);
+
+            // Update success message
+            const successMessage = 
+                "✅ **Ticket Created Successfully!**\n\n" +
+                `🎫 **Ticket ID:** ${ticketResponse.friendlyId}\n` +
+                `📝 **Summary:** ${userState.summary}\n` +
+                `👤 **Created by:** ${userData.name || ctx.from?.first_name}\n` +
+                `📧 **Email:** ${userData.email || userState.email}\n\n` +
+                "Our support team will respond shortly. You can reply to this message to add more information to your ticket.";
+
+            await ctx.editMessageText(successMessage, { parse_mode: 'Markdown' });
+
+            LogEngine.info('Support ticket created successfully', {
+                ticketId: ticketResponse.id,
+                friendlyId: ticketResponse.friendlyId,
+                userId,
+                chatId,
+                summary: userState.summary.substring(0, 100)
+            });
+
+            return true;
+
+        } catch (error) {
+            logError(error, 'SupportConversationProcessor.createTicket', { userId, chatId });
+            
+            // Clear user state on error
+            await BotsStore.clearUserState(userId);
+
+            await ctx.reply(
+                "❌ **Error Creating Ticket**\n\n" +
+                "Sorry, there was an error creating your support ticket. Please try again later or contact an administrator.\n\n" +
+                "Use `/support` to start over.",
+                { parse_mode: 'Markdown' }
+            );
+
+            return true;
         }
     }
 }

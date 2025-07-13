@@ -12,6 +12,8 @@ import type { BotContext } from '../../types/index.js';
 import type { DmSetupSession } from '../../sdk/types.js';
 import { logError } from '../utils/errorHandler.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
+import { BotsStore } from '../../sdk/bots-brain/index.js';
+import * as unthreadService from '../../services/unthread.js';
 
 // Clean Code: Extract constants to avoid magic strings and numbers
 const CALLBACK_CONSTANTS = {
@@ -68,12 +70,31 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
 
     private async handleContinue(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("✅ Continuing support form...");
+        
+        const userId = ctx.from?.id;
+        if (!userId) return false;
+
+        const userState = await BotsStore.getUserState(userId);
+        if (!userState) {
+            await ctx.editMessageText(
+                "❌ **No Active Session**\n\nNo active support session found. Use `/support` to start a new ticket.",
+                { parse_mode: 'Markdown' }
+            );
+            return true;
+        }
+
+        const stepText = userState.field === 'summary' ? 
+            "Please describe your issue:" : 
+            "Please provide your email address:";
+
+        const placeholder = userState.field === 'summary' ? 
+            "Describe your issue..." : 
+            "your@email.com";
+
         await ctx.editMessageText(
-            `📝 **Support Form Continued**
-
-This demonstrates the clean callback handling architecture.
-
-*In the full implementation, this would resume the form!*`,
+            `🎫 **Continue Support Ticket**\n\n` +
+            `**Step ${userState.step} of ${userState.totalSteps}:** ${stepText}\n\n` +
+            "*Type your response below:*",
             { parse_mode: 'Markdown' }
         );
         return true;
@@ -81,12 +102,31 @@ This demonstrates the clean callback handling architecture.
 
     private async handleRestart(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("🔄 Restarting support form...");
+        
+        const userId = ctx.from?.id;
+        if (!userId) return false;
+
+        // Clear existing state
+        await BotsStore.clearUserState(userId);
+
+        // Check if user has email
+        const userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
+        const hasEmail = userData?.email;
+
+        // Set new state
+        await BotsStore.setUserState(userId, {
+            field: 'summary',
+            step: 1,
+            totalSteps: hasEmail ? 1 : 2,
+            hasEmail: !!hasEmail,
+            chatId: ctx.chat!.id,
+            startedAt: new Date().toISOString()
+        });
+
         await ctx.editMessageText(
-            `🔄 **Support Form Restarted**
-
-This shows how clean architecture makes flow control easy.
-
-*Starting fresh form would happen here!*`,
+            `🔄 **Support Ticket Restarted**\n\n` +
+            `**Step 1 of ${hasEmail ? 1 : 2}:** Please describe your issue.\n\n` +
+            "*Type your message below:*",
             { parse_mode: 'Markdown' }
         );
         return true;
@@ -94,12 +134,17 @@ This shows how clean architecture makes flow control easy.
 
     private async handleCancel(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("❌ Support form cancelled");
+        
+        const userId = ctx.from?.id;
+        if (!userId) return false;
+
+        // Clear user state
+        await BotsStore.clearUserState(userId);
+
         await ctx.editMessageText(
-            `❌ **Support Form Cancelled**
-
-Clean architecture makes cancellation handling straightforward.
-
-*Form state would be cleared here!*`,
+            `❌ **Support Ticket Cancelled**\n\n` +
+            "Your support ticket creation has been cancelled. No ticket was created.\n\n" +
+            "Use `/support` anytime to create a new support ticket.",
             { parse_mode: 'Markdown' }
         );
         return true;
@@ -107,12 +152,31 @@ Clean architecture makes cancellation handling straightforward.
 
     private async handleCreateNew(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("🎫 Creating new ticket...");
+        
+        const userId = ctx.from?.id;
+        if (!userId) return false;
+
+        // Clear any existing state
+        await BotsStore.clearUserState(userId);
+
+        // Check if user has email
+        const userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
+        const hasEmail = userData?.email;
+
+        // Set new state
+        await BotsStore.setUserState(userId, {
+            field: 'summary',
+            step: 1,
+            totalSteps: hasEmail ? 1 : 2,
+            hasEmail: !!hasEmail,
+            chatId: ctx.chat!.id,
+            startedAt: new Date().toISOString()
+        });
+
         await ctx.editMessageText(
-            `🎫 **New Ticket Creation**
-
-This demonstrates clean callback-to-command handoff.
-
-*New support flow would start here!*`,
+            `🎫 **Create New Support Ticket**\n\n` +
+            `**Step 1 of ${hasEmail ? 1 : 2}:** Please describe your issue or question.\n\n` +
+            "*Type your message below:*",
             { parse_mode: 'Markdown' }
         );
         return true;
