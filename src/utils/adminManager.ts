@@ -1,19 +1,23 @@
 /**
  * Admin Management Utilities
- * 
+ *
  * Utility functions for managing admin profiles, validation, and setup sessions
  * for the Unthread Telegram Bot.
- * 
+ *
  * @author Waren Gonzaga, WG Technology Labs
  * @version 1.0.0
  * @since 2025
  */
 
-import { LogEngine } from '@wgtechlabs/log-engine';
-import { isAdminUser } from '../config/env.js';
-import { BotsStore } from '../sdk/bots-brain/index.js';
-import type { AdminProfile, SetupSession, DmSetupSession } from '../sdk/types.js';
-import { v4 as uuidv4 } from 'uuid';
+import { LogEngine } from '@wgtechlabs/log-engine'
+import { isAdminUser } from '../config/env.js'
+import { BotsStore } from '../sdk/bots-brain/index.js'
+import type {
+  AdminProfile,
+  SetupSession,
+  DmSetupSession,
+} from '../sdk/types.js'
+import { v4 as uuidv4 } from 'uuid'
 
 /**
  * Determines whether the specified Telegram user ID is listed as an admin in the environment configuration.
@@ -22,7 +26,7 @@ import { v4 as uuidv4 } from 'uuid';
  * @returns True if the user ID is recognized as an admin; otherwise, false
  */
 export function isValidAdmin(telegramUserId: number): boolean {
-  return isAdminUser(telegramUserId);
+  return isAdminUser(telegramUserId)
 }
 
 /**
@@ -31,16 +35,18 @@ export function isValidAdmin(telegramUserId: number): boolean {
  * @param telegramUserId - The Telegram user ID of the admin to check
  * @returns True if the admin's profile exists and is activated; otherwise, false
  */
-export async function isActivatedAdmin(telegramUserId: number): Promise<boolean> {
+export async function isActivatedAdmin(
+  telegramUserId: number
+): Promise<boolean> {
   try {
-    const adminProfile = await BotsStore.getAdminProfile(telegramUserId);
-    return adminProfile?.isActivated === true;
+    const adminProfile = await BotsStore.getAdminProfile(telegramUserId)
+    return adminProfile?.isActivated === true
   } catch (error) {
     LogEngine.error('Error checking admin activation status', {
       error: (error as Error).message,
-      telegramUserId
-    });
-    return false;
+      telegramUserId,
+    })
+    return false
   }
 }
 
@@ -52,14 +58,15 @@ export async function isActivatedAdmin(telegramUserId: number): Promise<boolean>
  */
 export async function canStartSetup(adminId: number): Promise<boolean> {
   try {
-    const existingSession = await BotsStore.getActiveSetupSessionByAdmin(adminId);
-    return !existingSession;
+    const existingSession =
+      await BotsStore.getActiveSetupSessionByAdmin(adminId)
+    return !existingSession
   } catch (error) {
     LogEngine.error('Error checking setup session availability', {
       error: (error as Error).message,
-      adminId
-    });
-    return false;
+      adminId,
+    })
+    return false
   }
 }
 
@@ -73,38 +80,42 @@ export async function canStartSetup(adminId: number): Promise<boolean> {
  * @param username - Optional Telegram username of the admin
  * @returns True if the profile was created successfully; otherwise, false
  */
-export async function createAdminProfile(telegramUserId: number, dmChatId: number, username?: string): Promise<boolean> {
+export async function createAdminProfile(
+  telegramUserId: number,
+  dmChatId: number,
+  username?: string
+): Promise<boolean> {
   try {
     const adminProfile: AdminProfile = {
       telegramUserId,
       dmChatId,
       isActivated: true,
       activatedAt: new Date().toISOString(),
-      lastActiveAt: new Date().toISOString()
-    };
-    
-    if (username) {
-      adminProfile.telegramUsername = username;
+      lastActiveAt: new Date().toISOString(),
     }
 
-    const success = await BotsStore.storeAdminProfile(adminProfile);
-    
+    if (username) {
+      adminProfile.telegramUsername = username
+    }
+
+    const success = await BotsStore.storeAdminProfile(adminProfile)
+
     if (success) {
       LogEngine.info('Admin profile created successfully', {
         telegramUserId,
         username,
-        dmChatId
-      });
+        dmChatId,
+      })
     }
 
-    return success;
+    return success
   } catch (error) {
     LogEngine.error('Error creating admin profile', {
       error: (error as Error).message,
       telegramUserId,
-      username
-    });
-    return false;
+      username,
+    })
+    return false
   }
 }
 
@@ -113,16 +124,18 @@ export async function createAdminProfile(telegramUserId: number, dmChatId: numbe
  *
  * @param telegramUserId - The Telegram user ID of the admin whose activity timestamp is updated
  */
-export async function updateAdminLastActive(telegramUserId: number): Promise<void> {
+export async function updateAdminLastActive(
+  telegramUserId: number
+): Promise<void> {
   try {
     await BotsStore.updateAdminProfile(telegramUserId, {
-      lastActiveAt: new Date().toISOString()
-    });
+      lastActiveAt: new Date().toISOString(),
+    })
   } catch (error) {
     LogEngine.error('Error updating admin last active time', {
       error: (error as Error).message,
-      telegramUserId
-    });
+      telegramUserId,
+    })
   }
 }
 
@@ -135,14 +148,14 @@ export async function updateAdminLastActive(telegramUserId: number): Promise<voi
  * @returns The session ID if creation succeeds, or null if the session could not be created
  */
 export async function createSetupSession(
-  groupChatId: number, 
-  groupChatName: string, 
+  groupChatId: number,
+  groupChatName: string,
   initiatingAdminId: number
 ): Promise<string | null> {
   try {
-    const sessionId = uuidv4();
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + 3 * 60 * 1000); // 3 minutes from now
+    const sessionId = uuidv4()
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + 3 * 60 * 1000) // 3 minutes from now
 
     const session: SetupSession = {
       groupChatId,
@@ -152,30 +165,30 @@ export async function createSetupSession(
       status: 'in_progress',
       startedAt: now.toISOString(),
       expiresAt: expiresAt.toISOString(),
-      currentStep: 'customer_selection'
-    };
+      currentStep: 'customer_selection',
+    }
 
-    const success = await BotsStore.storeSetupSession(session);
-    
+    const success = await BotsStore.storeSetupSession(session)
+
     if (success) {
       LogEngine.info('Setup session created successfully', {
         sessionId,
         groupChatId,
         groupChatName,
         initiatingAdminId,
-        expiresAt: expiresAt.toISOString()
-      });
-      return sessionId;
+        expiresAt: expiresAt.toISOString(),
+      })
+      return sessionId
     }
 
-    return null;
+    return null
   } catch (error) {
     LogEngine.error('Error creating setup session', {
       error: (error as Error).message,
       groupChatId,
-      initiatingAdminId
-    });
-    return null;
+      initiatingAdminId,
+    })
+    return null
   }
 }
 
@@ -187,35 +200,35 @@ export async function createSetupSession(
  * @param sendMessage - A function to send a message to a specific chat ID
  */
 export async function notifyOtherAdmins(
-  initiatingAdminId: number, 
+  initiatingAdminId: number,
   message: string,
   sendMessage: (chatId: number, message: string) => Promise<void>
 ): Promise<void> {
   try {
-    const activatedAdmins = await getActivatedAdmins();
-    
+    const activatedAdmins = await getActivatedAdmins()
+
     for (const admin of activatedAdmins) {
       if (admin.telegramUserId !== initiatingAdminId) {
         try {
-          await sendMessage(admin.dmChatId, message);
+          await sendMessage(admin.dmChatId, message)
           LogEngine.info('Notification sent to admin', {
             adminId: admin.telegramUserId,
-            initiatingAdminId
-          });
+            initiatingAdminId,
+          })
         } catch (error) {
           LogEngine.error('Failed to send notification to admin', {
             error: (error as Error).message,
             adminId: admin.telegramUserId,
-            initiatingAdminId
-          });
+            initiatingAdminId,
+          })
         }
       }
     }
   } catch (error) {
     LogEngine.error('Error in notifyOtherAdmins', {
       error: (error as Error).message,
-      initiatingAdminId
-    });
+      initiatingAdminId,
+    })
   }
 }
 
@@ -225,9 +238,9 @@ export async function notifyOtherAdmins(
  * @returns `true` if the session is expired; otherwise, `false`.
  */
 export function isSessionExpired(session: SetupSession): boolean {
-  const now = new Date();
-  const expiresAt = new Date(session.expiresAt);
-  return now > expiresAt;
+  const now = new Date()
+  const expiresAt = new Date(session.expiresAt)
+  return now > expiresAt
 }
 
 /**
@@ -237,12 +250,12 @@ export function isSessionExpired(session: SetupSession): boolean {
  */
 export async function cleanupExpiredSessions(): Promise<number> {
   try {
-    return await BotsStore.cleanupExpiredSessions();
+    return await BotsStore.cleanupExpiredSessions()
   } catch (error) {
     LogEngine.error('Error cleaning up expired sessions', {
-      error: (error as Error).message
-    });
-    return 0;
+      error: (error as Error).message,
+    })
+    return 0
   }
 }
 
@@ -253,10 +266,10 @@ export async function cleanupExpiredSessions(): Promise<number> {
  * @returns The number of minutes remaining until expiration, or 0 if expired
  */
 export function getSessionTimeRemaining(session: SetupSession): number {
-  const now = new Date();
-  const expiresAt = new Date(session.expiresAt);
-  const remainingMs = expiresAt.getTime() - now.getTime();
-  return Math.max(0, Math.ceil(remainingMs / (1000 * 60)));
+  const now = new Date()
+  const expiresAt = new Date(session.expiresAt)
+  const remainingMs = expiresAt.getTime() - now.getTime()
+  return Math.max(0, Math.ceil(remainingMs / (1000 * 60)))
 }
 
 // ================================
@@ -272,14 +285,14 @@ export function getSessionTimeRemaining(session: SetupSession): number {
  * @returns The session ID if creation succeeds, or null if it fails
  */
 export async function createDmSetupSession(
-  adminId: number, 
-  groupChatId: number, 
+  adminId: number,
+  groupChatId: number,
   groupChatName: string
 ): Promise<string | null> {
   try {
-    const sessionId = uuidv4();
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + 20 * 60 * 1000); // 20 minutes for DM sessions (extended for complex flows)
+    const sessionId = uuidv4()
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + 20 * 60 * 1000) // 20 minutes for DM sessions (extended for complex flows)
 
     const dmSession: DmSetupSession = {
       sessionId,
@@ -291,29 +304,29 @@ export async function createDmSetupSession(
       expiresAt: expiresAt.toISOString(),
       currentStep: 'welcome',
       stepData: {},
-      messageIds: []
-    };
+      messageIds: [],
+    }
 
-    const success = await BotsStore.storeDmSetupSession(dmSession);
+    const success = await BotsStore.storeDmSetupSession(dmSession)
     if (success) {
       LogEngine.info('DM setup session created', {
         sessionId,
         adminId,
         groupChatId,
-        groupChatName
-      });
-      return sessionId;
+        groupChatName,
+      })
+      return sessionId
     } else {
-      LogEngine.error('Failed to store DM setup session');
-      return null;
+      LogEngine.error('Failed to store DM setup session')
+      return null
     }
   } catch (error) {
     LogEngine.error('Error creating DM setup session', {
       error: (error as Error).message,
       adminId,
-      groupChatId
-    });
-    return null;
+      groupChatId,
+    })
+    return null
   }
 }
 
@@ -324,14 +337,15 @@ export async function createDmSetupSession(
  */
 export async function canStartDmSetup(adminId: number): Promise<boolean> {
   try {
-    const existingSession = await BotsStore.getActiveDmSetupSessionByAdmin(adminId);
-    return !existingSession;
+    const existingSession =
+      await BotsStore.getActiveDmSetupSessionByAdmin(adminId)
+    return !existingSession
   } catch (error) {
     LogEngine.error('Error checking DM setup session availability', {
       error: (error as Error).message,
-      adminId
-    });
-    return false;
+      adminId,
+    })
+    return false
   }
 }
 
@@ -341,9 +355,9 @@ export async function canStartDmSetup(adminId: number): Promise<boolean> {
  * @returns `true` if the session has expired; otherwise, `false`.
  */
 export function isDmSessionExpired(session: DmSetupSession): boolean {
-  const now = new Date();
-  const expiresAt = new Date(session.expiresAt);
-  return now > expiresAt;
+  const now = new Date()
+  const expiresAt = new Date(session.expiresAt)
+  return now > expiresAt
 }
 
 /**
@@ -353,10 +367,10 @@ export function isDmSessionExpired(session: DmSetupSession): boolean {
  * @returns The number of minutes remaining until expiration, or 0 if expired
  */
 export function getDmSessionTimeRemaining(session: DmSetupSession): number {
-  const now = new Date();
-  const expiresAt = new Date(session.expiresAt);
-  const remainingMs = expiresAt.getTime() - now.getTime();
-  return Math.max(0, Math.ceil(remainingMs / (1000 * 60)));
+  const now = new Date()
+  const expiresAt = new Date(session.expiresAt)
+  const remainingMs = expiresAt.getTime() - now.getTime()
+  return Math.max(0, Math.ceil(remainingMs / (1000 * 60)))
 }
 
 /**
@@ -368,35 +382,35 @@ export function getDmSessionTimeRemaining(session: DmSetupSession): number {
  * @returns True if the session was successfully updated; otherwise, false
  */
 export async function updateDmSetupSessionStep(
-  sessionId: string, 
-  step: string, 
+  sessionId: string,
+  step: string,
   stepData?: Record<string, any>
 ): Promise<boolean> {
   try {
     const updates: Partial<DmSetupSession> = {
-      currentStep: step
-    };
-
-    if (stepData) {
-      updates.stepData = stepData;
+      currentStep: step,
     }
 
-    const success = await BotsStore.updateDmSetupSession(sessionId, updates);
+    if (stepData) {
+      updates.stepData = stepData
+    }
+
+    const success = await BotsStore.updateDmSetupSession(sessionId, updates)
     if (success) {
       LogEngine.info('DM setup session step updated', {
         sessionId,
         step,
-        stepData
-      });
+        stepData,
+      })
     }
-    return success;
+    return success
   } catch (error) {
     LogEngine.error('Error updating DM setup session step', {
       error: (error as Error).message,
       sessionId,
-      step
-    });
-    return false;
+      step,
+    })
+    return false
   }
 }
 
@@ -407,22 +421,25 @@ export async function updateDmSetupSessionStep(
  * @param messageId - The message ID to add for tracking
  * @returns True if the message ID was successfully added; otherwise, false
  */
-export async function addDmSessionMessageId(sessionId: string, messageId: number): Promise<boolean> {
+export async function addDmSessionMessageId(
+  sessionId: string,
+  messageId: number
+): Promise<boolean> {
   try {
-    const session = await BotsStore.getDmSetupSession(sessionId);
-    if (!session) return false;
+    const session = await BotsStore.getDmSetupSession(sessionId)
+    if (!session) return false
 
-    const messageIds = session.messageIds || [];
-    messageIds.push(messageId);
+    const messageIds = session.messageIds || []
+    messageIds.push(messageId)
 
-    return await BotsStore.updateDmSetupSession(sessionId, { messageIds });
+    return await BotsStore.updateDmSetupSession(sessionId, { messageIds })
   } catch (error) {
     LogEngine.error('Error adding message ID to DM session', {
       error: (error as Error).message,
       sessionId,
-      messageId
-    });
-    return false;
+      messageId,
+    })
+    return false
   }
 }
 
@@ -432,23 +449,25 @@ export async function addDmSessionMessageId(sessionId: string, messageId: number
  * @param sessionId - The unique identifier of the DM setup session to complete
  * @returns True if the session was successfully marked as completed; otherwise, false
  */
-export async function completeDmSetupSession(sessionId: string): Promise<boolean> {
+export async function completeDmSetupSession(
+  sessionId: string
+): Promise<boolean> {
   try {
     const success = await BotsStore.updateDmSetupSession(sessionId, {
       status: 'completed',
-      currentStep: 'completed'
-    });
+      currentStep: 'completed',
+    })
 
     if (success) {
-      LogEngine.info('DM setup session completed', { sessionId });
+      LogEngine.info('DM setup session completed', { sessionId })
     }
-    return success;
+    return success
   } catch (error) {
     LogEngine.error('Error completing DM setup session', {
       error: (error as Error).message,
-      sessionId
-    });
-    return false;
+      sessionId,
+    })
+    return false
   }
 }
 
@@ -458,42 +477,44 @@ export async function completeDmSetupSession(sessionId: string): Promise<boolean
  * @param sessionId - The identifier of the DM setup session to cancel
  * @returns True if the session was successfully cancelled; otherwise, false
  */
-export async function cancelDmSetupSession(sessionId: string): Promise<boolean> {
+export async function cancelDmSetupSession(
+  sessionId: string
+): Promise<boolean> {
   try {
     const success = await BotsStore.updateDmSetupSession(sessionId, {
       status: 'cancelled',
-      currentStep: 'cancelled'
-    });
+      currentStep: 'cancelled',
+    })
 
     if (success) {
-      LogEngine.info('DM setup session cancelled', { sessionId });
+      LogEngine.info('DM setup session cancelled', { sessionId })
     }
-    return success;
+    return success
   } catch (error) {
     LogEngine.error('Error cancelling DM setup session', {
       error: (error as Error).message,
-      sessionId
-    });
-    return false;
+      sessionId,
+    })
+    return false
   }
 }
 
 /**
  * Admin Notification System
- * 
+ *
  * Functions to notify all activated admins of configuration changes,
  * template updates, and other important events.
  */
 
-import { GlobalTemplateManager } from './globalTemplateManager.js';
+import { GlobalTemplateManager } from './globalTemplateManager.js'
 
 interface NotificationContext {
-  groupId: number;
-  groupTitle?: string;
-  adminName?: string;
-  changeType: string;
-  changeDetails?: string;
-  timestamp: string;
+  groupId: number
+  groupTitle?: string
+  adminName?: string
+  changeType: string
+  changeDetails?: string
+  timestamp: string
 }
 
 /**
@@ -502,16 +523,18 @@ interface NotificationContext {
  * @param groupChatId - Optional group chat ID for logging context
  * @returns An array of admin profiles that are marked as activated
  */
-export async function getActivatedAdmins(groupChatId?: number): Promise<AdminProfile[]> {
+export async function getActivatedAdmins(
+  groupChatId?: number
+): Promise<AdminProfile[]> {
   try {
-    const allAdmins = await BotsStore.getAllAdminProfiles();
-    return allAdmins.filter(admin => admin.isActivated);
+    const allAdmins = await BotsStore.getAllAdminProfiles()
+    return allAdmins.filter((admin) => admin.isActivated)
   } catch (error) {
     LogEngine.error('Error fetching activated admins', {
       error: (error as Error).message,
-      groupChatId
-    });
-    return [];
+      groupChatId,
+    })
+    return []
   }
 }
 
@@ -525,35 +548,35 @@ export async function getActivatedAdmins(groupChatId?: number): Promise<AdminPro
  * @returns True if the notification was sent, false otherwise
  */
 async function sendNotificationToAdmin(
-  adminProfile: AdminProfile, 
+  adminProfile: AdminProfile,
   messageText: string,
   bot: any
 ): Promise<boolean> {
   try {
     if (!adminProfile.dmChatId) {
       LogEngine.warn('Admin has no DM chat ID, skipping notification', {
-        adminId: adminProfile.telegramUserId
-      });
-      return false;
+        adminId: adminProfile.telegramUserId,
+      })
+      return false
     }
 
-    await bot.sendMessage(adminProfile.dmChatId, messageText, { 
+    await bot.sendMessage(adminProfile.dmChatId, messageText, {
       parse_mode: 'HTML',
-      disable_web_page_preview: true 
-    });
-    
+      disable_web_page_preview: true,
+    })
+
     LogEngine.info('Notification sent to admin', {
       adminId: adminProfile.telegramUserId,
-      dmChatId: adminProfile.dmChatId
-    });
-    return true;
+      dmChatId: adminProfile.dmChatId,
+    })
+    return true
   } catch (error) {
     LogEngine.error('Failed to send notification to admin', {
       error: (error as Error).message,
       adminId: adminProfile.telegramUserId,
-      dmChatId: adminProfile.dmChatId
-    });
-    return false;
+      dmChatId: adminProfile.dmChatId,
+    })
+    return false
   }
 }
 
@@ -579,16 +602,18 @@ export async function notifyAdminsOfConfigChange(
   groupTitle?: string
 ): Promise<{ success: number; failed: number; skipped: number }> {
   try {
-    const admins = await getActivatedAdmins(groupChatId);
-    const filteredAdmins = admins.filter(admin => admin.telegramUserId !== initiatingAdminId);
-    
+    const admins = await getActivatedAdmins(groupChatId)
+    const filteredAdmins = admins.filter(
+      (admin) => admin.telegramUserId !== initiatingAdminId
+    )
+
     if (filteredAdmins.length === 0) {
       LogEngine.info('No admins to notify (excluding initiator)', {
         groupChatId,
         initiatingAdminId,
-        totalAdmins: admins.length
-      });
-      return { success: 0, failed: 0, skipped: admins.length };
+        totalAdmins: admins.length,
+      })
+      return { success: 0, failed: 0, skipped: admins.length }
     }
 
     const context: NotificationContext = {
@@ -596,8 +621,8 @@ export async function notifyAdminsOfConfigChange(
       groupTitle: groupTitle || `Group ${groupChatId}`,
       changeType,
       changeDetails,
-      timestamp: new Date().toISOString()
-    };
+      timestamp: new Date().toISOString(),
+    }
 
     // Simple admin notification message (could be enhanced with global templates later)
     const messageText = `🔧 <b>Configuration Update</b>
@@ -609,22 +634,22 @@ export async function notifyAdminsOfConfigChange(
 
 ${context.adminName ? `<b>By:</b> ${context.adminName}` : ''}
 
-Group configuration has been updated.`;
+Group configuration has been updated.`
 
-    let successCount = 0;
-    let failedCount = 0;
+    let successCount = 0
+    let failedCount = 0
 
     // Send notifications to all filtered admins
     for (const admin of filteredAdmins) {
-      const success = await sendNotificationToAdmin(admin, messageText, bot);
+      const success = await sendNotificationToAdmin(admin, messageText, bot)
       if (success) {
-        successCount++;
+        successCount++
       } else {
-        failedCount++;
+        failedCount++
       }
-      
+
       // Small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100))
     }
 
     LogEngine.info('Admin notification batch completed', {
@@ -632,21 +657,21 @@ Group configuration has been updated.`;
       changeType,
       success: successCount,
       failed: failedCount,
-      skipped: admins.length - filteredAdmins.length
-    });
+      skipped: admins.length - filteredAdmins.length,
+    })
 
-    return { 
-      success: successCount, 
-      failed: failedCount, 
-      skipped: admins.length - filteredAdmins.length 
-    };
+    return {
+      success: successCount,
+      failed: failedCount,
+      skipped: admins.length - filteredAdmins.length,
+    }
   } catch (error) {
     LogEngine.error('Error in admin notification system', {
       error: (error as Error).message,
       groupChatId,
-      changeType
-    });
-    return { success: 0, failed: 0, skipped: 0 };
+      changeType,
+    })
+    return { success: 0, failed: 0, skipped: 0 }
   }
 }
 
@@ -673,8 +698,8 @@ export async function notifyAdminsOfTemplateChange(
   bot: any,
   groupTitle?: string
 ): Promise<{ success: number; failed: number; skipped: number }> {
-  const changeDetails = `Template "${templateName}" (${templateType}) was ${action}`;
-  
+  const changeDetails = `Template "${templateName}" (${templateType}) was ${action}`
+
   return await notifyAdminsOfConfigChange(
     groupChatId,
     initiatingAdminId,
@@ -682,7 +707,7 @@ export async function notifyAdminsOfTemplateChange(
     changeDetails,
     bot,
     groupTitle
-  );
+  )
 }
 
 /**
@@ -700,8 +725,8 @@ export async function notifyAdminsOfSetupCompletion(
   bot: any,
   groupTitle?: string
 ): Promise<{ success: number; failed: number; skipped: number }> {
-  const changeDetails = 'Group setup and configuration completed';
-  
+  const changeDetails = 'Group setup and configuration completed'
+
   return await notifyAdminsOfConfigChange(
     groupChatId,
     completingAdminId,
@@ -709,7 +734,7 @@ export async function notifyAdminsOfSetupCompletion(
     changeDetails,
     bot,
     groupTitle
-  );
+  )
 }
 
 /**
@@ -723,34 +748,38 @@ export async function reportNotificationFailures(
   changeType: string,
   bot: any
 ): Promise<void> {
-  if (failedCount === 0) return;
+  if (failedCount === 0) return
 
   try {
-    const admins = await getActivatedAdmins(groupChatId);
-    const workingAdmins: AdminProfile[] = [];
+    const admins = await getActivatedAdmins(groupChatId)
+    const workingAdmins: AdminProfile[] = []
 
     // Find admins who can receive notifications using non-intrusive check
     for (const admin of admins) {
       if (admin.dmChatId) {
         try {
           // Non-intrusive check: verify chat accessibility without sending visible messages
-          await bot.api.getChat(admin.dmChatId);
-          
+          await bot.api.getChat(admin.dmChatId)
+
           // Additional check: verify bot can send messages by checking chat permissions
           // This doesn't send a message but checks if the chat allows messaging
-          const chatMember = await bot.api.getChatMember(admin.dmChatId, bot.botInfo.id);
-          const canSendMessages = chatMember.status !== 'kicked' && chatMember.status !== 'left';
-          
+          const chatMember = await bot.api.getChatMember(
+            admin.dmChatId,
+            bot.botInfo.id
+          )
+          const canSendMessages =
+            chatMember.status !== 'kicked' && chatMember.status !== 'left'
+
           if (canSendMessages) {
-            workingAdmins.push(admin);
+            workingAdmins.push(admin)
           }
         } catch (error) {
           // Admin's DM is not accessible - chat doesn't exist, bot is blocked, etc.
           LogEngine.warn('Admin DM not accessible for failure report', {
             adminId: admin.telegramUserId,
             dmChatId: admin.dmChatId,
-            error: error instanceof Error ? error.message : String(error)
-          });
+            error: error instanceof Error ? error.message : String(error),
+          })
         }
       }
     }
@@ -759,17 +788,17 @@ export async function reportNotificationFailures(
       LogEngine.error('No admins available to report notification failures', {
         groupChatId,
         failedCount,
-        changeType
-      });
-      return;
+        changeType,
+      })
+      return
     }
 
     const context = {
       groupId: groupChatId,
       failedCount,
       changeType,
-      timestamp: new Date().toISOString()
-    };
+      timestamp: new Date().toISOString(),
+    }
 
     // Simple notification failure message (could be enhanced with global templates later)
     const messageText = `⚠️ **Admin Notification: Delivery Issues**
@@ -783,20 +812,19 @@ Some administrators may not have received configuration change notifications. Th
 • Deleted private chats
 • Network connectivity issues
 
-Please check your private chat with the bot.`;
+Please check your private chat with the bot.`
 
     // Send failure report to working admins
     for (const admin of workingAdmins) {
-      await sendNotificationToAdmin(admin, messageText, bot);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await sendNotificationToAdmin(admin, messageText, bot)
+      await new Promise((resolve) => setTimeout(resolve, 100))
     }
-
   } catch (error) {
     LogEngine.error('Error reporting notification failures', {
       error: (error as Error).message,
       groupChatId,
       failedCount,
-      changeType
-    });
+      changeType,
+    })
   }
 }

@@ -1,37 +1,37 @@
 /**
  * Unthread Telegram Bot - Bot Permission Management Module
- * 
+ *
  * Provides comprehensive utilities for checking and managing bot permissions in
  * Telegram groups and channels. This module ensures the bot has the necessary
  * administrative privileges to perform its functions effectively.
- * 
+ *
  * Core Features:
  * - Bot admin permission verification in groups
  * - Permission requirement guidance for users
  * - Automated permission checking with user-friendly feedback
  * - Retry mechanisms for permission validation
  * - Integration with group setup workflows
- * 
+ *
  * Permission Requirements:
  * - Administrator status in target groups
  * - Message sending and editing permissions
  * - Access to group member information
  * - Ability to read message history
- * 
+ *
  * Error Handling:
  * - Clear messaging when permissions are insufficient
  * - Step-by-step guidance for granting permissions
  * - Graceful fallbacks when permission checks fail
  * - Comprehensive logging for debugging permission issues
- * 
+ *
  * @author Waren Gonzaga, WG Technology Labs
  * @version 1.0.0
  * @since 2025
  */
 
-import type { BotContext } from '../types/index.js';
-import { InlineKeyboardMarkup } from 'telegraf/typings/core/types/typegram';
-import { LogEngine } from '@wgtechlabs/log-engine';
+import type { BotContext } from '../types/index.js'
+import { InlineKeyboardMarkup } from 'telegraf/typings/core/types/typegram'
+import { LogEngine } from '@wgtechlabs/log-engine'
 
 /**
  * Determines whether the provided chat object represents a group or supergroup by checking for a string `title` property.
@@ -40,7 +40,12 @@ import { LogEngine } from '@wgtechlabs/log-engine';
  * @returns True if the chat has a string `title` property, indicating it is a group or supergroup
  */
 function chatHasTitle(chat: any): chat is { title: string } {
-  return chat && typeof chat === 'object' && 'title' in chat && typeof chat.title === 'string';
+  return (
+    chat &&
+    typeof chat === 'object' &&
+    'title' in chat &&
+    typeof chat.title === 'string'
+  )
 }
 
 /**
@@ -50,7 +55,7 @@ function chatHasTitle(chat: any): chat is { title: string } {
  * @returns The chat's title or the provided fallback
  */
 function getChatTitle(ctx: BotContext, fallback: string = 'this chat'): string {
-  return chatHasTitle(ctx.chat) ? ctx.chat.title : fallback;
+  return chatHasTitle(ctx.chat) ? ctx.chat.title : fallback
 }
 
 /**
@@ -64,30 +69,33 @@ export async function isBotAdmin(ctx: BotContext): Promise<boolean> {
   try {
     // Only check in group chats (not private messages)
     if (ctx.chat?.type === 'private') {
-      return true; // Always "admin" in private chats
+      return true // Always "admin" in private chats
     }
 
     if (!ctx.chat) {
-      LogEngine.error('[BotPermissions] No chat context available');
-      return false;
+      LogEngine.error('[BotPermissions] No chat context available')
+      return false
     }
 
     // Get bot's user ID
-    const botUser = await ctx.telegram.getMe();
-    const botId = botUser.id;
+    const botUser = await ctx.telegram.getMe()
+    const botId = botUser.id
 
     // Get chat member info for the bot
-    const chatMember = await ctx.telegram.getChatMember(ctx.chat.id, botId);
-    
+    const chatMember = await ctx.telegram.getChatMember(ctx.chat.id, botId)
+
     // Check if bot has admin status
-    const isAdmin = chatMember.status === 'administrator' || chatMember.status === 'creator';
-    
-    LogEngine.info(`[BotPermissions] Bot admin status in chat ${ctx.chat.id}: ${isAdmin ? 'ADMIN' : 'NOT_ADMIN'} (status: ${chatMember.status})`);
-    
-    return isAdmin;
+    const isAdmin =
+      chatMember.status === 'administrator' || chatMember.status === 'creator'
+
+    LogEngine.info(
+      `[BotPermissions] Bot admin status in chat ${ctx.chat.id}: ${isAdmin ? 'ADMIN' : 'NOT_ADMIN'} (status: ${chatMember.status})`
+    )
+
+    return isAdmin
   } catch (error) {
-    LogEngine.error('[BotPermissions] Error checking bot admin status:', error);
-    return false;
+    LogEngine.error('[BotPermissions] Error checking bot admin status:', error)
+    return false
   }
 }
 
@@ -96,15 +104,17 @@ export async function isBotAdmin(ctx: BotContext): Promise<boolean> {
  *
  * @returns `true` if the bot is an admin; otherwise, sends a message requesting admin rights and returns `false`.
  */
-export async function checkAndPromptBotAdmin(ctx: BotContext): Promise<boolean> {
-  const isAdmin = await isBotAdmin(ctx);
-  
+export async function checkAndPromptBotAdmin(
+  ctx: BotContext
+): Promise<boolean> {
+  const isAdmin = await isBotAdmin(ctx)
+
   if (!isAdmin) {
-    await sendBotNotAdminMessage(ctx);
-    return false;
+    await sendBotNotAdminMessage(ctx)
+    return false
   }
-  
-  return true;
+
+  return true
 }
 
 /**
@@ -113,9 +123,9 @@ export async function checkAndPromptBotAdmin(ctx: BotContext): Promise<boolean> 
  * If sending the message with Markdown formatting fails, a plain text fallback is sent instead.
  */
 async function sendBotNotAdminMessage(ctx: BotContext): Promise<void> {
-  const chatType = ctx.chat?.type || 'unknown';
-  const chatTitle = getChatTitle(ctx, 'this chat');
-  
+  const chatType = ctx.chat?.type || 'unknown'
+  const chatTitle = getChatTitle(ctx, 'this chat')
+
   const message = `🔐 **Bot Admin Required**
 
 To set up this group with Unthread, I need admin permissions in **${chatTitle}**.
@@ -134,43 +144,48 @@ To set up this group with Unthread, I need admin permissions in **${chatTitle}**
 • To pin important notifications
 • To moderate ticket conversations
 
-Once you've made me an admin, click the button below to continue setup.`;
+Once you've made me an admin, click the button below to continue setup.`
 
   const keyboard: InlineKeyboardMarkup = {
     inline_keyboard: [
       [
         {
           text: '🔄 Retry Setup',
-          callback_data: 'retry_bot_admin_check'
-        }
+          callback_data: 'retry_bot_admin_check',
+        },
       ],
       [
         {
           text: '❓ Help & Instructions',
-          callback_data: 'bot_admin_help'
-        }
-      ]
-    ]
-  };
+          callback_data: 'bot_admin_help',
+        },
+      ],
+    ],
+  }
 
   try {
     await ctx.reply(message, {
       parse_mode: 'Markdown',
-      reply_markup: keyboard
-    });
-    
-    LogEngine.info(`[BotPermissions] Sent bot admin required message to chat ${ctx.chat?.id}`);
+      reply_markup: keyboard,
+    })
+
+    LogEngine.info(
+      `[BotPermissions] Sent bot admin required message to chat ${ctx.chat?.id}`
+    )
   } catch (error) {
-    LogEngine.error('[BotPermissions] Error sending bot admin message:', error);
-    
+    LogEngine.error('[BotPermissions] Error sending bot admin message:', error)
+
     // Fallback message without markdown if parsing fails
     try {
       await ctx.reply(
         `🔐 Bot Admin Required\n\nTo set up this group, I need admin permissions. Please make me an administrator and try again.`,
         { reply_markup: keyboard }
-      );
+      )
     } catch (fallbackError) {
-      LogEngine.error('[BotPermissions] Error sending fallback bot admin message:', fallbackError);
+      LogEngine.error(
+        '[BotPermissions] Error sending fallback bot admin message:',
+        fallbackError
+      )
     }
   }
 }
@@ -181,11 +196,11 @@ Once you've made me an admin, click the button below to continue setup.`;
 export async function sendBotAdminHelpMessage(ctx: BotContext): Promise<void> {
   // Answer callback query if this was triggered by a callback
   if ('answerCbQuery' in ctx) {
-    await safeAnswerCallbackQuery(ctx, 'Loading help information...', 3000);
+    await safeAnswerCallbackQuery(ctx, 'Loading help information...', 3000)
   }
 
-  const chatTitle = getChatTitle(ctx, 'this group');
-  
+  const chatTitle = getChatTitle(ctx, 'this group')
+
   const helpMessage = `📋 **How to Make Me an Admin**
 
 **For Mobile Apps:**
@@ -215,38 +230,38 @@ export async function sendBotAdminHelpMessage(ctx: BotContext): Promise<void> {
 • Only admins can promote other users to admin
 • If you can't find me, try typing my username directly
 
-Need more help? Contact your Unthread administrator.`;
+Need more help? Contact your Unthread administrator.`
 
   const keyboard: InlineKeyboardMarkup = {
     inline_keyboard: [
       [
         {
           text: '🔄 I Made You Admin - Retry',
-          callback_data: 'retry_bot_admin_check'
-        }
+          callback_data: 'retry_bot_admin_check',
+        },
       ],
       [
         {
           text: '⬅️ Back to Setup',
-          callback_data: 'back_to_setup'
-        }
-      ]
-    ]
-  };
+          callback_data: 'back_to_setup',
+        },
+      ],
+    ],
+  }
 
   try {
     await ctx.reply(helpMessage, {
       parse_mode: 'Markdown',
-      reply_markup: keyboard
-    });
+      reply_markup: keyboard,
+    })
   } catch (error) {
-    LogEngine.error('[BotPermissions] Error sending bot admin help:', error);
-    
+    LogEngine.error('[BotPermissions] Error sending bot admin help:', error)
+
     // Fallback without markdown
     await ctx.reply(
       `How to Make Me an Admin:\n\n1. Go to group settings\n2. Find Administrators section\n3. Add @${ctx.botInfo?.username || 'UnthreadBot'} as admin\n4. Grant delete and pin message permissions\n5. Try setup again`,
       { reply_markup: keyboard }
-    );
+    )
   }
 }
 
@@ -258,45 +273,51 @@ Need more help? Contact your Unthread administrator.`;
  * @returns `true` if the callback query was answered successfully; `false` if the context does not support answering, times out, or encounters an error
  */
 async function safeAnswerCallbackQuery(
-  ctx: BotContext, 
-  text: string, 
+  ctx: BotContext,
+  text: string,
   timeoutMs: number = 5000
 ): Promise<boolean> {
   try {
     // Check if context has answerCbQuery method
     if (!('answerCbQuery' in ctx)) {
-      LogEngine.warn('[BotPermissions] Context does not support callback query answering');
-      return false;
+      LogEngine.warn(
+        '[BotPermissions] Context does not support callback query answering'
+      )
+      return false
     }
 
     // Create a timeout promise
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
-        reject(new Error(`Callback query answer timed out after ${timeoutMs}ms`));
-      }, timeoutMs);
-    });
+        reject(
+          new Error(`Callback query answer timed out after ${timeoutMs}ms`)
+        )
+      }, timeoutMs)
+    })
 
     // Race between the actual API call and timeout
-    await Promise.race([
-      ctx.answerCbQuery(text),
-      timeoutPromise
-    ]);
+    await Promise.race([ctx.answerCbQuery(text), timeoutPromise])
 
-    LogEngine.info(`[BotPermissions] Successfully answered callback query: "${text}"`);
-    return true;
+    LogEngine.info(
+      `[BotPermissions] Successfully answered callback query: "${text}"`
+    )
+    return true
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    LogEngine.error(`[BotPermissions] Failed to answer callback query: ${errorMessage}`);
-    
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error'
+    LogEngine.error(
+      `[BotPermissions] Failed to answer callback query: ${errorMessage}`
+    )
+
     // Log additional context for debugging
     LogEngine.error('[BotPermissions] Callback query context:', {
       chatId: ctx.chat?.id,
       chatType: ctx.chat?.type,
       hasAnswerMethod: 'answerCbQuery' in ctx,
-      text: text
-    });
-    
-    return false;
+      text: text,
+    })
+
+    return false
   }
 }
 
@@ -309,65 +330,83 @@ export async function handleRetryBotAdminCheck(ctx: BotContext): Promise<void> {
   try {
     // Answer the callback query first with robust error handling
     const queryAnswered = await safeAnswerCallbackQuery(
-      ctx, 
+      ctx,
       'Checking bot admin status...',
       3000 // 3 second timeout
-    );
-    
+    )
+
     if (!queryAnswered) {
-      LogEngine.warn('[BotPermissions] Could not answer initial callback query, continuing anyway');
+      LogEngine.warn(
+        '[BotPermissions] Could not answer initial callback query, continuing anyway'
+      )
     }
 
-    LogEngine.info(`[BotPermissions] Retrying bot admin check for chat ${ctx.chat?.id}`);
+    LogEngine.info(
+      `[BotPermissions] Retrying bot admin check for chat ${ctx.chat?.id}`
+    )
 
-    const isAdmin = await isBotAdmin(ctx);
-    
+    const isAdmin = await isBotAdmin(ctx)
+
     if (isAdmin) {
       // Success! Bot is now admin
       const successMessage = `✅ **Perfect!** I now have admin permissions.
 
-Setup can continue. Type /setup to proceed with linking this group to your Unthread customer.`;
+Setup can continue. Type /setup to proceed with linking this group to your Unthread customer.`
 
       const keyboard: InlineKeyboardMarkup = {
         inline_keyboard: [
           [
             {
               text: '▶️ Continue Setup',
-              callback_data: 'continue_setup'
-            }
-          ]
-        ]
-      };
+              callback_data: 'continue_setup',
+            },
+          ],
+        ],
+      }
 
       await ctx.reply(successMessage, {
         parse_mode: 'Markdown',
-        reply_markup: keyboard
-      });
-      
-      LogEngine.info(`[BotPermissions] Bot admin check passed for chat ${ctx.chat?.id}`);
+        reply_markup: keyboard,
+      })
+
+      LogEngine.info(
+        `[BotPermissions] Bot admin check passed for chat ${ctx.chat?.id}`
+      )
     } else {
       // Still not admin, send the prompt again
-      await sendBotNotAdminMessage(ctx);
-      LogEngine.info(`[BotPermissions] Bot admin check still failing for chat ${ctx.chat?.id}`);
+      await sendBotNotAdminMessage(ctx)
+      LogEngine.info(
+        `[BotPermissions] Bot admin check still failing for chat ${ctx.chat?.id}`
+      )
     }
   } catch (error) {
-    LogEngine.error('[BotPermissions] Error handling retry bot admin check:', error);
-    
+    LogEngine.error(
+      '[BotPermissions] Error handling retry bot admin check:',
+      error
+    )
+
     // Enhanced error handling for the fallback callback query answer
     const fallbackAnswered = await safeAnswerCallbackQuery(
       ctx,
       'Error checking status. Please try again.',
       2000 // 2 second timeout for error case
-    );
-    
+    )
+
     if (!fallbackAnswered) {
-      LogEngine.error('[BotPermissions] Failed to answer callback query in error handler');
-      
+      LogEngine.error(
+        '[BotPermissions] Failed to answer callback query in error handler'
+      )
+
       // Last resort: try a simple text response without callback query
       try {
-        await ctx.reply('❌ Error checking admin status. Please try the setup command again or contact support.');
+        await ctx.reply(
+          '❌ Error checking admin status. Please try the setup command again or contact support.'
+        )
       } catch (replyError) {
-        LogEngine.error('[BotPermissions] Failed to send fallback reply message:', replyError);
+        LogEngine.error(
+          '[BotPermissions] Failed to send fallback reply message:',
+          replyError
+        )
       }
     }
   }
@@ -381,11 +420,11 @@ Setup can continue. Type /setup to proceed with linking this group to your Unthr
  * @returns An object containing the chat ID, chat type, bot status, admin status, and permissions if available.
  */
 export async function getBotPermissionSummary(ctx: BotContext): Promise<{
-  chatId: number;
-  chatType: string;
-  botStatus: string;
-  isAdmin: boolean;
-  permissions?: any;
+  chatId: number
+  chatType: string
+  botStatus: string
+  isAdmin: boolean
+  permissions?: any
 }> {
   try {
     if (!ctx.chat) {
@@ -393,28 +432,31 @@ export async function getBotPermissionSummary(ctx: BotContext): Promise<{
         chatId: 0,
         chatType: 'unknown',
         botStatus: 'no_chat_context',
-        isAdmin: false
-      };
+        isAdmin: false,
+      }
     }
 
-    const botUser = await ctx.telegram.getMe();
-    const chatMember = await ctx.telegram.getChatMember(ctx.chat.id, botUser.id);
-    
+    const botUser = await ctx.telegram.getMe()
+    const chatMember = await ctx.telegram.getChatMember(ctx.chat.id, botUser.id)
+
     return {
       chatId: ctx.chat.id,
       chatType: ctx.chat.type,
       botStatus: chatMember.status,
-      isAdmin: chatMember.status === 'administrator' || chatMember.status === 'creator',
-      permissions: 'permissions' in chatMember ? chatMember.permissions : undefined
-    };
+      isAdmin:
+        chatMember.status === 'administrator' ||
+        chatMember.status === 'creator',
+      permissions:
+        'permissions' in chatMember ? chatMember.permissions : undefined,
+    }
   } catch (error) {
-    LogEngine.error('[BotPermissions] Error getting permission summary:', error);
-    
+    LogEngine.error('[BotPermissions] Error getting permission summary:', error)
+
     return {
       chatId: ctx.chat?.id || 0,
       chatType: ctx.chat?.type || 'unknown',
       botStatus: 'error',
-      isAdmin: false
-    };
+      isAdmin: false,
+    }
   }
 }
