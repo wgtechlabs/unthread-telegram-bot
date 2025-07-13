@@ -2,9 +2,9 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"label": "Build and Run Bot",
+			"label": "Build the Bot",
 			"type": "shell",
-			"command": "yarn build && yarn start",
+			"command": "yarn build",
 			"group": "build",
 			"isBackground": true,
 			"problemMatcher": [
