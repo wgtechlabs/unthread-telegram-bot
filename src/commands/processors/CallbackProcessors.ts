@@ -565,7 +565,7 @@ Please type the customer name you'd like to use:
                 currentStep: 'awaiting_customer_id'
             });
             
-            await ctx.editMessageText(
+            const customerIdMsg = await ctx.editMessageText(
                 `🔗 **Enter Existing Customer ID**
 
 Group: ${session.groupChatName || 'Unknown Group'}
@@ -586,6 +586,13 @@ Please type the existing customer ID you'd like to link to this group.
                     }
                 }
             );
+
+            // Track this message for cleanup when input is successful
+            const messageIds = session.messageIds || [];
+            if (customerIdMsg && typeof customerIdMsg === 'object' && 'message_id' in customerIdMsg) {
+                messageIds.push(customerIdMsg.message_id);
+                await store.updateDmSetupSession(sessionId, { messageIds });
+            }
             
             return true;
         } catch (error) {

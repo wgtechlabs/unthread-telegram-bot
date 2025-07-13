@@ -356,7 +356,8 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 return true;
             }
 
-            await ctx.reply("🔍 Validating customer ID with Unthread...", { parse_mode: 'Markdown' });
+            // Send validation message
+            const validationMsg = await ctx.reply("🔍 Validating customer ID with Unthread...", { parse_mode: 'Markdown' });
 
             // Validate customer exists and get customer details
             const trimmedCustomerId = customerId.trim();
@@ -367,6 +368,13 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 const validationResult = await validateCustomerExists(trimmedCustomerId);
 
                 if (!validationResult.exists) {
+                    // Clean up validation message
+                    try {
+                        await ctx.deleteMessage(validationMsg.message_id);
+                    } catch (deleteError) {
+                        // Ignore deletion errors
+                    }
+                    
                     await ctx.reply(
                         `❌ **Customer Not Found**\n\n${validationResult.error || 'The customer ID was not found in your Unthread workspace.'}\n\nPlease check the customer ID and try again:`,
                         {
@@ -384,6 +392,38 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 }
 
                 customerName = validationResult.customer?.name || `Customer ${trimmedCustomerId.substring(0, 8)}...`;
+                
+                // Clean up validation message and show success
+                try {
+                    await ctx.deleteMessage(validationMsg.message_id);
+                } catch (deleteError) {
+                    // Ignore deletion errors
+                }
+                
+                // Clean up any stale cancel button messages from the session
+                const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+                const currentSession = await BotsStore.getDmSetupSession(session.sessionId);
+                if (currentSession?.messageIds) {
+                    for (const messageId of currentSession.messageIds) {
+                        try {
+                            // Try to edit the message to remove buttons
+                            await ctx.telegram.editMessageReplyMarkup(
+                                ctx.chat!.id,
+                                messageId,
+                                undefined,
+                                { inline_keyboard: [] }
+                            );
+                        } catch (editError) {
+                            // If edit fails, ignore - the message might be too old or already deleted
+                        }
+                    }
+                    
+                    // Clear the tracked message IDs since they've been cleaned up
+                    await BotsStore.updateDmSetupSession(session.sessionId, { 
+                        messageIds: [] 
+                    });
+                }
+                
                 await ctx.reply(`✅ Customer found: **${customerName}**\n\nLinking to existing customer...`, { parse_mode: 'Markdown' });
 
             } catch (validationError) {
