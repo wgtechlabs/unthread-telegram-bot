@@ -40,14 +40,111 @@ const CALLBACK_CONSTANTS = {
  * Handles callbacks related to support ticket creation
  */
 export class SupportCallbackProcessor implements ICallbackProcessor {
+    // Callback ID mapping to handle Telegram's 64-byte limit (following setup pattern)
+    private static callbackSessionMap = new Map<string, string>();
+    private static callbackIdCounter = 1;
+
     canHandle(callbackData: string): boolean {
         return callbackData.startsWith('support_');
     }
 
-    async process(ctx: BotContext, callbackData: string): Promise<boolean> {
-        const action = callbackData.replace('support_', '');
+    /**
+     * Generate a short callback ID for long user IDs to work within Telegram's 64-byte limit
+     * Following the same pattern as SetupCallbackProcessor
+     */
+    public static generateShortCallbackId(userId: string): string {
+        // Check if we already have a mapping for this user
+        for (const [shortId, fullId] of SupportCallbackProcessor.callbackSessionMap.entries()) {
+            if (fullId === userId) {
+                return shortId;
+            }
+        }
         
+        // Generate new short ID
+        const shortId = `cb${SupportCallbackProcessor.callbackIdCounter++}`;
+        SupportCallbackProcessor.callbackSessionMap.set(shortId, userId);
+        
+        // Clean up old mappings (keep only last 100)
+        if (SupportCallbackProcessor.callbackSessionMap.size > CALLBACK_CONSTANTS.SESSION.MAX_CACHED_MAPPINGS) {
+            const firstKey = SupportCallbackProcessor.callbackSessionMap.keys().next().value;
+            if (firstKey) {
+                SupportCallbackProcessor.callbackSessionMap.delete(firstKey);
+            }
+        }
+        
+        return shortId;
+    }
+    
+    /**
+     * Resolve short callback ID back to full user ID
+     */
+    private static resolveCallbackId(shortId: string): string | undefined {
+        return SupportCallbackProcessor.callbackSessionMap.get(shortId);
+    }
+
+    async process(ctx: BotContext, callbackData: string): Promise<boolean> {
         try {
+            // Handle new short callback patterns for confirmation flow
+            if (callbackData.startsWith('support_proceed_')) {
+                const parts = callbackData.split('_');
+                const shortId = parts[2]; // cb123
+                
+                if (!shortId) {
+                    await ctx.answerCbQuery("❌ Invalid callback format.");
+                    return true;
+                }
+                
+                const userId = SupportCallbackProcessor.resolveCallbackId(shortId);
+                
+                if (!userId || parseInt(userId) !== ctx.from?.id) {
+                    await ctx.answerCbQuery("❌ Session expired. Please start again.");
+                    return true;
+                }
+                
+                return await this.handleProceedWithSummary(ctx);
+            }
+            
+            if (callbackData.startsWith('support_edit_')) {
+                const parts = callbackData.split('_');
+                const shortId = parts[2]; // cb123
+                
+                if (!shortId) {
+                    await ctx.answerCbQuery("❌ Invalid callback format.");
+                    return true;
+                }
+                
+                const userId = SupportCallbackProcessor.resolveCallbackId(shortId);
+                
+                if (!userId || parseInt(userId) !== ctx.from?.id) {
+                    await ctx.answerCbQuery("❌ Session expired. Please start again.");
+                    return true;
+                }
+                
+                return await this.handleEditSummary(ctx);
+            }
+            
+            if (callbackData.startsWith('support_cancel_')) {
+                const parts = callbackData.split('_');
+                const shortId = parts[2]; // cb123
+                
+                if (!shortId) {
+                    await ctx.answerCbQuery("❌ Invalid callback format.");
+                    return true;
+                }
+                
+                const userId = SupportCallbackProcessor.resolveCallbackId(shortId);
+                
+                if (!userId || parseInt(userId) !== ctx.from?.id) {
+                    await ctx.answerCbQuery("❌ Session expired. Please start again.");
+                    return true;
+                }
+                
+                return await this.handleCancel(ctx);
+            }
+            
+            // Handle legacy callback patterns
+            const action = callbackData.replace('support_', '');
+            
             switch (action) {
                 case 'continue':
                     return await this.handleContinue(ctx);
@@ -70,7 +167,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
             }
         } catch (error) {
             logError(error, 'SupportCallbackProcessor.process', { 
-                action, 
+                callbackData, 
                 userId: ctx.from?.id 
             });
             await ctx.answerCbQuery("❌ An error occurred. Please try again.");
@@ -330,6 +427,154 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
 
         LogEngine.info('User continued with temporary email', { userId });
         return true;
+    }
+
+    /**
+     * Handle proceeding with the current summary (Phase 4: Confirmation Flow)
+     */
+    private async handleProceedWithSummary(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("✅ Creating your support ticket...");
+        
+        const userId = ctx.from?.id;
+        if (!userId) return false;
+
+        try {
+            const userState = await BotsStore.getUserState(userId);
+            if (!userState || !userState.summary) {
+                await ctx.editMessageText(
+                    "❌ **No Summary Found**\n\nPlease start over with `/support`.",
+                    { parse_mode: 'Markdown' }
+                );
+                return true;
+            }
+
+            // Use ConversationProcessor to handle the ticket creation
+            const { SupportConversationProcessor } = await import('./ConversationProcessors.js');
+            const processor = new SupportConversationProcessor();
+            
+            // The processor will handle createTicket internally through its process method
+            // We just need to simulate the process call with the existing state
+            const canHandle = await processor.canHandle(ctx);
+            if (canHandle) {
+                return await processor.process(ctx);
+            } else {
+                // If processor can't handle, proceed with direct ticket creation
+                return await this.createTicketDirectly(ctx, userState);
+            }
+            
+        } catch (error) {
+            logError(error, 'SupportCallbackProcessor.handleProceedWithSummary', { userId });
+            await ctx.editMessageText(
+                "❌ **Error Creating Ticket**\n\nSomething went wrong. Please try again or contact support.",
+                { parse_mode: 'Markdown' }
+            );
+            return true;
+        }
+    }
+
+    /**
+     * Create ticket directly when processor can't handle
+     */
+    private async createTicketDirectly(ctx: BotContext, userState: any): Promise<boolean> {
+        try {
+            const userId = ctx.from?.id;
+            if (!userId) return false;
+
+            // Prepare the OnBehalfOfUser parameter
+            const onBehalfOf = {
+                name: ctx.from?.first_name || ctx.from?.username || `User ${userId}`,
+                email: userState.email || `user${userId}@telegram.local`
+            };
+
+            // Create ticket using the unthread service with correct parameters
+            const ticketResponse = await unthreadService.createTicket({
+                groupChatName: 'Telegram Support', // Default group chat name
+                customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                summary: userState.summary,
+                onBehalfOf
+            });
+
+            // The response is just { id, friendlyId }
+            const ticket = ticketResponse;
+            
+            // Clear user state
+            await BotsStore.clearUserState(userId);
+
+            const successMessage = `✅ **Support Ticket Created!**
+
+**Ticket ID:** \`${escapeMarkdown(ticket.friendlyId)}\`
+**Reference:** ${escapeMarkdown(ticket.id)}
+
+📧 **Next Steps:**
+• Our support team will review your ticket
+• You'll receive updates via Telegram
+${userState.email ? `• Email notifications will be sent to \`${escapeMarkdown(userState.email)}\`` : ''}
+
+*Thank you for contacting support!*`;
+
+            await ctx.editMessageText(successMessage, { parse_mode: 'Markdown' });
+            
+            LogEngine.info('Support ticket created successfully via callback', {
+                ticketId: ticket.id,
+                friendlyId: ticket.friendlyId,
+                userId,
+                method: 'callback_proceed'
+            });
+            
+            return true;
+        } catch (error) {
+            logError(error, 'SupportCallbackProcessor.createTicketDirectly', { userId: ctx.from?.id });
+            await ctx.editMessageText(
+                "❌ **Error Creating Ticket**\n\nSomething went wrong. Please try again or contact support.",
+                { parse_mode: 'Markdown' }
+            );
+            return true;
+        }
+    }
+
+    /**
+     * Handle editing the summary (Phase 4: Confirmation Flow)
+     */
+    private async handleEditSummary(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("✏️ Edit your summary...");
+        
+        const userId = ctx.from?.id;
+        if (!userId) return false;
+
+        try {
+            const userState = await BotsStore.getUserState(userId);
+            if (!userState) {
+                await ctx.editMessageText(
+                    "❌ **No Active Session**\n\nPlease start over with `/support`.",
+                    { parse_mode: 'Markdown' }
+                );
+                return true;
+            }
+
+            // Reset to summary input state
+            await BotsStore.setUserState(userId, {
+                ...userState,
+                field: 'summary',
+                step: 1,
+                isEditing: true
+            });
+
+            await ctx.editMessageText(
+                "✏️ **Edit Your Summary**\n\n" +
+                "Please provide an updated description of your issue:\n\n" +
+                "*Type your new summary below:*",
+                { parse_mode: 'Markdown' }
+            );
+
+            return true;
+        } catch (error) {
+            logError(error, 'SupportCallbackProcessor.handleEditSummary', { userId });
+            await ctx.editMessageText(
+                "❌ **Error**\n\nSomething went wrong. Please try again.",
+                { parse_mode: 'Markdown' }
+            );
+            return true;
+        }
     }
 }
 
@@ -1898,6 +2143,7 @@ Please choose how you'd like to set up the customer for this group:
                 reply_markup: {
                     inline_keyboard: [
                         [
+
                             { text: `✅ Use "${suggestedName}"`, callback_data: `setup_use_suggested_${shortSuggestedId}` }
                         ],
                         [

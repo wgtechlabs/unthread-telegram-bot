@@ -22,6 +22,7 @@ import {
     formatEmailForDisplay 
 } from '../../utils/emailManager.js';
 import { escapeMarkdown, truncateText } from '../../utils/markdownEscape.js';
+import { SmartInputValidator, ValidationResult } from '../../utils/smartValidators.js';
 
 /**
  * Support Form Conversation Processor
@@ -93,49 +94,88 @@ export class SupportConversationProcessor implements IConversationProcessor {
 
         const userId = ctx.from.id;
 
-        if (summary.trim().length < 10) {
-            await ctx.reply(
-                "📝 **Please provide more details**\n\n" +
-                "Your issue description should be at least 10 characters long to help our team assist you better.\n\n" +
-                "*Please describe your issue:*",
-                { 
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        force_reply: true,
-                        input_field_placeholder: "Describe your issue in detail..."
-                    }
+        // Enhanced validation using SmartInputValidator
+        const validation = SmartInputValidator.validateSummary(summary);
+        
+        if (!validation.isValid) {
+            const icon = SmartInputValidator.getSeverityIcon(validation.severity);
+            let message = `${icon} **${validation.message}**\n\n${validation.suggestion}`;
+            
+            if (validation.metadata?.improvements && validation.metadata.improvements.length > 0) {
+                message += `\n\n💡 **Tips:** ${validation.metadata.improvements.slice(0, 2).join(', ')}`;
+            }
+            
+            message += "\n\n*Please try again:*";
+            
+            await ctx.reply(message, { 
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    force_reply: true,
+                    input_field_placeholder: "Describe your issue in detail..."
                 }
-            );
+            });
+
+            LogEngine.info('Summary validation failed with smart feedback', {
+                userId,
+                severity: validation.severity,
+                issues: validation.metadata?.detectedIssues || [],
+                inputLength: summary.length
+            });
+
             return true;
         }
 
-        // Store the summary
-        userState.summary = summary;
+        // Store the summary with enhanced metadata
+        userState.summary = summary.trim();
+        userState.qualityScore = validation.metadata?.score || 0.5;
+        userState.wordCount = validation.metadata?.wordCount || 0;
 
-        if (userState.hasEmail) {
-            // User has email, create ticket immediately
-            return await this.createTicket(ctx, userState);
-        } else {
-            // Ask for email
-            await BotsStore.setUserState(userId, {
-                ...userState,
-                field: 'email',
-                step: 2
-            });
+        // Enhanced confirmation flow with quality indicators
+        await BotsStore.setUserState(userId, {
+            ...userState,
+            field: 'confirmation',
+            step: 2
+        });
 
-            await ctx.reply(
-                "📧 **Step 2 of 2:** Email Address\n\n" +
-                "Please provide your email address so our support team can follow up with you.\n\n" +
-                "*This will be saved for future tickets:*",
-                { 
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        force_reply: true,
-                        input_field_placeholder: "your@email.com"
-                    }
-                }
-            );
-        }
+        // Show confirmation with quality feedback
+        const safeSummary = escapeMarkdown(truncateText(summary.trim(), 200));
+        const qualityIndicator = SmartInputValidator.getQualityIndicator(validation.metadata?.score || 0.5);
+        
+        const confirmationMessage = 
+            "📝 **Review Your Issue**\n\n" +
+            `**Summary:** ${safeSummary}\n\n` +
+            `**Quality:** ${qualityIndicator}\n` +
+            `**Stats:** ${validation.metadata?.wordCount || 0} words, ${validation.metadata?.characterCount || 0} characters\n\n` +
+            "Please review your issue description above. What would you like to do?";
+
+        // Generate short callback IDs for the three-button interface
+        const { SupportCallbackProcessor } = await import('./CallbackProcessors.js');
+        const shortId = SupportCallbackProcessor.generateShortCallbackId(userId.toString());
+
+        await ctx.reply(confirmationMessage, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "✅ Proceed", callback_data: `support_proceed_${shortId}` }
+                    ],
+                    [
+                        { text: "✏️ Edit Summary", callback_data: `support_edit_${shortId}` }
+                    ],
+                    [
+                        { text: "❌ Cancel", callback_data: `support_cancel_${shortId}` }
+                    ]
+                ]
+            }
+        });
+
+        LogEngine.info('Summary accepted with enhanced validation', { 
+            userId, 
+            summaryLength: summary.trim().length,
+            qualityScore: validation.metadata?.score || 0.5,
+            wordCount: validation.metadata?.wordCount || 0,
+            strengths: validation.metadata?.improvements || []
+        });
 
         return true;
     }
