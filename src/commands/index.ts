@@ -37,6 +37,14 @@ import * as unthreadService from '../services/unthread.js';
 import { safeReply, safeEditMessageText } from '../bot.js';
 import type { BotContext, SupportField, SupportFormState } from '../types/index.js';
 import { BotsStore } from '../sdk/bots-brain/index.js';
+import { 
+    getUserEmailPreferences, 
+    getUserEmailWithMigration, 
+    updateUserEmail, 
+    validateEmail,
+    formatEmailForDisplay
+} from '../utils/emailManager.js';
+import { escapeMarkdown, formatEmailForTelegram } from '../utils/markdownEscape.js';
 
 // Support form field enum
 const SupportFieldEnum = {
@@ -98,14 +106,21 @@ const helpCommand = async (ctx: BotContext): Promise<void> => {
 • \`/version\` - Show bot version information
 • \`/about\` - Show comprehensive bot information
 • \`/support\` - Create a new support ticket
+• \`/viewemail\` - View your saved email address
+• \`/setemail\` - Set or update your email address
 • \`/cancel\` - Cancel ongoing support ticket creation
 • \`/reset\` - Reset your support conversation state
 
 **How to create a support ticket:**
 1. Use \`/support\` command in a group chat
 2. Provide your issue summary when prompted
-3. Provide your email address when prompted
+3. Your saved email will be used automatically
 4. The bot will create a ticket and notify you
+
+**Email Management:**
+• Use \`/viewemail\` to see your current email settings
+• Use \`/setemail user@example.com\` to set your email
+• Temporary emails are generated if you don't set one
 
 **Note:** Support tickets can only be created in group chats.`;
 
@@ -358,12 +373,8 @@ export const processSupportConversation = async (ctx: BotContext): Promise<boole
                         await handleEmailField(ctx, userState, 'skip');
                     }
                 } else if (callbackData === 'confirm_summary') {
-                    // User confirmed the summary, move to email field
-                    userState.currentField = SupportFieldEnum.EMAIL;
-                    userState.field = SupportFieldEnum.EMAIL;
-                    
-                    // Update user state in BotsStore
-                    await BotsStore.setUserState(telegramUserId, userState);
+                    // User confirmed the summary, check if they already have an email
+                    const existingEmail = await getUserEmailWithMigration(telegramUserId, ctx.from?.username);
                     
                     // Edit the confirmation message to remove buttons and show confirmation
                     if (ctx.callbackQuery && 'message' in ctx.callbackQuery && ctx.callbackQuery.message) {
@@ -377,16 +388,28 @@ export const processSupportConversation = async (ctx: BotContext): Promise<boole
                         );
                     }
                     
-                    // Ask for email with skip button
-                    await safeReply(ctx,
-                        "📧 **Now let's get your contact information.**\n\nPlease provide your email address or skip this step:",
-                        {
-                            parse_mode: 'Markdown',
-                            ...Markup.inlineKeyboard([
-                                Markup.button.callback('Skip Email', 'skip_email')
-                            ])
-                        }
-                    );
+                    if (existingEmail) {
+                        // User has email, proceed directly to ticket creation
+                        await handleEmailField(ctx, userState, 'use_existing');
+                    } else {
+                        // User needs to provide email, move to email field
+                        userState.currentField = SupportFieldEnum.EMAIL;
+                        userState.field = SupportFieldEnum.EMAIL;
+                        
+                        // Update user state in BotsStore
+                        await BotsStore.setUserState(telegramUserId, userState);
+                        
+                        // Ask for email with skip button
+                        await safeReply(ctx,
+                            "📧 **Now let's get your contact information.**\n\nPlease provide your email address or skip this step:",
+                            {
+                                parse_mode: 'Markdown',
+                                ...Markup.inlineKeyboard([
+                                    Markup.button.callback('Skip Email', 'skip_email')
+                                ])
+                            }
+                        );
+                    }
                 } else if (callbackData === 'revise_summary') {
                     // User wants to revise the summary, ask again
                     
@@ -450,26 +473,34 @@ export const processSupportConversation = async (ctx: BotContext): Promise<boole
                     // Check if user is trying to confirm or revise via text
                     const lowerText = messageText.toLowerCase().trim();
                     if (lowerText === 'confirm' || lowerText === 'yes' || lowerText === 'proceed') {
-                        // User confirmed via text, move to email field
-                        userState.currentField = SupportFieldEnum.EMAIL;
-                        userState.field = SupportFieldEnum.EMAIL;
+                        // User confirmed via text, check if they already have an email
+                        const existingEmail = await getUserEmailWithMigration(telegramUserId, ctx.from?.username);
                         
-                        await BotsStore.setUserState(telegramUserId, userState);
-                        
-                        const emailMessage = await safeReply(ctx,
-                            "📧 **Now let's get your contact information.**\n\nPlease provide your email address or skip this step:",
-                            {
-                                parse_mode: 'Markdown',
-                                ...Markup.inlineKeyboard([
-                                    Markup.button.callback('Skip Email', 'skip_email')
-                                ])
-                            }
-                        );
-                        
-                        // Store the email message ID for later editing
-                        if (emailMessage && userState.messageIds) {
-                            userState.messageIds.push(emailMessage.message_id);
+                        if (existingEmail) {
+                            // User has email, proceed directly to ticket creation
+                            await handleEmailField(ctx, userState, 'use_existing');
+                        } else {
+                            // User needs to provide email, move to email field
+                            userState.currentField = SupportFieldEnum.EMAIL;
+                            userState.field = SupportFieldEnum.EMAIL;
+                            
                             await BotsStore.setUserState(telegramUserId, userState);
+                            
+                            const emailMessage = await safeReply(ctx,
+                                "📧 **Now let's get your contact information.**\n\nPlease provide your email address or skip this step:",
+                                {
+                                    parse_mode: 'Markdown',
+                                    ...Markup.inlineKeyboard([
+                                        Markup.button.callback('Skip Email', 'skip_email')
+                                    ])
+                                }
+                            );
+                            
+                            // Store the email message ID for later editing
+                            if (emailMessage && userState.messageIds) {
+                                userState.messageIds.push(emailMessage.message_id);
+                                await BotsStore.setUserState(telegramUserId, userState);
+                            }
                         }
                         return true;
                     } else if (lowerText === 'revise' || lowerText === 'no' || lowerText === 'edit') {
@@ -524,6 +555,12 @@ export const processSupportConversation = async (ctx: BotContext): Promise<boole
                 await handleEmailField(ctx, userState, messageText);
                 break;
             }
+            
+            // Handle interactive email setup (from /setemail command)
+            case 'email_setup': {
+                await handleInteractiveEmailInput(ctx, userState, messageText);
+                break;
+            }
         }
         
         // We handled this message as part of a support conversation
@@ -546,8 +583,7 @@ export const processSupportConversation = async (ctx: BotContext): Promise<boole
 
 /**
  * Processes the email input step of the support ticket conversation and completes ticket creation.
- *
- * If the user enters "skip", an auto-generated email is used. The function then finalizes the ticket by interacting with external services to create the customer, user, and ticket records, updates the user with confirmation or error messages, and clears the user's conversation state.
+ * UPDATED: Uses unified unthreadEmail field approach with automatic migration
  */
 async function handleEmailField(ctx: BotContext, userState: any, messageText: string): Promise<void> {
     try {
@@ -556,14 +592,34 @@ async function handleEmailField(ctx: BotContext, userState: any, messageText: st
             return;
         }
         
-        // Check if user wants to skip
-        if (messageText.toLowerCase() === 'skip') {
-            // Generate email in format {username_id@telegram.user}
-            const username = ctx.from?.username || 'user';
-            userState.ticket.email = `${username}_${telegramUserId}@telegram.user`;
+        let finalEmail: string;
+        
+        // Check if user wants to use existing email
+        if (messageText.toLowerCase() === 'use_existing') {
+            // Use existing email from storage
+            finalEmail = await getUserEmailWithMigration(telegramUserId, ctx.from?.username);
+        } else if (messageText.toLowerCase() === 'skip') {
+            // Use unified email manager to get or generate email
+            finalEmail = await getUserEmailWithMigration(telegramUserId, ctx.from?.username);
         } else {
-            userState.ticket.email = messageText;
+            // Validate the provided email
+            const validation = validateEmail(messageText);
+            if (!validation.isValid) {
+                await safeReply(ctx, 
+                    `❌ **Invalid Email Format**\n\n${escapeMarkdown(validation.error || 'Please provide a valid email address.')}\n\nPlease try again or type "skip" to use a temporary email.`,
+                    { parse_mode: 'Markdown' }
+                );
+                return;
+            }
+            
+            finalEmail = validation.sanitizedValue!;
+            
+            // Update user's stored email using unified approach
+            await updateUserEmail(telegramUserId, finalEmail);
         }
+        
+        // Store final email in ticket state
+        userState.ticket.email = finalEmail;
         
         // Mark the ticket as complete
         userState.currentField = SupportFieldEnum.COMPLETE;
@@ -593,7 +649,10 @@ async function handleEmailField(ctx: BotContext, userState: any, messageText: st
                 groupChatName,
                 customerId,
                 summary,
-                onBehalfOf: userData
+                onBehalfOf: {
+                    name: userData.name,
+                    email: finalEmail // Use the unified email approach
+                }
             });
             
             // Step 4: Generate success message with ticket ID
@@ -604,10 +663,12 @@ async function handleEmailField(ctx: BotContext, userState: any, messageText: st
             const userName = ctx.from?.first_name || ctx.from?.username || 'User';
             const successMessage = `📋 **Support Ticket Created Successfully!**\n\n` +
                 `**Ticket #${ticketNumber}**\n` +
-                `**Started By:** ${userName}\n\n` +
+                `**Started By:** ${userName}\n` +
+                `**Email:** ${formatEmailForTelegram(finalEmail)}\n\n` +
                 `${summary}\n\n` +
                 `Your issue has been submitted and our team will be in touch soon.\n\n` +
-                `💬 **Reply to this message** to add more information to your ticket.`;
+                `💬 **Reply to this message** to add more information to your ticket.\n` +
+                `*Use /viewemail to see your email settings or /setemail to update it.*`;
             
             // Send the success message
             const confirmationMsg = await safeEditMessageText(
@@ -660,8 +721,9 @@ async function handleEmailField(ctx: BotContext, userState: any, messageText: st
                 telegramUserId,
                 username,
                 groupChatName,
-                email: userState.ticket.email,
-                summaryLength: summary?.length
+                email: finalEmail,
+                summaryLength: summary?.length,
+                isAutoGenerated: finalEmail.includes('@telegram.user')
             });
             
         } catch (error) {
@@ -706,6 +768,74 @@ async function handleEmailField(ctx: BotContext, userState: any, messageText: st
         if (ctx.from?.id) {
             await BotsStore.clearUserState(ctx.from.id);
         }
+    }
+}
+
+/**
+ * Handles interactive email input from /setemail command
+ */
+async function handleInteractiveEmailInput(ctx: BotContext, userState: any, messageText: string): Promise<void> {
+    const telegramUserId = ctx.from?.id;
+    if (!telegramUserId) {
+        return;
+    }
+
+    try {
+        // Validate the provided email
+        const validation = validateEmail(messageText);
+        if (!validation.isValid) {
+            await safeReply(ctx, 
+                `❌ **Invalid Email Format**\n\n${escapeMarkdown(validation.error || 'Please provide a valid email address.')}\n\nPlease try again:`,
+                { 
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        force_reply: true,
+                        input_field_placeholder: "your@email.com"
+                    }
+                }
+            );
+            return;
+        }
+
+        // Update user's email using unified approach
+        const updateResult = await updateUserEmail(telegramUserId, validation.sanitizedValue!);
+        
+        if (!updateResult.success) {
+            await safeReply(ctx, 
+                `❌ **Failed to Update Email**\n\n${escapeMarkdown(updateResult.error || 'An unexpected error occurred.')}\n\nPlease try again later.`,
+                { parse_mode: 'Markdown' }
+            );
+            // Clear the email setup state
+            await BotsStore.clearUserState(telegramUserId);
+            return;
+        }
+
+        // Success message
+        await safeReply(ctx, 
+            `✅ **Email Updated Successfully!**\n\n📧 **Email configured for support tickets**\n\nThis email will be used for all future support tickets. You can view your settings with \`/viewemail\` or change it anytime using \`/setemail\`.`,
+            { parse_mode: 'Markdown' }
+        );
+
+        // Clear the email setup state
+        await BotsStore.clearUserState(telegramUserId);
+
+        LogEngine.info('User updated email via interactive setup', {
+            userId: telegramUserId,
+            emailDomain: validation.sanitizedValue!.split('@')[1]
+        });
+
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error in handleInteractiveEmailInput', {
+            error: err.message,
+            telegramUserId,
+            messageText: messageText?.substring(0, 100)
+        });
+        
+        await safeReply(ctx, "❌ Sorry, there was an error updating your email. Please try again later.");
+        
+        // Clear the email setup state
+        await BotsStore.clearUserState(telegramUserId);
     }
 }
 
@@ -784,6 +914,187 @@ const resetCommand = async (ctx: BotContext): Promise<void> => {
     }
 };
 
+/**
+ * Handler for the /viewemail command
+ * 
+ * This command displays the user's saved email address, whether it's a real email
+ * or an auto-generated dummy email. Uses unified unthreadEmail field approach.
+ */
+const viewEmailCommand = async (ctx: BotContext): Promise<void> => {
+    try {
+        const telegramUserId = ctx.from?.id;
+        if (!telegramUserId) {
+            await safeReply(ctx, "❌ Error: Unable to identify user.");
+            return;
+        }
+
+        // Get email with automatic migration fallback
+        const userEmail = await getUserEmailWithMigration(telegramUserId, ctx.from?.username);
+        const emailPreferences = await getUserEmailPreferences(telegramUserId);
+        
+        const isDummy = userEmail.includes('@telegram.user');
+        const formattedEmail = formatEmailForTelegram(userEmail);
+        const source = isDummy ? 'auto-generated' : 'provided';
+
+        let emailMessage = `📧 **Your Email Address**\n\n`;
+        emailMessage += `**Email:** ${formattedEmail}\n`;
+        emailMessage += `**Source:** ${source}\n\n`;
+        
+        if (isDummy) {
+            emailMessage += `💡 This email was automatically generated. You can set a real email using \`/setemail user@example.com\` for better support experience.`;
+        } else {
+            emailMessage += `✅ This email will be used for all support tickets and communications.`;
+        }
+
+        await safeReply(ctx, emailMessage, { parse_mode: 'Markdown' });
+
+        LogEngine.info('Email viewed by user', {
+            telegramUserId,
+            username: ctx.from?.username,
+            email: userEmail,
+            source: source,
+            chatId: ctx.chat?.id
+        });
+
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error in viewEmailCommand', {
+            error: err.message,
+            stack: err.stack,
+            telegramUserId: ctx.from?.id,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id
+        });
+        await safeReply(ctx, "❌ Sorry, there was an error retrieving your email. Please try again later.");
+    }
+};
+
+/**
+ * Handler for the /setemail command
+ * 
+ * Allows users to set or update their email address for support tickets.
+ * Uses unified unthreadEmail field approach with proper validation.
+ */
+const setEmailCommand = async (ctx: BotContext): Promise<void> => {
+    try {
+        const telegramUserId = ctx.from?.id;
+        if (!telegramUserId) {
+            await safeReply(ctx, "❌ Error: Unable to identify user.");
+            return;
+        }
+
+        // Extract email from command if provided
+        const messageText = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
+        const emailMatch = messageText.match(/\/setemail(?:\s+(.+))?/);
+        const providedEmail = emailMatch?.[1]?.trim();
+
+        if (providedEmail) {
+            // Direct email setting
+            await handleDirectEmailSetting(ctx, telegramUserId, providedEmail);
+        } else {
+            // Interactive email setup
+            await startInteractiveEmailSetup(ctx, telegramUserId);
+        }
+
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error in setEmailCommand', {
+            error: err.message,
+            stack: err.stack,
+            telegramUserId: ctx.from?.id,
+            username: ctx.from?.username,
+            chatId: ctx.chat?.id
+        });
+        await safeReply(ctx, "❌ Sorry, there was an error processing your request. Please try again later.");
+    }
+};
+
+/**
+ * Helper function to handle direct email setting
+ */
+async function handleDirectEmailSetting(ctx: BotContext, userId: number, email: string): Promise<void> {
+    // Validate email
+    const validation = validateEmail(email);
+    
+    if (!validation.isValid) {
+        await safeReply(ctx, 
+            `❌ **Invalid Email Format**\n\n${escapeMarkdown(validation.error || 'Please provide a valid email address.')}\n\n**Usage:** \`/setemail user@example.com\``,
+            { parse_mode: 'Markdown' }
+        );
+        return;
+    }
+
+    // Update email
+    const updateResult = await updateUserEmail(userId, validation.sanitizedValue!);
+    
+    if (!updateResult.success) {
+        await safeReply(ctx, 
+            `❌ **Failed to Update Email**\n\n${escapeMarkdown(updateResult.error || 'An unexpected error occurred.')}\n\nPlease try again later.`,
+            { parse_mode: 'Markdown' }
+        );
+        return;
+    }
+
+    // Success message
+    await safeReply(ctx, 
+        `✅ **Email Updated Successfully!**\n\n📧 **Email configured for support tickets**\n\nThis email will be used for all future support tickets. You can view your settings with \`/viewemail\` or change it anytime using \`/setemail\`.`,
+        { parse_mode: 'Markdown' }
+    );
+
+    LogEngine.info('User updated email via direct command', {
+        userId,
+        emailDomain: validation.sanitizedValue!.split('@')[1]
+    });
+}
+
+/**
+ * Helper function to start interactive email setup
+ */
+async function startInteractiveEmailSetup(ctx: BotContext, userId: number): Promise<void> {
+    // Get current email preferences
+    const currentPrefs = await getUserEmailPreferences(userId);
+    
+    let message = "📧 **Email Address Setup**\n\n";
+    
+    if (currentPrefs) {
+        const displayEmail = formatEmailForDisplay(currentPrefs.email, currentPrefs.isDummy);
+        message += `**Current email:** ${escapeMarkdown(displayEmail)}\n\n`;
+        
+        if (currentPrefs.isDummy) {
+            message += "💡 You're currently using a temporary email. Setting a real email will help our support team contact you directly.\n\n";
+        }
+        
+        message += "**To update your email:**\n";
+    } else {
+        message += "**To set your email address:**\n";
+    }
+    
+    message += "• Reply with your email address\n";
+    message += "• Use `/setemail user@example.com` for quick setup\n";
+    message += "• Use `/viewemail` to see current settings\n\n";
+    message += "*Please enter your email address:*";
+
+    // Set user state for interactive email setup so that text input is handled
+    await BotsStore.setUserState(userId, {
+        field: 'email_setup',
+        currentField: 'email_setup',
+        step: 1,
+        totalSteps: 1,
+        chatId: ctx.chat?.id || 0,
+        startedAt: new Date().toISOString()
+    });
+
+    await safeReply(ctx, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            force_reply: true,
+            input_field_placeholder: "your@email.com"
+        }
+    });
+
+    LogEngine.info('User started interactive email setup', { userId });
+}
+
 export {
     startCommand,
     helpCommand,
@@ -791,5 +1102,7 @@ export {
     aboutCommand,
     supportCommand,
     cancelCommand,
-    resetCommand
+    resetCommand,
+    viewEmailCommand,
+    setEmailCommand
 };

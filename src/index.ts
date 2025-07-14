@@ -40,7 +40,9 @@ import {
     aboutCommand,
     supportCommand, 
     cancelCommand, 
-    resetCommand, 
+    resetCommand,
+    viewEmailCommand,
+    setEmailCommand,
     processSupportConversation 
 } from './commands/index.js';
 import { handleMessage } from './events/message.js';
@@ -159,6 +161,8 @@ bot.help(commandMiddleware, wrapCommandHandler(helpCommand, 'help'));
 bot.command('version', commandMiddleware, wrapCommandHandler(versionCommand, 'version'));
 bot.command('about', commandMiddleware, wrapCommandHandler(aboutCommand, 'about'));
 bot.command('support', commandMiddleware, wrapCommandHandler(supportCommand, 'support'));
+bot.command('viewemail', commandMiddleware, wrapCommandHandler(viewEmailCommand, 'viewemail'));
+bot.command('setemail', commandMiddleware, wrapCommandHandler(setEmailCommand, 'setemail'));
 bot.command('cancel', commandMiddleware, wrapCommandHandler(cancelCommand, 'cancel'));
 bot.command('reset', commandMiddleware, wrapCommandHandler(resetCommand, 'reset'));
 
@@ -377,6 +381,8 @@ await bot.telegram.setMyCommands([
     { command: 'version', description: 'Show the bot version' },
     { command: 'about', description: 'Show comprehensive bot information' },
     { command: 'support', description: 'Create a support ticket (group chats only)' },
+    { command: 'viewemail', description: 'View your saved email address' },
+    { command: 'setemail', description: 'Set or update your email address' },
     { command: 'cancel', description: 'Cancel ongoing support ticket creation' },
     { command: 'reset', description: 'Reset your support conversation state' }
 ]);

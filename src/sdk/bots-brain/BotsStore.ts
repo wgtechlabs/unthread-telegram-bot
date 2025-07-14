@@ -125,6 +125,10 @@ export class BotsStore implements IBotsStore {
   static async getUserByTelegramId(telegramUserId: number): Promise<UserData | null> {
     return BotsStore.getInstance().getUserByTelegramId(telegramUserId);
   }
+
+  static async updateUser(telegramUserId: number, updates: Partial<UserData>): Promise<boolean> {
+    return BotsStore.getInstance().updateUser(telegramUserId, updates);
+  }
   
   static async shutdown(): Promise<void> {
     if (BotsStore.instance) {
@@ -391,6 +395,44 @@ export class BotsStore implements IBotsStore {
    */
   async getUserByTelegramId(telegramUserId: number): Promise<UserData | null> {
     return await this.storage.get(`user:telegram:${telegramUserId}`);
+  }
+
+  /**
+   * Update user information (unified email field approach)
+   */
+  async updateUser(telegramUserId: number, updates: Partial<UserData>): Promise<boolean> {
+    try {
+      // First get the existing user data
+      const existingUser = await this.getUserByTelegramId(telegramUserId);
+      if (!existingUser) {
+        LogEngine.warn('Attempted to update non-existent user', { telegramUserId });
+        return false;
+      }
+
+      // Merge the updates with existing data
+      const updatedUserData: UserData = {
+        ...existingUser,
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+
+      // Store the updated user data
+      await this.storage.set(`user:telegram:${telegramUserId}`, updatedUserData);
+      
+      LogEngine.info('User updated successfully', {
+        telegramUserId,
+        updatedFields: Object.keys(updates)
+      });
+      return true;
+    } catch (error) {
+      const err = error as Error;
+      LogEngine.error('Failed to update user', {
+        error: err.message,
+        telegramUserId,
+        updates
+      });
+      return false;
+    }
   }
 
   /**
