@@ -32,6 +32,7 @@ import type { BotContext } from '../types/index.js';
 import type { IBotsStore } from '../sdk/types.js';
 import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
+import { escapeMarkdown } from '../utils/markdownEscape.js';
 
 /**
  * Handles incoming webhook messages from Unthread agents
@@ -285,18 +286,9 @@ export class TelegramWebhookHandler {
   sanitizeMessageText(text: string): string {
     if (!text) return '';
     
-    // Basic cleanup
-    let cleaned = text.trim();
-    
-    // Escape common Markdown characters that might break formatting
-    // But preserve basic formatting like *bold* and _italic_
-    cleaned = cleaned
-      .replace(/\\/g, '\\\\')  // Escape backslashes
-      .replace(/`/g, '\\`')    // Escape backticks
-      .replace(/\[/g, '\\[')   // Escape square brackets
-      .replace(/\]/g, '\\]');  // Escape square brackets
-
-    return cleaned;
+    // Use our comprehensive markdown escaping utility
+    // This prevents all entity parsing errors
+    return escapeMarkdown(text.trim());
   }
 
   /**

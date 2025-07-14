@@ -14,6 +14,8 @@ import { logError } from '../utils/errorHandler.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../../sdk/bots-brain/index.js';
 import * as unthreadService from '../../services/unthread.js';
+import { generateDummyEmail, updateUserEmail } from '../../utils/emailManager.js';
+import { escapeMarkdown } from '../../utils/markdownEscape.js';
 
 // Clean Code: Extract constants to avoid magic strings and numbers
 const CALLBACK_CONSTANTS = {
@@ -55,6 +57,14 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                     return await this.handleCancel(ctx);
                 case 'create_new':
                     return await this.handleCreateNew(ctx);
+                case 'setup_email':
+                    return await this.handleSetupEmail(ctx);
+                case 'use_temp':
+                    return await this.handleUseTempEmail(ctx);
+                case 'upgrade_email':
+                    return await this.handleUpgradeEmail(ctx);
+                case 'continue_temp':
+                    return await this.handleContinueWithTemp(ctx);
                 default:
                     return false;
             }
@@ -173,6 +183,153 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
             emoji: "🎫",
             stepDescription: "Please describe your issue or question."
         });
+    }
+
+    /**
+     * Handles email setup callback for first-time users
+     */
+    private async handleSetupEmail(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("📧 Setting up email...");
+        
+        const userId = ctx.from?.id;
+        if (!userId) return false;
+
+        // Set state for email collection
+        await BotsStore.setUserState(userId, {
+            field: 'email_setup',
+            step: 1,
+            totalSteps: 2,
+            hasEmail: false,
+            chatId: ctx.chat?.id || 0,
+            startedAt: new Date().toISOString()
+        });
+
+        await ctx.editMessageText(
+            "📧 **Email Address Setup**\n\n" +
+            "Please provide your email address. Our support team will use this to contact you directly about your tickets.\n\n" +
+            "**Benefits of setting a real email:**\n" +
+            "• Direct communication with support agents\n" +
+            "• Ticket updates and notifications\n" +
+            "• Better support experience\n\n" +
+            "*Please reply with your email address.*",
+            { parse_mode: 'Markdown' }
+        );
+
+        return true;
+    }
+
+    /**
+     * Handles temporary email setup for users who want to skip email
+     */
+    private async handleUseTempEmail(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("⚡ Using temporary email...");
+        
+        const userId = ctx.from?.id;
+        const username = ctx.from?.username;
+        if (!userId) return false;
+
+        try {
+            // Generate and save dummy email
+            const dummyEmail = generateDummyEmail(userId, username);
+            await updateUserEmail(userId, dummyEmail, true);
+
+            // Start ticket creation with dummy email
+            await BotsStore.setUserState(userId, {
+                field: 'summary',
+                step: 1,
+                totalSteps: 1,
+                hasEmail: true,
+                email: dummyEmail,
+                chatId: ctx.chat?.id || 0,
+                startedAt: new Date().toISOString()
+            });
+
+            await ctx.editMessageText(
+                "⚡ **Quick Setup Complete!**\n\n" +
+                `✅ **Temporary email set:** \`${escapeMarkdown(dummyEmail)}\`\n\n` +
+                "**Now, please describe your issue:**\n\n" +
+                "*Reply with a detailed description of your issue.*",
+                { parse_mode: 'Markdown' }
+            );
+
+            LogEngine.info('User selected temporary email for support', { userId, dummyEmail });
+            return true;
+
+        } catch (error) {
+            LogEngine.error('Error setting up temporary email', {
+                error: error instanceof Error ? error.message : 'Unknown error',
+                userId
+            });
+            
+            await ctx.editMessageText(
+                "❌ **Error setting up temporary email**\n\nPlease try again or contact an administrator.",
+                { parse_mode: 'Markdown' }
+            );
+            return true;
+        }
+    }
+
+    /**
+     * Handles email upgrade for users with dummy emails
+     */
+    private async handleUpgradeEmail(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("📧 Upgrading to real email...");
+        
+        const userId = ctx.from?.id;
+        if (!userId) return false;
+
+        await BotsStore.setUserState(userId, {
+            field: 'email_upgrade',
+            step: 1,
+            totalSteps: 2,
+            hasEmail: false,
+            chatId: ctx.chat?.id || 0,
+            startedAt: new Date().toISOString()
+        });
+
+        await ctx.editMessageText(
+            "📧 **Upgrade to Real Email**\n\n" +
+            "Great choice! Please provide your email address for better communication with our support team.\n\n" +
+            "**What you'll get:**\n" +
+            "• Direct email updates about your tickets\n" +
+            "• Faster response times\n" +
+            "• Better support experience\n\n" +
+            "*Please reply with your email address.*",
+            { parse_mode: 'Markdown' }
+        );
+
+        return true;
+    }
+
+    /**
+     * Handles continuing with temporary email
+     */
+    private async handleContinueWithTemp(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("▶️ Continuing with temporary email...");
+        
+        const userId = ctx.from?.id;
+        if (!userId) return false;
+
+        // Start ticket creation flow
+        await BotsStore.setUserState(userId, {
+            field: 'summary',
+            step: 1,
+            totalSteps: 1,
+            hasEmail: true,
+            chatId: ctx.chat?.id || 0,
+            startedAt: new Date().toISOString()
+        });
+
+        await ctx.editMessageText(
+            "🎫 **Create Support Ticket**\n\n" +
+            "I'll create your ticket using your current temporary email. You can upgrade to a real email anytime using `/setemail`.\n\n" +
+            "**Please describe your issue or question:**\n\n" +
+            "*Reply with a detailed description of your issue.*",
+            { parse_mode: 'Markdown' }
+        );
+
+        LogEngine.info('User continued with temporary email', { userId });
+        return true;
     }
 }
 

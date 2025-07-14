@@ -15,6 +15,13 @@ import { logError } from '../utils/errorHandler.js';
 import * as unthreadService from '../../services/unthread.js';
 import { SetupCallbackProcessor } from './CallbackProcessors.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
+import { 
+    validateEmail, 
+    updateUserEmail, 
+    getUserEmailPreferences,
+    formatEmailForDisplay 
+} from '../../utils/emailManager.js';
+import { escapeMarkdown, truncateText } from '../../utils/markdownEscape.js';
 
 /**
  * Support Form Conversation Processor
@@ -29,7 +36,10 @@ export class SupportConversationProcessor implements IConversationProcessor {
 
         try {
             const userState = await BotsStore.getUserState(userId);
-            return userState?.field === 'summary' || userState?.field === 'email';
+            return userState?.field === 'summary' || 
+                   userState?.field === 'email' || 
+                   userState?.field === 'email_setup' || 
+                   userState?.field === 'email_upgrade';
         } catch (error) {
             logError(error, 'SupportConversationProcessor.canHandle', { userId });
             return false;
@@ -59,6 +69,10 @@ export class SupportConversationProcessor implements IConversationProcessor {
                 return await this.handleSummaryInput(ctx, userInput, userState);
             } else if (userState.field === 'email') {
                 return await this.handleEmailInput(ctx, userInput, userState);
+            } else if (userState.field === 'email_setup') {
+                return await this.handleEmailSetupInput(ctx, userInput, userState);
+            } else if (userState.field === 'email_upgrade') {
+                return await this.handleEmailUpgradeInput(ctx, userInput, userState);
             }
 
             return false;
@@ -151,6 +165,154 @@ export class SupportConversationProcessor implements IConversationProcessor {
         return await this.createTicket(ctx, userState);
     }
 
+    /**
+     * Handles email input during first-time email setup
+     */
+    private async handleEmailSetupInput(ctx: BotContext, email: string, userState: any): Promise<boolean> {
+        const userId = ctx.from?.id;
+        if (!userId) return false;
+
+        // Validate email
+        const validation = validateEmail(email.trim());
+        
+        if (!validation.isValid) {
+            await ctx.reply(
+                `❌ **Invalid Email Format**\n\n${escapeMarkdown(validation.error || 'Please provide a valid email address.')}\n\n*Please try again with a valid email address:*`,
+                { parse_mode: 'Markdown' }
+            );
+            return true;
+        }
+
+        try {
+            // Update user email
+            const updateResult = await updateUserEmail(userId, validation.sanitizedValue!);
+            
+            if (!updateResult.success) {
+                await ctx.reply(
+                    `❌ **Error saving email**\n\n${escapeMarkdown(updateResult.error || 'Please try again.')}\n\n*Please try again:*`,
+                    { parse_mode: 'Markdown' }
+                );
+                return true;
+            }
+
+            // Move to ticket creation step
+            await BotsStore.setUserState(userId, {
+                field: 'summary',
+                step: 2,
+                totalSteps: 2,
+                hasEmail: true,
+                email: validation.sanitizedValue!,
+                chatId: userState.chatId,
+                startedAt: userState.startedAt
+            });
+
+            const maskedEmail = formatEmailForDisplay(validation.sanitizedValue!, false);
+            await ctx.reply(
+                `✅ **Email Set Successfully!**\n\n📧 **Your email:** ${escapeMarkdown(maskedEmail)}\n\n🎫 **Step 2 of 2:** Now, please describe your issue or question.\n\n*Be as detailed as possible to help our team assist you better.*`,
+                { 
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        force_reply: true,
+                        input_field_placeholder: "Describe your issue in detail..."
+                    }
+                }
+            );
+
+            LogEngine.info('User completed email setup in support flow', {
+                userId,
+                emailDomain: validation.sanitizedValue!.split('@')[1]
+            });
+
+            return true;
+
+        } catch (error) {
+            LogEngine.error('Error in handleEmailSetupInput', {
+                error: error instanceof Error ? error.message : 'Unknown error',
+                userId
+            });
+            
+            await ctx.reply(
+                "❌ **Error setting up email**\n\nPlease try again later or contact an administrator.",
+                { parse_mode: 'Markdown' }
+            );
+            return true;
+        }
+    }
+
+    /**
+     * Handles email input during email upgrade flow
+     */
+    private async handleEmailUpgradeInput(ctx: BotContext, email: string, userState: any): Promise<boolean> {
+        const userId = ctx.from?.id;
+        if (!userId) return false;
+
+        // Validate email
+        const validation = validateEmail(email.trim());
+        
+        if (!validation.isValid) {
+            await ctx.reply(
+                `❌ **Invalid Email Format**\n\n${escapeMarkdown(validation.error || 'Please provide a valid email address.')}\n\n*Please try again with a valid email address:*`,
+                { parse_mode: 'Markdown' }
+            );
+            return true;
+        }
+
+        try {
+            // Update user email
+            const updateResult = await updateUserEmail(userId, validation.sanitizedValue!);
+            
+            if (!updateResult.success) {
+                await ctx.reply(
+                    `❌ **Error updating email**\n\n${escapeMarkdown(updateResult.error || 'Please try again.')}\n\n*Please try again:*`,
+                    { parse_mode: 'Markdown' }
+                );
+                return true;
+            }
+
+            // Move to ticket creation step
+            await BotsStore.setUserState(userId, {
+                field: 'summary',
+                step: 2,
+                totalSteps: 2,
+                hasEmail: true,
+                email: validation.sanitizedValue!,
+                chatId: userState.chatId,
+                startedAt: userState.startedAt
+            });
+
+            const maskedEmail = formatEmailForDisplay(validation.sanitizedValue!, false);
+            await ctx.reply(
+                `🎉 **Email Upgraded Successfully!**\n\n📧 **Your new email:** ${escapeMarkdown(maskedEmail)}\n\n🎫 **Step 2 of 2:** Now, please describe your issue or question.\n\n*Be as detailed as possible to help our team assist you better.*`,
+                { 
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        force_reply: true,
+                        input_field_placeholder: "Describe your issue in detail..."
+                    }
+                }
+            );
+
+            LogEngine.info('User upgraded email in support flow', {
+                userId,
+                emailDomain: validation.sanitizedValue!.split('@')[1]
+            });
+
+            return true;
+
+        } catch (error) {
+            LogEngine.error('Error in handleEmailUpgradeInput', {
+                error: error instanceof Error ? error.message : 'Unknown error',
+                userId
+            });
+            
+            await ctx.reply(
+                "❌ **Error upgrading email**\n\nPlease try again later or contact an administrator.",
+                { parse_mode: 'Markdown' }
+            );
+            return true;
+        }
+    }
+
     private async createTicket(ctx: BotContext, userState: any): Promise<boolean> {
         // Defensive checks for required context
         if (!ctx.from) {
@@ -211,16 +373,30 @@ export class SupportConversationProcessor implements IConversationProcessor {
             // Clear user state
             await BotsStore.clearUserState(userId);
 
-            // Update success message
+            // Create safe success message with properly escaped user content
+            const safeUserName = escapeMarkdown(userData.name || ctx.from?.first_name || 'Unknown User');
+            const safeEmail = escapeMarkdown(userData.email || userState.email || 'Not provided');
+            const safeSummary = escapeMarkdown(truncateText(userState.summary, 150));
+
             const successMessage = 
                 "✅ **Ticket Created Successfully!**\n\n" +
                 `🎫 **Ticket ID:** ${ticketResponse.friendlyId}\n` +
-                `📝 **Summary:** ${userState.summary}\n` +
-                `👤 **Created by:** ${userData.name || ctx.from?.first_name}\n` +
-                `📧 **Email:** ${userData.email || userState.email}\n\n` +
+                `📝 **Summary:** ${safeSummary}\n` +
+                `👤 **Created by:** ${safeUserName}\n` +
+                `📧 **Email:** ${safeEmail}\n\n` +
                 "Our support team will respond shortly. You can reply to this message to add more information to your ticket.";
 
-            await ctx.editMessageText(successMessage, { parse_mode: 'Markdown' });
+            try {
+                await ctx.editMessageText(successMessage, { parse_mode: 'Markdown' });
+            } catch (editError) {
+                // If editing fails, send a new message instead
+                LogEngine.warn('Failed to edit status message, sending new message instead', {
+                    error: editError instanceof Error ? editError.message : 'Unknown error',
+                    ticketId: ticketResponse.id
+                });
+                
+                await ctx.reply(successMessage, { parse_mode: 'Markdown' });
+            }
 
             LogEngine.info('Support ticket created successfully', {
                 ticketId: ticketResponse.id,
@@ -875,7 +1051,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 });
             }
             
-            await ctx.reply(`✅ Customer found: **${customerName}**\n\nLinking to existing customer...`, { parse_mode: 'Markdown' });
+            await ctx.reply(`✅ Customer found: **${escapeMarkdown(customerName)}**\n\nLinking to existing customer...`, { parse_mode: 'Markdown' });
 
             return { isValid: true, customerName, validationMsg };
 
