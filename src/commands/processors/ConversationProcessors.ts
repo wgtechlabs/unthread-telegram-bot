@@ -22,7 +22,7 @@ import {
     formatEmailForDisplay 
 } from '../../utils/emailManager.js';
 import { escapeMarkdown, truncateText } from '../../utils/markdownEscape.js';
-import { SmartInputValidator, ValidationResult } from '../../utils/smartValidators.js';
+import { SimpleInputValidator, SimpleValidationResult } from '../../utils/simpleValidators.js';
 
 /**
  * Support Form Conversation Processor
@@ -38,9 +38,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
         try {
             const userState = await BotsStore.getUserState(userId);
             return userState?.field === 'summary' || 
-                   userState?.field === 'email' || 
-                   userState?.field === 'email_setup' || 
-                   userState?.field === 'email_upgrade';
+                   userState?.field === 'email';
         } catch (error) {
             logError(error, 'SupportConversationProcessor.canHandle', { userId });
             return false;
@@ -70,10 +68,6 @@ export class SupportConversationProcessor implements IConversationProcessor {
                 return await this.handleSummaryInput(ctx, userInput, userState);
             } else if (userState.field === 'email') {
                 return await this.handleEmailInput(ctx, userInput, userState);
-            } else if (userState.field === 'email_setup') {
-                return await this.handleEmailSetupInput(ctx, userInput, userState);
-            } else if (userState.field === 'email_upgrade') {
-                return await this.handleEmailUpgradeInput(ctx, userInput, userState);
             }
 
             return false;
@@ -94,15 +88,14 @@ export class SupportConversationProcessor implements IConversationProcessor {
 
         const userId = ctx.from.id;
 
-        // Enhanced validation using SmartInputValidator
-        const validation = SmartInputValidator.validateSummary(summary);
+        // Simple, practical validation for enterprise users
+        const validation = SimpleInputValidator.validateSummary(summary);
         
         if (!validation.isValid) {
-            const icon = SmartInputValidator.getSeverityIcon(validation.severity);
-            let message = `${icon} **${validation.message}**\n\n${validation.suggestion}`;
+            let message = `❌ **${validation.message}**`;
             
-            if (validation.metadata?.improvements && validation.metadata.improvements.length > 0) {
-                message += `\n\n💡 **Tips:** ${validation.metadata.improvements.slice(0, 2).join(', ')}`;
+            if (validation.suggestion) {
+                message += `\n\n💡 ${validation.suggestion}`;
             }
             
             message += "\n\n*Please try again:*";
@@ -115,37 +108,31 @@ export class SupportConversationProcessor implements IConversationProcessor {
                 }
             });
 
-            LogEngine.info('Summary validation failed with smart feedback', {
+            LogEngine.info('Summary validation failed', {
                 userId,
-                severity: validation.severity,
-                issues: validation.metadata?.detectedIssues || [],
+                reason: validation.message,
                 inputLength: summary.length
             });
 
             return true;
         }
 
-        // Store the summary with enhanced metadata
+        // Store the summary
         userState.summary = summary.trim();
-        userState.qualityScore = validation.metadata?.score || 0.5;
-        userState.wordCount = validation.metadata?.wordCount || 0;
 
-        // Enhanced confirmation flow with quality indicators
+        // Set confirmation state
         await BotsStore.setUserState(userId, {
             ...userState,
             field: 'confirmation',
             step: 2
         });
 
-        // Show confirmation with quality feedback
+        // Show simple confirmation without unnecessary feedback
         const safeSummary = escapeMarkdown(truncateText(summary.trim(), 200));
-        const qualityIndicator = SmartInputValidator.getQualityIndicator(validation.metadata?.score || 0.5);
         
         const confirmationMessage = 
             "📝 **Review Your Issue**\n\n" +
             `**Summary:** ${safeSummary}\n\n` +
-            `**Quality:** ${qualityIndicator}\n` +
-            `**Stats:** ${validation.metadata?.wordCount || 0} words, ${validation.metadata?.characterCount || 0} characters\n\n` +
             "Please review your issue description above. What would you like to do?";
 
         // Generate short callback IDs for the three-button interface
@@ -169,12 +156,10 @@ export class SupportConversationProcessor implements IConversationProcessor {
             }
         });
 
-        LogEngine.info('Summary accepted with enhanced validation', { 
+        LogEngine.info('Summary accepted', { 
             userId, 
             summaryLength: summary.trim().length,
-            qualityScore: validation.metadata?.score || 0.5,
-            wordCount: validation.metadata?.wordCount || 0,
-            strengths: validation.metadata?.improvements || []
+            wordCount: summary.trim().split(/\s+/).length
         });
 
         return true;
@@ -203,154 +188,6 @@ export class SupportConversationProcessor implements IConversationProcessor {
         // Store email and create ticket
         userState.email = emailValidation.sanitizedValue || email.trim();
         return await this.createTicket(ctx, userState);
-    }
-
-    /**
-     * Handles email input during first-time email setup
-     */
-    private async handleEmailSetupInput(ctx: BotContext, email: string, userState: any): Promise<boolean> {
-        const userId = ctx.from?.id;
-        if (!userId) return false;
-
-        // Validate email
-        const validation = validateEmail(email.trim());
-        
-        if (!validation.isValid) {
-            await ctx.reply(
-                `❌ **Invalid Email Format**\n\n${escapeMarkdown(validation.error || 'Please provide a valid email address.')}\n\n*Please try again with a valid email address:*`,
-                { parse_mode: 'Markdown' }
-            );
-            return true;
-        }
-
-        try {
-            // Update user email
-            const updateResult = await updateUserEmail(userId, validation.sanitizedValue!);
-            
-            if (!updateResult.success) {
-                await ctx.reply(
-                    `❌ **Error saving email**\n\n${escapeMarkdown(updateResult.error || 'Please try again.')}\n\n*Please try again:*`,
-                    { parse_mode: 'Markdown' }
-                );
-                return true;
-            }
-
-            // Move to ticket creation step
-            await BotsStore.setUserState(userId, {
-                field: 'summary',
-                step: 2,
-                totalSteps: 2,
-                hasEmail: true,
-                email: validation.sanitizedValue!,
-                chatId: userState.chatId,
-                startedAt: userState.startedAt
-            });
-
-            const maskedEmail = formatEmailForDisplay(validation.sanitizedValue!, false);
-            await ctx.reply(
-                `✅ **Email Set Successfully!**\n\n📧 **Your email:** ${escapeMarkdown(maskedEmail)}\n\n🎫 **Step 2 of 2:** Now, please describe your issue or question.\n\n*Be as detailed as possible to help our team assist you better.*`,
-                { 
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        force_reply: true,
-                        input_field_placeholder: "Describe your issue in detail..."
-                    }
-                }
-            );
-
-            LogEngine.info('User completed email setup in support flow', {
-                userId,
-                emailDomain: validation.sanitizedValue!.split('@')[1]
-            });
-
-            return true;
-
-        } catch (error) {
-            LogEngine.error('Error in handleEmailSetupInput', {
-                error: error instanceof Error ? error.message : 'Unknown error',
-                userId
-            });
-            
-            await ctx.reply(
-                "❌ **Error setting up email**\n\nPlease try again later or contact an administrator.",
-                { parse_mode: 'Markdown' }
-            );
-            return true;
-        }
-    }
-
-    /**
-     * Handles email input during email upgrade flow
-     */
-    private async handleEmailUpgradeInput(ctx: BotContext, email: string, userState: any): Promise<boolean> {
-        const userId = ctx.from?.id;
-        if (!userId) return false;
-
-        // Validate email
-        const validation = validateEmail(email.trim());
-        
-        if (!validation.isValid) {
-            await ctx.reply(
-                `❌ **Invalid Email Format**\n\n${escapeMarkdown(validation.error || 'Please provide a valid email address.')}\n\n*Please try again with a valid email address:*`,
-                { parse_mode: 'Markdown' }
-            );
-            return true;
-        }
-
-        try {
-            // Update user email
-            const updateResult = await updateUserEmail(userId, validation.sanitizedValue!);
-            
-            if (!updateResult.success) {
-                await ctx.reply(
-                    `❌ **Error updating email**\n\n${escapeMarkdown(updateResult.error || 'Please try again.')}\n\n*Please try again:*`,
-                    { parse_mode: 'Markdown' }
-                );
-                return true;
-            }
-
-            // Move to ticket creation step
-            await BotsStore.setUserState(userId, {
-                field: 'summary',
-                step: 2,
-                totalSteps: 2,
-                hasEmail: true,
-                email: validation.sanitizedValue!,
-                chatId: userState.chatId,
-                startedAt: userState.startedAt
-            });
-
-            const maskedEmail = formatEmailForDisplay(validation.sanitizedValue!, false);
-            await ctx.reply(
-                `🎉 **Email Upgraded Successfully!**\n\n📧 **Your new email:** ${escapeMarkdown(maskedEmail)}\n\n🎫 **Step 2 of 2:** Now, please describe your issue or question.\n\n*Be as detailed as possible to help our team assist you better.*`,
-                { 
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        force_reply: true,
-                        input_field_placeholder: "Describe your issue in detail..."
-                    }
-                }
-            );
-
-            LogEngine.info('User upgraded email in support flow', {
-                userId,
-                emailDomain: validation.sanitizedValue!.split('@')[1]
-            });
-
-            return true;
-
-        } catch (error) {
-            LogEngine.error('Error in handleEmailUpgradeInput', {
-                error: error instanceof Error ? error.message : 'Unknown error',
-                userId
-            });
-            
-            await ctx.reply(
-                "❌ **Error upgrading email**\n\nPlease try again later or contact an administrator.",
-                { parse_mode: 'Markdown' }
-            );
-            return true;
-        }
     }
 
     private async createTicket(ctx: BotContext, userState: any): Promise<boolean> {
@@ -413,18 +250,94 @@ export class SupportConversationProcessor implements IConversationProcessor {
             // Clear user state
             await BotsStore.clearUserState(userId);
 
-            // Create safe success message with properly escaped user content
-            const safeUserName = escapeMarkdown(userData.name || ctx.from?.first_name || 'Unknown User');
-            const safeEmail = escapeMarkdown(userData.email || userState.email || 'Not provided');
-            const safeSummary = escapeMarkdown(truncateText(userState.summary, 150));
+            // Fail-fast template system integration - No fallbacks for enterprise users!
+            let successMessage: string;
+            
+            // Pre-flight validation: Ensure template system is operational
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            const templateManager = GlobalTemplateManager.getInstance();
+            const templates = await templateManager.getGlobalTemplates();
+            
+            if (!templates.templates.ticket_created) {
+                LogEngine.error('Template configuration missing - failing ticket creation message', {
+                    ticketId: ticketResponse.id,
+                    userId,
+                    availableTemplates: Object.keys(templates.templates)
+                });
+                await ctx.editMessageText(
+                    "❌ **System Configuration Error**\n\n" +
+                    "Template system configuration is missing. Please contact administrators.\n\n" +
+                    "*Message generation failed to maintain consistency.*",
+                    { parse_mode: 'Markdown' }
+                );
+                return false;
+            }
+            
+            if (!templates.templates.ticket_created.enabled) {
+                LogEngine.error('Template system disabled - failing ticket creation message', {
+                    ticketId: ticketResponse.id,
+                    userId,
+                    templateEnabled: templates.templates.ticket_created.enabled
+                });
+                await ctx.editMessageText(
+                    "❌ **System Configuration Error**\n\n" +
+                    "Template system is disabled. Please contact administrators.\n\n" +
+                    "*Message generation failed to maintain consistency.*",
+                    { parse_mode: 'Markdown' }
+                );
+                return false;
+            }
+            
+            if (!templates.templates.ticket_created.content.trim()) {
+                LogEngine.error('Template content empty - failing ticket creation message', {
+                    ticketId: ticketResponse.id,
+                    userId,
+                    templateLength: templates.templates.ticket_created.content.length
+                });
+                await ctx.editMessageText(
+                    "❌ **Template Configuration Error**\n\n" +
+                    "Template content is empty. Please contact administrators.\n\n" +
+                    "*Message generation failed to maintain consistency.*",
+                    { parse_mode: 'Markdown' }
+                );
+                return false;
+            }
 
-            const successMessage = 
-                "✅ **Ticket Created Successfully!**\n\n" +
-                `🎫 **Ticket ID:** ${ticketResponse.friendlyId}\n` +
-                `📝 **Summary:** ${safeSummary}\n` +
-                `👤 **Created by:** ${safeUserName}\n` +
-                `📧 **Email:** ${safeEmail}\n\n` +
-                "Our support team will respond shortly. You can reply to this message to add more information to your ticket.";
+            // Prepare template data
+            const templateData = {
+                ticket: {
+                    id: ticketResponse.id,
+                    friendlyId: ticketResponse.friendlyId,
+                    summary: userState.summary
+                },
+                customer: {
+                    name: userData.name || ctx.from?.first_name || 'Unknown User',
+                    email: userData.email || userState.email || 'Not provided'
+                },
+                timestamp: new Date().toISOString()
+            };
+
+            // Template system is operational - proceed with rendering (must succeed)
+            try {
+                successMessage = templates.templates.ticket_created.content
+                    .replace(/\{\{ticketId\}\}/g, escapeMarkdown(String(ticketResponse.friendlyId)))
+                    .replace(/\{\{summary\}\}/g, escapeMarkdown(templateData.ticket.summary))
+                    .replace(/\{\{customerName\}\}/g, escapeMarkdown(templateData.customer.name));
+            } catch (templateRenderError) {
+                LogEngine.error('Template rendering failed - failing ticket creation message', {
+                    error: templateRenderError instanceof Error ? templateRenderError.message : 'Unknown error',
+                    ticketId: ticketResponse.id,
+                    userId,
+                    templateContent: templates.templates.ticket_created.content.substring(0, 100)
+                });
+                await ctx.editMessageText(
+                    "❌ **Template Rendering Error**\n\n" +
+                    "Failed to process template content. Please contact administrators.\n\n" +
+                    "*Message generation failed to maintain consistency.*",
+                    { parse_mode: 'Markdown' }
+                );
+                return false;
+            }
 
             try {
                 await ctx.editMessageText(successMessage, { parse_mode: 'Markdown' });

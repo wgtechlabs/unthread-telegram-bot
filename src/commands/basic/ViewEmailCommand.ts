@@ -9,11 +9,8 @@
 
 import { BaseCommand, type CommandMetadata } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
-import { 
-    getUserEmailPreferences, 
-    formatEmailForDisplay 
-} from '../../utils/emailManager.js';
-import { escapeMarkdown } from '../../utils/markdownEscape.js';
+import { getUserEmailPreferences } from '../../utils/emailManager.js';
+import { escapeMarkdown, formatEmailForDisplay } from '../../utils/markdownEscape.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 
 export class ViewEmailCommand extends BaseCommand {
@@ -82,11 +79,10 @@ export class ViewEmailCommand extends BaseCommand {
     }
 
     private async showEmailSettings(ctx: BotContext, emailPrefs: any): Promise<void> {
-        const displayEmail = formatEmailForDisplay(emailPrefs.email, emailPrefs.isDummy);
         const setDate = new Date(emailPrefs.setAt).toLocaleDateString();
         
         let message = "📧 **Email Settings**\n\n";
-        message += `✅ **Email address:** ${escapeMarkdown(displayEmail)}\n`;
+        message += `✅ **Email address:** ${formatEmailForDisplay(emailPrefs.email)}\n`;
         message += `📅 **Set on:** ${setDate}\n`;
         
         if (emailPrefs.isDummy) {

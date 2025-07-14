@@ -33,12 +33,12 @@ export const DEFAULT_GLOBAL_TEMPLATES: GlobalTemplateConfig = {
   templates: {
     ticket_created: {
       event: 'ticket_created',
-      content: '🎫 **New Support Ticket Created**\n\n' +
-               '**Ticket ID:** {{ticketId}}\n' +
-               '**Summary:** {{summary}}\n' +
-               '**Created by:** {{customerName}}\n' +
-               '**Status:** Open\n\n' +
-               'Our team will respond shortly. Thank you for contacting us!',
+      content: '✅ **Support Ticket Created!**\n\n' +
+               '**Ticket #{{ticketId}}**\n\n' +
+               ' **Next Steps:**\n' +
+               '• Our support team will review your ticket\n' +
+               '• You\'ll receive updates via Telegram\n\n' +
+               '*Thank you for contacting support!*',
       enabled: true
     },
     agent_response: {

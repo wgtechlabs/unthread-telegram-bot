@@ -77,9 +77,8 @@ export class SetEmailCommand extends BaseCommand {
             }
 
             // Success message
-            const maskedEmail = formatEmailForDisplay(validation.sanitizedValue!, false);
             await ctx.reply(
-                `✅ **Email Updated Successfully!**\n\n📧 **Your email:** ${escapeMarkdown(maskedEmail)}\n\nThis email will be used for all future support tickets. You can change it anytime using \`/setemail\`.`,
+                `✅ **Email Updated Successfully!**\n\n📧 **Email configured for support tickets**\n\nThis email will be used for all future support tickets. You can view your settings with \`/viewemail\` or change it anytime using \`/setemail\`.`,
                 { parse_mode: 'Markdown' }
             );
 

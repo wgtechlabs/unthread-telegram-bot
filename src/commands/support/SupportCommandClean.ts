@@ -103,11 +103,29 @@ export class SupportCommand extends BaseCommand {
 
         const userId = ctx.from.id;
         
-        // Simple, direct approach - start with issue capture immediately
+        // One-time email setup: Check if user needs an email (any email, real or dummy)
+        const { getUserEmailPreferences } = await import('../../utils/emailManager.js');
+        const emailPrefs = await getUserEmailPreferences(userId);
+        
+        if (!emailPrefs || !emailPrefs.email) {
+            // User has no email at all - auto-generate dummy email once
+            const username = ctx.from?.username;
+            const dummyEmail = generateDummyEmail(userId, username);
+            
+            const { updateUserEmail } = await import('../../utils/emailManager.js');
+            await updateUserEmail(userId, dummyEmail, true);
+            
+            LogEngine.info('Auto-generated dummy email for new user', { 
+                userId, 
+                emailGenerated: true 
+            });
+        }
+        
+        // Start ticket creation - user now has an email (real or dummy)
         await BotsStore.setUserState(userId, {
             field: 'summary',
             step: 1,
-            totalSteps: 2, // summary + confirmation (email handling is conditional)
+            totalSteps: 2, // summary + confirmation (no email step needed)
             chatId: ctx.chat.id,
             startedAt: new Date().toISOString()
         });

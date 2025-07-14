@@ -116,3 +116,27 @@ export function createSafeMarkdownMessage(
     
     return message;
 }
+
+/**
+ * Formats email addresses for Telegram display with beautiful presentation
+ * Uses code formatting to prevent markdown interference while maintaining readability
+ * 
+ * @param email - The email address to format
+ * @returns Beautifully formatted email for Telegram display
+ * 
+ * @example
+ * ```typescript
+ * const email = "user@example.com";
+ * const formatted = formatEmailForDisplay(email);
+ * // Returns: `user@example.com`
+ * ```
+ */
+export function formatEmailForDisplay(email: string): string {
+    if (!email || typeof email !== 'string') {
+        return '`Not provided`';
+    }
+
+    // Use code formatting (backticks) to preserve email readability
+    // This prevents markdown interference without ugly escaping
+    return `\`${email}\``;
+}
