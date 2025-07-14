@@ -667,5 +667,61 @@ export async function getOrCreateUser(telegramUserId: number, username?: string)
     }
 }
 
+/**
+ * Updates the email address for a user identified by their Telegram user ID.
+ *
+ * @param telegramUserId - The Telegram user ID to update
+ * @param newEmail - The new email address to store
+ * @returns True if the update was successful, false otherwise
+ */
+export async function updateUserEmail(telegramUserId: number, newEmail: string): Promise<boolean> {
+    try {
+        // Get existing user data
+        const existingUser = await BotsStore.getUserByTelegramId(telegramUserId);
+        
+        if (!existingUser) {
+            LogEngine.warn('Attempted to update email for non-existent user', {
+                telegramUserId,
+                newEmail
+            });
+            return false;
+        }
+
+        // Update the user data with the new email
+        const updatedUserData = {
+            ...existingUser,
+            unthreadEmail: newEmail,
+            email: newEmail, // Also update the generic email field
+            updatedAt: new Date().toISOString()
+        };
+
+        // Store the updated user data
+        const success = await BotsStore.storeUser(updatedUserData);
+        
+        if (success) {
+            LogEngine.info('User email updated successfully', {
+                telegramUserId,
+                previousEmail: existingUser.unthreadEmail,
+                newEmail
+            });
+        } else {
+            LogEngine.error('Failed to store updated user email', {
+                telegramUserId,
+                newEmail
+            });
+        }
+
+        return success;
+    } catch (error) {
+        LogEngine.error('Error updating user email', {
+            error: (error as Error).message,
+            stack: (error as Error).stack,
+            telegramUserId,
+            newEmail
+        });
+        return false;
+    }
+}
+
 // Export the customer cache for potential use in other modules
 export { customerCache };
