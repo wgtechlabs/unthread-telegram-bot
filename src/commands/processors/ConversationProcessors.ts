@@ -21,7 +21,7 @@ import {
     getUserEmailPreferences,
     formatEmailForDisplay 
 } from '../../utils/emailManager.js';
-import { escapeMarkdown, truncateText } from '../../utils/markdownEscape.js';
+import { escapeMarkdown, truncateText, lightEscapeMarkdown } from '../../utils/markdownEscape.js';
 import { SimpleInputValidator, SimpleValidationResult } from '../../utils/simpleValidators.js';
 
 /**
@@ -128,7 +128,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
         });
 
         // Show simple confirmation without unnecessary feedback
-        const safeSummary = escapeMarkdown(truncateText(summary.trim(), 200));
+        const safeSummary = lightEscapeMarkdown(truncateText(summary.trim(), 200));
         
         const confirmationMessage = 
             "📝 **Review Your Issue**\n\n" +
@@ -220,13 +220,14 @@ export class SupportConversationProcessor implements IConversationProcessor {
             // Get user data with email
             let userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
             
-            // Update user with email if provided
-            if (userState.email && (!userData.email || userData.email !== userState.email)) {
-                await BotsStore.updateUser(userId, { email: userState.email });
+            // SIMPLIFIED: If user provided email, update their unthreadEmail
+            if (userState.email) {
+                await BotsStore.updateUser(userId, { unthreadEmail: userState.email });
+                // Update the userData for ticket creation
                 userData = { ...userData, email: userState.email };
             }
 
-            // Create the ticket
+            // Create the ticket (userData.email contains the correct email)
             const ticketResponse = await unthreadService.createTicket({
                 groupChatName: chatTitle,
                 customerId: customer.id,

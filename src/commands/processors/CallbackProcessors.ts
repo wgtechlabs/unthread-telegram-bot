@@ -457,47 +457,57 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 return true;
             }
 
-            // Check if user has ANY email (real or dummy) - if yes, create ticket directly
+            // Check if user has email - ONLY prompt first-time users
             const { getUserEmailPreferences } = await import('../../utils/emailManager.js');
             const emailPrefs = await getUserEmailPreferences(userId);
             
-            if (emailPrefs && emailPrefs.email) {
-                // User has email (real or dummy) - proceed directly to ticket creation
-                const updatedState = {
+            if (!emailPrefs || !emailPrefs.email) {
+                // FIRST-TIME USER: Show email setup choice (this is what you wanted!)
+                await BotsStore.setUserState(userId, {
                     ...userState,
-                    email: emailPrefs.email,
-                    field: 'completed'
-                };
-                
-                await BotsStore.setUserState(userId, updatedState);
-                return await this.createTicketDirectly(ctx, updatedState);
+                    field: 'email_setup',
+                    step: 2,
+                    preservedSummary: userState.summary  // CRITICAL: Preserve the summary!
+                });
+
+                const shortId = SupportCallbackProcessor.generateShortCallbackId(userId.toString());
+
+                await ctx.editMessageText(
+                    "📧 **Email Setup Required**\n\n" +
+                    "To create your support ticket, we need your email address for updates and communication.\n\n" +
+                    "**Benefits:**\n" +
+                    "• Direct communication with support agents\n" +
+                    "• Ticket status updates and notifications\n" +
+                    "• Better support experience\n\n" +
+                    "What would you like to do?",
+                    {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "📧 Set Up Email", callback_data: "support_setup_email" }
+                                ],
+                                [
+                                    { text: "⚡ Skip (Use Temporary)", callback_data: "support_use_temp" }
+                                ],
+                                [
+                                    { text: "❌ Cancel", callback_data: `support_cancel_${shortId}` }
+                                ]
+                            ]
+                        }
+                    }
+                );
+                return true;
             }
 
-            // User has NO email at all - auto-generate dummy email and create ticket
-            const username = ctx.from?.username;
-            const { generateDummyEmail, updateUserEmail } = await import('../../utils/emailManager.js');
-            const dummyEmail = generateDummyEmail(userId, username);
-            
-            // Save the dummy email for future use
-            await updateUserEmail(userId, dummyEmail, true);
-            
+            // RETURNING USER: Has email - proceed directly to ticket creation (no prompt!)
             const updatedState = {
                 ...userState,
-                email: dummyEmail,
+                email: emailPrefs.email,
                 field: 'completed'
             };
-
-            await BotsStore.setUserState(userId, updatedState);
             
-            // Show brief setup message then create ticket
-            await ctx.editMessageText(
-                "⚡ **Quick Setup Complete!**\n\n" +
-                "✅ **Temporary email configured for ticket creation**\n\n" +
-                "🎫 **Creating your support ticket...**",
-                { parse_mode: 'Markdown' }
-            );
-
-            // Create the ticket directly
+            await BotsStore.setUserState(userId, updatedState);
             return await this.createTicketDirectly(ctx, updatedState);
             
         } catch (error) {

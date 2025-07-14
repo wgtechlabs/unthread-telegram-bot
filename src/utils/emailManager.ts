@@ -78,15 +78,15 @@ export function validateEmail(email: string): EmailValidationResult {
 }
 
 /**
- * Generates a dummy email address for users who skip email setup
- * Creates a recognizable but functional email that won't bounce
+ * Generates a temporary email for users who skip email setup
+ * SIMPLIFIED to match the pattern used by unthread service
  * 
  * @param userId - Telegram user ID
  * @param username - Telegram username (optional)
- * @returns Generated dummy email address
+ * @returns Generated temporary email address in same format as auto-generated ones
  */
 export function generateDummyEmail(userId: number, username?: string): string {
-    // Use username if available, otherwise use user ID
+    // Use the same pattern as unthread service auto-generation
     const identifier = username || `user${userId}`;
     
     // Clean username to be email-safe
@@ -95,12 +95,12 @@ export function generateDummyEmail(userId: number, username?: string): string {
         .replace(/[^a-z0-9]/g, '')
         .substring(0, 20); // Limit length
     
-    // Generate dummy email with clear indication it's temporary
-    return `${cleanIdentifier}.temp@telegram-support.local`;
+    // Generate email in same format as auto-generated ones
+    return `@${cleanIdentifier}_${userId}@telegram.user`;
 }
 
 /**
- * Retrieves user's email preferences with comprehensive metadata
+ * Retrieves user's email preferences - SIMPLIFIED to use only unthreadEmail
  * 
  * @param userId - Telegram user ID
  * @returns User email preferences or null if not set
@@ -109,13 +109,13 @@ export async function getUserEmailPreferences(userId: number): Promise<UserEmail
     try {
         const userData = await BotsStore.getUserByTelegramId(userId);
         
-        if (!userData?.email) {
+        if (!userData?.unthreadEmail) {
             return null;
         }
 
         return {
-            email: userData.email,
-            isDummy: userData.email.includes('.temp@telegram-support.local'),
+            email: userData.unthreadEmail,
+            isDummy: userData.unthreadEmail.includes('@telegram.user'), // Auto-generated emails
             setAt: userData.updatedAt || userData.createdAt || new Date().toISOString(),
             canModify: true
         };
@@ -157,9 +157,9 @@ export async function updateUserEmail(
             };
         }
 
-        // Update user email in storage
+        // Update user email in storage - SIMPLIFIED to use only unthreadEmail
         await BotsStore.updateUser(userId, {
-            email: sanitizedEmail,
+            unthreadEmail: sanitizedEmail,
             updatedAt: new Date().toISOString()
         });
 

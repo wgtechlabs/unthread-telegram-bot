@@ -140,3 +140,22 @@ export function formatEmailForDisplay(email: string): string {
     // This prevents markdown interference without ugly escaping
     return `\`${email}\``;
 }
+
+/**
+ * Light escaping for displaying user content in Markdown
+ * Only escapes the most critical characters that break Telegram parsing
+ * 
+ * @param text - The text to lightly escape
+ * @returns Text with minimal safe escaping for display
+ */
+export function lightEscapeMarkdown(text: string): string {
+    if (!text || typeof text !== 'string') {
+        return '';
+    }
+
+    // Only escape characters that commonly break Telegram message parsing
+    return text
+        .replace(/\[/g, '\\[')    // Left square bracket (links)
+        .replace(/\]/g, '\\]')    // Right square bracket (links)
+        .replace(/`/g, '\\`');    // Backtick (inline code)
+}

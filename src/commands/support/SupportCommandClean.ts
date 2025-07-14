@@ -103,31 +103,18 @@ export class SupportCommand extends BaseCommand {
 
         const userId = ctx.from.id;
         
-        // One-time email setup: Check if user needs an email (any email, real or dummy)
+        // Check if user already has email (real or dummy) - ONE TIME CHECK
         const { getUserEmailPreferences } = await import('../../utils/emailManager.js');
         const emailPrefs = await getUserEmailPreferences(userId);
         
-        if (!emailPrefs || !emailPrefs.email) {
-            // User has no email at all - auto-generate dummy email once
-            const username = ctx.from?.username;
-            const dummyEmail = generateDummyEmail(userId, username);
-            
-            const { updateUserEmail } = await import('../../utils/emailManager.js');
-            await updateUserEmail(userId, dummyEmail, true);
-            
-            LogEngine.info('Auto-generated dummy email for new user', { 
-                userId, 
-                emailGenerated: true 
-            });
-        }
-        
-        // Start ticket creation - user now has an email (real or dummy)
+        // Start ticket creation flow
         await BotsStore.setUserState(userId, {
             field: 'summary',
             step: 1,
-            totalSteps: 2, // summary + confirmation (no email step needed)
+            totalSteps: emailPrefs?.email ? 2 : 3, // If has email: summary + confirmation, else: summary + email + confirmation
             chatId: ctx.chat.id,
-            startedAt: new Date().toISOString()
+            startedAt: new Date().toISOString(),
+            hasEmail: !!emailPrefs?.email
         });
 
         const message = 
@@ -143,6 +130,9 @@ export class SupportCommand extends BaseCommand {
             }
         });
 
-        LogEngine.info('Started streamlined support ticket creation', { userId });
+        LogEngine.info('Started streamlined support ticket creation', { 
+            userId,
+            hasExistingEmail: !!emailPrefs?.email
+        });
     }
 }

@@ -162,6 +162,8 @@ bot.command('about', commandMiddleware, wrapCommandHandler('about'));
 bot.command('support', commandMiddleware, wrapCommandHandler('support'));
 bot.command('cancel', commandMiddleware, wrapCommandHandler('cancel'));
 bot.command('reset', commandMiddleware, wrapCommandHandler('reset'));
+bot.command('setemail', commandMiddleware, wrapCommandHandler('setemail'));
+bot.command('viewemail', commandMiddleware, wrapCommandHandler('viewemail'));
 bot.command('setup', commandMiddleware, wrapCommandHandler('setup'));
 bot.command('activate', commandMiddleware, wrapCommandHandler('activate'));
 bot.command('templates', commandMiddleware, wrapCommandHandler('templates'));
