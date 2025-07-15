@@ -33,7 +33,6 @@ import type { IBotsStore } from '../sdk/types.js';
 import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
 import { escapeMarkdown } from '../utils/markdownEscape.js';
-import { getUserEmailPreferences, generateDummyEmail } from '../utils/emailManager.js';
 
 /**
  * Handles incoming webhook messages from Unthread agents
@@ -184,27 +183,11 @@ export class TelegramWebhookHandler {
         messagePreview: messageText.substring(0, 100) + (messageText.length > 100 ? '...' : '')
       });
 
-      // 4. Check user email status before delivering agent message
-      const emailCheckResult = await this.checkUserEmailForAgentResponse(ticketData);
-      if (!emailCheckResult.canDeliver) {
-        LogEngine.info('⏸️ Agent message delivery paused - email collection required', {
-          conversationId,
-          telegramUserId: ticketData.telegramUserId,
-          reason: emailCheckResult.reason
-        });
-        
-        // Store the pending agent message for delivery after email collection
-        await this.storePendingAgentMessage(ticketData, messageText, event.data);
-        
-        // Send email collection prompt to user
-        await this.promptUserForEmailBeforeAgentResponse(ticketData, messageText);
-        return;
-      }
-
-      LogEngine.info('✅ User email validated - proceeding with message delivery', {
+      // 4. Always deliver agent messages - we'll prompt for email when user replies instead
+      LogEngine.info('✅ Delivering agent message directly to user', {
         conversationId,
         telegramUserId: ticketData.telegramUserId,
-        emailStatus: emailCheckResult.emailStatus
+        messageLength: messageText.length
       });
 
       // 5. Format agent message using template system
@@ -685,168 +668,6 @@ export class TelegramWebhookHandler {
         chatId
       });
       // Don't throw - cleanup failure shouldn't crash the bot
-    }
-  }
-
-  /**
-   * Checks if a user has a valid email address before delivering agent response
-   * This implements Phase 2 of our strategic dummy email restriction
-   */
-  private async checkUserEmailForAgentResponse(ticketData: any): Promise<{
-    canDeliver: boolean;
-    emailStatus: string;
-    reason?: string;
-  }> {
-    try {
-      const userData = await this.botsStore.getUserByTelegramId(ticketData.telegramUserId);
-      
-      if (!userData) {
-        LogEngine.warn('User not found for agent response email check', {
-          telegramUserId: ticketData.telegramUserId,
-          conversationId: ticketData.conversationId
-        });
-        return {
-          canDeliver: false,
-          emailStatus: 'user_not_found',
-          reason: 'User data not found in database'
-        };
-      }
-
-      const emailPrefs = await getUserEmailPreferences(ticketData.telegramUserId);
-      
-      LogEngine.info('Email check for agent response delivery', {
-        telegramUserId: ticketData.telegramUserId,
-        conversationId: ticketData.conversationId,
-        hasEmailPrefs: !!emailPrefs,
-        isDummy: emailPrefs?.isDummy,
-        email: emailPrefs?.email
-      });
-
-      // Allow delivery if user has a valid (non-dummy) email
-      if (emailPrefs && !emailPrefs.isDummy) {
-        return {
-          canDeliver: true,
-          emailStatus: 'valid_email'
-        };
-      }
-
-      // Block delivery if no email or dummy email - need to collect real email first
-      return {
-        canDeliver: false,
-        emailStatus: emailPrefs ? 'dummy_email' : 'no_email',
-        reason: emailPrefs ? 'User has dummy email - real email required for agent responses' : 'User has no email - real email required for agent responses'
-      };
-
-    } catch (error) {
-      const err = error as Error;
-      LogEngine.error('Error checking user email for agent response', {
-        error: err.message,
-        telegramUserId: ticketData.telegramUserId,
-        conversationId: ticketData.conversationId
-      });
-      
-      // On error, block delivery to be safe
-      return {
-        canDeliver: false,
-        emailStatus: 'check_failed',
-        reason: `Email check failed: ${err.message}`
-      };
-    }
-  }
-
-  /**
-   * Stores a pending agent message that will be delivered after email collection
-   */
-  private async storePendingAgentMessage(ticketData: any, messageText: string, eventData: any): Promise<void> {
-    try {
-      const pendingMessageKey = `pending_agent_message:${ticketData.conversationId}:${Date.now()}`;
-      
-      const pendingMessage = {
-        conversationId: ticketData.conversationId,
-        messageText: messageText,
-        ticketData: ticketData,
-        eventData: eventData,
-        storedAt: new Date().toISOString(),
-        telegramUserId: ticketData.telegramUserId
-      };
-
-      // Store with 24 hour TTL - if user doesn't provide email within 24 hours, message expires
-      await this.botsStore.storage.set(pendingMessageKey, pendingMessage, 24 * 60 * 60);
-      
-      LogEngine.info('Stored pending agent message for email collection', {
-        conversationId: ticketData.conversationId,
-        telegramUserId: ticketData.telegramUserId,
-        pendingMessageKey: pendingMessageKey
-      });
-
-    } catch (error) {
-      const err = error as Error;
-      LogEngine.error('Error storing pending agent message', {
-        error: err.message,
-        conversationId: ticketData.conversationId,
-        telegramUserId: ticketData.telegramUserId
-      });
-      throw error;
-    }
-  }
-
-  /**
-   * Prompts the user to provide their email address before agent response delivery
-   * This implements our approved scenario for dummy email creation
-   */
-  private async promptUserForEmailBeforeAgentResponse(ticketData: any, messageText: string): Promise<void> {
-    try {
-      const chatId = ticketData.chatId;
-      const conversationId = ticketData.conversationId;
-      const friendlyId = ticketData.friendlyId;
-      
-      // Create a dummy email for this specific scenario (one of our two approved scenarios)
-      const dummyEmail = generateDummyEmail(ticketData.telegramUserId);
-      
-      // Update user with dummy email specifically for agent response scenario
-      const userData = await this.botsStore.getUserByTelegramId(ticketData.telegramUserId);
-      if (userData && !userData.unthreadEmail) {
-        userData.unthreadEmail = dummyEmail;
-        userData.updatedAt = new Date().toISOString();
-        await this.botsStore.storeUser(userData);
-        
-        LogEngine.info('Created dummy email for agent response scenario', {
-          telegramUserId: ticketData.telegramUserId,
-          conversationId: conversationId,
-          dummyEmail: dummyEmail,
-          scenario: 'agent_response_email_collection'
-        });
-      }
-
-      const promptMessage = 
-        "🎯 **Agent Response Ready!**\n\n" +
-        `An agent has responded to your support ticket \\#${escapeMarkdown(friendlyId)}\\!\n\n` +
-        "**📧 Email Required**\n" +
-        "To receive and continue this conversation, please provide your email address:\n\n" +
-        "• Use `/setemail your@email.com` to set your email\n" +
-        "• Or reply to this message with your email address\n\n" +
-        "_Your agent response will be delivered immediately after email setup\\._";
-
-      await this.safeSendMessage(chatId, promptMessage, {
-        parse_mode: 'Markdown',
-        disable_web_page_preview: true
-      });
-      
-      LogEngine.info('Sent email collection prompt for agent response', {
-        chatId: chatId,
-        conversationId: conversationId,
-        telegramUserId: ticketData.telegramUserId,
-        friendlyId: friendlyId
-      });
-
-    } catch (error) {
-      const err = error as Error;
-      LogEngine.error('Error prompting user for email before agent response', {
-        error: err.message,
-        conversationId: ticketData.conversationId,
-        telegramUserId: ticketData.telegramUserId
-      });
-      throw error;
     }
   }
 

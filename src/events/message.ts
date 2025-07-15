@@ -33,6 +33,7 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 import { processConversation, aboutCommand } from '../commands/index.js';
 import * as unthreadService from '../services/unthread.js';
 import { safeReply, safeEditMessageText } from '../bot.js';
+import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
 import type { BotContext } from '../types/index.js';
 
 /**
@@ -375,6 +376,60 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
         }
         
         try {
+            // Check if user has a valid email address by getting full user data
+            const fullUserData = await BotsStore.getUserByTelegramId(telegramUserId);
+            
+            // Only require email if user has no unthreadEmail set at all
+            if (!fullUserData || !fullUserData.unthreadEmail) {
+                LogEngine.info('User has no email - prompting for email before sending reply', {
+                    telegramUserId,
+                    conversationId: agentMessageInfo.conversationId,
+                    friendlyId: agentMessageInfo.friendlyId,
+                    hasUserData: !!fullUserData,
+                    hasEmail: !!(fullUserData?.unthreadEmail)
+                });
+                
+                // Update status message to prompt for email
+                await safeEditMessageText(
+                    ctx,
+                    ctx.chat!.id,
+                    statusMsg.message_id,
+                    undefined,
+                    '📧 **Email Required**\n\n' +
+                    `To continue this conversation for ticket #${agentMessageInfo.friendlyId}, please set your email address:\n\n` +
+                    '• Use `/setemail your@email.com`\n' +
+                    '• Or reply with your email address\n\n' +
+                    '_Your message will be sent after email setup._',
+                    { parse_mode: 'Markdown' }
+                );
+                
+                // Store the pending message for delivery after email collection
+                const pendingMessageKey = `pending_reply_message:${agentMessageInfo.conversationId}:${Date.now()}`;
+                const botsStoreInstance = BotsStore.getInstance();
+                await botsStoreInstance.storage.set(pendingMessageKey, {
+                    conversationId: agentMessageInfo.conversationId,
+                    messageText: message,
+                    agentMessageInfo: agentMessageInfo,
+                    storedAt: new Date().toISOString(),
+                    telegramUserId: telegramUserId,
+                    username: username
+                }, 24 * 60 * 60); // 24 hour TTL
+                
+                LogEngine.info('Stored pending reply message for email collection', {
+                    conversationId: agentMessageInfo.conversationId,
+                    telegramUserId: telegramUserId,
+                    pendingMessageKey: pendingMessageKey
+                });
+                
+                return true;
+            }
+            
+            LogEngine.info('User has email - proceeding with reply', {
+                telegramUserId,
+                hasEmail: !!fullUserData.unthreadEmail,
+                conversationId: agentMessageInfo.conversationId
+            });
+            
             // Get user information for proper onBehalfOf formatting
             const userData = await unthreadService.getOrCreateUser(telegramUserId, username);
             
