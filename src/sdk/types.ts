@@ -93,16 +93,31 @@ export interface CustomerData {
 }
 
 // User data structures
+/**
+ * User data interface for Telegram users
+ * 
+ * IMPORTANT: Email Management Policy
+ * - ONLY use `unthreadEmail` field for email storage and retrieval
+ * - This field is the single source of truth for user email addresses
+ * - All email operations (set, get, validate) must use this field
+ * - When creating tickets, use `unthreadEmail` for onBehalfOf.email
+ * - Never add additional email fields to avoid data fragmentation
+ * 
+ * @author Waren Gonzaga, WG Technology Labs
+ */
 export interface UserData {
   id: string;
   telegramUserId: number;
   telegramUsername?: string;
   unthreadName?: string;
+  /** 
+   * Primary email field for all Unthread operations
+   * This is the ONLY email field that should be used throughout the application
+   */
   unthreadEmail?: string;
   username?: string;
   firstName?: string;
   lastName?: string;
-  email?: string;
   createdAt: string;
   updatedAt: string;
 }

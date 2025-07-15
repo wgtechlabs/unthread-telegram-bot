@@ -14,6 +14,8 @@ import { logError } from '../utils/errorHandler.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../../sdk/bots-brain/index.js';
 import * as unthreadService from '../../services/unthread.js';
+import { generateDummyEmail, updateUserEmail } from '../../utils/emailManager.js';
+import { escapeMarkdown } from '../../utils/markdownEscape.js';
 
 // Clean Code: Extract constants to avoid magic strings and numbers
 const CALLBACK_CONSTANTS = {
@@ -38,14 +40,111 @@ const CALLBACK_CONSTANTS = {
  * Handles callbacks related to support ticket creation
  */
 export class SupportCallbackProcessor implements ICallbackProcessor {
+    // Callback ID mapping to handle Telegram's 64-byte limit (following setup pattern)
+    private static callbackSessionMap = new Map<string, string>();
+    private static callbackIdCounter = 1;
+
     canHandle(callbackData: string): boolean {
         return callbackData.startsWith('support_');
     }
 
-    async process(ctx: BotContext, callbackData: string): Promise<boolean> {
-        const action = callbackData.replace('support_', '');
+    /**
+     * Generate a short callback ID for long user IDs to work within Telegram's 64-byte limit
+     * Following the same pattern as SetupCallbackProcessor
+     */
+    public static generateShortCallbackId(userId: string): string {
+        // Check if we already have a mapping for this user
+        for (const [shortId, fullId] of SupportCallbackProcessor.callbackSessionMap.entries()) {
+            if (fullId === userId) {
+                return shortId;
+            }
+        }
         
+        // Generate new short ID
+        const shortId = `cb${SupportCallbackProcessor.callbackIdCounter++}`;
+        SupportCallbackProcessor.callbackSessionMap.set(shortId, userId);
+        
+        // Clean up old mappings (keep only last 100)
+        if (SupportCallbackProcessor.callbackSessionMap.size > CALLBACK_CONSTANTS.SESSION.MAX_CACHED_MAPPINGS) {
+            const firstKey = SupportCallbackProcessor.callbackSessionMap.keys().next().value;
+            if (firstKey) {
+                SupportCallbackProcessor.callbackSessionMap.delete(firstKey);
+            }
+        }
+        
+        return shortId;
+    }
+    
+    /**
+     * Resolve short callback ID back to full user ID
+     */
+    private static resolveCallbackId(shortId: string): string | undefined {
+        return SupportCallbackProcessor.callbackSessionMap.get(shortId);
+    }
+
+    async process(ctx: BotContext, callbackData: string): Promise<boolean> {
         try {
+            // Handle new short callback patterns for confirmation flow
+            if (callbackData.startsWith('support_proceed_')) {
+                const parts = callbackData.split('_');
+                const shortId = parts[2]; // cb123
+                
+                if (!shortId) {
+                    await ctx.answerCbQuery("❌ Invalid callback format.");
+                    return true;
+                }
+                
+                const userId = SupportCallbackProcessor.resolveCallbackId(shortId);
+                
+                if (!userId || parseInt(userId) !== ctx.from?.id) {
+                    await ctx.answerCbQuery("❌ Session expired. Please start again.");
+                    return true;
+                }
+                
+                return await this.handleProceedWithSummary(ctx);
+            }
+            
+            if (callbackData.startsWith('support_edit_')) {
+                const parts = callbackData.split('_');
+                const shortId = parts[2]; // cb123
+                
+                if (!shortId) {
+                    await ctx.answerCbQuery("❌ Invalid callback format.");
+                    return true;
+                }
+                
+                const userId = SupportCallbackProcessor.resolveCallbackId(shortId);
+                
+                if (!userId || parseInt(userId) !== ctx.from?.id) {
+                    await ctx.answerCbQuery("❌ Session expired. Please start again.");
+                    return true;
+                }
+                
+                return await this.handleEditSummary(ctx);
+            }
+            
+            if (callbackData.startsWith('support_cancel_')) {
+                const parts = callbackData.split('_');
+                const shortId = parts[2]; // cb123
+                
+                if (!shortId) {
+                    await ctx.answerCbQuery("❌ Invalid callback format.");
+                    return true;
+                }
+                
+                const userId = SupportCallbackProcessor.resolveCallbackId(shortId);
+                
+                if (!userId || parseInt(userId) !== ctx.from?.id) {
+                    await ctx.answerCbQuery("❌ Session expired. Please start again.");
+                    return true;
+                }
+                
+                return await this.handleCancel(ctx);
+            }
+            
+            // Handle legacy callback patterns
+            const action = callbackData.replace('support_', '');
+            
             switch (action) {
                 case 'continue':
                     return await this.handleContinue(ctx);
@@ -55,12 +154,20 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                     return await this.handleCancel(ctx);
                 case 'create_new':
                     return await this.handleCreateNew(ctx);
+                case 'setup_email':
+                    return await this.handleSetupEmail(ctx);
+                case 'use_temp':
+                    return await this.handleUseTempEmail(ctx);
+                case 'upgrade_email':
+                    return await this.handleUpgradeEmail(ctx);
+                case 'continue_temp':
+                    return await this.handleContinueWithTemp(ctx);
                 default:
                     return false;
             }
         } catch (error) {
             logError(error, 'SupportCallbackProcessor.process', { 
-                action, 
+                callbackData, 
                 userId: ctx.from?.id 
             });
             await ctx.answerCbQuery("❌ An error occurred. Please try again.");
@@ -173,6 +280,457 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
             emoji: "🎫",
             stepDescription: "Please describe your issue or question."
         });
+    }
+
+    /**
+     * Handles email setup callback for first-time users
+     */
+    private async handleSetupEmail(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("📧 Setting up email...");
+        
+        const userId = ctx.from?.id;
+        if (!userId) return false;
+
+        // Set state for email collection
+        await BotsStore.setUserState(userId, {
+            field: 'email_setup',
+            step: 1,
+            totalSteps: 2,
+            hasEmail: false,
+            chatId: ctx.chat?.id || 0,
+            startedAt: new Date().toISOString()
+        });
+
+        await ctx.editMessageText(
+            "📧 **Email Address Setup**\n\n" +
+            "Please provide your email address. Our support team will use this to contact you directly about your tickets.\n\n" +
+            "**Benefits of setting a real email:**\n" +
+            "• Direct communication with support agents\n" +
+            "• Ticket updates and notifications\n" +
+            "• Better support experience\n\n" +
+            "*Please reply with your email address.*",
+            { parse_mode: 'Markdown' }
+        );
+
+        return true;
+    }
+
+    /**
+     * Handles temporary email setup for users who want to skip email
+     */
+    private async handleUseTempEmail(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("⚡ Using temporary email...");
+        
+        const userId = ctx.from?.id;
+        const username = ctx.from?.username;
+        if (!userId) return false;
+
+        try {
+            const userState = await BotsStore.getUserState(userId);
+            if (!userState || !userState.summary) {
+                await ctx.editMessageText(
+                    "❌ **No Summary Found**\n\nPlease start over with `/support`.",
+                    { parse_mode: 'Markdown' }
+                );
+                return true;
+            }
+
+            // Generate and save dummy email
+            const dummyEmail = generateDummyEmail(userId, username);
+            await updateUserEmail(userId, dummyEmail, true);
+
+            // Update state with dummy email and create ticket immediately
+            const updatedState = {
+                ...userState,
+                email: dummyEmail,
+                field: 'completed'
+            };
+
+            await BotsStore.setUserState(userId, updatedState);
+
+            await ctx.editMessageText(
+                "⚡ **Quick Setup Complete!**\n\n" +
+                "✅ **Temporary email configured for ticket creation**\n\n" +
+                "🎫 **Creating your support ticket...**",
+                { parse_mode: 'Markdown' }
+            );
+
+            // Log the action before creating ticket
+            LogEngine.info('User selected temporary email for support', { userId, dummyEmail });
+
+            // Create the ticket directly
+            return await this.createTicketDirectly(ctx, updatedState);
+
+        } catch (error) {
+            LogEngine.error('Error setting up temporary email', {
+                error: error instanceof Error ? error.message : 'Unknown error',
+                userId
+            });
+            
+            await ctx.editMessageText(
+                "❌ **Error setting up temporary email**\n\nPlease try again or contact an administrator.",
+                { parse_mode: 'Markdown' }
+            );
+            return true;
+        }
+    }
+
+    /**
+     * Handles email upgrade for users with dummy emails
+     */
+    private async handleUpgradeEmail(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("📧 Upgrading to real email...");
+        
+        const userId = ctx.from?.id;
+        if (!userId) return false;
+
+        await BotsStore.setUserState(userId, {
+            field: 'email_upgrade',
+            step: 1,
+            totalSteps: 2,
+            hasEmail: false,
+            chatId: ctx.chat?.id || 0,
+            startedAt: new Date().toISOString()
+        });
+
+        await ctx.editMessageText(
+            "📧 **Upgrade to Real Email**\n\n" +
+            "Great choice! Please provide your email address for better communication with our support team.\n\n" +
+            "**What you'll get:**\n" +
+            "• Direct email updates about your tickets\n" +
+            "• Faster response times\n" +
+            "• Better support experience\n\n" +
+            "*Please reply with your email address.*",
+            { parse_mode: 'Markdown' }
+        );
+
+        return true;
+    }
+
+    /**
+     * Handles continuing with temporary email
+     */
+    private async handleContinueWithTemp(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("▶️ Continuing with temporary email...");
+        
+        const userId = ctx.from?.id;
+        if (!userId) return false;
+
+        // Start ticket creation flow
+        await BotsStore.setUserState(userId, {
+            field: 'summary',
+            step: 1,
+            totalSteps: 1,
+            hasEmail: true,
+            chatId: ctx.chat?.id || 0,
+            startedAt: new Date().toISOString()
+        });
+
+        await ctx.editMessageText(
+            "🎫 **Create Support Ticket**\n\n" +
+            "I'll create your ticket using your current temporary email. You can upgrade to a real email anytime using `/setemail`.\n\n" +
+            "**Please describe your issue or question:**\n\n" +
+            "*Reply with a detailed description of your issue.*",
+            { parse_mode: 'Markdown' }
+        );
+
+        LogEngine.info('User continued with temporary email', { userId });
+        return true;
+    }
+
+    /**
+     * Handle proceeding with the current summary (Phase 4: Confirmation Flow)
+     */
+    private async handleProceedWithSummary(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("✅ Processing your request...");
+        
+        const userId = ctx.from?.id;
+        if (!userId) return false;
+
+        try {
+            const userState = await BotsStore.getUserState(userId);
+            if (!userState || !userState.summary) {
+                await ctx.editMessageText(
+                    "❌ **No Summary Found**\n\nPlease start over with `/support`.",
+                    { parse_mode: 'Markdown' }
+                );
+                return true;
+            }
+
+            // Check if user has email - ONLY prompt first-time users
+            const { getUserEmailPreferences } = await import('../../utils/emailManager.js');
+            const emailPrefs = await getUserEmailPreferences(userId);
+            
+            if (!emailPrefs || !emailPrefs.email) {
+                // FIRST-TIME USER: Show email setup choice (this is what you wanted!)
+                await BotsStore.setUserState(userId, {
+                    ...userState,
+                    field: 'email_setup',
+                    step: 2,
+                    preservedSummary: userState.summary  // CRITICAL: Preserve the summary!
+                });
+
+                const shortId = SupportCallbackProcessor.generateShortCallbackId(userId.toString());
+
+                await ctx.editMessageText(
+                    "📧 **Email Setup Required**\n\n" +
+                    "To create your support ticket, we need your email address for updates and communication.\n\n" +
+                    "**Benefits:**\n" +
+                    "• Direct communication with support agents\n" +
+                    "• Ticket status updates and notifications\n" +
+                    "• Better support experience\n\n" +
+                    "What would you like to do?",
+                    {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "📧 Set Up Email", callback_data: "support_setup_email" }
+                                ],
+                                [
+                                    { text: "⚡ Skip (Use Temporary)", callback_data: "support_use_temp" }
+                                ],
+                                [
+                                    { text: "❌ Cancel", callback_data: `support_cancel_${shortId}` }
+                                ]
+                            ]
+                        }
+                    }
+                );
+                return true;
+            }
+
+            // RETURNING USER: Has email - proceed directly to ticket creation (no prompt!)
+            const updatedState = {
+                ...userState,
+                email: emailPrefs.email,
+                field: 'completed'
+            };
+            
+            await BotsStore.setUserState(userId, updatedState);
+            return await this.createTicketDirectly(ctx, updatedState);
+            
+        } catch (error) {
+            logError(error, 'SupportCallbackProcessor.handleProceedWithSummary', { userId });
+            await ctx.editMessageText(
+                "❌ **Error Processing Request**\n\nSomething went wrong. Please try again or contact support.",
+                { parse_mode: 'Markdown' }
+            );
+            return true;
+        }
+    }
+
+    /**
+     * Create ticket directly when processor can't handle
+     */
+    private async createTicketDirectly(ctx: BotContext, userState: any): Promise<boolean> {
+        try {
+            const userId = ctx.from?.id;
+            if (!userId) return false;
+
+            // Check if we have email - should always have it at this point
+            if (!userState.email) {
+                LogEngine.error('createTicketDirectly called without email', { userId });
+                await ctx.editMessageText(
+                    "❌ **Unable to Create Ticket**\n\n" +
+                    "Email information is missing. Please try again with `/support`.",
+                    { parse_mode: 'Markdown' }
+                );
+                return false;
+            }
+
+            // Prepare the OnBehalfOfUser parameter
+            const onBehalfOf = {
+                name: ctx.from?.first_name || ctx.from?.username || `User ${userId}`,
+                email: userState.email // Must exist at this point
+            };
+
+            // Create ticket using the unthread service with correct parameters
+            const ticketResponse = await unthreadService.createTicket({
+                groupChatName: 'Telegram Support', // Default group chat name
+                customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                summary: userState.summary,
+                onBehalfOf
+            });
+
+            // The response is just { id, friendlyId }
+            const ticket = ticketResponse;
+            
+            // Register ticket confirmation for bidirectional messaging
+            await unthreadService.registerTicketConfirmation({
+                messageId: ctx.callbackQuery?.message?.message_id || 0, // Use callback message ID
+                ticketId: ticket.id,
+                friendlyId: ticket.friendlyId,
+                customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                chatId: ctx.chat?.id || 0,
+                telegramUserId: userId
+            });
+
+            LogEngine.info('🔍 DEBUG: Ticket registered for bidirectional messaging via callback', {
+                storedConversationId: ticket.id,
+                friendlyId: ticket.friendlyId,
+                messageId: ctx.callbackQuery?.message?.message_id,
+                chatId: ctx.chat?.id,
+                method: 'callback_createTicketDirectly'
+            });
+            
+            // Clear user state
+            await BotsStore.clearUserState(userId);
+
+            // Fail-fast template system integration - No fallbacks for enterprise users!
+            let successMessage: string;
+            
+            // Pre-flight validation: Ensure template system is operational
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            const templateManager = GlobalTemplateManager.getInstance();
+            const templates = await templateManager.getGlobalTemplates();
+            
+            if (!templates.templates.ticket_created) {
+                LogEngine.error('Template configuration missing - failing ticket creation', {
+                    ticketId: ticket.id,
+                    userId,
+                    availableTemplates: Object.keys(templates.templates)
+                });
+                await ctx.editMessageText(
+                    "❌ **System Configuration Error**\n\n" +
+                    "Template system configuration is missing. Please contact administrators.\n\n" +
+                    "*Ticket creation halted to maintain consistency.*",
+                    { parse_mode: 'Markdown' }
+                );
+                return true;
+            }
+            
+            if (!templates.templates.ticket_created.enabled) {
+                LogEngine.error('Template system disabled - failing ticket creation', {
+                    ticketId: ticket.id,
+                    userId,
+                    templateEnabled: templates.templates.ticket_created.enabled
+                });
+                await ctx.editMessageText(
+                    "❌ **System Configuration Error**\n\n" +
+                    "Template system is disabled. Please contact administrators.\n\n" +
+                    "*Ticket creation halted to maintain consistency.*",
+                    { parse_mode: 'Markdown' }
+                );
+                return true;
+            }
+            
+            if (!templates.templates.ticket_created.content.trim()) {
+                LogEngine.error('Template content empty - failing ticket creation', {
+                    ticketId: ticket.id,
+                    userId,
+                    templateLength: templates.templates.ticket_created.content.length
+                });
+                await ctx.editMessageText(
+                    "❌ **Template Configuration Error**\n\n" +
+                    "Template content is empty. Please contact administrators.\n\n" +
+                    "*Ticket creation halted to maintain consistency.*",
+                    { parse_mode: 'Markdown' }
+                );
+                return true;
+            }
+
+            // Prepare template data
+            const templateData = {
+                ticket: {
+                    id: ticket.id,
+                    friendlyId: ticket.friendlyId,
+                    summary: userState.summary
+                },
+                customer: {
+                    name: ctx.from?.first_name || ctx.from?.username || `User ${userId}`,
+                    email: userState.email || 'Not provided'
+                },
+                timestamp: new Date().toISOString()
+            };
+
+            // Template system is operational - proceed with rendering (must succeed)
+            try {
+                successMessage = templates.templates.ticket_created.content
+                    .replace(/\{\{ticketNumber\}\}/g, escapeMarkdown(String(ticket.friendlyId)))
+                    .replace(/\{\{friendlyId\}\}/g, escapeMarkdown(String(ticket.friendlyId)))
+                    .replace(/\{\{ticketId\}\}/g, escapeMarkdown(String(ticket.friendlyId))) // Legacy support
+                    .replace(/\{\{summary\}\}/g, escapeMarkdown(templateData.ticket.summary))
+                    .replace(/\{\{customerName\}\}/g, escapeMarkdown(templateData.customer.name));
+            } catch (templateRenderError) {
+                LogEngine.error('Template rendering failed - failing ticket creation', {
+                    error: templateRenderError instanceof Error ? templateRenderError.message : 'Unknown error',
+                    ticketId: ticket.id,
+                    userId,
+                    templateContent: templates.templates.ticket_created.content.substring(0, 100)
+                });
+                await ctx.editMessageText(
+                    "❌ **Template Rendering Error**\n\n" +
+                    "Failed to process template content. Please contact administrators.\n\n" +
+                    "*Ticket creation halted to maintain consistency.*",
+                    { parse_mode: 'Markdown' }
+                );
+                return true;
+            }
+
+            await ctx.editMessageText(successMessage, { parse_mode: 'Markdown' });
+            
+            LogEngine.info('Support ticket created successfully via callback', {
+                ticketId: ticket.id,
+                friendlyId: ticket.friendlyId,
+                userId,
+                method: 'callback_proceed'
+            });
+            
+            return true;
+        } catch (error) {
+            logError(error, 'SupportCallbackProcessor.createTicketDirectly', { userId: ctx.from?.id });
+            await ctx.editMessageText(
+                "❌ **Error Creating Ticket**\n\nSomething went wrong. Please try again or contact support.",
+                { parse_mode: 'Markdown' }
+            );
+            return true;
+        }
+    }
+
+    /**
+     * Handle editing the summary (Phase 4: Confirmation Flow)
+     */
+    private async handleEditSummary(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("✏️ Edit your summary...");
+        
+        const userId = ctx.from?.id;
+        if (!userId) return false;
+
+        try {
+            const userState = await BotsStore.getUserState(userId);
+            if (!userState) {
+                await ctx.editMessageText(
+                    "❌ **No Active Session**\n\nPlease start over with `/support`.",
+                    { parse_mode: 'Markdown' }
+                );
+                return true;
+            }
+
+            // Reset to summary input state
+            await BotsStore.setUserState(userId, {
+                ...userState,
+                field: 'summary',
+                step: 1,
+                isEditing: true
+            });
+
+            await ctx.editMessageText(
+                "✏️ **Edit Your Summary**\n\n" +
+                "Please provide an updated description of your issue:\n\n" +
+                "*Type your new summary below:*",
+                { parse_mode: 'Markdown' }
+            );
+
+            return true;
+        } catch (error) {
+            logError(error, 'SupportCallbackProcessor.handleEditSummary', { userId });
+            await ctx.editMessageText(
+                "❌ **Error**\n\nSomething went wrong. Please try again.",
+                { parse_mode: 'Markdown' }
+            );
+            return true;
+        }
     }
 }
 
@@ -1045,7 +1603,7 @@ Templates control how the bot communicates with users and admins.
 
 **💡 Template Variables:**
 Templates use dynamic placeholders like:
-• \`{{ticketId}}\` - Unique ticket identifier
+• \`{{ticketNumber}}\` - User-friendly ticket number (TKT-445)
 • \`{{customerName}}\` - Customer name
 • \`{{agentName}}\` - Support agent name
 • \`{{summary}}\` - Ticket description
@@ -1055,7 +1613,7 @@ Templates use dynamic placeholders like:
 \`\`\`
 🎫 New Ticket: {{summary}}
 
-ID: {{ticketId}}
+ID: {{ticketNumber}}
 Customer: {{customerName}}
 Status: {{status}}
 
@@ -1385,7 +1943,7 @@ Choose which template to customize first:
 
 💡 **What You Can Customize:**
 • Message content and formatting
-• Use dynamic variables like \`{{ticketId}}\`, \`{{customerName}}\`
+• Use dynamic variables like \`{{ticketNumber}}\`, \`{{customerName}}\`
 • Add your brand voice and personality
 • Include specific instructions or next steps
 
@@ -1515,7 +2073,7 @@ ${agentVars}
 ${timeVars}
 
 💡 **Usage Examples:**
-• \`{{ticketId}}\` → TKT-12345
+• \`{{ticketNumber}}\` → TKT-445
 • \`{{customerName}}\` → John Doe
 • \`{{agentName}}\` → Sarah Johnson
 
@@ -1627,12 +2185,12 @@ ${currentTemplate?.content || 'Loading...'}
 
 **Instructions:**
 • Type your new template content below
-• Use variables like \`{{ticketId}}\`, \`{{customerName}}\`, \`{{agentName}}\`
+• Use variables like \`{{ticketNumber}}\`, \`{{customerName}}\`, \`{{agentName}}\`
 • Keep it clear and professional
 • You can use multiple lines
 
 **Available Variables:**
-• \`{{ticketId}}\` - Unique ticket identifier
+• \`{{ticketNumber}}\` - User-friendly ticket number (TKT-445)
 • \`{{summary}}\` - Ticket summary/title  
 • \`{{customerName}}\` - Customer name
 • \`{{status}}\` - Ticket status
@@ -1741,6 +2299,7 @@ Please choose how you'd like to set up the customer for this group:
                 reply_markup: {
                     inline_keyboard: [
                         [
+
                             { text: `✅ Use "${suggestedName}"`, callback_data: `setup_use_suggested_${shortSuggestedId}` }
                         ],
                         [
@@ -2175,7 +2734,7 @@ ${agentVars}
 ${timeVars}
 
 💡 **Usage Examples:**
-• \`{{ticketId}}\` → TKT-12345
+• \`{{ticketNumber}}\` → TKT-445
 • \`{{customerName}}\` → John Doe
 • \`{{agentName}}\` → Sarah Johnson
 

@@ -15,6 +15,14 @@ import { logError } from '../utils/errorHandler.js';
 import * as unthreadService from '../../services/unthread.js';
 import { SetupCallbackProcessor } from './CallbackProcessors.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
+import { 
+    validateEmail, 
+    updateUserEmail, 
+    getUserEmailPreferences,
+    formatEmailForDisplay 
+} from '../../utils/emailManager.js';
+import { escapeMarkdown, truncateText, lightEscapeMarkdown } from '../../utils/markdownEscape.js';
+import { SimpleInputValidator, SimpleValidationResult } from '../../utils/simpleValidators.js';
 
 /**
  * Support Form Conversation Processor
@@ -29,7 +37,8 @@ export class SupportConversationProcessor implements IConversationProcessor {
 
         try {
             const userState = await BotsStore.getUserState(userId);
-            return userState?.field === 'summary' || userState?.field === 'email';
+            return userState?.field === 'summary' || 
+                   userState?.field === 'email';
         } catch (error) {
             logError(error, 'SupportConversationProcessor.canHandle', { userId });
             return false;
@@ -79,49 +88,79 @@ export class SupportConversationProcessor implements IConversationProcessor {
 
         const userId = ctx.from.id;
 
-        if (summary.trim().length < 10) {
-            await ctx.reply(
-                "📝 **Please provide more details**\n\n" +
-                "Your issue description should be at least 10 characters long to help our team assist you better.\n\n" +
-                "*Please describe your issue:*",
-                { 
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        force_reply: true,
-                        input_field_placeholder: "Describe your issue in detail..."
-                    }
+        // Simple, practical validation for enterprise users
+        const validation = SimpleInputValidator.validateSummary(summary);
+        
+        if (!validation.isValid) {
+            let message = `❌ **${validation.message}**`;
+            
+            if (validation.suggestion) {
+                message += `\n\n💡 ${validation.suggestion}`;
+            }
+            
+            message += "\n\n*Please try again:*";
+            
+            await ctx.reply(message, { 
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    force_reply: true,
+                    input_field_placeholder: "Describe your issue in detail..."
                 }
-            );
+            });
+
+            LogEngine.info('Summary validation failed', {
+                userId,
+                reason: validation.message,
+                inputLength: summary.length
+            });
+
             return true;
         }
 
         // Store the summary
-        userState.summary = summary;
+        userState.summary = summary.trim();
 
-        if (userState.hasEmail) {
-            // User has email, create ticket immediately
-            return await this.createTicket(ctx, userState);
-        } else {
-            // Ask for email
-            await BotsStore.setUserState(userId, {
-                ...userState,
-                field: 'email',
-                step: 2
-            });
+        // Set confirmation state
+        await BotsStore.setUserState(userId, {
+            ...userState,
+            field: 'confirmation',
+            step: 2
+        });
 
-            await ctx.reply(
-                "📧 **Step 2 of 2:** Email Address\n\n" +
-                "Please provide your email address so our support team can follow up with you.\n\n" +
-                "*This will be saved for future tickets:*",
-                { 
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        force_reply: true,
-                        input_field_placeholder: "your@email.com"
-                    }
-                }
-            );
-        }
+        // Show simple confirmation without unnecessary feedback
+        const safeSummary = lightEscapeMarkdown(truncateText(summary.trim(), 200));
+        
+        const confirmationMessage = 
+            "📝 **Review Your Issue**\n\n" +
+            `**Summary:** ${safeSummary}\n\n` +
+            "Please review your issue description above. What would you like to do?";
+
+        // Generate short callback IDs for the three-button interface
+        const { SupportCallbackProcessor } = await import('./CallbackProcessors.js');
+        const shortId = SupportCallbackProcessor.generateShortCallbackId(userId.toString());
+
+        await ctx.reply(confirmationMessage, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "✅ Proceed", callback_data: `support_proceed_${shortId}` }
+                    ],
+                    [
+                        { text: "✏️ Edit Summary", callback_data: `support_edit_${shortId}` }
+                    ],
+                    [
+                        { text: "❌ Cancel", callback_data: `support_cancel_${shortId}` }
+                    ]
+                ]
+            }
+        });
+
+        LogEngine.info('Summary accepted', { 
+            userId, 
+            summaryLength: summary.trim().length,
+            wordCount: summary.trim().split(/\s+/).length
+        });
 
         return true;
     }
@@ -178,23 +217,44 @@ export class SupportConversationProcessor implements IConversationProcessor {
 
             const customer = await unthreadService.getOrCreateCustomer(chatTitle, chatId);
             
-            // Get user data with email
+            // Get user data - might not have email
             let userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
             
-            // Update user with email if provided
-            if (userState.email && (!userData.email || userData.email !== userState.email)) {
-                await BotsStore.updateUser(userId, { email: userState.email });
-                userData = { ...userData, email: userState.email };
+            // Check if we have email from user state (just provided) or stored
+            const emailToUse = userState.email || userData.email;
+            
+            if (!emailToUse) {
+                // No email available - this shouldn't happen in normal flow
+                // but let's handle it gracefully
+                LogEngine.error('Ticket creation attempted without email', {
+                    userId,
+                    hasUserStateEmail: !!userState.email,
+                    hasUserDataEmail: !!userData.email
+                });
+                
+                await ctx.editMessageText(
+                    "❌ **Unable to Create Ticket**\n\n" +
+                    "Email information is missing. Please try again with `/support`.",
+                    { parse_mode: 'Markdown' }
+                );
+                return false;
+            }
+            
+            // If user provided email during ticket creation, update their unthreadEmail
+            if (userState.email) {
+                await BotsStore.updateUser(userId, { unthreadEmail: userState.email });
+                // Refresh userData to get the updated email
+                userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
             }
 
-            // Create the ticket
+            // Create the ticket with confirmed email
             const ticketResponse = await unthreadService.createTicket({
                 groupChatName: chatTitle,
                 customerId: customer.id,
                 summary: userState.summary,
                 onBehalfOf: {
                     name: userData.name || ctx.from?.first_name || 'Telegram User',
-                    email: userData.email || userState.email
+                    email: emailToUse // Guaranteed to exist at this point
                 }
             });
 
@@ -208,19 +268,116 @@ export class SupportConversationProcessor implements IConversationProcessor {
                 telegramUserId: userId
             });
 
+            LogEngine.info('🔍 DEBUG: Ticket stored for bidirectional messaging', {
+                storedConversationId: ticketResponse.id,
+                friendlyId: ticketResponse.friendlyId,
+                messageId: statusMsg.message_id,
+                chatId: chatId
+            });
+
             // Clear user state
             await BotsStore.clearUserState(userId);
 
-            // Update success message
-            const successMessage = 
-                "✅ **Ticket Created Successfully!**\n\n" +
-                `🎫 **Ticket ID:** ${ticketResponse.friendlyId}\n` +
-                `📝 **Summary:** ${userState.summary}\n` +
-                `👤 **Created by:** ${userData.name || ctx.from?.first_name}\n` +
-                `📧 **Email:** ${userData.email || userState.email}\n\n` +
-                "Our support team will respond shortly. You can reply to this message to add more information to your ticket.";
+            // Fail-fast template system integration - No fallbacks for enterprise users!
+            let successMessage: string;
+            
+            // Pre-flight validation: Ensure template system is operational
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            const templateManager = GlobalTemplateManager.getInstance();
+            const templates = await templateManager.getGlobalTemplates();
+            
+            if (!templates.templates.ticket_created) {
+                LogEngine.error('Template configuration missing - failing ticket creation message', {
+                    ticketId: ticketResponse.id,
+                    userId,
+                    availableTemplates: Object.keys(templates.templates)
+                });
+                await ctx.editMessageText(
+                    "❌ **System Configuration Error**\n\n" +
+                    "Template system configuration is missing. Please contact administrators.\n\n" +
+                    "*Message generation failed to maintain consistency.*",
+                    { parse_mode: 'Markdown' }
+                );
+                return false;
+            }
+            
+            if (!templates.templates.ticket_created.enabled) {
+                LogEngine.error('Template system disabled - failing ticket creation message', {
+                    ticketId: ticketResponse.id,
+                    userId,
+                    templateEnabled: templates.templates.ticket_created.enabled
+                });
+                await ctx.editMessageText(
+                    "❌ **System Configuration Error**\n\n" +
+                    "Template system is disabled. Please contact administrators.\n\n" +
+                    "*Message generation failed to maintain consistency.*",
+                    { parse_mode: 'Markdown' }
+                );
+                return false;
+            }
+            
+            if (!templates.templates.ticket_created.content.trim()) {
+                LogEngine.error('Template content empty - failing ticket creation message', {
+                    ticketId: ticketResponse.id,
+                    userId,
+                    templateLength: templates.templates.ticket_created.content.length
+                });
+                await ctx.editMessageText(
+                    "❌ **Template Configuration Error**\n\n" +
+                    "Template content is empty. Please contact administrators.\n\n" +
+                    "*Message generation failed to maintain consistency.*",
+                    { parse_mode: 'Markdown' }
+                );
+                return false;
+            }
 
-            await ctx.editMessageText(successMessage, { parse_mode: 'Markdown' });
+            // Prepare template data
+            const templateData = {
+                ticket: {
+                    id: ticketResponse.id,
+                    friendlyId: ticketResponse.friendlyId,
+                    summary: userState.summary
+                },
+                customer: {
+                    name: userData.name || ctx.from?.first_name || 'Unknown User',
+                    email: userData.email || userState.email || 'Not provided'
+                },
+                timestamp: new Date().toISOString()
+            };
+
+            // Template system is operational - proceed with rendering (must succeed)
+            try {
+                successMessage = templates.templates.ticket_created.content
+                    .replace(/\{\{ticketId\}\}/g, escapeMarkdown(String(ticketResponse.friendlyId)))
+                    .replace(/\{\{summary\}\}/g, escapeMarkdown(templateData.ticket.summary))
+                    .replace(/\{\{customerName\}\}/g, escapeMarkdown(templateData.customer.name));
+            } catch (templateRenderError) {
+                LogEngine.error('Template rendering failed - failing ticket creation message', {
+                    error: templateRenderError instanceof Error ? templateRenderError.message : 'Unknown error',
+                    ticketId: ticketResponse.id,
+                    userId,
+                    templateContent: templates.templates.ticket_created.content.substring(0, 100)
+                });
+                await ctx.editMessageText(
+                    "❌ **Template Rendering Error**\n\n" +
+                    "Failed to process template content. Please contact administrators.\n\n" +
+                    "*Message generation failed to maintain consistency.*",
+                    { parse_mode: 'Markdown' }
+                );
+                return false;
+            }
+
+            try {
+                await ctx.editMessageText(successMessage, { parse_mode: 'Markdown' });
+            } catch (editError) {
+                // If editing fails, send a new message instead
+                LogEngine.warn('Failed to edit status message, sending new message instead', {
+                    error: editError instanceof Error ? editError.message : 'Unknown error',
+                    ticketId: ticketResponse.id
+                });
+                
+                await ctx.reply(successMessage, { parse_mode: 'Markdown' });
+            }
 
             LogEngine.info('Support ticket created successfully', {
                 ticketId: ticketResponse.id,
@@ -875,7 +1032,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 });
             }
             
-            await ctx.reply(`✅ Customer found: **${customerName}**\n\nLinking to existing customer...`, { parse_mode: 'Markdown' });
+            await ctx.reply(`✅ Customer found: **${escapeMarkdown(customerName)}**\n\nLinking to existing customer...`, { parse_mode: 'Markdown' });
 
             return { isValid: true, customerName, validationMsg };
 

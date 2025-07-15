@@ -24,6 +24,8 @@ import {
     CancelCommand, 
     ResetCommand 
 } from './basic/StateCommands.js';
+import { SetEmailCommand } from './basic/SetEmailCommand.js';
+import { ViewEmailCommand } from './basic/ViewEmailCommand.js';
 
 // Support system
 import { SupportCommand } from './support/SupportCommandClean.js';
@@ -61,6 +63,8 @@ export function initializeCommands(): void {
     commandRegistry.register(new AboutCommand());
     commandRegistry.register(new CancelCommand());
     commandRegistry.register(new ResetCommand());
+    commandRegistry.register(new SetEmailCommand());
+    commandRegistry.register(new ViewEmailCommand());
 
     // Register support system
     commandRegistry.register(new SupportCommand());

@@ -32,6 +32,7 @@ import type { BotContext } from '../types/index.js';
 import type { IBotsStore } from '../sdk/types.js';
 import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
+import { escapeMarkdown } from '../utils/markdownEscape.js';
 
 /**
  * Handles incoming webhook messages from Unthread agents
@@ -119,8 +120,38 @@ export class TelegramWebhookHandler {
 
       LogEngine.info('🔍 Looking up ticket for conversation', { conversationId });
 
-      // 2. Look up original ticket message using bots-brain
+      // DEBUG: Log the full event data structure to understand the webhook payload
+      LogEngine.info('🔍 DEBUG: Full webhook event data', {
+        eventData: JSON.stringify(event.data, null, 2),
+        conversationIdFromEvent: conversationId,
+        hasConversationId: !!conversationId
+      });
+
+      // 2. Look up original ticket message using conversation ID from webhook
+      // 
+      // UNIFIED APPROACH: Use conversationId from webhook as the single source of truth.
+      // We now store all tickets using the webhook conversationId to eliminate ID mismatches.
+      // This ensures consistent routing regardless of Unthread's internal ID variations.
+      //
+      LogEngine.info('🔍 DEBUG: About to lookup ticket', {
+        conversationId,
+        lookupKey: `ticket:unthread:${conversationId}`
+      });
+      
       const ticketData = await this.botsStore.getTicketByConversationId(conversationId);
+      
+      LogEngine.info('🔍 DEBUG: Ticket lookup result', {
+        conversationId,
+        found: !!ticketData,
+        ticketData: ticketData ? {
+          friendlyId: ticketData.friendlyId,
+          chatId: ticketData.chatId,
+          messageId: ticketData.messageId,
+          conversationId: ticketData.conversationId,
+          ticketId: ticketData.ticketId
+        } : null
+      });
+      
       if (!ticketData) {
         LogEngine.warn(`❌ No ticket found for conversation: ${conversationId}`);
         return;
@@ -130,7 +161,9 @@ export class TelegramWebhookHandler {
         conversationId,
         friendlyId: ticketData.friendlyId,
         chatId: ticketData.chatId,
-        messageId: ticketData.messageId
+        messageId: ticketData.messageId,
+        storedConversationId: ticketData.conversationId,
+        storedTicketId: ticketData.ticketId
       });
 
       // 3. Validate message content - check both 'content' and 'text' fields
@@ -150,7 +183,14 @@ export class TelegramWebhookHandler {
         messagePreview: messageText.substring(0, 100) + (messageText.length > 100 ? '...' : '')
       });
 
-      // 4. Format agent message using template system
+      // 4. Always deliver agent messages - we'll prompt for email when user replies instead
+      LogEngine.info('✅ Delivering agent message directly to user', {
+        conversationId,
+        telegramUserId: ticketData.telegramUserId,
+        messageLength: messageText.length
+      });
+
+      // 5. Format agent message using template system
       const formattedMessage = await this.formatAgentMessageWithTemplate(
         messageText, 
         ticketData, 
@@ -285,18 +325,9 @@ export class TelegramWebhookHandler {
   sanitizeMessageText(text: string): string {
     if (!text) return '';
     
-    // Basic cleanup
-    let cleaned = text.trim();
-    
-    // Escape common Markdown characters that might break formatting
-    // But preserve basic formatting like *bold* and _italic_
-    cleaned = cleaned
-      .replace(/\\/g, '\\\\')  // Escape backslashes
-      .replace(/`/g, '\\`')    // Escape backticks
-      .replace(/\[/g, '\\[')   // Escape square brackets
-      .replace(/\]/g, '\\]');  // Escape square brackets
-
-    return cleaned;
+    // Use our comprehensive markdown escaping utility
+    // This prevents all entity parsing errors
+    return escapeMarkdown(text.trim());
   }
 
   /**
@@ -505,7 +536,9 @@ export class TelegramWebhookHandler {
     try {
       // Build template variables for global template system
       const variables = {
-        ticketId: ticketData.friendlyId,
+        ticketNumber: ticketData.friendlyId,        // Primary: "TKT-001" format (user-friendly)
+        friendlyId: ticketData.friendlyId,          // Explicit: "TKT-001" format (backward compatibility)
+        conversationId: ticketData.conversationId,  // UUID from Unthread webhook events (consistent across all events)
         summary: eventData.subject || 'Support Request',
         customerName: ticketData.userName || 'Customer',
         status: 'Open',
@@ -541,7 +574,9 @@ export class TelegramWebhookHandler {
     try {
       // Build template variables for global template system
       const variables = {
-        ticketId: ticketData.friendlyId,
+        ticketNumber: ticketData.friendlyId,        // Primary: "TKT-001" format (user-friendly)
+        friendlyId: ticketData.friendlyId,          // Explicit: "TKT-001" format (backward compatibility)
+        conversationId: ticketData.conversationId,  // UUID from Unthread webhook events (consistent across all events)
         summary: eventData.subject || 'Support Request',
         customerName: ticketData.userName || 'Customer',
         status: status === 'closed' ? 'Closed' : 'Updated',
@@ -635,4 +670,5 @@ export class TelegramWebhookHandler {
       // Don't throw - cleanup failure shouldn't crash the bot
     }
   }
+
 }

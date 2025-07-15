@@ -10,6 +10,8 @@ import * as unthreadService from '../../services/unthread.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotContext } from '../../types/index.js';
 import { UserState } from '../../sdk/types.js';
+import { getUserEmailPreferences } from '../../utils/emailManager.js';
+import { escapeMarkdown } from '../../utils/markdownEscape.js';
 
 export class SupportCommand extends BaseCommand {
     readonly metadata: CommandMetadata = {
@@ -101,32 +103,36 @@ export class SupportCommand extends BaseCommand {
 
         const userId = ctx.from.id;
         
-        // Check if user already has email stored
-        const userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
-        const hasEmail = userData?.email;
-
-        // Set initial user state
+        // Check if user already has email (real or dummy) - ONE TIME CHECK
+        const { getUserEmailPreferences } = await import('../../utils/emailManager.js');
+        const emailPrefs = await getUserEmailPreferences(userId);
+        
+        // Start ticket creation flow
         await BotsStore.setUserState(userId, {
             field: 'summary',
             step: 1,
-            totalSteps: hasEmail ? 1 : 2,
-            hasEmail: !!hasEmail,
+            totalSteps: emailPrefs?.email ? 2 : 3, // If has email: summary + confirmation, else: summary + email + confirmation
             chatId: ctx.chat.id,
-            startedAt: new Date().toISOString()
+            startedAt: new Date().toISOString(),
+            hasEmail: !!emailPrefs?.email
         });
 
         const message = 
             "🎫 **Create Support Ticket**\n\n" +
-            "I'll help you create a support ticket. This will connect you directly with our support team.\n\n" +
-            `**Step 1 of ${hasEmail ? 1 : 2}:** Please describe your issue or question.\n\n` +
-            "*Type your message below and I'll create your ticket:*";
+            "What's your concern? Please describe the issue you're experiencing.\n\n" +
+            "*Be as detailed as possible to help our team assist you better.*";
 
         await ctx.reply(message, { 
             parse_mode: 'Markdown',
             reply_markup: {
                 force_reply: true,
-                input_field_placeholder: "Describe your issue..."
+                input_field_placeholder: "Describe your issue in detail..."
             }
+        });
+
+        LogEngine.info('Started streamlined support ticket creation', { 
+            userId,
+            hasExistingEmail: !!emailPrefs?.email
         });
     }
 }

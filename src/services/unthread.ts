@@ -55,10 +55,11 @@ interface Customer {
 
 /**
  * User data for onBehalfOf
+ * Email is optional to support users without email setup
  */
 interface OnBehalfOfUser {
   name: string;
-  email: string;
+  email: string | undefined; // Explicitly allow undefined for email collection flow
 }
 
 /**
@@ -445,32 +446,77 @@ async function sendMessageJSON(params: SendMessageJSONParams): Promise<any> {
  * @param params - Ticket confirmation data including message and ticket identifiers, chat and user IDs, and related metadata.
  */
 export async function registerTicketConfirmation(params: RegisterTicketConfirmationParams): Promise<void> {
+    LogEngine.info('🔍 DEBUG: Starting registerTicketConfirmation', {
+        messageId: params.messageId,
+        ticketId: params.ticketId,
+        friendlyId: params.friendlyId,
+        chatId: params.chatId,
+        telegramUserId: params.telegramUserId
+    });
+    
     try {
         const { messageId, ticketId, friendlyId, customerId, chatId, telegramUserId } = params;
         
-        // Store ticket mapping using BotsStore
-        await BotsStore.storeTicket({
-            messageId: messageId,
+        LogEngine.info('🔍 DEBUG: About to store ticket with unified approach', {
             conversationId: ticketId,
+            messageId,
+            friendlyId
+        });
+        
+        // UNIFIED APPROACH: Store ticket using the ticketId as conversationId
+        // This eliminates the ID mismatch by treating ticketId as the primary conversation identifier
+        // Webhooks will use this same ID to look up tickets
+        const storeResult = await BotsStore.storeTicket({
+            messageId: messageId,
+            conversationId: ticketId,           // Use ticketId as conversationId for unified lookup
             friendlyId: friendlyId,
             chatId: chatId,
             telegramUserId: telegramUserId,
-            ticketId: ticketId,
+            ticketId: ticketId,                 // Keep for backward compatibility
             createdAt: Date.now().toString()
         });
         
-        LogEngine.info('Registered ticket confirmation', {
+        LogEngine.info('🔍 DEBUG: Ticket storage completed', {
+            success: storeResult,
+            conversationId: ticketId,
             messageId,
-            ticketId,
+            friendlyId
+        });
+        
+        // Immediate verification - try to retrieve the ticket we just stored
+        LogEngine.info('🔍 DEBUG: Attempting immediate verification lookup');
+        const verificationTicket = await BotsStore.getTicketByConversationId(ticketId);
+        LogEngine.info('🔍 DEBUG: Immediate verification result', {
+            found: !!verificationTicket,
+            lookupKey: `ticket:unthread:${ticketId}`,
+            verificationData: verificationTicket ? {
+                conversationId: verificationTicket.conversationId,
+                friendlyId: verificationTicket.friendlyId,
+                messageId: verificationTicket.messageId
+            } : null
+        });
+        
+        LogEngine.info('🔍 DEBUG: Registered ticket confirmation - unified storage approach', {
+            messageId,
+            unifiedConversationId: ticketId,    // Now conversationId === ticketId
+            ticketId: ticketId,
             friendlyId,
             customerId,
             chatId,
-            telegramUserId
+            telegramUserId,
+            approach: 'unified_conversationId',
+            storageKeys: [
+                `ticket:unthread:${ticketId}`,  // Primary storage key
+                `ticket:telegram:${messageId}`,
+                `ticket:friendly:${friendlyId}`
+            ]
         });
     } catch (error) {
         LogEngine.error('Error registering ticket confirmation', {
             error: (error as Error).message,
-            ticketId: params.ticketId
+            stack: (error as Error).stack,
+            ticketId: params.ticketId,
+            messageId: params.messageId
         });
         throw error;
     }
@@ -639,26 +685,24 @@ export async function getOrCreateUser(telegramUserId: number, username?: string)
             LogEngine.info('Using existing user from database', {
                 telegramUserId: existingUser.telegramUserId,
                 unthreadName: existingUser.unthreadName,
-                unthreadEmail: existingUser.unthreadEmail
+                unthreadEmail: existingUser.unthreadEmail,
+                hasEmail: !!existingUser.unthreadEmail
             });
             return {
                 name: existingUser.unthreadName || `User ${existingUser.telegramUserId}`,
-                email: existingUser.unthreadEmail || `user_${existingUser.telegramUserId}@telegram.user`
+                email: existingUser.unthreadEmail // No fallback - can be undefined
             };
         }
 
-        // Create new user data
+        // Create new user data - NO automatic dummy email generation
         const unthreadName = username ? `@${username}` : `User ${telegramUserId}`;
-        const unthreadEmail = username 
-            ? `${username}_${telegramUserId}@telegram.user`
-            : `user_${telegramUserId}@telegram.user`;
 
-        // Store user in our database
+        // Store user in our database WITHOUT automatic email
         const userData: UserData = {
             id: `user_${telegramUserId}`,
             telegramUserId: telegramUserId,
             unthreadName: unthreadName,
-            unthreadEmail: unthreadEmail,
+            // unthreadEmail omitted - will be undefined by default
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
@@ -670,16 +714,16 @@ export async function getOrCreateUser(telegramUserId: number, username?: string)
         
         await BotsStore.storeUser(userData);
         
-        LogEngine.info('Created and stored new user', {
+        LogEngine.info('Created and stored new user without automatic email', {
             telegramUserId: telegramUserId,
             telegramUsername: username,
             unthreadName: unthreadName,
-            unthreadEmail: unthreadEmail
+            unthreadEmail: 'undefined - will be set at interaction point'
         });
 
         return {
             name: unthreadName,
-            email: unthreadEmail
+            email: undefined // No automatic email - will be collected at interaction point
         };
     } catch (error) {
         LogEngine.error('Error getting or creating user', {
