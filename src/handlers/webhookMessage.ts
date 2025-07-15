@@ -121,8 +121,38 @@ export class TelegramWebhookHandler {
 
       LogEngine.info('🔍 Looking up ticket for conversation', { conversationId });
 
-      // 2. Look up original ticket message using bots-brain
+      // DEBUG: Log the full event data structure to understand the webhook payload
+      LogEngine.info('🔍 DEBUG: Full webhook event data', {
+        eventData: JSON.stringify(event.data, null, 2),
+        conversationIdFromEvent: conversationId,
+        hasConversationId: !!conversationId
+      });
+
+      // 2. Look up original ticket message using conversation ID from webhook
+      // 
+      // UNIFIED APPROACH: Use conversationId from webhook as the single source of truth.
+      // We now store all tickets using the webhook conversationId to eliminate ID mismatches.
+      // This ensures consistent routing regardless of Unthread's internal ID variations.
+      //
+      LogEngine.info('🔍 DEBUG: About to lookup ticket', {
+        conversationId,
+        lookupKey: `ticket:unthread:${conversationId}`
+      });
+      
       const ticketData = await this.botsStore.getTicketByConversationId(conversationId);
+      
+      LogEngine.info('🔍 DEBUG: Ticket lookup result', {
+        conversationId,
+        found: !!ticketData,
+        ticketData: ticketData ? {
+          friendlyId: ticketData.friendlyId,
+          chatId: ticketData.chatId,
+          messageId: ticketData.messageId,
+          conversationId: ticketData.conversationId,
+          ticketId: ticketData.ticketId
+        } : null
+      });
+      
       if (!ticketData) {
         LogEngine.warn(`❌ No ticket found for conversation: ${conversationId}`);
         return;
@@ -132,7 +162,9 @@ export class TelegramWebhookHandler {
         conversationId,
         friendlyId: ticketData.friendlyId,
         chatId: ticketData.chatId,
-        messageId: ticketData.messageId
+        messageId: ticketData.messageId,
+        storedConversationId: ticketData.conversationId,
+        storedTicketId: ticketData.ticketId
       });
 
       // 3. Validate message content - check both 'content' and 'text' fields
@@ -521,7 +553,9 @@ export class TelegramWebhookHandler {
     try {
       // Build template variables for global template system
       const variables = {
-        ticketId: ticketData.friendlyId,
+        ticketNumber: ticketData.friendlyId,        // Primary: "TKT-001" format (user-friendly)
+        friendlyId: ticketData.friendlyId,          // Explicit: "TKT-001" format (backward compatibility)
+        conversationId: ticketData.conversationId,  // UUID from Unthread webhook events (consistent across all events)
         summary: eventData.subject || 'Support Request',
         customerName: ticketData.userName || 'Customer',
         status: 'Open',
@@ -557,7 +591,9 @@ export class TelegramWebhookHandler {
     try {
       // Build template variables for global template system
       const variables = {
-        ticketId: ticketData.friendlyId,
+        ticketNumber: ticketData.friendlyId,        // Primary: "TKT-001" format (user-friendly)
+        friendlyId: ticketData.friendlyId,          // Explicit: "TKT-001" format (backward compatibility)
+        conversationId: ticketData.conversationId,  // UUID from Unthread webhook events (consistent across all events)
         summary: eventData.subject || 'Support Request',
         customerName: ticketData.userName || 'Customer',
         status: status === 'closed' ? 'Closed' : 'Updated',

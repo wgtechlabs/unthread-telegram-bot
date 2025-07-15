@@ -198,18 +198,14 @@ export class BotsStore implements IBotsStore {
     };
     
     try {
-      // Store with multiple keys for different lookup patterns
+      // UNIFIED STORAGE: Use conversationId as single source of truth
+      // Since we now store tickets with conversationId === ticketId, no dual storage needed
       const promises = [
         // Primary lookup by Telegram message ID
         this.storage.set(`ticket:telegram:${messageId}`, JSON.stringify(enrichedTicketData)),
         
-        // Lookup by Unthread conversation ID
+        // Unified lookup by conversation ID (which equals ticket ID in our unified approach)
         this.storage.set(`ticket:unthread:${conversationId}`, JSON.stringify(enrichedTicketData)),
-        
-        // Lookup by Unthread ticket ID (if different from conversation ID)
-        ticketId !== conversationId ? 
-          this.storage.set(`ticket:unthread:${ticketId}`, JSON.stringify(enrichedTicketData)) : 
-          Promise.resolve(),
         
         // Lookup by friendly ID
         this.storage.set(`ticket:friendly:${friendlyId}`, JSON.stringify(enrichedTicketData)),
@@ -258,9 +254,13 @@ export class BotsStore implements IBotsStore {
   /**
    * Get ticket by Unthread ticket ID
    */
+  /**
+   * Get ticket by ticket ID (now unified with conversation ID)
+   * @deprecated Use getTicketByConversationId instead - they now reference the same data
+   */
   async getTicketByTicketId(ticketId: string): Promise<TicketData | null> {
-    const data = await this.storage.get(`ticket:unthread:${ticketId}`);
-    return data ? (typeof data === 'string' ? JSON.parse(data) : data) : null;
+    // UNIFIED APPROACH: ticketId === conversationId, so this is the same as getTicketByConversationId
+    return this.getTicketByConversationId(ticketId);
   }
   
   /**
@@ -591,22 +591,23 @@ export class BotsStore implements IBotsStore {
       const ticket = await this.getTicketByConversationId(conversationId);
       if (!ticket) return true;
       
+      // UNIFIED APPROACH: Only need to delete conversationId storage since ticketId === conversationId
       const promises = [
         this.storage.delete(`ticket:telegram:${ticket.messageId}`),
-        this.storage.delete(`ticket:unthread:${conversationId}`),
+        this.storage.delete(`ticket:unthread:${conversationId}`),        // Primary storage
         this.storage.delete(`ticket:friendly:${ticket.friendlyId}`)
       ];
-      
-      if (ticket.ticketId && ticket.ticketId !== conversationId) {
-        promises.push(this.storage.delete(`ticket:unthread:${ticket.ticketId}`));
-      }
       
       await Promise.all(promises);
       
       // Remove from chat tickets list
       await this.removeFromChatTickets(ticket.chatId, conversationId);
       
-      LogEngine.info(`Ticket deleted: ${ticket.friendlyId}`);
+      LogEngine.info(`Ticket deleted (unified approach): ${ticket.friendlyId}`, {
+        conversationId,
+        ticketId: ticket.ticketId,
+        unified: ticket.conversationId === ticket.ticketId
+      });
       return true;
     } catch (error) {
       const err = error as Error;

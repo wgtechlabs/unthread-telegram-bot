@@ -268,6 +268,13 @@ export class SupportConversationProcessor implements IConversationProcessor {
                 telegramUserId: userId
             });
 
+            LogEngine.info('🔍 DEBUG: Ticket stored for bidirectional messaging', {
+                storedConversationId: ticketResponse.id,
+                friendlyId: ticketResponse.friendlyId,
+                messageId: statusMsg.message_id,
+                chatId: chatId
+            });
+
             // Clear user state
             await BotsStore.clearUserState(userId);
 

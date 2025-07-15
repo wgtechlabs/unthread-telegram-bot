@@ -556,6 +556,24 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
             // The response is just { id, friendlyId }
             const ticket = ticketResponse;
             
+            // Register ticket confirmation for bidirectional messaging
+            await unthreadService.registerTicketConfirmation({
+                messageId: ctx.callbackQuery?.message?.message_id || 0, // Use callback message ID
+                ticketId: ticket.id,
+                friendlyId: ticket.friendlyId,
+                customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                chatId: ctx.chat?.id || 0,
+                telegramUserId: userId
+            });
+
+            LogEngine.info('🔍 DEBUG: Ticket registered for bidirectional messaging via callback', {
+                storedConversationId: ticket.id,
+                friendlyId: ticket.friendlyId,
+                messageId: ctx.callbackQuery?.message?.message_id,
+                chatId: ctx.chat?.id,
+                method: 'callback_createTicketDirectly'
+            });
+            
             // Clear user state
             await BotsStore.clearUserState(userId);
 
