@@ -1,14 +1,25 @@
 /**
- * Email Management Utilities
+ * Email Management Utilities - Single Source of Truth for Email Operations
  * 
- * Provides comprehensive email handling for the support ticket system,
- * including validation, dummy email generation, and user preference management.
- * This demonstrates proper user data management patterns and graceful defaults.
+ * CRITICAL ARCHITECTURAL REQUIREMENT:
+ * This module enforces the use of ONLY the `unthreadEmail` field for all email operations.
+ * 
+ * EMAIL FIELD POLICY:
+ * - ONLY use `UserData.unthreadEmail` for email storage and retrieval
+ * - NEVER create or use additional email fields in UserData interface
+ * - ALL email operations (validation, storage, retrieval) use unthreadEmail
+ * - Ticket creation uses unthreadEmail for onBehalfOf.email parameter
+ * - Email preferences and status checks use unthreadEmail exclusively
+ * 
+ * This prevents data fragmentation, ensures consistency, and maintains
+ * a clear contract for future development.
  * 
  * @author Waren Gonzaga, WG Technology Labs
  */
 
 import { BotsStore } from '../sdk/bots-brain/index.js';
+import { LogEngine } from '@wgtechlabs/log-engine';
+import type { UserData } from '../sdk/types.js';
 
 /**
  * Email validation result interface
@@ -109,6 +120,14 @@ export async function getUserEmailPreferences(userId: number): Promise<UserEmail
     try {
         const userData = await BotsStore.getUserByTelegramId(userId);
         
+        // Log for debugging
+        LogEngine.info('Getting user email preferences', {
+            userId,
+            userExists: !!userData,
+            hasUnthreadEmail: !!userData?.unthreadEmail,
+            unthreadEmail: userData?.unthreadEmail
+        });
+        
         if (!userData?.unthreadEmail) {
             return null;
         }
@@ -120,6 +139,10 @@ export async function getUserEmailPreferences(userId: number): Promise<UserEmail
             canModify: true
         };
     } catch (error) {
+        LogEngine.error('Error retrieving user email preferences', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            userId
+        });
         return null;
     }
 }
@@ -157,11 +180,58 @@ export async function updateUserEmail(
             };
         }
 
-        // Update user email in storage - SIMPLIFIED to use only unthreadEmail
-        await BotsStore.updateUser(userId, {
+        // Ensure user exists before updating email
+        let userData = await BotsStore.getUserByTelegramId(userId);
+        
+        if (!userData) {
+            // Create user if they don't exist
+            LogEngine.info('Creating new user for email update', { userId });
+            
+            const newUserData: UserData = {
+                id: `user_${userId}`,
+                telegramUserId: userId,
+                unthreadEmail: sanitizedEmail,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            
+            const storeSuccess = await BotsStore.storeUser(newUserData);
+            
+            if (!storeSuccess) {
+                return {
+                    success: false,
+                    error: 'Failed to create user profile'
+                };
+            }
+            
+            LogEngine.info('User created successfully with email', {
+                userId,
+                emailDomain: sanitizedEmail.split('@')[1],
+                isDummy
+            });
+            
+            return { success: true };
+        }
+
+        // Update existing user email in storage - SIMPLIFIED to use only unthreadEmail
+        const updateSuccess = await BotsStore.updateUser(userId, {
             unthreadEmail: sanitizedEmail,
             updatedAt: new Date().toISOString()
         });
+        
+        LogEngine.info('User email update attempt', {
+            userId,
+            updateSuccess,
+            emailDomain: sanitizedEmail.split('@')[1],
+            isDummy
+        });
+        
+        if (!updateSuccess) {
+            return {
+                success: false,
+                error: 'Failed to store email in database'
+            };
+        }
 
         return { success: true };
     } catch (error) {

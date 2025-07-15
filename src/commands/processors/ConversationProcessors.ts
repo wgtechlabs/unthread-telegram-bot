@@ -217,24 +217,24 @@ export class SupportConversationProcessor implements IConversationProcessor {
 
             const customer = await unthreadService.getOrCreateCustomer(chatTitle, chatId);
             
-            // Get user data with email
+            // Get user data with email from unthreadEmail field
             let userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
             
-            // SIMPLIFIED: If user provided email, update their unthreadEmail
+            // If user provided email during ticket creation, update their unthreadEmail
             if (userState.email) {
                 await BotsStore.updateUser(userId, { unthreadEmail: userState.email });
-                // Update the userData for ticket creation
-                userData = { ...userData, email: userState.email };
+                // Refresh userData to get the updated unthreadEmail
+                userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
             }
 
-            // Create the ticket (userData.email contains the correct email)
+            // Create the ticket using unthreadEmail as the single source of truth
             const ticketResponse = await unthreadService.createTicket({
                 groupChatName: chatTitle,
                 customerId: customer.id,
                 summary: userState.summary,
                 onBehalfOf: {
                     name: userData.name || ctx.from?.first_name || 'Telegram User',
-                    email: userData.email || userState.email
+                    email: userData.email || userState.email || `user_${userId}@telegram.user`
                 }
             });
 

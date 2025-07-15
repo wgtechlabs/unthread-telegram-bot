@@ -33,7 +33,16 @@ export class ViewEmailCommand extends BaseCommand {
         const userId = ctx.from.id;
         
         try {
+            LogEngine.info('ViewEmailCommand executed', { userId });
+            
             const emailPrefs = await getUserEmailPreferences(userId);
+            
+            LogEngine.info('Email preferences retrieved', {
+                userId,
+                hasPrefs: !!emailPrefs,
+                email: emailPrefs?.email,
+                isDummy: emailPrefs?.isDummy
+            });
             
             if (!emailPrefs) {
                 await this.showNoEmailMessage(ctx);
@@ -59,12 +68,12 @@ export class ViewEmailCommand extends BaseCommand {
         const message = 
             "📧 **Email Settings**\n\n" +
             "❌ **No email address set**\n\n" +
-            "You haven't set an email address yet. When you create support tickets, a temporary email will be used.\n\n" +
+            "You haven't set an email address yet. When you create support tickets, a temporary email will be generated automatically.\n\n" +
             "**Available actions:**\n" +
-            "• `/setemail` - Set up your email address\n" +
-            "• `/setemail user@example.com` - Quick email setup\n" +
-            "• `/support` - Create a ticket (will prompt for email)\n\n" +
-            "💡 *Setting a real email helps our support team contact you directly.*";
+            "• `/setemail` - Start interactive email setup\n" +
+            "• `/setemail user@example.com` - Set email directly\n" +
+            "• `/support` - Create a ticket (will prompt for email if needed)\n\n" +
+            "💡 *Setting a real email helps our support team contact you directly and improves your support experience.*";
 
         await ctx.reply(message, {
             parse_mode: 'Markdown',
@@ -76,6 +85,8 @@ export class ViewEmailCommand extends BaseCommand {
                 ]
             }
         });
+        
+        LogEngine.info('Showed no email message to user', { userId: ctx.from?.id });
     }
 
     private async showEmailSettings(ctx: BotContext, emailPrefs: any): Promise<void> {

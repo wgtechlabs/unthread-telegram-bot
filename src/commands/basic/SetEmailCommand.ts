@@ -66,7 +66,18 @@ export class SetEmailCommand extends BaseCommand {
             }
 
             // Update email
+            LogEngine.info('Attempting to update user email', {
+                userId,
+                emailDomain: validation.sanitizedValue!.split('@')[1]
+            });
+            
             const updateResult = await updateUserEmail(userId, validation.sanitizedValue!);
+            
+            LogEngine.info('Email update result', {
+                userId,
+                success: updateResult.success,
+                error: updateResult.error
+            });
             
             if (!updateResult.success) {
                 await ctx.reply(
