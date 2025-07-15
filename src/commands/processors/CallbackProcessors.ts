@@ -355,11 +355,11 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 { parse_mode: 'Markdown' }
             );
 
+            // Log the action before creating ticket
+            LogEngine.info('User selected temporary email for support', { userId, dummyEmail });
+
             // Create the ticket directly
             return await this.createTicketDirectly(ctx, updatedState);
-
-            LogEngine.info('User selected temporary email for support', { userId, dummyEmail });
-            return true;
 
         } catch (error) {
             LogEngine.error('Error setting up temporary email', {

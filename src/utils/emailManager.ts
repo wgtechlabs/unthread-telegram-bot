@@ -107,7 +107,7 @@ export function generateDummyEmail(userId: number, username?: string): string {
         .substring(0, 20); // Limit length
     
     // Generate email in same format as auto-generated ones
-    return `@${cleanIdentifier}_${userId}@telegram.user`;
+    return `${cleanIdentifier}_${userId}@telegram.user`;
 }
 
 /**

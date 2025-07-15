@@ -212,7 +212,7 @@ export class SmartInputValidator {
         
         return {
             qualityScore: Math.min(score, 1.0),
-            hasKeywords: hasTechnicalTerms,
+            hasKeywords: hasTechnicalTerms, // Keep for backward compatibility
             hasTechnicalTerms,
             hasContext,
             readabilityScore,

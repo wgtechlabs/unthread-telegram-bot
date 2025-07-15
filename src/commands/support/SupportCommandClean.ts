@@ -10,7 +10,7 @@ import * as unthreadService from '../../services/unthread.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotContext } from '../../types/index.js';
 import { UserState } from '../../sdk/types.js';
-import { getUserEmailStatus, generateDummyEmail } from '../../utils/emailManager.js';
+import { getUserEmailPreferences } from '../../utils/emailManager.js';
 import { escapeMarkdown } from '../../utils/markdownEscape.js';
 
 export class SupportCommand extends BaseCommand {
