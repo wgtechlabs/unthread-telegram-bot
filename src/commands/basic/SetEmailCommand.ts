@@ -13,7 +13,8 @@ import {
     validateEmail, 
     updateUserEmail, 
     getUserEmailPreferences,
-    formatEmailForDisplay 
+    formatEmailForDisplay,
+    deliverPendingAgentMessages
 } from '../../utils/emailManager.js';
 import { escapeMarkdown } from '../../utils/markdownEscape.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
@@ -97,6 +98,40 @@ export class SetEmailCommand extends BaseCommand {
                 userId,
                 emailDomain: validation.sanitizedValue!.split('@')[1]
             });
+
+            // Phase 2: Deliver any pending agent messages now that user has valid email
+            try {
+                const deliveryResult = await deliverPendingAgentMessages(userId);
+                
+                if (deliveryResult.delivered > 0) {
+                    await ctx.reply(
+                        `🎯 **Pending Messages Delivered!**\n\n✅ ${deliveryResult.delivered} agent response(s) delivered\n\n_You can now continue your support conversations\\._`,
+                        { parse_mode: 'Markdown' }
+                    );
+                    
+                    LogEngine.info('Delivered pending agent messages after email setup', {
+                        userId,
+                        delivered: deliveryResult.delivered,
+                        failed: deliveryResult.failed
+                    });
+                }
+                
+                if (deliveryResult.failed > 0) {
+                    LogEngine.warn('Some pending messages failed to deliver', {
+                        userId,
+                        failed: deliveryResult.failed,
+                        errors: deliveryResult.errors
+                    });
+                }
+                
+            } catch (error) {
+                const err = error as Error;
+                LogEngine.error('Error delivering pending messages after email setup', {
+                    userId,
+                    error: err.message
+                });
+                // Don't show error to user - the email was still set successfully
+            }
 
         } catch (error) {
             LogEngine.error('Error in direct email setting', {

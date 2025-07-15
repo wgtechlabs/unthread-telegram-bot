@@ -528,10 +528,21 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
             const userId = ctx.from?.id;
             if (!userId) return false;
 
+            // Check if we have email - should always have it at this point
+            if (!userState.email) {
+                LogEngine.error('createTicketDirectly called without email', { userId });
+                await ctx.editMessageText(
+                    "❌ **Unable to Create Ticket**\n\n" +
+                    "Email information is missing. Please try again with `/support`.",
+                    { parse_mode: 'Markdown' }
+                );
+                return false;
+            }
+
             // Prepare the OnBehalfOfUser parameter
             const onBehalfOf = {
                 name: ctx.from?.first_name || ctx.from?.username || `User ${userId}`,
-                email: userState.email || `user${userId}@telegram.local`
+                email: userState.email // Must exist at this point
             };
 
             // Create ticket using the unthread service with correct parameters

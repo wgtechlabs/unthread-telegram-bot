@@ -55,10 +55,11 @@ interface Customer {
 
 /**
  * User data for onBehalfOf
+ * Email is optional to support users without email setup
  */
 interface OnBehalfOfUser {
   name: string;
-  email: string;
+  email: string | undefined; // Explicitly allow undefined for email collection flow
 }
 
 /**
@@ -639,26 +640,24 @@ export async function getOrCreateUser(telegramUserId: number, username?: string)
             LogEngine.info('Using existing user from database', {
                 telegramUserId: existingUser.telegramUserId,
                 unthreadName: existingUser.unthreadName,
-                unthreadEmail: existingUser.unthreadEmail
+                unthreadEmail: existingUser.unthreadEmail,
+                hasEmail: !!existingUser.unthreadEmail
             });
             return {
                 name: existingUser.unthreadName || `User ${existingUser.telegramUserId}`,
-                email: existingUser.unthreadEmail || `user_${existingUser.telegramUserId}@telegram.user`
+                email: existingUser.unthreadEmail // No fallback - can be undefined
             };
         }
 
-        // Create new user data
+        // Create new user data - NO automatic dummy email generation
         const unthreadName = username ? `@${username}` : `User ${telegramUserId}`;
-        const unthreadEmail = username 
-            ? `${username}_${telegramUserId}@telegram.user`
-            : `user_${telegramUserId}@telegram.user`;
 
-        // Store user in our database
+        // Store user in our database WITHOUT automatic email
         const userData: UserData = {
             id: `user_${telegramUserId}`,
             telegramUserId: telegramUserId,
             unthreadName: unthreadName,
-            unthreadEmail: unthreadEmail,
+            // unthreadEmail omitted - will be undefined by default
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
@@ -670,16 +669,16 @@ export async function getOrCreateUser(telegramUserId: number, username?: string)
         
         await BotsStore.storeUser(userData);
         
-        LogEngine.info('Created and stored new user', {
+        LogEngine.info('Created and stored new user without automatic email', {
             telegramUserId: telegramUserId,
             telegramUsername: username,
             unthreadName: unthreadName,
-            unthreadEmail: unthreadEmail
+            unthreadEmail: 'undefined - will be set at interaction point'
         });
 
         return {
             name: unthreadName,
-            email: unthreadEmail
+            email: undefined // No automatic email - will be collected at interaction point
         };
     } catch (error) {
         LogEngine.error('Error getting or creating user', {

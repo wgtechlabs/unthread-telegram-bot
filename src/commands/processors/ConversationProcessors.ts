@@ -217,24 +217,44 @@ export class SupportConversationProcessor implements IConversationProcessor {
 
             const customer = await unthreadService.getOrCreateCustomer(chatTitle, chatId);
             
-            // Get user data with email from unthreadEmail field
+            // Get user data - might not have email
             let userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
+            
+            // Check if we have email from user state (just provided) or stored
+            const emailToUse = userState.email || userData.email;
+            
+            if (!emailToUse) {
+                // No email available - this shouldn't happen in normal flow
+                // but let's handle it gracefully
+                LogEngine.error('Ticket creation attempted without email', {
+                    userId,
+                    hasUserStateEmail: !!userState.email,
+                    hasUserDataEmail: !!userData.email
+                });
+                
+                await ctx.editMessageText(
+                    "❌ **Unable to Create Ticket**\n\n" +
+                    "Email information is missing. Please try again with `/support`.",
+                    { parse_mode: 'Markdown' }
+                );
+                return false;
+            }
             
             // If user provided email during ticket creation, update their unthreadEmail
             if (userState.email) {
                 await BotsStore.updateUser(userId, { unthreadEmail: userState.email });
-                // Refresh userData to get the updated unthreadEmail
+                // Refresh userData to get the updated email
                 userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
             }
 
-            // Create the ticket using unthreadEmail as the single source of truth
+            // Create the ticket with confirmed email
             const ticketResponse = await unthreadService.createTicket({
                 groupChatName: chatTitle,
                 customerId: customer.id,
                 summary: userState.summary,
                 onBehalfOf: {
                     name: userData.name || ctx.from?.first_name || 'Telegram User',
-                    email: userData.email || userState.email || `user_${userId}@telegram.user`
+                    email: emailToUse // Guaranteed to exist at this point
                 }
             });
 
