@@ -34,7 +34,7 @@ export const DEFAULT_GLOBAL_TEMPLATES: GlobalTemplateConfig = {
     ticket_created: {
       event: 'ticket_created',
       content: '✅ **Support Ticket Created!**\n\n' +
-               '**Ticket #{{ticketId}}**\n\n' +
+               '**Ticket #{{ticketNumber}}**\n\n' +
                ' **Next Steps:**\n' +
                '• Our support team will review your ticket\n' +
                '• You\'ll receive updates via Telegram\n\n' +
@@ -45,14 +45,15 @@ export const DEFAULT_GLOBAL_TEMPLATES: GlobalTemplateConfig = {
       event: 'agent_response',
       content: '💬 **Response from {{agentName}}**\n\n' +
                '{{response}}\n\n' +
-               '**Ticket ID:** {{ticketId}}\n' +
-               '**Status:** {{status}}',
+               '**Ticket #{{ticketNumber}}**\n' +
+               '**Status:** {{status}}\n\n' +
+               'Please reply here to reply to the ticket number **{{ticketNumber}}**.',
       enabled: true
     },
     ticket_status: {
       event: 'ticket_status',
       content: '📋 **Ticket Status Update**\n\n' +
-               '**Ticket ID:** {{ticketId}}\n' +
+               '**Ticket #{{ticketNumber}}**\n' +
                '**Summary:** {{summary}}\n' +
                '**Status:** {{status}}\n' +
                '**Updated by:** {{agentName}}\n\n' +
@@ -68,7 +69,9 @@ export const DEFAULT_GLOBAL_TEMPLATES: GlobalTemplateConfig = {
 export const TEMPLATE_VARIABLES = {
   // Core variables available to all templates
   core: [
-    { name: 'ticketId', description: 'Unique ticket identifier', example: 'TKT-12345' },
+    { name: 'ticketNumber', description: 'User-friendly ticket identifier', example: 'TKT-445' },
+    { name: 'friendlyId', description: 'Alternative name for ticketNumber (backward compatibility)', example: 'TKT-445' },
+    { name: 'conversationId', description: 'Internal UUID for webhook events (advanced use)', example: '18c3e146-4f9f-4587-a690-35f73717dbc4' },
     { name: 'summary', description: 'Ticket summary/title', example: 'Login issue with mobile app' },
     { name: 'customerName', description: 'Customer or user name', example: 'John Doe' },
     { name: 'status', description: 'Current ticket status', example: 'Open, In Progress, Resolved' }

@@ -647,7 +647,9 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
             // Template system is operational - proceed with rendering (must succeed)
             try {
                 successMessage = templates.templates.ticket_created.content
-                    .replace(/\{\{ticketId\}\}/g, escapeMarkdown(String(ticket.friendlyId)))
+                    .replace(/\{\{ticketNumber\}\}/g, escapeMarkdown(String(ticket.friendlyId)))
+                    .replace(/\{\{friendlyId\}\}/g, escapeMarkdown(String(ticket.friendlyId)))
+                    .replace(/\{\{ticketId\}\}/g, escapeMarkdown(String(ticket.friendlyId))) // Legacy support
                     .replace(/\{\{summary\}\}/g, escapeMarkdown(templateData.ticket.summary))
                     .replace(/\{\{customerName\}\}/g, escapeMarkdown(templateData.customer.name));
             } catch (templateRenderError) {
@@ -1601,7 +1603,7 @@ Templates control how the bot communicates with users and admins.
 
 **💡 Template Variables:**
 Templates use dynamic placeholders like:
-• \`{{ticketId}}\` - Unique ticket identifier
+• \`{{ticketNumber}}\` - User-friendly ticket number (TKT-445)
 • \`{{customerName}}\` - Customer name
 • \`{{agentName}}\` - Support agent name
 • \`{{summary}}\` - Ticket description
@@ -1611,7 +1613,7 @@ Templates use dynamic placeholders like:
 \`\`\`
 🎫 New Ticket: {{summary}}
 
-ID: {{ticketId}}
+ID: {{ticketNumber}}
 Customer: {{customerName}}
 Status: {{status}}
 
@@ -1941,7 +1943,7 @@ Choose which template to customize first:
 
 💡 **What You Can Customize:**
 • Message content and formatting
-• Use dynamic variables like \`{{ticketId}}\`, \`{{customerName}}\`
+• Use dynamic variables like \`{{ticketNumber}}\`, \`{{customerName}}\`
 • Add your brand voice and personality
 • Include specific instructions or next steps
 
@@ -2071,7 +2073,7 @@ ${agentVars}
 ${timeVars}
 
 💡 **Usage Examples:**
-• \`{{ticketId}}\` → TKT-12345
+• \`{{ticketNumber}}\` → TKT-445
 • \`{{customerName}}\` → John Doe
 • \`{{agentName}}\` → Sarah Johnson
 
@@ -2183,12 +2185,12 @@ ${currentTemplate?.content || 'Loading...'}
 
 **Instructions:**
 • Type your new template content below
-• Use variables like \`{{ticketId}}\`, \`{{customerName}}\`, \`{{agentName}}\`
+• Use variables like \`{{ticketNumber}}\`, \`{{customerName}}\`, \`{{agentName}}\`
 • Keep it clear and professional
 • You can use multiple lines
 
 **Available Variables:**
-• \`{{ticketId}}\` - Unique ticket identifier
+• \`{{ticketNumber}}\` - User-friendly ticket number (TKT-445)
 • \`{{summary}}\` - Ticket summary/title  
 • \`{{customerName}}\` - Customer name
 • \`{{status}}\` - Ticket status
@@ -2732,7 +2734,7 @@ ${agentVars}
 ${timeVars}
 
 💡 **Usage Examples:**
-• \`{{ticketId}}\` → TKT-12345
+• \`{{ticketNumber}}\` → TKT-445
 • \`{{customerName}}\` → John Doe
 • \`{{agentName}}\` → Sarah Johnson
 
