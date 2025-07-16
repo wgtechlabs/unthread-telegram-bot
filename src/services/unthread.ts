@@ -36,6 +36,9 @@
  */
 
 import fetch from 'node-fetch';
+import FormData from 'form-data';
+import fs from 'fs';
+import path from 'path';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import { TicketData, AgentMessageData, UserData } from '../sdk/types.js';
@@ -110,6 +113,27 @@ interface SendMessageJSONParams {
   conversationId: string;
   message: string;
   onBehalfOf: OnBehalfOfUser;
+}
+
+/**
+ * Message parameters with file attachments
+ */
+interface SendMessageWithAttachmentsParams {
+  conversationId: string;
+  message: string;
+  onBehalfOf: OnBehalfOfUser;
+  filePaths: string[];
+}
+
+/**
+ * Ticket creation parameters with file attachments
+ */
+interface CreateTicketWithAttachmentsParams {
+  title: string;
+  summary: string;
+  customerId: string;
+  onBehalfOf: OnBehalfOfUser;
+  filePaths: string[];
 }
 
 /**
@@ -273,7 +297,8 @@ export async function createCustomer(groupChatName: string): Promise<Customer> {
         
         const response = await fetch(`${API_BASE_URL}/customers`, {
             method: 'POST',
-            headers: {
+            headers:
+ {
                 'Content-Type': 'application/json',
                 'X-API-KEY': UNTHREAD_API_KEY!
             },
@@ -1113,3 +1138,193 @@ export function handleUnthreadApiError(error: any, operation: string): string {
 
 // Export the customer cache for potential use in other modules
 export { customerCache };
+
+/**
+ * Sends a message with file attachments to an existing Unthread conversation using multipart/form-data.
+ *
+ * @param params - Contains the conversation ID, message content, user information, and file paths.
+ * @returns The API response for the sent message with attachments.
+ * @throws If the API request fails or file paths are invalid.
+ */
+export async function sendMessageWithAttachments(params: SendMessageWithAttachmentsParams): Promise<any> {
+    try {
+        LogEngine.info('Sending message with attachments to Unthread', {
+            conversationId: params.conversationId,
+            fileCount: params.filePaths.length,
+            onBehalfOf: params.onBehalfOf.name
+        });
+
+        return await sendMessageMultipart(params);
+    } catch (error) {
+        LogEngine.error('Error sending message with attachments', {
+            error: (error as Error).message,
+            conversationId: params.conversationId,
+            fileCount: params.filePaths.length
+        });
+        throw error;
+    }
+}
+
+/**
+ * Creates a ticket with file attachments using multipart/form-data.
+ *
+ * @param params - Contains ticket data and file paths for attachments.
+ * @returns The ticket creation response with ID and friendly ID.
+ * @throws If the API request fails or file paths are invalid.
+ */
+export async function createTicketWithAttachments(params: CreateTicketWithAttachmentsParams): Promise<CreateTicketResponse> {
+    try {
+        LogEngine.info('Creating ticket with attachments in Unthread', {
+            title: params.title,
+            customerId: params.customerId,
+            fileCount: params.filePaths.length,
+            onBehalfOf: params.onBehalfOf.name
+        });
+
+        return await createTicketMultipart(params);
+    } catch (error) {
+        LogEngine.error('Error creating ticket with attachments', {
+            error: (error as Error).message,
+            title: params.title,
+            customerId: params.customerId,
+            fileCount: params.filePaths.length
+        });
+        throw error;
+    }
+}
+
+/**
+ * Internal method to send a message with attachments using multipart/form-data.
+ *
+ * @param params - Message parameters with file paths.
+ * @returns The response data from the Unthread API.
+ * @throws If the API request fails or files cannot be read.
+ */
+async function sendMessageMultipart(params: SendMessageWithAttachmentsParams): Promise<any> {
+    const { conversationId, message, onBehalfOf, filePaths } = params;
+
+    // Create form data
+    const form = new FormData();
+
+    // Add the message payload as JSON
+    const messagePayload = {
+        body: {
+            type: "markdown",
+            value: message
+        },
+        onBehalfOf: onBehalfOf
+    };
+
+    form.append('payload_json', JSON.stringify(messagePayload));
+
+    // Add each file to the form
+    for (const filePath of filePaths) {
+        if (!fs.existsSync(filePath)) {
+            LogEngine.warn('File not found, skipping attachment', { filePath });
+            continue;
+        }
+
+        const fileName = path.basename(filePath);
+        const fileStream = fs.createReadStream(filePath);
+        form.append('files', fileStream, fileName);
+        
+        LogEngine.debug('Added file to multipart form', { fileName, filePath });
+    }
+
+    // Send request to Unthread
+    const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: {
+            'X-API-KEY': UNTHREAD_API_KEY!,
+            ...form.getHeaders()
+        },
+        body: form
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to send message with attachments: ${response.status} ${errorText}`);
+    }
+
+    const result = await response.json() as any;
+    
+    LogEngine.info('Message with attachments sent successfully', {
+        conversationId,
+        messageId: result.ts || 'unknown',
+        fileCount: filePaths.length
+    });
+
+    return result;
+}
+
+/**
+ * Internal method to create a ticket with attachments using multipart/form-data.
+ *
+ * @param params - Ticket creation parameters with file paths.
+ * @returns The ticket creation response.
+ * @throws If the API request fails or files cannot be read.
+ */
+async function createTicketMultipart(params: CreateTicketWithAttachmentsParams): Promise<CreateTicketResponse> {
+    const { title, summary, customerId, onBehalfOf, filePaths } = params;
+
+    // Create form data
+    const form = new FormData();
+
+    // Add the ticket payload as JSON
+    const defaultPriority = getDefaultTicketPriority();
+    const ticketPayload: CreateTicketPayload = {
+        type: "slack",
+        title: title,
+        markdown: summary,
+        status: "open",
+        channelId: extractCustomerCompanyName(title), // Use title as fallback for channelId
+        customerId: customerId,
+        onBehalfOf: onBehalfOf
+    };
+
+    // Add priority only if it's defined
+    if (defaultPriority !== undefined) {
+        ticketPayload.priority = defaultPriority;
+    }
+
+    form.append('payload_json', JSON.stringify(ticketPayload));
+
+    // Add each file to the form
+    for (const filePath of filePaths) {
+        if (!fs.existsSync(filePath)) {
+            LogEngine.warn('File not found, skipping attachment', { filePath });
+            continue;
+        }
+
+        const fileName = path.basename(filePath);
+        const fileStream = fs.createReadStream(filePath);
+        form.append('files', fileStream, fileName);
+        
+        LogEngine.debug('Added file to ticket form', { fileName, filePath });
+    }
+
+    // Send request to Unthread
+    const response = await fetch(`${API_BASE_URL}/conversations`, {
+        method: 'POST',
+        headers: {
+            'X-API-KEY': UNTHREAD_API_KEY!,
+            ...form.getHeaders()
+        },
+        body: form
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to create ticket with attachments: ${response.status} ${errorText}`);
+    }
+
+    const result = await response.json() as CreateTicketResponse;
+    
+    LogEngine.info('Ticket with attachments created successfully', {
+        ticketId: result.id,
+        friendlyId: result.friendlyId,
+        fileCount: filePaths.length
+    });
+
+    return result;
+}

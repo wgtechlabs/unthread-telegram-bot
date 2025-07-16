@@ -34,6 +34,7 @@ import { processConversation, aboutCommand } from '../commands/index.js';
 import * as unthreadService from '../services/unthread.js';
 import { safeReply, safeEditMessageText } from '../bot.js';
 import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
+import { attachmentHandler } from '../utils/attachmentHandler.js';
 import type { BotContext } from '../types/index.js';
 
 /**
@@ -52,6 +53,136 @@ export function isGroupChat(ctx: BotContext): boolean {
  */
 export function isPrivateChat(ctx: BotContext): boolean {
     return ctx.chat?.type === 'private';
+}
+
+/**
+ * Detects and extracts file attachments from Telegram messages
+ * 
+ * @param ctx - Bot context containing the message
+ * @returns Array of file IDs that can be processed by AttachmentHandler
+ */
+export function extractFileAttachments(ctx: BotContext): string[] {
+    const fileIds: string[] = [];
+    
+    if (!ctx.message) {
+        return fileIds;
+    }
+    
+    try {
+        // Handle different types of file attachments
+        
+        // Photo attachments (multiple sizes, we want the largest)
+        if ('photo' in ctx.message && ctx.message.photo) {
+            const largestPhoto = ctx.message.photo[ctx.message.photo.length - 1];
+            if (largestPhoto?.file_id) {
+                fileIds.push(largestPhoto.file_id);
+                LogEngine.debug('Detected photo attachment', {
+                    fileId: largestPhoto.file_id,
+                    fileSize: largestPhoto.file_size,
+                    width: largestPhoto.width,
+                    height: largestPhoto.height
+                });
+            }
+        }
+        
+        // Document attachments (files uploaded as documents)
+        if ('document' in ctx.message && ctx.message.document) {
+            const document = ctx.message.document;
+            if (document.file_id) {
+                fileIds.push(document.file_id);
+                LogEngine.debug('Detected document attachment', {
+                    fileId: document.file_id,
+                    fileName: document.file_name,
+                    fileSize: document.file_size,
+                    mimeType: document.mime_type
+                });
+            }
+        }
+        
+        // Video attachments
+        if ('video' in ctx.message && ctx.message.video) {
+            const video = ctx.message.video;
+            if (video.file_id) {
+                fileIds.push(video.file_id);
+                LogEngine.debug('Detected video attachment', {
+                    fileId: video.file_id,
+                    fileName: video.file_name,
+                    fileSize: video.file_size,
+                    mimeType: video.mime_type,
+                    duration: video.duration
+                });
+            }
+        }
+        
+        // Voice messages
+        if ('voice' in ctx.message && ctx.message.voice) {
+            const voice = ctx.message.voice;
+            if (voice.file_id) {
+                fileIds.push(voice.file_id);
+                LogEngine.debug('Detected voice attachment', {
+                    fileId: voice.file_id,
+                    fileSize: voice.file_size,
+                    mimeType: voice.mime_type,
+                    duration: voice.duration
+                });
+            }
+        }
+        
+        // Audio files
+        if ('audio' in ctx.message && ctx.message.audio) {
+            const audio = ctx.message.audio;
+            if (audio.file_id) {
+                fileIds.push(audio.file_id);
+                LogEngine.debug('Detected audio attachment', {
+                    fileId: audio.file_id,
+                    fileName: audio.file_name,
+                    fileSize: audio.file_size,
+                    mimeType: audio.mime_type,
+                    duration: audio.duration
+                });
+            }
+        }
+        
+        // Video notes (circular videos)
+        if ('video_note' in ctx.message && ctx.message.video_note) {
+            const videoNote = ctx.message.video_note;
+            if (videoNote.file_id) {
+                fileIds.push(videoNote.file_id);
+                LogEngine.debug('Detected video note attachment', {
+                    fileId: videoNote.file_id,
+                    fileSize: videoNote.file_size,
+                    duration: videoNote.duration
+                });
+            }
+        }
+        
+        // Animation/GIF files
+        if ('animation' in ctx.message && ctx.message.animation) {
+            const animation = ctx.message.animation;
+            if (animation.file_id) {
+                fileIds.push(animation.file_id);
+                LogEngine.debug('Detected animation attachment', {
+                    fileId: animation.file_id,
+                    fileName: animation.file_name,
+                    fileSize: animation.file_size,
+                    mimeType: animation.mime_type
+                });
+            }
+        }
+        
+        LogEngine.info('File attachment detection completed', {
+            totalFiles: fileIds.length,
+            fileIds: fileIds
+        });
+        
+    } catch (error) {
+        LogEngine.error('Error detecting file attachments', {
+            error: error instanceof Error ? error.message : String(error),
+            messageType: Object.keys(ctx.message).filter(key => key !== 'message_id' && key !== 'date' && key !== 'chat' && key !== 'from')
+        });
+    }
+    
+    return fileIds;
 }
 
 /**
@@ -76,6 +207,20 @@ export async function handleMessage(ctx: BotContext, next: () => Promise<void>):
             hasFromUser: !!ctx.from,
             messageType: 'text' in ctx.message ? 'text' : 'other'
         });
+        
+        // Detect file attachments early in the process
+        const attachmentFileIds = extractFileAttachments(ctx);
+        const hasAttachments = attachmentFileIds.length > 0;
+        
+        if (hasAttachments) {
+            LogEngine.info('Message contains file attachments', {
+                chatType: ctx.chat.type,
+                chatId: ctx.chat.id,
+                userId: ctx.from?.id,
+                attachmentCount: attachmentFileIds.length,
+                fileIds: attachmentFileIds
+            });
+        }
         
         // If this is a command, let Telegraf handle it and don't process further
         if ('text' in ctx.message && ctx.message.text?.startsWith('/')) {
@@ -205,8 +350,19 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
         
         const { telegramUserId, username, firstName, lastName, message } = validation;
         
+        // Detect file attachments in the reply
+        const attachmentFileIds = extractFileAttachments(ctx);
+        const hasAttachments = attachmentFileIds.length > 0;
+        
+        LogEngine.info('Processing ticket reply with potential attachments', {
+            ticketId: ticketInfo.ticketId,
+            hasMessage: !!message,
+            hasAttachments,
+            attachmentCount: attachmentFileIds.length
+        });
+        
         // Send a minimal status message
-        const statusMsg = await safeReply(ctx, '⏳ Adding to ticket...', {
+        const statusMsg = await safeReply(ctx, hasAttachments ? '⏳ Processing files and adding to ticket...' : '⏳ Adding to ticket...', {
             reply_parameters: { message_id: ctx.message!.message_id }
         });
 
@@ -215,11 +371,11 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
         }
         
         try {
-            // Process and send the ticket message to Unthread
-            await processTicketMessage(ticketInfo, telegramUserId, username, message, firstName, lastName);
+            // Process and send the ticket message to Unthread (with attachments if present)
+            await processTicketMessage(ticketInfo, telegramUserId, username, message, firstName, lastName, attachmentFileIds);
             
             // Update status message to success
-            await updateStatusMessage(ctx, statusMsg, true);
+            await updateStatusMessage(ctx, statusMsg, true, hasAttachments);
             return true;
             
         } catch (error) {
@@ -230,11 +386,13 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
                 stack: err.stack,
                 conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
                 telegramUserId,
-                username
+                username,
+                hasAttachments,
+                attachmentCount: attachmentFileIds.length
             });
             
             // Update status message to error
-            await updateStatusMessage(ctx, statusMsg, false);
+            await updateStatusMessage(ctx, statusMsg, false, hasAttachments);
             return true;
         }
         
@@ -289,32 +447,60 @@ async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ 
 /**
  * Sends a user's message to the specified ticket conversation in Unthread.
  *
- * Retrieves or creates user data based on the Telegram user ID and username, then sends the provided message to the ticket conversation identified by the ticket information.
+ * Retrieves or creates user data based on the Telegram user ID and username, then sends the provided message to the ticket conversation identified by the ticket information. Supports file attachments.
  */
-async function processTicketMessage(ticketInfo: any, telegramUserId: number, username: string | undefined, message: string, firstName?: string, lastName?: string): Promise<void> {
+async function processTicketMessage(ticketInfo: any, telegramUserId: number, username: string | undefined, message: string, firstName?: string, lastName?: string, attachmentFileIds?: string[]): Promise<void> {
     // Get user information from database
     const userData = await unthreadService.getOrCreateUser(telegramUserId, username, firstName, lastName);
     
     LogEngine.info('Retrieved user data for ticket reply', {
         userData: JSON.stringify(userData),
         hasName: !!userData.name,
-        hasEmail: !!userData.email
+        hasEmail: !!userData.email,
+        hasAttachments: !!(attachmentFileIds && attachmentFileIds.length > 0),
+        attachmentCount: attachmentFileIds?.length || 0
     });
     
-    // Send the message to the ticket using conversationId (which is the same as ticketId)
-    await unthreadService.sendMessage({
-        conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
-        message: message || 'No message content',
-        onBehalfOf: userData
-    });
-    
-    LogEngine.info('Added message to ticket', {
-        ticketNumber: ticketInfo.friendlyId,
-        conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
-        telegramUserId,
-        username,
-        messageLength: message?.length
-    });
+    // Handle file attachments if present
+    if (attachmentFileIds && attachmentFileIds.length > 0) {
+        LogEngine.info('Processing file attachments for ticket reply', {
+            conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
+            attachmentCount: attachmentFileIds.length,
+            fileIds: attachmentFileIds
+        });
+        
+        // Process attachments using the AttachmentHandler
+        const attachmentSuccess = await attachmentHandler.processAttachments(
+            attachmentFileIds,
+            ticketInfo.conversationId || ticketInfo.ticketId,
+            message || 'Customer reply with attachments via Telegram'
+        );
+        
+        if (!attachmentSuccess) {
+            throw new Error('Failed to process file attachments');
+        }
+        
+        LogEngine.info('File attachments processed successfully for ticket reply', {
+            ticketNumber: ticketInfo.friendlyId,
+            conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
+            attachmentCount: attachmentFileIds.length
+        });
+    } else {
+        // Send text-only message if no attachments
+        await unthreadService.sendMessage({
+            conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
+            message: message || 'No message content',
+            onBehalfOf: userData
+        });
+        
+        LogEngine.info('Added text message to ticket', {
+            ticketNumber: ticketInfo.friendlyId,
+            conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
+            telegramUserId,
+            username,
+            messageLength: message?.length
+        });
+    }
 }
 
 /**
@@ -322,15 +508,16 @@ async function processTicketMessage(ticketInfo: any, telegramUserId: number, use
  *
  * The message is updated to show a checkmark for success or an error icon for failure, and is automatically removed after 3 seconds (success) or 5 seconds (error).
  */
-async function updateStatusMessage(ctx: BotContext, statusMsg: any, isSuccess: boolean): Promise<void> {
+async function updateStatusMessage(ctx: BotContext, statusMsg: any, isSuccess: boolean, hasAttachments?: boolean): Promise<void> {
     if (isSuccess) {
         // Update status message to success
+        const successMessage = hasAttachments ? '✅ Files uploaded and added!' : '✅ Added!';
         await safeEditMessageText(
             ctx,
             ctx.chat!.id,
             statusMsg.message_id,
             undefined,
-            '✅ Added!'
+            successMessage
         );
 
         // Delete status message after 3 seconds
@@ -339,12 +526,13 @@ async function updateStatusMessage(ctx: BotContext, statusMsg: any, isSuccess: b
         }, 3000);
     } else {
         // Update status message to error
+        const errorMessage = hasAttachments ? '❌ Error uploading files!' : '❌ Error!';
         await safeEditMessageText(
             ctx,
             ctx.chat!.id,
             statusMsg.message_id,
             undefined,
-            '❌ Error!'
+            errorMessage
         );
 
         // Delete status message after 5 seconds
@@ -363,17 +551,28 @@ async function updateStatusMessage(ctx: BotContext, statusMsg: any, isSuccess: b
  */
 async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): Promise<boolean> {
     try {
-        if (!ctx.from || !ctx.message || !('text' in ctx.message)) {
+        if (!ctx.from || !ctx.message) {
             return false;
         }
 
         // This is a reply to an agent message, send it back to Unthread
         const telegramUserId = ctx.from.id;
         const username = ctx.from.username;
-        const message = ctx.message.text || '';
+        const message = ('text' in ctx.message) ? ctx.message.text || '' : '';
+        
+        // Detect file attachments in the reply
+        const attachmentFileIds = extractFileAttachments(ctx);
+        const hasAttachments = attachmentFileIds.length > 0;
+        
+        LogEngine.info('Processing agent message reply with potential attachments', {
+            conversationId: agentMessageInfo.conversationId,
+            hasMessage: !!message,
+            hasAttachments,
+            attachmentCount: attachmentFileIds.length
+        });
         
         // Send a minimal status message
-        const statusMsg = await safeReply(ctx, '⏳ Sending...', {
+        const statusMsg = await safeReply(ctx, hasAttachments ? '⏳ Processing files and sending...' : '⏳ Sending...', {
             reply_parameters: { message_id: ctx.message.message_id }
         });
 
@@ -439,20 +638,46 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
             // Get user information for proper onBehalfOf formatting
             const userData = await unthreadService.getOrCreateUser(telegramUserId, username, ctx.from?.first_name, ctx.from?.last_name);
             
-            // Send the message to the conversation
-            await unthreadService.sendMessage({
-                conversationId: agentMessageInfo.conversationId,
-                message: message || 'No message content',
-                onBehalfOf: userData
-            });
+            // Handle file attachments if present
+            if (hasAttachments) {
+                LogEngine.info('Processing file attachments for agent reply', {
+                    conversationId: agentMessageInfo.conversationId,
+                    attachmentCount: attachmentFileIds.length,
+                    fileIds: attachmentFileIds
+                });
+                
+                // Process attachments using the AttachmentHandler
+                const attachmentSuccess = await attachmentHandler.processAttachments(
+                    attachmentFileIds,
+                    agentMessageInfo.conversationId,
+                    message || 'Customer reply with attachments via Telegram'
+                );
+                
+                if (!attachmentSuccess) {
+                    throw new Error('Failed to process file attachments');
+                }
+                
+                LogEngine.info('File attachments processed successfully for agent reply', {
+                    conversationId: agentMessageInfo.conversationId,
+                    attachmentCount: attachmentFileIds.length
+                });
+            } else {
+                // Send text-only message if no attachments
+                await unthreadService.sendMessage({
+                    conversationId: agentMessageInfo.conversationId,
+                    message: message || 'No message content',
+                    onBehalfOf: userData
+                });
+            }
             
             // Update status message to success
+            const successMessage = hasAttachments ? '✅ Files uploaded and sent!' : '✅ Sent!';
             await safeEditMessageText(
                 ctx,
                 ctx.chat!.id,
                 statusMsg.message_id,
                 undefined,
-                '✅ Sent!'
+                successMessage
             );
 
             // Delete status message after 3 seconds
@@ -466,6 +691,8 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
                 telegramUserId,
                 username,
                 messageLength: message?.length,
+                hasAttachments,
+                attachmentCount: attachmentFileIds.length,
                 chatId: ctx.chat?.id
             });
             return true;
@@ -475,16 +702,19 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
             // Handle API errors
             LogEngine.error('Error sending reply to agent', {
                 error: err.message,
-                conversationId: agentMessageInfo.conversationId
+                conversationId: agentMessageInfo.conversationId,
+                hasAttachments,
+                attachmentCount: attachmentFileIds.length
             });
             
             // Update status message to error
+            const errorMessage = hasAttachments ? '❌ Error uploading files!' : '❌ Error!';
             await safeEditMessageText(
                 ctx,
                 ctx.chat!.id,
                 statusMsg.message_id,
                 undefined,
-                '❌ Error!'
+                errorMessage
             );
 
             // Delete status message after 5 seconds

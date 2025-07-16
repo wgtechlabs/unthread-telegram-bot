@@ -13,6 +13,8 @@ import { BotsStore } from '../../sdk/bots-brain/index.js';
 import { SupportCommand } from '../support/SupportCommandClean.js';
 import { logError } from '../utils/errorHandler.js';
 import * as unthreadService from '../../services/unthread.js';
+import { attachmentHandler } from '../../utils/attachmentHandler.js';
+import { extractFileAttachments } from '../../events/message.js';
 import { SetupCallbackProcessor } from './CallbackProcessors.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { 
@@ -206,11 +208,17 @@ export class SupportConversationProcessor implements IConversationProcessor {
         const chatId = ctx.chat.id;
 
         try {
-            // Show processing message
-            const statusMsg = await ctx.reply(
-                "🎫 **Creating Your Ticket**\n\n⏳ Please wait while I create your support ticket...",
-                { parse_mode: 'Markdown' }
-            );
+            // Detect file attachments from the message
+            const attachmentIds = extractFileAttachments(ctx);
+            const hasAttachments = attachmentIds.length > 0;
+            
+            // Show processing message with attachment awareness
+            let processingText = "🎫 **Creating Your Ticket**\n\n⏳ Please wait while I create your support ticket...";
+            if (hasAttachments) {
+                processingText = `🎫 **Creating Your Ticket**\n\n⏳ Processing ${attachmentIds.length} file attachment${attachmentIds.length > 1 ? 's' : ''} and creating your support ticket...`;
+            }
+            
+            const statusMsg = await ctx.reply(processingText, { parse_mode: 'Markdown' });
 
             // Get or create customer for this chat
             const chatTitle = this.getChatTitle(ctx);
@@ -247,16 +255,115 @@ export class SupportConversationProcessor implements IConversationProcessor {
                 userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
             }
 
-            // Create the ticket with confirmed email
-            const ticketResponse = await unthreadService.createTicket({
-                groupChatName: chatTitle,
-                customerId: customer.id,
-                summary: userState.summary,
-                onBehalfOf: {
-                    name: userData.name || ctx.from?.first_name || 'Telegram User',
-                    email: emailToUse // Guaranteed to exist at this point
+            // Create the ticket with or without attachments
+            let ticketResponse;
+            
+            if (hasAttachments) {
+                LogEngine.info('Creating ticket with attachments', {
+                    userId,
+                    customerId: customer.id,
+                    attachmentCount: attachmentIds.length,
+                    summary: userState.summary
+                });
+                
+                // Download attachments first
+                const tempFiles: string[] = [];
+                let attachmentProcessingSuccess = true;
+                
+                try {
+                    // Update status to show attachment processing
+                    await ctx.editMessageText(
+                        `🎫 **Creating Your Ticket**\n\n📎 Downloading ${attachmentIds.length} file attachment${attachmentIds.length > 1 ? 's' : ''}...`,
+                        { parse_mode: 'Markdown' }
+                    );
+                    
+                    // Download all attachments
+                    for (const fileId of attachmentIds) {
+                        const result = await attachmentHandler.downloadTelegramFile(fileId);
+                        if (result.success && result.localPath) {
+                            tempFiles.push(result.localPath);
+                            LogEngine.debug('Downloaded attachment for ticket creation', {
+                                fileId,
+                                fileName: result.fileName,
+                                localPath: result.localPath
+                            });
+                        } else {
+                            LogEngine.warn('Failed to download attachment for ticket', {
+                                fileId,
+                                error: result.error
+                            });
+                            attachmentProcessingSuccess = false;
+                            break;
+                        }
+                    }
+                    
+                    if (attachmentProcessingSuccess && tempFiles.length > 0) {
+                        // Update status to show ticket creation
+                        await ctx.editMessageText(
+                            `🎫 **Creating Your Ticket**\n\n🔄 Creating ticket with ${tempFiles.length} attachment${tempFiles.length > 1 ? 's' : ''}...`,
+                            { parse_mode: 'Markdown' }
+                        );
+                        
+                        // Create ticket with attachments
+                        ticketResponse = await unthreadService.createTicketWithAttachments({
+                            title: chatTitle,
+                            summary: userState.summary,
+                            customerId: customer.id,
+                            onBehalfOf: {
+                                name: userData.name || ctx.from?.first_name || 'Telegram User',
+                                email: emailToUse
+                            },
+                            filePaths: tempFiles
+                        });
+                        
+                        LogEngine.info('Ticket created successfully with attachments', {
+                            ticketId: ticketResponse.id,
+                            friendlyId: ticketResponse.friendlyId,
+                            attachmentCount: tempFiles.length
+                        });
+                    } else {
+                        // Fallback to creating ticket without attachments
+                        LogEngine.warn('Creating ticket without attachments due to processing failure', {
+                            userId,
+                            attemptedAttachments: attachmentIds.length
+                        });
+                        
+                        await ctx.editMessageText(
+                            "🎫 **Creating Your Ticket**\n\n⚠️ Some attachments failed to process. Creating ticket without attachments...",
+                            { parse_mode: 'Markdown' }
+                        );
+                        
+                        ticketResponse = await unthreadService.createTicket({
+                            groupChatName: chatTitle,
+                            customerId: customer.id,
+                            summary: userState.summary,
+                            onBehalfOf: {
+                                name: userData.name || ctx.from?.first_name || 'Telegram User',
+                                email: emailToUse
+                            }
+                        });
+                    }
+                } finally {
+                    // Always cleanup temporary files
+                    if (tempFiles.length > 0) {
+                        await attachmentHandler.cleanupTempFiles(tempFiles);
+                        LogEngine.debug('Cleaned up temporary files after ticket creation', {
+                            fileCount: tempFiles.length
+                        });
+                    }
                 }
-            });
+            } else {
+                // Create ticket without attachments (original flow)
+                ticketResponse = await unthreadService.createTicket({
+                    groupChatName: chatTitle,
+                    customerId: customer.id,
+                    summary: userState.summary,
+                    onBehalfOf: {
+                        name: userData.name || ctx.from?.first_name || 'Telegram User',
+                        email: emailToUse // Guaranteed to exist at this point
+                    }
+                });
+            }
 
             // Register ticket confirmation for bidirectional messaging
             await unthreadService.registerTicketConfirmation({
