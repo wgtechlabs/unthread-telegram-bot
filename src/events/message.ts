@@ -203,7 +203,7 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
             return false;
         }
         
-        const { telegramUserId, username, message } = validation;
+        const { telegramUserId, username, firstName, lastName, message } = validation;
         
         // Send a minimal status message
         const statusMsg = await safeReply(ctx, '⏳ Adding to ticket...', {
@@ -216,7 +216,7 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
         
         try {
             // Process and send the ticket message to Unthread
-            await processTicketMessage(ticketInfo, telegramUserId, username, message);
+            await processTicketMessage(ticketInfo, telegramUserId, username, message, firstName, lastName);
             
             // Update status message to success
             await updateStatusMessage(ctx, statusMsg, true);
@@ -252,15 +252,17 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
 /**
  * Validates that the reply message and sender information are present and extracts user and message details for ticket processing.
  *
- * @returns An object indicating whether the reply is valid. If valid, includes the sender's Telegram user ID, username, and message text.
+ * @returns An object indicating whether the reply is valid. If valid, includes the sender's Telegram user ID, username, first name, last name, and message text.
  */
-async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ isValid: false } | { isValid: true; telegramUserId: number; username: string | undefined; message: string }> {
+async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ isValid: false } | { isValid: true; telegramUserId: number; username: string | undefined; firstName: string | undefined; lastName: string | undefined; message: string }> {
     if (!ctx.from || !ctx.message || !('text' in ctx.message)) {
         return { isValid: false };
     }
     
     const telegramUserId = ctx.from.id;
     const username = ctx.from.username;
+    const firstName = ctx.from.first_name;
+    const lastName = ctx.from.last_name;
     const message = ctx.message.text || '';
     
     LogEngine.info('Processing ticket confirmation reply', {
@@ -269,6 +271,8 @@ async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ 
         friendlyId: ticketInfo.friendlyId,
         telegramUserId,
         username,
+        firstName,
+        lastName,
         messageLength: message?.length
     });
     
@@ -276,6 +280,8 @@ async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ 
         isValid: true,
         telegramUserId,
         username,
+        firstName,
+        lastName,
         message
     };
 }
@@ -285,9 +291,9 @@ async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ 
  *
  * Retrieves or creates user data based on the Telegram user ID and username, then sends the provided message to the ticket conversation identified by the ticket information.
  */
-async function processTicketMessage(ticketInfo: any, telegramUserId: number, username: string | undefined, message: string): Promise<void> {
+async function processTicketMessage(ticketInfo: any, telegramUserId: number, username: string | undefined, message: string, firstName?: string, lastName?: string): Promise<void> {
     // Get user information from database
-    const userData = await unthreadService.getOrCreateUser(telegramUserId, username);
+    const userData = await unthreadService.getOrCreateUser(telegramUserId, username, firstName, lastName);
     
     LogEngine.info('Retrieved user data for ticket reply', {
         userData: JSON.stringify(userData),
@@ -431,7 +437,7 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
             });
             
             // Get user information for proper onBehalfOf formatting
-            const userData = await unthreadService.getOrCreateUser(telegramUserId, username);
+            const userData = await unthreadService.getOrCreateUser(telegramUserId, username, ctx.from?.first_name, ctx.from?.last_name);
             
             // Send the message to the conversation
             await unthreadService.sendMessage({

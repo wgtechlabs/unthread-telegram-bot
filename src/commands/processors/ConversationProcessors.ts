@@ -218,7 +218,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
             const customer = await unthreadService.getOrCreateCustomer(chatTitle, chatId);
             
             // Get user data - might not have email
-            let userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
+            let userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
             
             // Check if we have email from user state (just provided) or stored
             const emailToUse = userState.email || userData.email;
@@ -244,7 +244,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
             if (userState.email) {
                 await BotsStore.updateUser(userId, { unthreadEmail: userState.email });
                 // Refresh userData to get the updated email
-                userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
+                userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
             }
 
             // Create the ticket with confirmed email

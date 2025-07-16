@@ -222,7 +222,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         await BotsStore.clearUserState(userId);
 
         // Check if user has email
-        const userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username);
+        const userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
         const hasEmail = userData?.email;
 
         // Set new state
@@ -539,9 +539,12 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 return false;
             }
 
-            // Prepare the OnBehalfOfUser parameter
+            // Get user data using the unified function for consistent naming
+            const userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
+            
+            // Prepare the OnBehalfOfUser parameter with the user's email
             const onBehalfOf = {
-                name: ctx.from?.first_name || ctx.from?.username || `User ${userId}`,
+                name: userData.name,
                 email: userState.email // Must exist at this point
             };
 

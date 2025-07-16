@@ -369,6 +369,50 @@ This bot works in conjunction with the [`wgtechlabs/unthread-webhook-server`](ht
 
 For standalone webhook server setup, see the [`wgtechlabs/unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server) repository.
 
+### 🔗 Webhook Server Integration Requirements
+
+This bot works in close integration with the [`unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server). When modifying user-related functionality, developers **must** consider the webhook server's platform detection logic.
+
+#### **Critical Integration Points:**
+
+**Username Format Validation:**
+
+- The webhook server uses `event.data.botName` for platform detection
+- Names starting with `@` are classified as **Telegram platform**
+- Names without `@` are classified as **Dashboard origin**
+
+**Required Format Compatibility:**
+
+```typescript
+// ✅ CORRECT - Detected as Telegram platform
+"Waren Gonzaga (@warengonzaga)"
+"@warengonzaga"  
+
+// ✅ ACCEPTABLE - Detected as Dashboard origin
+"Waren Gonzaga"
+"User 123456"
+
+// ❌ AVOID - May cause misclassification
+"waren.user"
+"Waren-@-warengonzaga"
+```
+
+**Implementation Reference:**
+
+- **Bot Code**: `src/services/unthread.ts` → `createUserDisplayName()` function
+- **Webhook Server**: [`src/services/webhookService.ts#L118-L144`](https://github.com/wgtechlabs/unthread-webhook-server/blob/main/src/services/webhookService.ts#L118-L144)
+
+**Testing Requirements:**
+
+When modifying username-related code, verify:
+
+1. ✅ Username formats pass webhook server validation
+2. ✅ Platform detection works correctly  
+3. ✅ Analytics and monitoring remain accurate
+4. ✅ Event routing functions properly
+
+```
+
 ## 🏗️ Installation & Deployment
 
 ### 📦 Manual Installation

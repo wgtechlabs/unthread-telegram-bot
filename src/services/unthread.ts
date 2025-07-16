@@ -669,19 +669,136 @@ export async function getOrCreateCustomer(groupChatName: string, chatId: number)
 }
 
 /**
+ * Creates a user display name using Telegram user data with proper fallback hierarchy.
+ *
+ * Priority order:
+ * 1. "FirstName (@username)" (if both first name and username available)
+ * 2. "@username" (if only username available)
+ * 3. "FirstName LastName" (if names available but no username)
+ * 4. "FirstName" (if only first name available)
+ * 5. "User {ID}" (final fallback)
+ *
+ * Creates a user display name that's compatible with unthread-webhook-server validation
+ * 
+ * WEBHOOK SERVER INTEGRATION:
+ * ---------------------------
+ * The unthread-webhook-server uses this botName field for platform detection:
+ * - Names starting with '@' are classified as 'telegram' platform
+ * - Names without '@' are classified as 'dashboard' origin
+ * 
+ * Our format priority ensures proper classification:
+ * 1. "FirstName (@username)" - Best UX, detected as Telegram ✅
+ * 2. "FirstName LastName" - Good fallback, detected as Dashboard
+ * 3. "@username" - Minimal format, detected as Telegram ✅
+ * 
+ * @param telegramUserId - The Telegram user ID
+ * @param username - Optional Telegram username (without @)
+ * @param firstName - Optional Telegram user's first name
+ * @param lastName - Optional Telegram user's last name
+ * @returns Formatted display name for Unthread dashboard
+ * 
+ * @see https://github.com/wgtechlabs/unthread-webhook-server/blob/main/src/services/webhookService.ts#L118-L144
+ */
+function createUserDisplayName(
+    telegramUserId: number, 
+    username?: string, 
+    firstName?: string, 
+    lastName?: string
+): string {
+    const cleanUsername = username && username.trim() ? username.trim() : null;
+    const cleanFirstName = firstName && firstName.trim() ? firstName.trim() : null;
+    const cleanLastName = lastName && lastName.trim() ? lastName.trim() : null;
+    
+    // Priority 1: "FirstName (@username)" - best of both worlds
+    if (cleanFirstName && cleanUsername) {
+        return `${cleanFirstName} (@${cleanUsername})`;
+    }
+    
+    // Priority 2: "@username" - if no first name but username exists
+    if (cleanUsername) {
+        return `@${cleanUsername}`;
+    }
+    
+    // Priority 3: "FirstName LastName" - if names available but no username
+    if (cleanFirstName) {
+        const last = cleanLastName ? ` ${cleanLastName}` : '';
+        return `${cleanFirstName}${last}`;
+    }
+    
+    // Priority 4: Final fallback to User ID
+    return `User ${telegramUserId}`;
+}
+
+
+
+/**
  * Retrieves user information for a Telegram user ID, creating and storing a new user if not found.
  *
- * If the user does not exist, generates a new user with a name and email based on the Telegram user ID and optional username, and persists the user data.
+ * If the user does not exist, generates a new user with a name and email based on the Telegram user data including display names, username, and ID as fallback, and persists the user data.
  *
  * @param telegramUserId - The Telegram user ID to look up or create
  * @param username - Optional Telegram username (without @) to use for the new user
+ * @param firstName - Optional Telegram user's first name
+ * @param lastName - Optional Telegram user's last name
  * @returns An object containing the user's name and email for use as onBehalfOf information
  */
-export async function getOrCreateUser(telegramUserId: number, username?: string): Promise<OnBehalfOfUser> {
+export async function getOrCreateUser(
+    telegramUserId: number, 
+    username?: string, 
+    firstName?: string, 
+    lastName?: string
+): Promise<OnBehalfOfUser> {
     try {
         // First, check if we already have this user in our database
         const existingUser = await BotsStore.getUserByTelegramId(telegramUserId);
         if (existingUser) {
+            // Generate the current best display name with available data
+            const currentBestName = createUserDisplayName(telegramUserId, username, firstName, lastName);
+            
+            // Check if we should update the stored name (if we have better info now)
+            // IMPORTANT: Username format affects webhook server platform detection
+            // See: https://github.com/wgtechlabs/unthread-webhook-server/blob/main/src/services/webhookService.ts#L118-L144
+            const shouldUpdateName = existingUser.unthreadName !== currentBestName && 
+                                   (currentBestName.includes('@') || // We now have username
+                                    (currentBestName.includes(' ') && !existingUser.unthreadName?.includes(' ')) || // We now have full name vs partial
+                                    existingUser.unthreadName?.startsWith('User ')); // Old fallback format
+            
+            if (shouldUpdateName) {
+                // Update the stored user with better name information
+                const updatedUserData: Partial<UserData> = {
+                    unthreadName: currentBestName,
+                    updatedAt: new Date().toISOString()
+                };
+                
+                // Update optional fields if provided
+                if (username) {
+                    updatedUserData.telegramUsername = username;
+                    updatedUserData.username = username;
+                }
+                if (firstName) {
+                    updatedUserData.firstName = firstName;
+                }
+                if (lastName) {
+                    updatedUserData.lastName = lastName;
+                }
+                
+                await BotsStore.updateUser(telegramUserId, updatedUserData);
+                
+                LogEngine.info('Updated existing user with better display name', {
+                    telegramUserId: existingUser.telegramUserId,
+                    oldName: existingUser.unthreadName,
+                    newName: currentBestName,
+                    username: username,
+                    firstName: firstName,
+                    lastName: lastName
+                });
+                
+                return {
+                    name: currentBestName,
+                    email: existingUser.unthreadEmail
+                };
+            }
+            
             LogEngine.info('Using existing user from database', {
                 telegramUserId: existingUser.telegramUserId,
                 unthreadName: existingUser.unthreadName,
@@ -694,8 +811,8 @@ export async function getOrCreateUser(telegramUserId: number, username?: string)
             };
         }
 
-        // Create new user data - NO automatic dummy email generation
-        const unthreadName = username ? `@${username}` : `User ${telegramUserId}`;
+        // Create new user data with proper name prioritization
+        const unthreadName = createUserDisplayName(telegramUserId, username, firstName, lastName);
 
         // Store user in our database WITHOUT automatic email
         const userData: UserData = {
@@ -712,11 +829,21 @@ export async function getOrCreateUser(telegramUserId: number, username?: string)
             userData.username = username;
         }
         
+        if (firstName) {
+            userData.firstName = firstName;
+        }
+        
+        if (lastName) {
+            userData.lastName = lastName;
+        }
+        
         await BotsStore.storeUser(userData);
         
-        LogEngine.info('Created and stored new user without automatic email', {
+        LogEngine.info('Created and stored new user with proper display name', {
             telegramUserId: telegramUserId,
             telegramUsername: username,
+            firstName: firstName,
+            lastName: lastName,
             unthreadName: unthreadName,
             unthreadEmail: 'undefined - will be set at interaction point'
         });
@@ -950,6 +1077,39 @@ export function handleUnthreadApiError(error: any, operation: string): string {
     // Generic error
     return `❌ **${operation} Failed**\n\nAn unexpected error occurred: ${err.message}\n\nPlease try again or contact support if the issue persists.`;
 }
+
+/**
+ * Unthread API Service
+ * 
+ * IMPORTANT: Username Format Integration with Webhook Server
+ * =========================================================
+ * 
+ * This service's username formatting is critical for integration with the
+ * unthread-webhook-server repository (https://github.com/wgtechlabs/unthread-webhook-server).
+ * 
+ * The webhook server validates usernames using platform detection logic in:
+ * src/services/webhookService.ts (detectPlatformSource method)
+ * 
+ * WEBHOOK SERVER VALIDATION LOGIC:
+ * --------------------------------
+ * - If botName.startsWith('@') → Classified as 'telegram' platform
+ * - If botName does NOT start with '@' → Classified as 'dashboard' origin
+ * - Used for analytics, monitoring, and proper event routing
+ * 
+ * OUR USERNAME FORMAT REQUIREMENTS:
+ * ---------------------------------
+ * 1. "FirstName (@username)" → Detected as Telegram platform ✅
+ * 2. "@username" → Detected as Telegram platform ✅  
+ * 3. "User 123456" → Detected as Dashboard origin ✅
+ * 
+ * This ensures proper:
+ * - Platform source detection in webhook logs
+ * - Analytics and monitoring accuracy
+ * - Event routing and classification
+ * - Audit trail compliance
+ * 
+ * @see https://github.com/wgtechlabs/unthread-webhook-server/blob/main/src/services/webhookService.ts#L118-L144
+ */
 
 // Export the customer cache for potential use in other modules
 export { customerCache };

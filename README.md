@@ -341,6 +341,37 @@ VERBOSE_LOGGING=true
 - Get your user ID from [@userinfobot](https://t.me/userinfobot)
 - Use `/activate` command in private chat to enable admin features
 
+## 🔗 System Architecture & Integration
+
+### **Webhook Server Integration**
+
+This bot works in conjunction with the [`unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server) for complete bidirectional communication:
+
+- **Webhook Server**: Receives events from Unthread dashboard and routes them to the bot
+- **Bot Service**: Handles Telegram interactions and creates tickets in Unthread
+- **Platform Detection**: Smart username formatting ensures proper event classification
+
+### **Username Format Compatibility**
+
+The bot implements a sophisticated username format that ensures seamless integration:
+
+```typescript
+// Format Priority for Unthread Dashboard Display:
+"Emily (@emilynatividad)"  // ✅ Best UX - detected as Telegram platform
+"@emilynatividad"          // ✅ Minimal - detected as Telegram platform  
+"Emily Smith"              // ✅ Fallback - detected as Dashboard origin
+"User 784879963"           // ✅ Legacy - detected as Dashboard origin
+```
+
+**Integration Benefits:**
+
+- ✅ **Proper Analytics**: Webhook server correctly classifies events by platform
+- ✅ **Enhanced Monitoring**: Clear distinction between bot vs dashboard activities
+- ✅ **Audit Compliance**: Complete traceability of user interactions
+- ✅ **Event Routing**: Accurate downstream processing and workflow automation
+
+**Technical Reference:** [Webhook Server Platform Detection Logic](https://github.com/wgtechlabs/unthread-webhook-server/blob/main/src/services/webhookService.ts#L118-L144)
+
 ## 💬 Community Discussions
 
 Join our community discussions to get help, share ideas, and connect with other users:
@@ -379,6 +410,7 @@ Your contributions to improving this project are greatly appreciated! 🙏✨
 Contributions are welcome! Create a pull request to the `dev` branch and your code will be reviewed. All code must pass build and type checks before merging.
 
 **Requirements:**
+
 - Code must pass `yarn build` and `yarn type-check`
 - Follow existing code style and patterns
 - Test your changes thoroughly
