@@ -35,6 +35,7 @@ import * as unthreadService from '../services/unthread.js';
 import { safeReply, safeEditMessageText } from '../bot.js';
 import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
 import { attachmentHandler } from '../utils/attachmentHandler.js';
+import { getMessageText, isCommand, getCommand, hasTextContent, getMessageTypeInfo } from '../utils/messageContentExtractor.js';
 import type { BotContext } from '../types/index.js';
 
 /**
@@ -197,15 +198,14 @@ export async function handleMessage(ctx: BotContext, next: () => Promise<void>):
             return await next();
         }
 
-        // Log basic information about the message
-        LogEngine.debug('Processing message', {
+        // Log basic information about the message - Enhanced with unified text detection
+        const messageTypeInfo = getMessageTypeInfo(ctx);
+        LogEngine.debug('Processing message with unified text detection', {
             chatType: ctx.chat.type,
             chatId: ctx.chat.id,
             userId: ctx.from?.id,
-            messageText: 'text' in ctx.message ? ctx.message.text?.substring(0, 50) : undefined,
-            isCommand: 'text' in ctx.message ? ctx.message.text?.startsWith('/') : false,
-            hasFromUser: !!ctx.from,
-            messageType: 'text' in ctx.message ? 'text' : 'other'
+            messageTypeInfo,
+            hasFromUser: !!ctx.from
         });
         
         // Detect file attachments early in the process
@@ -223,10 +223,12 @@ export async function handleMessage(ctx: BotContext, next: () => Promise<void>):
         }
         
         // If this is a command, let Telegraf handle it and don't process further
-        if ('text' in ctx.message && ctx.message.text?.startsWith('/')) {
-            LogEngine.debug('Command detected, passing to command handlers', {
-                command: ctx.message.text,
-                chatType: ctx.chat.type
+        // Now properly detects commands in both text messages and photo/document captions
+        if (isCommand(ctx)) {
+            LogEngine.debug('Command detected in message (text or caption), passing to command handlers', {
+                command: getCommand(ctx),
+                chatType: ctx.chat.type,
+                textSource: messageTypeInfo.textSource
             });
             return;  // Don't call next() for commands, let Telegraf handle them
         }
@@ -240,8 +242,8 @@ export async function handleMessage(ctx: BotContext, next: () => Promise<void>):
             return;  // Don't call next() for conversation messages, we're done
         }
         
-        // Check if this is a reply to a ticket confirmation
-        if ('reply_to_message' in ctx.message && ctx.message.reply_to_message && 'text' in ctx.message && ctx.message.text) {
+        // Check if this is a reply to a ticket confirmation - Enhanced with unified text detection
+        if ('reply_to_message' in ctx.message && ctx.message.reply_to_message && hasTextContent(ctx)) {
             const handled = await handleTicketReply(ctx);
             if (handled) {
                 // Skip other handlers if this was a ticket reply
@@ -290,7 +292,7 @@ async function handleTicketReply(ctx: BotContext): Promise<boolean> {
         
         LogEngine.info('Processing potential ticket reply', {
             replyToMessageId,
-            messageText: 'text' in ctx.message ? ctx.message.text?.substring(0, 100) : undefined,
+            messageText: getMessageText(ctx).substring(0, 100),
             chatId: ctx.chat?.id,
             userId: ctx.from?.id
         });
@@ -421,7 +423,7 @@ async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ 
     const username = ctx.from.username;
     const firstName = ctx.from.first_name;
     const lastName = ctx.from.last_name;
-    const message = ctx.message.text || '';
+    const message = getMessageText(ctx);
     
     LogEngine.info('Processing ticket confirmation reply', {
         conversationId: ticketInfo.conversationId,
@@ -559,7 +561,7 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
         // This is a reply to an agent message, send it back to Unthread
         const telegramUserId = ctx.from.id;
         const username = ctx.from.username;
-        const message = ('text' in ctx.message) ? ctx.message.text || '' : '';
+        const message = getMessageText(ctx);
         
         // Detect file attachments in the reply
         const attachmentFileIds = extractFileAttachments(ctx);
@@ -745,20 +747,20 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
 export async function handlePrivateMessage(ctx: BotContext): Promise<void> {
     try {
         // Log information about the private message
-        LogEngine.info('Processing private message', {
+        LogEngine.info('Processing private message with enhanced text detection', {
             telegramUserId: ctx.from?.id,
             username: ctx.from?.username,
             firstName: ctx.from?.first_name,
             lastName: ctx.from?.last_name,
             messageId: ctx.message?.message_id,
-            messageText: ctx.message && 'text' in ctx.message ? ctx.message.text?.substring(0, 100) : undefined
+            messageTypeInfo: getMessageTypeInfo(ctx)
         });
         
         // Only respond to private messages if they're not commands
         // Commands should be handled by their respective handlers
-        if (ctx.message && 'text' in ctx.message && ctx.message.text?.startsWith('/')) {
+        if (isCommand(ctx)) {
             LogEngine.debug('Skipping private message - it\'s a command', {
-                command: ctx.message.text.split(' ')[0]
+                command: getCommand(ctx)
             });
             return;
         }
@@ -795,13 +797,11 @@ export async function handleGroupMessage(ctx: BotContext): Promise<void> {
             LogEngine.info(`Message sent by: ${ctx.from.first_name} ${ctx.from.last_name || ''} (ID: ${ctx.from.id})`);
         }
         
-        // Log the message content for debugging
-        LogEngine.debug('Group message details', {
+        // Log the message content for debugging with enhanced text detection
+        const messageTypeInfo = getMessageTypeInfo(ctx);
+        LogEngine.debug('Group message details with enhanced text detection', {
             messageId: ctx.message?.message_id,
-            messageText: ctx.message && 'text' in ctx.message ? ctx.message.text?.substring(0, 100) : undefined,
-            messageType: ctx.message && 'photo' in ctx.message ? 'photo' : 
-                        ctx.message && 'document' in ctx.message ? 'document' : 
-                        ctx.message && 'text' in ctx.message ? 'text' : 'other',
+            messageTypeInfo,
             hasReply: ctx.message && 'reply_to_message' in ctx.message && !!ctx.message.reply_to_message,
             replyToId: ctx.message && 'reply_to_message' in ctx.message ? ctx.message.reply_to_message?.message_id : undefined
         });

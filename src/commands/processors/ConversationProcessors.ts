@@ -15,6 +15,7 @@ import { logError } from '../utils/errorHandler.js';
 import * as unthreadService from '../../services/unthread.js';
 import { attachmentHandler } from '../../utils/attachmentHandler.js';
 import { extractFileAttachments } from '../../events/message.js';
+import { getMessageText, hasTextContent } from '../../utils/messageContentExtractor.js';
 import { SetupCallbackProcessor } from './CallbackProcessors.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { 
@@ -33,7 +34,7 @@ import { SimpleInputValidator, SimpleValidationResult } from '../../utils/simple
 export class SupportConversationProcessor implements IConversationProcessor {
     async canHandle(ctx: BotContext): Promise<boolean> {
         const userId = ctx.from?.id;
-        if (!userId || !ctx.message || !('text' in ctx.message) || !ctx.message.text) {
+        if (!userId || !ctx.message || !hasTextContent(ctx)) {
             return false;
         }
 
@@ -59,7 +60,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
             }
 
             const userId = ctx.from.id;
-            const userInput = (ctx.message && 'text' in ctx.message ? ctx.message.text : '') || '';
+            const userInput = getMessageText(ctx) || '';
             const userState = await BotsStore.getUserState(userId);
 
             if (!userState) {
@@ -590,7 +591,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
 
     async process(ctx: BotContext): Promise<boolean> {
         const userId = ctx.from?.id;
-        const inputText = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
+        const inputText = getMessageText(ctx);
 
         if (!userId || !inputText) {
             return false;

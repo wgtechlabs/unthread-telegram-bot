@@ -60,6 +60,7 @@ import {
     templatesCommand
 } from './commands/index.js';
 import { handleMessage } from './events/message.js';
+import { isCommand, getMessageText } from './utils/messageContentExtractor.js';
 import { db } from './database/connection.js';
 import { BotsStore } from './sdk/bots-brain/index.js';
 import { WebhookConsumer } from './sdk/unthread-webhook/index.js';
@@ -96,13 +97,15 @@ bot.use(async (ctx: BotContext, next) => {
             else if ('sticker' in ctx.message) messageType = 'sticker';
             else if (!('text' in ctx.message)) messageType = 'other';
             
-            LogEngine.debug('Message received', {
+            LogEngine.debug('Message received with enhanced text detection', {
                 chatId: ctx.chat?.id,
                 userId: ctx.from?.id,
                 type: messageType,
                 hasText: 'text' in ctx.message && !!ctx.message.text,
-                isCommand: 'text' in ctx.message && ctx.message.text?.startsWith('/'),
-                textPreview: 'text' in ctx.message ? ctx.message.text?.substring(0, 30) : undefined
+                hasCaption: 'caption' in ctx.message && !!ctx.message.caption,
+                isCommand: isCommand(ctx),
+                textPreview: getMessageText(ctx).substring(0, 30),
+                textSource: 'text' in ctx.message ? 'text' : ('caption' in ctx.message ? 'caption' : 'none')
             });
         }
         await next();
@@ -136,7 +139,7 @@ const commandMiddleware = async (ctx: BotContext, next: () => Promise<void>) => 
         LogEngine.error('Error in command middleware', {
             error: err.message,
             chatId: ctx.chat?.id,
-            command: ctx.message && 'text' in ctx.message ? ctx.message.text : undefined
+            command: getMessageText(ctx)
         });
     }
 };
@@ -168,13 +171,23 @@ bot.command('setup', commandMiddleware, wrapCommandHandler('setup'));
 bot.command('activate', commandMiddleware, wrapCommandHandler('activate'));
 bot.command('templates', commandMiddleware, wrapCommandHandler('templates'));
 
-// Register message handlers with middleware
+// Register message handlers with enhanced text detection
 bot.on('text', async (ctx, next) => {
     // Skip commands - let Telegraf handle them with the command handlers
-    if (ctx.message.text?.startsWith('/')) {
+    if (isCommand(ctx)) {
         return;
     }
     
+    await handleMessage(ctx, next);
+});
+
+// Register photo messages (photos with captions) - NEW: Handle /support in photo captions
+bot.on('photo', async (ctx, next) => {
+    await handleMessage(ctx, next);
+});
+
+// Register document messages (documents with captions) - NEW: Handle /support in document captions
+bot.on('document', async (ctx, next) => {
     await handleMessage(ctx, next);
 });
 
