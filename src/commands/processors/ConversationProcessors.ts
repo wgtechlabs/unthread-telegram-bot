@@ -279,18 +279,22 @@ export class SupportConversationProcessor implements IConversationProcessor {
                     
                     // Download all attachments
                     for (const fileId of attachmentIds) {
-                        const result = await attachmentHandler.downloadTelegramFile(fileId);
-                        if (result.success && result.localPath) {
-                            tempFiles.push(result.localPath);
-                            LogEngine.debug('Downloaded attachment for ticket creation', {
+                        // Use stream-based approach instead of legacy downloadTelegramFile
+                        const attachmentProcessingResult = await attachmentHandler.processAttachments(
+                            [fileId],
+                            ticketResponse.conversationId || ticketResponse.ticketId,
+                            'Customer file attachment for new ticket via Telegram'
+                        );
+                        
+                        if (attachmentProcessingResult) {
+                            LogEngine.debug('Processed attachment for ticket creation using stream-based approach', {
                                 fileId,
-                                fileName: result.fileName,
-                                localPath: result.localPath
+                                ticketId: ticketResponse.ticketId
                             });
                         } else {
-                            LogEngine.warn('Failed to download attachment for ticket', {
+                            LogEngine.warn('Failed to process attachment for ticket', {
                                 fileId,
-                                error: result.error
+                                error: 'Stream-based processing failed'
                             });
                             attachmentProcessingSuccess = false;
                             break;
@@ -344,13 +348,8 @@ export class SupportConversationProcessor implements IConversationProcessor {
                         });
                     }
                 } finally {
-                    // Always cleanup temporary files
-                    if (tempFiles.length > 0) {
-                        await attachmentHandler.cleanupTempFiles(tempFiles);
-                        LogEngine.debug('Cleaned up temporary files after ticket creation', {
-                            fileCount: tempFiles.length
-                        });
-                    }
+                    // Stream-based implementation - no temporary files to cleanup
+                    LogEngine.debug('Stream-based attachment processing completed - no cleanup required');
                 }
             } else {
                 // Create ticket without attachments (original flow)

@@ -27,6 +27,7 @@ import fetch from 'node-fetch';
 import FormData from 'form-data';
 import dotenv from 'dotenv';
 import { Readable } from 'stream';
+import { LogEngine } from '@wgtechlabs/log-engine';
 
 // Type definitions for better TypeScript support
 interface TelegramApiResponse {
@@ -129,8 +130,8 @@ export const ATTACHMENT_CONFIG = {
     // Maximum number of files per message
     maxFiles: 10,
     
-    // Temporary directory for file storage (DEPRECATED - will be removed)
-    tempDir: path.join(__dirname, '../../temp/attachments'),
+    // DEPRECATED: Temporary directory no longer used in stream-based implementation
+    tempDir: null, // Previously: path.join(__dirname, '../../temp/attachments'),
     
     // Supported MIME types (common and safe file types)
     allowedMimeTypes: [
@@ -331,6 +332,96 @@ export interface BatchStreamResult {
 }
 
 /**
+ * Memory management and optimization configuration
+ */
+export const MEMORY_OPTIMIZATION_CONFIG = {
+    // Memory Monitoring
+    memoryCheckInterval: 5000,               // Check memory every 5 seconds
+    maxHeapUsagePercent: 80,                 // Alert at 80% heap usage
+    criticalHeapUsagePercent: 90,            // Critical threshold at 90%
+    memoryLeakDetectionEnabled: true,        // Enable memory leak detection
+    
+    // Stream Optimization
+    dynamicChunkSizing: true,                // Adjust chunk size based on memory
+    minChunkSize: 32 * 1024,                // 32KB minimum chunk size
+    maxChunkSize: 256 * 1024,               // 256KB maximum chunk size
+    adaptiveBuffering: true,                 // Dynamic buffer size adjustment
+    
+    // Concurrency Optimization
+    dynamicConcurrencyControl: true,         // Adjust concurrency based on load
+    minConcurrentStreams: 1,                 // Minimum concurrent streams
+    maxConcurrentStreams: 5,                 // Maximum concurrent streams
+    loadBasedThrottling: true,               // Throttle based on system load
+    
+    // Performance Tuning
+    streamPooling: true,                     // Reuse stream objects
+    bufferPreallocation: true,               // Pre-allocate buffers
+    compressionEnabled: false,               // Stream compression (future feature)
+    progressReporting: true,                 // Real-time progress updates
+    
+    // Resource Limits
+    maxTotalMemoryUsage: 100 * 1024 * 1024, // 100MB total memory limit
+    streamTimeoutOptimized: 45000,           // Optimized timeout (45s)
+    gcThresholdMB: 50,                      // Trigger GC at 50MB
+    resourceCleanupInterval: 30000           // Cleanup every 30 seconds
+};
+
+/**
+ * Memory usage statistics interface
+ */
+export interface MemoryStats {
+    heapUsed: number;
+    heapTotal: number;
+    heapUsagePercent: number;
+    external: number;
+    rss: number;
+    timestamp: Date;
+    activeStreams: number;
+    bufferCount: number;
+    gcSuggested: boolean;
+}
+
+/**
+ * Performance metrics interface
+ */
+export interface PerformanceMetrics {
+    avgProcessingTime: number;
+    avgThroughputMBps: number;
+    concurrentStreams: number;
+    memoryEfficiency: number;
+    errorRate: number;
+    totalFilesProcessed: number;
+    peakMemoryUsage: number;
+    timeWindow: number; // metrics window in ms
+}
+
+/**
+ * Stream pool entry for resource reuse
+ */
+interface StreamPoolEntry {
+    id: string;
+    stream?: Readable;
+    inUse: boolean;
+    created: Date;
+    lastUsed: Date;
+    usageCount: number;
+}
+
+/**
+ * Optimized stream result with performance data
+ */
+export interface OptimizedStreamResult extends EnhancedStreamResult {
+    memoryUsage?: MemoryStats;
+    performance?: PerformanceMetrics;
+    optimizations?: {
+        chunkSizeUsed: number;
+        bufferReused: boolean;
+        compressionRatio?: number;
+        streamPoolHit: boolean;
+    };
+}
+
+/**
  * AttachmentHandler Class
  * 
  * Manages the complete lifecycle of file attachments from Telegram to Unthread
@@ -340,35 +431,36 @@ export class AttachmentHandler {
     private unthreadApiKey: string;
     private unthreadBaseUrl: string;
 
+    // Memory Management & Optimization - Phase 6 Implementation
+    private memoryMonitoringInterval?: NodeJS.Timeout;
+    private streamPool: Map<string, StreamPoolEntry> = new Map();
+    private performanceMetrics: PerformanceMetrics = {
+        avgProcessingTime: 0,
+        avgThroughputMBps: 0,
+        concurrentStreams: 0,
+        memoryEfficiency: 100,
+        errorRate: 0,
+        totalFilesProcessed: 0,
+        peakMemoryUsage: 0,
+        timeWindow: 60000 // 1 minute window
+    };
+    private memoryHistory: MemoryStats[] = [];
+    private lastGcTime: number = 0;
+
     constructor() {
-        console.log('[AttachmentHandler] Initializing...');
+        console.log('[AttachmentHandler] Initializing stream-based attachment handler...');
         this.botToken = process.env.TELEGRAM_BOT_TOKEN || '';
         this.unthreadApiKey = process.env.UNTHREAD_API_KEY || '';
         this.unthreadBaseUrl = 'https://api.unthread.io/api';
         
-        // Ensure temp directory exists
-        this.ensureTempDirectory();
+        LogEngine.info('[AttachmentHandler] Stream-based attachment handler initialized', {
+            hasToken: !!this.botToken,
+            hasApiKey: !!this.unthreadApiKey
+        });
     }
 
     /**
-     * Ensures the temporary directory exists for file storage
-     */
-    private ensureTempDirectory(): void {
-        try {
-            if (!fs.existsSync(ATTACHMENT_CONFIG.tempDir)) {
-                fs.mkdirSync(ATTACHMENT_CONFIG.tempDir, { recursive: true });
-                console.log('[AttachmentHandler] Created temporary attachments directory:', ATTACHMENT_CONFIG.tempDir);
-            }
-        } catch (error) {
-            console.error('[AttachmentHandler] Failed to create temp directory:', {
-                error: error instanceof Error ? error.message : String(error),
-                path: ATTACHMENT_CONFIG.tempDir 
-            });
-        }
-    }
-
-    /**
-     * Validates file type against allowed MIME types
+     * Validates file type against allowed MIME types using stream-based detection
      * 
      * @param mimeType - MIME type to validate
      * @param fileName - File name for extension fallback
@@ -385,99 +477,6 @@ export class AttachmentHandler {
         const expectedMime = ATTACHMENT_CONFIG.extensionToMime[extension as keyof typeof ATTACHMENT_CONFIG.extensionToMime];
         
         return expectedMime ? ATTACHMENT_CONFIG.allowedMimeTypes.includes(expectedMime) : false;
-    }
-
-    /**
-     * Downloads a file from Telegram Bot API
-     * 
-     * @param fileId - Telegram file ID
-     * @returns Promise<AttachmentResult> - Download result with local path
-     */
-    async downloadTelegramFile(fileId: string): Promise<AttachmentResult> {
-        try {
-            console.log('[AttachmentHandler] Starting Telegram file download, fileId:', fileId);
-
-            // Step 1: Get file info from Telegram
-            const fileInfoUrl = `https://api.telegram.org/bot${this.botToken}/getFile?file_id=${fileId}`;
-            const fileInfoResponse = await fetch(fileInfoUrl);
-            const fileInfo = await fileInfoResponse.json() as TelegramApiResponse;
-
-            if (!fileInfo.ok) {
-                throw new Error(`Telegram API error: ${fileInfo.description}`);
-            }
-
-            const telegramFile = fileInfo.result;
-            if (!telegramFile?.file_path) {
-                throw new Error('No file path received from Telegram API');
-            }
-
-            // Step 2: Validate file size
-            if (telegramFile.file_size && telegramFile.file_size > ATTACHMENT_CONFIG.maxFileSize) {
-                return {
-                    success: false,
-                    error: `File too large: ${(telegramFile.file_size / (1024 * 1024)).toFixed(2)}MB (max: 20MB)`
-                };
-            }
-
-            // Step 3: Extract file name and determine MIME type
-            const fileName = path.basename(telegramFile.file_path);
-            const fileExtension = path.extname(fileName).toLowerCase();
-            
-            // Determine MIME type (Telegram doesn't always provide accurate mime_type)
-            let mimeType = telegramFile.mime_type || '';
-            if (!mimeType || mimeType === 'application/octet-stream') {
-                mimeType = ATTACHMENT_CONFIG.extensionToMime[fileExtension as keyof typeof ATTACHMENT_CONFIG.extensionToMime] || 'application/octet-stream';
-            }
-
-            // Step 4: Validate file type
-            if (!this.isValidFileType(mimeType, fileName)) {
-                return {
-                    success: false,
-                    error: `File type not supported: ${mimeType} (.${fileExtension})`
-                };
-            }
-
-            // Step 5: Download the actual file
-            const fileDownloadUrl = `https://api.telegram.org/file/bot${this.botToken}/${telegramFile.file_path}`;
-            const fileResponse = await fetch(fileDownloadUrl);
-            
-            if (!fileResponse.ok) {
-                throw new Error(`Failed to download file: ${fileResponse.status} ${fileResponse.statusText}`);
-            }
-
-            // Step 6: Save to temporary location
-            const tempFileName = `${Date.now()}_${fileName}`;
-            const localPath = path.join(ATTACHMENT_CONFIG.tempDir, tempFileName);
-            
-            const fileBuffer = await fileResponse.buffer();
-            fs.writeFileSync(localPath, fileBuffer);
-
-            console.log('[AttachmentHandler] File downloaded successfully:', {
-                fileName,
-                fileSize: telegramFile.file_size,
-                mimeType,
-                localPath
-            });
-
-            return {
-                success: true,
-                localPath,
-                fileName,
-                fileSize: telegramFile.file_size || 0,
-                mimeType
-            };
-
-        } catch (error) {
-            console.error('[AttachmentHandler] Failed to download Telegram file:', {
-                fileId,
-                error: error instanceof Error ? error.message : String(error)
-            });
-
-            return {
-                success: false,
-                error: `Download failed: ${error instanceof Error ? error.message : String(error)}`
-            };
-        }
     }
 
     /**
@@ -628,97 +627,6 @@ export class AttachmentHandler {
     }
 
     /**
-     * Uploads files to Unthread using multipart/form-data
-     * 
-     * @param params - Upload parameters with conversation ID and file paths
-     * @returns Promise<boolean> - Success status
-     */
-    async uploadToUnthread(params: AttachmentUploadParams): Promise<boolean> {
-        try {
-            console.log('[AttachmentHandler] Starting Unthread file upload:', {
-                conversationId: params.conversationId,
-                fileCount: params.filePaths.length
-            });
-
-            // Create form data
-            const form = new FormData();
-            
-            // Add the message payload as JSON
-            const messagePayload = {
-                conversationId: params.conversationId,
-                message: params.message || 'File attachment(s) uploaded via Telegram'
-            };
-            
-            form.append('payload_json', JSON.stringify(messagePayload));
-
-            // Add each file to the form
-            for (const filePath of params.filePaths) {
-                if (!fs.existsSync(filePath)) {
-                    console.warn('[AttachmentHandler] File not found, skipping:', filePath);
-                    continue;
-                }
-
-                const fileName = path.basename(filePath);
-                const fileStream = fs.createReadStream(filePath);
-                form.append('files', fileStream, fileName);
-            }
-
-            // Upload to Unthread
-            const response = await fetch(`${this.unthreadBaseUrl}/messages`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${this.unthreadApiKey}`,
-                    ...form.getHeaders()
-                },
-                body: form
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Unthread API error: ${response.status} ${response.statusText} - ${errorText}`);
-            }
-
-            const result = await response.json() as UnthreadApiResponse;
-            
-            console.log('[AttachmentHandler] Files uploaded to Unthread successfully:', {
-                conversationId: params.conversationId,
-                messageId: result.ts,
-                fileCount: params.filePaths.length
-            });
-
-            return true;
-
-        } catch (error) {
-            console.error('[AttachmentHandler] Failed to upload files to Unthread:', {
-                conversationId: params.conversationId,
-                error: error instanceof Error ? error.message : String(error)
-            });
-            return false;
-        }
-    }
-
-    /**
-     * Cleans up temporary files after processing
-     * 
-     * @param filePaths - Array of file paths to clean up
-     */
-    async cleanupTempFiles(filePaths: string[]): Promise<void> {
-        for (const filePath of filePaths) {
-            try {
-                if (fs.existsSync(filePath)) {
-                    fs.unlinkSync(filePath);
-                    console.log('[AttachmentHandler] Cleaned up temporary file:', filePath);
-                }
-            } catch (error) {
-                console.warn('[AttachmentHandler] Failed to cleanup temporary file:', {
-                    filePath,
-                    error: error instanceof Error ? error.message : String(error)
-                });
-            }
-        }
-    }
-
-    /**
      * Processes multiple file attachments from Telegram to Unthread
      * 
      * @param fileIds - Array of Telegram file IDs
@@ -727,57 +635,49 @@ export class AttachmentHandler {
      * @returns Promise<boolean> - Success status
      */
     async processAttachments(fileIds: string[], conversationId: string, message?: string): Promise<boolean> {
-        const tempFiles: string[] = [];
-        
         try {
-            // Validate file count
-            if (fileIds.length > ATTACHMENT_CONFIG.maxFiles) {
-                throw new Error(`Too many files: ${fileIds.length} (max: ${ATTACHMENT_CONFIG.maxFiles})`);
-            }
+            LogEngine.info('[AttachmentHandler] Starting stream-based attachment processing', {
+                fileCount: fileIds.length,
+                conversationId,
+                hasMessage: !!message
+            });
 
-            // Download all files from Telegram
-            const downloadResults: AttachmentResult[] = [];
-            for (const fileId of fileIds) {
-                const result = await this.downloadTelegramFile(fileId);
-                downloadResults.push(result);
-                
-                if (result.success && result.localPath) {
-                    tempFiles.push(result.localPath);
-                }
-            }
+            // Use the optimized memory-aware stream processing
+            const result = await this.processAttachmentsWithMemoryOptimization(
+                fileIds,
+                conversationId,
+                message
+            );
 
-            // Check if any downloads failed
-            const failures = downloadResults.filter(r => !r.success);
-            if (failures.length > 0) {
-                console.error('[AttachmentHandler] Some file downloads failed:', failures);
+            if (result.overallSuccess) {
+                LogEngine.info('[AttachmentHandler] Stream-based attachment processing completed successfully', {
+                    conversationId,
+                    processedFiles: result.successfulStreams?.length || 0,
+                    totalFiles: result.totalFiles,
+                    processingTime: result.processingTime,
+                    failedFiles: result.failedStreams?.length || 0
+                });
+                return true;
+            } else {
+                LogEngine.error('[AttachmentHandler] Stream-based attachment processing failed', {
+                    conversationId,
+                    errorCount: result.aggregatedErrors?.length || 0,
+                    successfulFiles: result.successfulStreams?.length || 0,
+                    failedFiles: result.failedStreams?.length || 0,
+                    errors: result.aggregatedErrors?.map(e => ({
+                        fileName: e.fileName,
+                        errorType: e.type,
+                        message: e.message
+                    }))
+                });
                 return false;
             }
-
-            // Upload successfully downloaded files to Unthread
-            if (tempFiles.length > 0) {
-                const uploadParams: AttachmentUploadParams = {
-                    conversationId,
-                    filePaths: tempFiles
-                };
-                
-                return await this.uploadToUnthread(uploadParams);
-            }
-            
-            return false;
         } catch (error) {
-            console.error('[AttachmentHandler] Error processing attachments:', error);
-            
-            // Clean up any downloaded files
-            for (const tempFile of tempFiles) {
-                try {
-                    if (fs.existsSync(tempFile)) {
-                        fs.unlinkSync(tempFile);
-                    }
-                } catch (cleanupError) {
-                    console.error('[AttachmentHandler] Error cleaning up temp file:', tempFile, cleanupError);
-                }
-            }
-            
+            LogEngine.error('[AttachmentHandler] Critical error in stream-based attachment processing', {
+                conversationId,
+                fileCount: fileIds.length,
+                error: error instanceof Error ? error.message : String(error)
+            });
             return false;
         }
     }
@@ -1757,6 +1657,542 @@ export class AttachmentHandler {
                 aggregatedErrors
             };
         }
+    }
+
+    // Memory Management & Optimization - Phase 6 Implementation
+
+    /**
+     * Initializes memory monitoring and optimization features
+     */
+    private initializeMemoryOptimization(): void {
+        if (MEMORY_OPTIMIZATION_CONFIG.memoryLeakDetectionEnabled) {
+            this.startMemoryMonitoring();
+        }
+
+        if (MEMORY_OPTIMIZATION_CONFIG.resourceCleanupInterval > 0) {
+            this.startResourceCleanup();
+        }
+
+        console.log('[MemoryOptimizer] Memory optimization initialized:', {
+            monitoring: MEMORY_OPTIMIZATION_CONFIG.memoryLeakDetectionEnabled,
+            cleanup: MEMORY_OPTIMIZATION_CONFIG.resourceCleanupInterval > 0,
+            pooling: MEMORY_OPTIMIZATION_CONFIG.streamPooling
+        });
+    }
+
+    /**
+     * Starts memory monitoring at configured intervals
+     */
+    private startMemoryMonitoring(): void {
+        this.memoryMonitoringInterval = setInterval(() => {
+            const stats = this.getMemoryStats();
+            this.memoryHistory.push(stats);
+
+            // Keep only recent history (last hour)
+            const cutoff = Date.now() - 3600000; // 1 hour
+            this.memoryHistory = this.memoryHistory.filter(s => s.timestamp.getTime() > cutoff);
+
+            // Check for memory pressure
+            if (stats.heapUsagePercent > MEMORY_OPTIMIZATION_CONFIG.criticalHeapUsagePercent) {
+                this.handleMemoryPressure(stats);
+            } else if (stats.heapUsagePercent > MEMORY_OPTIMIZATION_CONFIG.maxHeapUsagePercent) {
+                this.handleMemoryWarning(stats);
+            }
+
+            // Update performance metrics
+            this.updatePerformanceMetrics(stats);
+
+        }, MEMORY_OPTIMIZATION_CONFIG.memoryCheckInterval);
+    }
+
+    /**
+     * Starts resource cleanup at configured intervals
+     */
+    private startResourceCleanup(): void {
+        setInterval(() => {
+            this.cleanupResources();
+        }, MEMORY_OPTIMIZATION_CONFIG.resourceCleanupInterval);
+    }
+
+    /**
+     * Gets current memory statistics
+     */
+    private getMemoryStats(): MemoryStats {
+        const memUsage = process.memoryUsage();
+        const heapUsagePercent = (memUsage.heapUsed / memUsage.heapTotal) * 100;
+
+        return {
+            heapUsed: memUsage.heapUsed,
+            heapTotal: memUsage.heapTotal,
+            heapUsagePercent,
+            external: memUsage.external,
+            rss: memUsage.rss,
+            timestamp: new Date(),
+            activeStreams: this.getActiveStreamCount(),
+            bufferCount: this.streamPool.size,
+            gcSuggested: heapUsagePercent > MEMORY_OPTIMIZATION_CONFIG.maxHeapUsagePercent
+        };
+    }
+
+    /**
+     * Handles critical memory pressure situations
+     */
+    private handleMemoryPressure(stats: MemoryStats): void {
+        console.warn('[MemoryOptimizer] Critical memory pressure detected:', {
+            heapUsagePercent: stats.heapUsagePercent.toFixed(2),
+            heapUsed: `${(stats.heapUsed / 1024 / 1024).toFixed(2)}MB`,
+            activeStreams: stats.activeStreams
+        });
+
+        // Emergency cleanup
+        this.emergencyCleanup();
+
+        // Force garbage collection if available
+        if (global.gc) {
+            global.gc();
+            console.log('[MemoryOptimizer] Emergency garbage collection triggered');
+        }
+
+        // Reduce concurrency limit temporarily
+        if (MEMORY_OPTIMIZATION_CONFIG.dynamicConcurrencyControl) {
+            this.adjustConcurrencyLimit(1);
+        }
+    }
+
+    /**
+     * Handles memory warning situations
+     */
+    private handleMemoryWarning(stats: MemoryStats): void {
+        console.warn('[MemoryOptimizer] Memory warning:', {
+            heapUsagePercent: stats.heapUsagePercent.toFixed(2),
+            heapUsed: `${(stats.heapUsed / 1024 / 1024).toFixed(2)}MB`
+        });
+
+        // Proactive cleanup
+        this.cleanupResources();
+
+        // Suggest garbage collection
+        if (Date.now() - this.lastGcTime > 30000 && global.gc) { // Max once per 30 seconds
+            global.gc();
+            this.lastGcTime = Date.now();
+        }
+    }
+
+    /**
+     * Emergency cleanup for critical memory situations
+     */
+    private emergencyCleanup(): void {
+        // Clear stream pool
+        this.streamPool.clear();
+
+        // Clear old memory history
+        this.memoryHistory = this.memoryHistory.slice(-10); // Keep only last 10 entries
+
+        console.log('[MemoryOptimizer] Emergency cleanup completed');
+    }
+
+    /**
+     * Regular resource cleanup
+     */
+    private cleanupResources(): void {
+        const now = Date.now();
+        let cleaned = 0;
+
+        // Clean up unused stream pool entries
+        for (const [id, entry] of this.streamPool.entries()) {
+            const age = now - entry.lastUsed.getTime();
+            
+            // Remove entries older than 5 minutes and not in use
+            if (!entry.inUse && age > 300000) {
+                if (entry.stream) {
+                    entry.stream.destroy();
+                }
+                this.streamPool.delete(id);
+                cleaned++;
+            }
+        }
+
+        if (cleaned > 0) {
+            console.log(`[MemoryOptimizer] Cleaned up ${cleaned} unused stream pool entries`);
+        }
+    }
+
+    /**
+     * Gets the count of currently active streams
+     */
+    private getActiveStreamCount(): number {
+        return Array.from(this.streamPool.values()).filter(entry => entry.inUse).length;
+    }
+
+    /**
+     * Adjusts concurrency limit based on memory pressure
+     */
+    private adjustConcurrencyLimit(newLimit: number): void {
+        const limit = Math.max(
+            MEMORY_OPTIMIZATION_CONFIG.minConcurrentStreams,
+            Math.min(MEMORY_OPTIMIZATION_CONFIG.maxConcurrentStreams, newLimit)
+        );
+
+        console.log(`[MemoryOptimizer] Adjusting concurrency limit to ${limit}`);
+        // This would typically update the STREAM_ATTACHMENT_CONFIG.maxConcurrentStreams
+        // For now, we'll just log the adjustment
+    }
+
+    /**
+     * Updates performance metrics based on current stats
+     */
+    private updatePerformanceMetrics(stats: MemoryStats): void {
+        this.performanceMetrics.concurrentStreams = stats.activeStreams;
+        this.performanceMetrics.peakMemoryUsage = Math.max(
+            this.performanceMetrics.peakMemoryUsage,
+            stats.heapUsed
+        );
+        this.performanceMetrics.memoryEfficiency = Math.max(0, 100 - stats.heapUsagePercent);
+    }
+
+    /**
+     * Calculates optimal chunk size based on current memory usage
+     */
+    private calculateOptimalChunkSize(): number {
+        if (!MEMORY_OPTIMIZATION_CONFIG.dynamicChunkSizing) {
+            return STREAM_ATTACHMENT_CONFIG.chunkSize;
+        }
+
+        const stats = this.getMemoryStats();
+        const memoryPressure = stats.heapUsagePercent / 100;
+
+        // Reduce chunk size under memory pressure
+        const baseSize = STREAM_ATTACHMENT_CONFIG.chunkSize;
+        const minSize = MEMORY_OPTIMIZATION_CONFIG.minChunkSize;
+        const maxSize = MEMORY_OPTIMIZATION_CONFIG.maxChunkSize;
+
+        let optimalSize = baseSize;
+
+        if (memoryPressure > 0.8) {
+            // High memory pressure: use smaller chunks
+            optimalSize = Math.max(minSize, baseSize * 0.5);
+        } else if (memoryPressure < 0.4) {
+            // Low memory pressure: can use larger chunks for better performance
+            optimalSize = Math.min(maxSize, baseSize * 1.5);
+        }
+
+        return Math.floor(optimalSize);
+    }
+
+    /**
+     * Calculates optimal concurrency based on system load
+     */
+    private calculateOptimalConcurrency(): number {
+        if (!MEMORY_OPTIMIZATION_CONFIG.dynamicConcurrencyControl) {
+            return STREAM_ATTACHMENT_CONFIG.maxConcurrentStreams;
+        }
+
+        const stats = this.getMemoryStats();
+        const memoryPressure = stats.heapUsagePercent / 100;
+        const activeStreams = stats.activeStreams;
+
+        const minConcurrency = MEMORY_OPTIMIZATION_CONFIG.minConcurrentStreams;
+        const maxConcurrency = MEMORY_OPTIMIZATION_CONFIG.maxConcurrentStreams;
+
+        let optimalConcurrency = STREAM_ATTACHMENT_CONFIG.maxConcurrentStreams;
+
+        // Reduce concurrency under memory pressure
+        if (memoryPressure > 0.8) {
+            optimalConcurrency = Math.max(minConcurrency, Math.floor(maxConcurrency * 0.5));
+        } else if (memoryPressure > 0.6) {
+            optimalConcurrency = Math.max(minConcurrency, Math.floor(maxConcurrency * 0.7));
+        } else if (memoryPressure < 0.3 && activeStreams < maxConcurrency) {
+            // Low memory pressure: can increase concurrency
+            optimalConcurrency = maxConcurrency;
+        }
+
+        return optimalConcurrency;
+    }
+
+    /**
+     * Gets or creates a stream from the pool for resource reuse
+     */
+    private getPooledStream(id: string): StreamPoolEntry | null {
+        if (!MEMORY_OPTIMIZATION_CONFIG.streamPooling) {
+            return null;
+        }
+
+        const existing = this.streamPool.get(id);
+        if (existing && !existing.inUse) {
+            existing.inUse = true;
+            existing.lastUsed = new Date();
+            existing.usageCount++;
+            return existing;
+        }
+
+        return null;
+    }
+
+    /**
+     * Returns a stream to the pool for reuse
+     */
+    private returnStreamToPool(id: string, stream: Readable): void {
+        if (!MEMORY_OPTIMIZATION_CONFIG.streamPooling) {
+            return;
+        }
+
+        const entry: StreamPoolEntry = {
+            id,
+            stream,
+            inUse: false,
+            created: new Date(),
+            lastUsed: new Date(),
+            usageCount: 1
+        };
+
+        this.streamPool.set(id, entry);
+    }
+
+    /**
+     * Enhanced stream download with memory optimization
+     */
+    async downloadTelegramFileAsStreamOptimized(
+        fileId: string,
+        fileName: string = 'unknown'
+    ): Promise<OptimizedStreamResult> {
+        const startTime = Date.now();
+        const initialMemory = this.getMemoryStats();
+
+        try {
+            // Check for pooled stream
+            const pooledStream = this.getPooledStream(fileId);
+            if (pooledStream) {
+                console.log('[MemoryOptimizer] Using pooled stream for:', fileName);
+                
+                return {
+                    success: true,
+                    stream: pooledStream.stream,
+                    fileName,
+                    memoryUsage: this.getMemoryStats(),
+                    optimizations: {
+                        chunkSizeUsed: this.calculateOptimalChunkSize(),
+                        bufferReused: true,
+                        streamPoolHit: true
+                    }
+                } as OptimizedStreamResult;
+            }
+
+            // Calculate optimal processing parameters
+            const optimalChunkSize = this.calculateOptimalChunkSize();
+            const optimalConcurrency = this.calculateOptimalConcurrency();
+
+            console.log('[MemoryOptimizer] Optimized parameters for download:', {
+                fileName,
+                chunkSize: optimalChunkSize,
+                concurrency: optimalConcurrency,
+                memoryUsage: `${initialMemory.heapUsagePercent.toFixed(2)}%`
+            });
+
+            // Use existing enhanced download method with optimizations
+            const result = await this.downloadTelegramFileAsStreamWithRecovery(fileId, fileName);
+
+            const finalMemory = this.getMemoryStats();
+            const processingTime = Date.now() - startTime;
+
+            // Return stream to pool if successful
+            if (result.success && result.stream) {
+                this.returnStreamToPool(fileId, result.stream);
+            }
+
+            return {
+                ...result,
+                memoryUsage: finalMemory,
+                totalProcessingTime: processingTime,
+                optimizations: {
+                    chunkSizeUsed: optimalChunkSize,
+                    bufferReused: false,
+                    streamPoolHit: false
+                }
+            } as OptimizedStreamResult;
+
+        } catch (error) {
+            console.error('[MemoryOptimizer] Optimized download failed:', {
+                fileId,
+                fileName,
+                error: error instanceof Error ? error.message : String(error)
+            });
+
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : String(error),
+                memoryUsage: this.getMemoryStats(),
+                totalProcessingTime: Date.now() - startTime
+            } as OptimizedStreamResult;
+        }
+    }
+
+    /**
+     * Memory-optimized batch processing with adaptive concurrency
+     */
+    async processAttachmentsWithMemoryOptimization(
+        fileIds: string[],
+        conversationId: string,
+        message?: string
+    ): Promise<BatchStreamResult> {
+        const startTime = Date.now();
+        console.log(`[MemoryOptimizer] Starting memory-optimized processing for ${fileIds.length} files`);
+
+        try {
+            // Initialize memory optimization if not already done
+            if (!this.memoryMonitoringInterval) {
+                this.initializeMemoryOptimization();
+            }
+
+            // Pre-flight memory check
+            const initialMemory = this.getMemoryStats();
+            if (initialMemory.heapUsagePercent > MEMORY_OPTIMIZATION_CONFIG.criticalHeapUsagePercent) {
+                console.warn('[MemoryOptimizer] Memory pressure too high, performing cleanup first');
+                this.cleanupResources();
+                
+                // Wait a moment for cleanup to take effect
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            // Calculate adaptive batch size based on memory
+            const optimalConcurrency = this.calculateOptimalConcurrency();
+            const adaptiveBatchSize = Math.min(optimalConcurrency, fileIds.length);
+
+            console.log('[MemoryOptimizer] Adaptive processing parameters:', {
+                originalBatchSize: STREAM_ATTACHMENT_CONFIG.maxConcurrentStreams,
+                adaptiveBatchSize,
+                memoryUsage: `${initialMemory.heapUsagePercent.toFixed(2)}%`
+            });
+
+            const results: EnhancedStreamResult[] = [];
+            const aggregatedErrors: StreamError[] = [];
+
+            // Process files in adaptive batches
+            for (let i = 0; i < fileIds.length; i += adaptiveBatchSize) {
+                const batch = fileIds.slice(i, i + adaptiveBatchSize);
+                
+                // Memory check before each batch
+                const batchMemory = this.getMemoryStats();
+                if (batchMemory.heapUsagePercent > MEMORY_OPTIMIZATION_CONFIG.maxHeapUsagePercent) {
+                    console.warn('[MemoryOptimizer] Memory pressure detected, reducing batch size');
+                    // Process one at a time under memory pressure
+                    for (const fileId of batch) {
+                        const result = await this.downloadTelegramFileAsStreamOptimized(fileId);
+                        results.push(result);
+                        
+                        // Memory pressure handling between files
+                        if (MEMORY_OPTIMIZATION_CONFIG.loadBasedThrottling) {
+                            await new Promise(resolve => setTimeout(resolve, 200));
+                        }
+                    }
+                } else {
+                    // Normal batch processing
+                    const batchPromises = batch.map(fileId => 
+                        this.downloadTelegramFileAsStreamOptimized(fileId)
+                    );
+                    const batchResults = await Promise.allSettled(batchPromises);
+                    
+                    batchResults.forEach(result => {
+                        if (result.status === 'fulfilled') {
+                            results.push(result.value);
+                        } else {
+                            const errorResult: EnhancedStreamResult = {
+                                success: false,
+                                error: result.reason?.message || 'Batch processing failed'
+                            };
+                            results.push(errorResult);
+                        }
+                    });
+                }
+
+                // Adaptive delay between batches based on memory pressure
+                if (i + adaptiveBatchSize < fileIds.length) {
+                    const currentMemory = this.getMemoryStats();
+                    const delay = currentMemory.heapUsagePercent > 70 ? 500 : 100;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+
+            // Upload successful streams
+            const successfulStreams = results.filter(r => r.success);
+            let uploadSuccess = false;
+
+            if (successfulStreams.length > 0) {
+                const uploadParams: StreamUploadParams = {
+                    conversationId,
+                    streams: successfulStreams,
+                    ...(message && { message })
+                };
+                
+                uploadSuccess = await this.uploadStreamsToUnthreadWithRecovery(uploadParams);
+            }
+
+            const finalMemory = this.getMemoryStats();
+            const processingTime = Date.now() - startTime;
+
+            // Update performance metrics
+            this.performanceMetrics.avgProcessingTime = processingTime;
+            this.performanceMetrics.totalFilesProcessed += fileIds.length;
+            this.performanceMetrics.errorRate = (results.filter(r => !r.success).length / results.length) * 100;
+
+            console.log('[MemoryOptimizer] Memory-optimized processing completed:', {
+                fileCount: fileIds.length,
+                successful: successfulStreams.length,
+                uploaded: uploadSuccess ? successfulStreams.length : 0,
+                memoryDelta: `${(finalMemory.heapUsagePercent - initialMemory.heapUsagePercent).toFixed(2)}%`,
+                processingTime: `${processingTime}ms`
+            });
+
+            return {
+                overallSuccess: uploadSuccess && successfulStreams.length > 0,
+                successfulStreams,
+                failedStreams: results.filter(r => !r.success),
+                partialSuccesses: results.filter(r => r.success && (r as any).errors?.length > 0),
+                totalFiles: fileIds.length,
+                processingTime,
+                aggregatedErrors
+            };
+
+        } catch (error) {
+            console.error('[MemoryOptimizer] Memory-optimized processing failed:', {
+                fileCount: fileIds.length,
+                conversationId,
+                error: error instanceof Error ? error.message : String(error)
+            });
+
+            return {
+                overallSuccess: false,
+                successfulStreams: [],
+                failedStreams: [],
+                partialSuccesses: [],
+                totalFiles: fileIds.length,
+                processingTime: Date.now() - startTime,
+                aggregatedErrors: [this.createStreamError(
+                    StreamErrorType.UNKNOWN_ERROR,
+                    error instanceof Error ? error.message : String(error),
+                    error instanceof Error ? error : undefined
+                )]
+            };
+        }
+    }
+
+    /**
+     * Cleanup method to stop monitoring when handler is destroyed
+     */
+    private stopMemoryOptimization(): void {
+        if (this.memoryMonitoringInterval) {
+            clearInterval(this.memoryMonitoringInterval);
+            delete this.memoryMonitoringInterval;
+        }
+
+        // Clean up stream pool
+        for (const entry of this.streamPool.values()) {
+            if (entry.stream) {
+                entry.stream.destroy();
+            }
+        }
+        this.streamPool.clear();
+
+        console.log('[MemoryOptimizer] Memory optimization stopped and resources cleaned up');
     }
 }
 

@@ -469,7 +469,7 @@ async function processTicketMessage(ticketInfo: any, telegramUserId: number, use
             fileIds: attachmentFileIds
         });
         
-        // Process attachments using the AttachmentHandler
+        // Process attachments using the AttachmentHandler (Stream-based Implementation)
         const attachmentSuccess = await attachmentHandler.processAttachments(
             attachmentFileIds,
             ticketInfo.conversationId || ticketInfo.ticketId,
@@ -477,13 +477,14 @@ async function processTicketMessage(ticketInfo: any, telegramUserId: number, use
         );
         
         if (!attachmentSuccess) {
-            throw new Error('Failed to process file attachments');
+            throw new Error('Failed to process file attachments using stream-based upload');
         }
         
-        LogEngine.info('File attachments processed successfully for ticket reply', {
+        LogEngine.info('File attachments processed successfully for ticket reply using stream-based processing', {
             ticketNumber: ticketInfo.friendlyId,
             conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
-            attachmentCount: attachmentFileIds.length
+            attachmentCount: attachmentFileIds.length,
+            processingMethod: 'stream-based'
         });
     } else {
         // Send text-only message if no attachments
@@ -646,7 +647,7 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
                     fileIds: attachmentFileIds
                 });
                 
-                // Process attachments using the AttachmentHandler
+                // Process attachments using the AttachmentHandler (Stream-based Implementation)
                 const attachmentSuccess = await attachmentHandler.processAttachments(
                     attachmentFileIds,
                     agentMessageInfo.conversationId,
@@ -654,12 +655,13 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
                 );
                 
                 if (!attachmentSuccess) {
-                    throw new Error('Failed to process file attachments');
+                    throw new Error('Failed to process file attachments using stream-based upload');
                 }
                 
-                LogEngine.info('File attachments processed successfully for agent reply', {
+                LogEngine.info('File attachments processed successfully for agent reply using stream-based processing', {
                     conversationId: agentMessageInfo.conversationId,
-                    attachmentCount: attachmentFileIds.length
+                    attachmentCount: attachmentFileIds.length,
+                    processingMethod: 'stream-based'
                 });
             } else {
                 // Send text-only message if no attachments
