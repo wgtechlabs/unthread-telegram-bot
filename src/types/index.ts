@@ -35,7 +35,8 @@ export type CommandHandler = (ctx: BotContext) => Promise<void>;
 export enum SupportField {
   SUMMARY = 'summary',
   EMAIL = 'email',
-  COMPLETE = 'complete'
+  COMPLETE = 'complete',
+  PROFILE_EMAIL_UPDATE = 'profile_email_update'
 }
 
 export interface SupportFormState {
@@ -46,6 +47,16 @@ export interface SupportFormState {
   initiatedBy?: number; // Track who initiated the support request
   initiatedInChat?: number; // Track which chat the support was initiated in
   currentField?: SupportField; // For backward compatibility
+}
+
+// Profile update state for managing email updates
+export interface ProfileUpdateState {
+  field: SupportField.PROFILE_EMAIL_UPDATE;
+  initiatedBy: number; // Track who initiated the profile update
+  initiatedInChat: number; // Track which chat the update was initiated in
+  currentEmail?: string; // Store current email for reference
+  newEmail?: string; // Store new email during update process
+  messageId?: number; // For message editing
 }
 
 // Error types

@@ -30,6 +30,9 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 import type { Telegraf } from 'telegraf';
 import type { BotContext } from '../types/index.js';
 import type { IBotsStore } from '../sdk/types.js';
+import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
+import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
+import { escapeMarkdown } from '../utils/markdownEscape.js';
 
 /**
  * Handles incoming webhook messages from Unthread agents
@@ -38,10 +41,12 @@ import type { IBotsStore } from '../sdk/types.js';
 export class TelegramWebhookHandler {
   private bot: Telegraf<BotContext>;
   private botsStore: IBotsStore; // SDK type, properly typed with IBotsStore interface
+  private templateManager: GlobalTemplateManager;
 
   constructor(bot: Telegraf<BotContext>, botsStore: IBotsStore) {
     this.bot = bot;
     this.botsStore = botsStore;
+    this.templateManager = GlobalTemplateManager.getInstance();
   }
 
   /**
@@ -115,8 +120,38 @@ export class TelegramWebhookHandler {
 
       LogEngine.info('🔍 Looking up ticket for conversation', { conversationId });
 
-      // 2. Look up original ticket message using bots-brain
+      // DEBUG: Log the full event data structure to understand the webhook payload
+      LogEngine.info('🔍 DEBUG: Full webhook event data', {
+        eventData: JSON.stringify(event.data, null, 2),
+        conversationIdFromEvent: conversationId,
+        hasConversationId: !!conversationId
+      });
+
+      // 2. Look up original ticket message using conversation ID from webhook
+      // 
+      // UNIFIED APPROACH: Use conversationId from webhook as the single source of truth.
+      // We now store all tickets using the webhook conversationId to eliminate ID mismatches.
+      // This ensures consistent routing regardless of Unthread's internal ID variations.
+      //
+      LogEngine.info('🔍 DEBUG: About to lookup ticket', {
+        conversationId,
+        lookupKey: `ticket:unthread:${conversationId}`
+      });
+      
       const ticketData = await this.botsStore.getTicketByConversationId(conversationId);
+      
+      LogEngine.info('🔍 DEBUG: Ticket lookup result', {
+        conversationId,
+        found: !!ticketData,
+        ticketData: ticketData ? {
+          friendlyId: ticketData.friendlyId,
+          chatId: ticketData.chatId,
+          messageId: ticketData.messageId,
+          conversationId: ticketData.conversationId,
+          ticketId: ticketData.ticketId
+        } : null
+      });
+      
       if (!ticketData) {
         LogEngine.warn(`❌ No ticket found for conversation: ${conversationId}`);
         return;
@@ -126,7 +161,9 @@ export class TelegramWebhookHandler {
         conversationId,
         friendlyId: ticketData.friendlyId,
         chatId: ticketData.chatId,
-        messageId: ticketData.messageId
+        messageId: ticketData.messageId,
+        storedConversationId: ticketData.conversationId,
+        storedTicketId: ticketData.ticketId
       });
 
       // 3. Validate message content - check both 'content' and 'text' fields
@@ -146,8 +183,19 @@ export class TelegramWebhookHandler {
         messagePreview: messageText.substring(0, 100) + (messageText.length > 100 ? '...' : '')
       });
 
-      // 4. Format agent message for Telegram
-      const formattedMessage = this.formatAgentMessage(messageText, ticketData.friendlyId);
+      // 4. Always deliver agent messages - we'll prompt for email when user replies instead
+      LogEngine.info('✅ Delivering agent message directly to user', {
+        conversationId,
+        telegramUserId: ticketData.telegramUserId,
+        messageLength: messageText.length
+      });
+
+      // 5. Format agent message using template system
+      const formattedMessage = await this.formatAgentMessageWithTemplate(
+        messageText, 
+        ticketData, 
+        event.data
+      );
       
       LogEngine.info('✅ Message formatted for Telegram', { 
         conversationId,
@@ -277,18 +325,9 @@ export class TelegramWebhookHandler {
   sanitizeMessageText(text: string): string {
     if (!text) return '';
     
-    // Basic cleanup
-    let cleaned = text.trim();
-    
-    // Escape common Markdown characters that might break formatting
-    // But preserve basic formatting like *bold* and _italic_
-    cleaned = cleaned
-      .replace(/\\/g, '\\\\')  // Escape backslashes
-      .replace(/`/g, '\\`')    // Escape backticks
-      .replace(/\[/g, '\\[')   // Escape square brackets
-      .replace(/\]/g, '\\]');  // Escape square brackets
-
-    return cleaned;
+    // Use our comprehensive markdown escaping utility
+    // This prevents all entity parsing errors
+    return escapeMarkdown(text.trim());
   }
 
   /**
@@ -354,8 +393,12 @@ export class TelegramWebhookHandler {
         newStatus
       });
 
-      // 3. Format status update message for Telegram
-      const statusMessage = this.formatStatusUpdateMessage(newStatus, ticketData.friendlyId);
+      // 3. Format status update message using template system
+      const statusMessage = await this.formatStatusUpdateWithTemplate(
+        ticketData, 
+        newStatus, 
+        event.data
+      );
       
       LogEngine.info('✅ Status message formatted for Telegram', { 
         conversationId,
@@ -483,6 +526,92 @@ export class TelegramWebhookHandler {
   }
 
   /**
+   * Format agent message using template system
+   * @param text - The agent message text
+   * @param ticketData - The ticket data from storage
+   * @param eventData - The webhook event data
+   * @returns Formatted message
+   */
+  async formatAgentMessageWithTemplate(text: string, ticketData: any, eventData: any): Promise<string> {
+    try {
+      // Build template variables for global template system
+      const variables = {
+        ticketNumber: ticketData.friendlyId,        // Primary: "TKT-001" format (user-friendly)
+        friendlyId: ticketData.friendlyId,          // Explicit: "TKT-001" format (backward compatibility)
+        conversationId: ticketData.conversationId,  // UUID from Unthread webhook events (consistent across all events)
+        summary: eventData.subject || 'Support Request',
+        customerName: ticketData.userName || 'Customer',
+        status: 'Open',
+        agentName: eventData.userName || eventData.agentName || 'Support Agent',
+        response: text,
+        createdAt: new Date().toLocaleString(),
+        updatedAt: new Date().toLocaleString()
+      };
+
+      // Format using global template system
+      const formatted = await this.templateManager.renderTemplate('agent_response', variables);
+
+      return formatted || text; // Fallback to plain text if template fails
+    } catch (error) {
+      LogEngine.warn('Failed to format message with template, using fallback', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        ticketId: ticketData.friendlyId
+      });
+      
+      // Fallback to original formatting
+      return this.formatAgentMessage(text, ticketData.friendlyId);
+    }
+  }
+
+  /**
+   * Format ticket status update using template system
+   * @param ticketData - The ticket data from storage
+   * @param status - The new status
+   * @param eventData - The webhook event data
+   * @returns Formatted message
+   */
+  async formatStatusUpdateWithTemplate(ticketData: any, status: string, eventData: any): Promise<string> {
+    try {
+      // Build template variables for global template system
+      const variables = {
+        ticketNumber: ticketData.friendlyId,        // Primary: "TKT-001" format (user-friendly)
+        friendlyId: ticketData.friendlyId,          // Explicit: "TKT-001" format (backward compatibility)
+        conversationId: ticketData.conversationId,  // UUID from Unthread webhook events (consistent across all events)
+        summary: eventData.subject || 'Support Request',
+        customerName: ticketData.userName || 'Customer',
+        status: status === 'closed' ? 'Closed' : 'Updated',
+        agentName: eventData.userName || eventData.agentName || 'Support Agent',
+        response: '', // For status updates, response might be empty
+        createdAt: new Date().toLocaleString(),
+        updatedAt: new Date().toLocaleString()
+      };
+
+      // Choose template type based on status
+      const templateType = 'ticket_status'; // Always use ticket_status for any status update
+
+      // Format using global template system
+      const formatted = await this.templateManager.renderTemplate(templateType, variables);
+
+      return formatted || this.getFallbackStatusMessage(ticketData, status);
+    } catch (error) {
+      LogEngine.warn('Failed to format status update with template, using fallback', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        ticketId: ticketData.friendlyId,
+        status
+      });
+      
+      return this.getFallbackStatusMessage(ticketData, status);
+    }
+  }
+
+  private getFallbackStatusMessage(ticketData: any, status: string): string {
+    // Fallback to simple status message
+    const statusIcon = status === 'closed' ? '✅' : '📝';
+    const statusText = status === 'closed' ? 'Closed' : 'Updated';
+    return `${statusIcon} *Ticket ${statusText}*\n\nTicket #${ticketData.friendlyId} has been ${status}.`;
+  }
+
+  /**
    * Clean up user data when bot is blocked or chat is not found
    * This implements the fix from GitHub issue telegraf/telegraf#1513
    * 
@@ -541,4 +670,5 @@ export class TelegramWebhookHandler {
       // Don't throw - cleanup failure shouldn't crash the bot
     }
   }
+
 }

@@ -30,9 +30,10 @@
  */
 
 import { LogEngine } from '@wgtechlabs/log-engine';
-import { processSupportConversation, aboutCommand } from '../commands/index.js';
+import { processConversation, aboutCommand } from '../commands/index.js';
 import * as unthreadService from '../services/unthread.js';
 import { safeReply, safeEditMessageText } from '../bot.js';
+import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
 import type { BotContext } from '../types/index.js';
 
 /**
@@ -54,9 +55,9 @@ export function isPrivateChat(ctx: BotContext): boolean {
 }
 
 /**
- * Main handler for incoming Telegram messages, routing them to appropriate processors based on chat type and message context.
+ * Handles incoming Telegram messages and routes them to the appropriate processor based on chat type and message context.
  *
- * Determines whether to process the message as a command, support conversation, ticket reply, private chat, or group chat, and delegates handling accordingly. Prevents automatic responses in group chats and ensures that only relevant handlers are invoked for each message type.
+ * Determines whether the message should be handled as a command, setup wizard input, conversation flow, ticket reply, private chat, or group chat, and delegates processing accordingly. Prevents automatic responses in group chats and ensures only relevant handlers are invoked for each message type. Continues the middleware chain for private chats not handled by earlier steps.
  */
 export async function handleMessage(ctx: BotContext, next: () => Promise<void>): Promise<void> {
     try {
@@ -85,13 +86,13 @@ export async function handleMessage(ctx: BotContext, next: () => Promise<void>):
             return;  // Don't call next() for commands, let Telegraf handle them
         }
         
-        // Check if this is part of a support conversation (BEFORE handling different chat types)
-        const isSupportMessage = await processSupportConversation(ctx);
+        // Check if this is part of any conversation flow (setup, support, templates, etc.)
+        const isConversationMessage = await processConversation(ctx);
         
-        if (isSupportMessage) {
-            // Skip other handlers if this was a support conversation message
-            LogEngine.debug('Message processed as support conversation');
-            return;  // Don't call next() for support messages, we're done
+        if (isConversationMessage) {
+            // Skip other handlers if this was processed by any conversation processor
+            LogEngine.debug('Message processed by conversation processor');
+            return;  // Don't call next() for conversation messages, we're done
         }
         
         // Check if this is a reply to a ticket confirmation
@@ -104,9 +105,10 @@ export async function handleMessage(ctx: BotContext, next: () => Promise<void>):
             }
         }
 
-        // Handle different chat types
+        // Handle different chat types - only if not handled by conversation processors
         if (isPrivateChat(ctx)) {
-            LogEngine.debug('Processing as private message');
+            LogEngine.debug('Processing as private message (no conversation processor handled it)');
+            // Only send about message if no conversation processor handled it
             await handlePrivateMessage(ctx);
         } else if (isGroupChat(ctx)) {
             LogEngine.debug('Processing as group message - NO AUTO RESPONSES');
@@ -201,7 +203,7 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
             return false;
         }
         
-        const { telegramUserId, username, message } = validation;
+        const { telegramUserId, username, firstName, lastName, message } = validation;
         
         // Send a minimal status message
         const statusMsg = await safeReply(ctx, '⏳ Adding to ticket...', {
@@ -214,7 +216,7 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
         
         try {
             // Process and send the ticket message to Unthread
-            await processTicketMessage(ticketInfo, telegramUserId, username, message);
+            await processTicketMessage(ticketInfo, telegramUserId, username, message, firstName, lastName);
             
             // Update status message to success
             await updateStatusMessage(ctx, statusMsg, true);
@@ -250,15 +252,17 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
 /**
  * Validates that the reply message and sender information are present and extracts user and message details for ticket processing.
  *
- * @returns An object indicating whether the reply is valid. If valid, includes the sender's Telegram user ID, username, and message text.
+ * @returns An object indicating whether the reply is valid. If valid, includes the sender's Telegram user ID, username, first name, last name, and message text.
  */
-async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ isValid: false } | { isValid: true; telegramUserId: number; username: string | undefined; message: string }> {
+async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ isValid: false } | { isValid: true; telegramUserId: number; username: string | undefined; firstName: string | undefined; lastName: string | undefined; message: string }> {
     if (!ctx.from || !ctx.message || !('text' in ctx.message)) {
         return { isValid: false };
     }
     
     const telegramUserId = ctx.from.id;
     const username = ctx.from.username;
+    const firstName = ctx.from.first_name;
+    const lastName = ctx.from.last_name;
     const message = ctx.message.text || '';
     
     LogEngine.info('Processing ticket confirmation reply', {
@@ -267,6 +271,8 @@ async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ 
         friendlyId: ticketInfo.friendlyId,
         telegramUserId,
         username,
+        firstName,
+        lastName,
         messageLength: message?.length
     });
     
@@ -274,6 +280,8 @@ async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ 
         isValid: true,
         telegramUserId,
         username,
+        firstName,
+        lastName,
         message
     };
 }
@@ -283,9 +291,9 @@ async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ 
  *
  * Retrieves or creates user data based on the Telegram user ID and username, then sends the provided message to the ticket conversation identified by the ticket information.
  */
-async function processTicketMessage(ticketInfo: any, telegramUserId: number, username: string | undefined, message: string): Promise<void> {
+async function processTicketMessage(ticketInfo: any, telegramUserId: number, username: string | undefined, message: string, firstName?: string, lastName?: string): Promise<void> {
     // Get user information from database
-    const userData = await unthreadService.getOrCreateUser(telegramUserId, username);
+    const userData = await unthreadService.getOrCreateUser(telegramUserId, username, firstName, lastName);
     
     LogEngine.info('Retrieved user data for ticket reply', {
         userData: JSON.stringify(userData),
@@ -374,8 +382,62 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
         }
         
         try {
+            // Check if user has a valid email address by getting full user data
+            const fullUserData = await BotsStore.getUserByTelegramId(telegramUserId);
+            
+            // Only require email if user has no unthreadEmail set at all
+            if (!fullUserData || !fullUserData.unthreadEmail) {
+                LogEngine.info('User has no email - prompting for email before sending reply', {
+                    telegramUserId,
+                    conversationId: agentMessageInfo.conversationId,
+                    friendlyId: agentMessageInfo.friendlyId,
+                    hasUserData: !!fullUserData,
+                    hasEmail: !!(fullUserData?.unthreadEmail)
+                });
+                
+                // Update status message to prompt for email
+                await safeEditMessageText(
+                    ctx,
+                    ctx.chat!.id,
+                    statusMsg.message_id,
+                    undefined,
+                    '📧 **Email Required**\n\n' +
+                    `To continue this conversation for ticket #${agentMessageInfo.friendlyId}, please set your email address:\n\n` +
+                    '• Use `/setemail your@email.com`\n' +
+                    '• Or reply with your email address\n\n' +
+                    '_Your message will be sent after email setup._',
+                    { parse_mode: 'Markdown' }
+                );
+                
+                // Store the pending message for delivery after email collection
+                const pendingMessageKey = `pending_reply_message:${agentMessageInfo.conversationId}:${Date.now()}`;
+                const botsStoreInstance = BotsStore.getInstance();
+                await botsStoreInstance.storage.set(pendingMessageKey, {
+                    conversationId: agentMessageInfo.conversationId,
+                    messageText: message,
+                    agentMessageInfo: agentMessageInfo,
+                    storedAt: new Date().toISOString(),
+                    telegramUserId: telegramUserId,
+                    username: username
+                }, 24 * 60 * 60); // 24 hour TTL
+                
+                LogEngine.info('Stored pending reply message for email collection', {
+                    conversationId: agentMessageInfo.conversationId,
+                    telegramUserId: telegramUserId,
+                    pendingMessageKey: pendingMessageKey
+                });
+                
+                return true;
+            }
+            
+            LogEngine.info('User has email - proceeding with reply', {
+                telegramUserId,
+                hasEmail: !!fullUserData.unthreadEmail,
+                conversationId: agentMessageInfo.conversationId
+            });
+            
             // Get user information for proper onBehalfOf formatting
-            const userData = await unthreadService.getOrCreateUser(telegramUserId, username);
+            const userData = await unthreadService.getOrCreateUser(telegramUserId, username, ctx.from?.first_name, ctx.from?.last_name);
             
             // Send the message to the conversation
             await unthreadService.sendMessage({
@@ -444,9 +506,9 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
 }
 
 /**
- * Processes incoming messages from private chats and responds with an about message for non-command texts.
+ * Handles incoming messages from private chats, ignoring commands and non-conversation messages.
  *
- * Skips messages that are commands, allowing them to be handled by their respective handlers.
+ * Skips processing for command messages, allowing them to be handled by command-specific handlers. Non-command messages that are not part of an active conversation are ignored without response.
  */
 export async function handlePrivateMessage(ctx: BotContext): Promise<void> {
     try {
@@ -469,8 +531,10 @@ export async function handlePrivateMessage(ctx: BotContext): Promise<void> {
             return;
         }
         
-        // Send the about message for any non-command private message
-        await aboutCommand(ctx);
+        // Do nothing for non-command private messages
+        // If someone sends a message and it's not a command and not handled by conversation processors,
+        // we simply ignore it instead of sending the about message
+        LogEngine.debug('Private message received but no action taken - not a command and not part of active conversation');
         
     } catch (error) {
         const err = error as Error;

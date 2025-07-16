@@ -4,9 +4,9 @@
 
 [![banner](https://raw.githubusercontent.com/wgtechlabs/unthread-telegram-bot/main/.github/assets/repo_banner.jpg)](https://github.com/wgtechlabs/unthread-telegram-bot)
 
-**Official Unthread Extension** - The Unthread Telegram Bot is the official integration that connects your customer and partner Telegram chats with Unthread's ticket management system. Create and manage support tickets directly within dedicated Telegram groups, with real-time bidirectional communication between your team and clients.
+**Official Unthread Extension** - The Unthread Telegram Bot is the official integration that connects your customer and partner Telegram chats with Unthread's comprehensive ticket management system. Create and manage support tickets directly within dedicated Telegram groups, with real-time bidirectional communication between your team and clients.
 
-Perfect for businesses managing customer support through private Telegram groups or partner channels - not for public community groups.
+This bot is designed for businesses managing customer support through private Telegram groups or dedicated partner channels - optimized for professional support workflows rather than public community groups.
 
 ## 🤗 Special Thanks
 
@@ -47,12 +47,53 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
 ## ✨ Key Features
 
 - **🎫 Seamless Ticket Management** - Create support tickets directly from Telegram with `/support` command
+- **👤 One-Time Email Setup** - Collect email once, automatically use for all future tickets
+- **📧 Profile Management** - View and update email preferences with `/profile` command
 - **💬 Real-Time Communication** - Bidirectional messaging between agents and customers
 - **🏢 Smart Customer Detection** - Automatically extracts customer names from group chat titles
 - **💬 Natural Conversation Flow** - Customers reply normally, no special commands needed
 - **✅ Status Notifications** - Real-time alerts when tickets are opened or closed
 - **🔒 Enterprise-Ready** - Secure, scalable architecture with comprehensive logging
 - **⚡ Easy Deployment** - Quick setup with Docker or manual installation
+- **🛠️ Template System** - Customizable message templates for consistent communication
+- **🔍 Advanced Logging** - Powered by @wgtechlabs/log-engine with PII redaction and security features
+- **🛡️ Supply Chain Security** - SBOM generation and build provenance for transparency
+
+## 🔍 Advanced Logging & Security
+
+### **Powered by @wgtechlabs/log-engine**
+
+The bot includes enterprise-grade logging with advanced security features:
+
+- **🔒 PII Redaction** - Automatically redacts sensitive information from logs
+- **📊 Structured Logging** - JSON-structured logs for better analysis
+- **🛡️ SBOM Generation** - Software Bill of Materials for supply chain transparency
+- **📋 Build Provenance** - Attestations for build security and verification
+
+### **Environment Variables for Debugging**
+
+```bash
+# Enable debug logging
+LOG_LEVEL=debug
+
+# Enable verbose logging for detailed troubleshooting
+VERBOSE_LOGGING=true
+
+# Production logging (default)
+LOG_LEVEL=info
+```
+
+### **SBOM Generation**
+
+Generate Software Bill of Materials for security analysis:
+
+```bash
+# Generate SBOM locally
+yarn sbom:generate
+
+# Docker build with SBOM and provenance
+yarn docker:build:sbom
+```
 
 ## 🚀 Quick Start
 
@@ -63,13 +104,18 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
    - Create new bot with `/newbot` command
    - Save the bot token
 
-2. **Setup Unthread**
+2. **Get Your Telegram User ID** *(NEW REQUIREMENT)*
+   - Message [@userinfobot](https://t.me/userinfobot) on Telegram
+   - Copy your numeric user ID (e.g., `123456789`)
+   - **IMPORTANT**: This is required for admin access to setup groups
+
+3. **Setup Unthread**
    - Log into your Unthread dashboard
    - Navigate to Settings → API Keys
    - Generate a new API key
    - Find your channel ID in the dashboard URL
 
-3. **Deploy Instantly**
+4. **Deploy Instantly**
 
    **Option A: Railway (One-Click Deploy)**
 
@@ -86,7 +132,9 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
    # IMPORTANT: Create the external network first
    docker network create unthread-integration-network
    
-   # Edit .env with your tokens
+   # Edit .env with your tokens AND your Telegram user ID
+   # ADMIN_USERS=your_telegram_user_id_here  # Replace with actual ID!
+   # For multiple admins: ADMIN_USERS=123456789,987654321,555666777
    # Then start everything
    docker compose up -d
    ```
@@ -112,12 +160,13 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
    yarn install
    cp .env.example .env
    
-   # Edit .env with your tokens
+   # Edit .env with ALL required values including ADMIN_USERS
+   # ADMIN_USERS supports multiple user IDs: ADMIN_USERS=123456789,987654321
    # Then start the bot
    yarn start
    ```
 
-4. **Test Your Bot**
+5. **Test Your Bot**
    - Add your bot to a Telegram group
    - Send `/start` to see if it responds
    - Try creating a ticket with `/support`
@@ -133,11 +182,16 @@ Deploy instantly to Railway with a single click:
 
 ### **📋 Required Configuration**
 
+The `.env` setup is seamless across local development, Docker, and production environments, with consistent service name conventions for Docker.
+
 Edit your `.env` file with these required values:
 
 ```bash
 # Required - Get from BotFather
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+
+# Optional but HIGHLY RECOMMENDED - Your bot's username for 200x performance boost
+BOT_USERNAME=your_bot_username  # Eliminates API calls for deep links and commands
 
 # Required - Get from Unthread dashboard
 UNTHREAD_API_KEY=your_unthread_api_key
@@ -147,9 +201,13 @@ UNTHREAD_WEBHOOK_SECRET=your_unthread_webhook_secret
 # Required - Database (Docker will handle this automatically)
 POSTGRES_URL=postgresql://postgres:postgres@postgres-platform:5432/unthread_telegram_bot
 
-# Optional - For enhanced performance
-WEBHOOK_REDIS_URL=redis://redis-webhook:6379
-PLATFORM_REDIS_URL=redis://redis-platform:6379
+# Required - Redis for bot operations (Docker will handle this automatically)
+WEBHOOK_REDIS_URL=redis://redis-webhook:6379  # Critical for agent response delivery
+PLATFORM_REDIS_URL=redis://redis-platform:6379  # Required for bot state management
+
+# Optional - Debug and logging configuration
+LOG_LEVEL=info  # Set to 'debug' for detailed troubleshooting
+VERBOSE_LOGGING=false  # Set to 'true' for verbose webhook logging
 ```
 
 > **💡 Pro Tip**: The Docker setup includes PostgreSQL and Redis automatically - no separate installation needed!
@@ -172,13 +230,22 @@ For detailed information about Railway's managed PostgreSQL and SSL handling, pl
 - `/start` - Welcome message and bot introduction
 - `/help` - Display available commands and usage instructions  
 - `/support` - Create a new support ticket (customer/partner group chats only)
+- `/profile` - View and update your email preferences
 - `/version` - Show current bot version
+- `/cancel` - Cancel current operation
+- `/reset` - Reset conversation state
+
+**Admin Commands:**
+
+- `/activate` - Activate admin privileges for advanced features (private chat only)
+- `/setup` - Configure group chat for support (admin only)
+- `/templates` - Manage message templates (admin only)
 
 ### **Creating Support Tickets**
 
 1. **Use `/support` in your group chat**
 2. **Describe your issue** when the bot asks
-3. **Provide email or skip** for auto-generated one
+3. **Provide email (first-time users only)** - returning users automatically use their stored email
 4. **Get your ticket number** and confirmation
 
 ```text
@@ -194,6 +261,36 @@ Bot: 🎫 Support Ticket Created Successfully!
      Your issue has been submitted and our team will be in touch soon.
 ```
 
+**Note**: After your first ticket, the bot remembers your email and skips the email prompt for future tickets. You can update your email anytime using the `/profile` command.
+
+### **Managing Your Profile**
+
+Use the `/profile` command to view and update your email preferences:
+
+```text
+User: /profile
+Bot: 👤 Your Profile
+     Email: john@example.com
+     
+     What would you like to do?
+     [📧 Update Email] [ℹ️ About]
+
+User: [clicks Update Email]
+Bot: Please enter your new email address:
+
+User: john.doe@company.com
+Bot: ✅ Email Updated Successfully!
+     Your email has been updated to: john.doe@company.com
+     This email will be used for all future support tickets.
+```
+
+**Profile Features:**
+
+- **View current email** - See the email associated with your profile
+- **Update email** - Change your email for future support tickets
+- **Auto-generated email detection** - Get notified if you're using an auto-generated email
+- **Seamless integration** - Email updates apply to all future support tickets
+
 ### **For Agents (Unthread Dashboard)**
 
 - **New tickets** appear in your Unthread dashboard automatically
@@ -207,6 +304,73 @@ Bot: 🎫 Support Ticket Created Successfully!
 3. **Use descriptive names** like "Acme Corp Support" for automatic customer detection
 
 > **💡 Best Practice**: Use this bot for dedicated customer/partner support channels, not public community groups.
+
+## 🔧 Troubleshooting
+
+### **Common Issues**
+
+**Bot Not Responding:**
+- Verify `TELEGRAM_BOT_TOKEN` is correct and active
+- Check bot permissions in group chat (send messages, read messages)
+- Ensure bot is not blocked or removed from the chat
+
+**Database Connection Issues:**
+- Check `POSTGRES_URL` format and credentials
+- For local development, set `DATABASE_SSL_VALIDATE=false`
+- Verify PostgreSQL service is running
+
+**Webhook/Agent Response Issues:**
+- Verify `WEBHOOK_REDIS_URL` is accessible (critical for agent responses)
+- Check `UNTHREAD_WEBHOOK_SECRET` matches Unthread dashboard
+- Ensure webhook server is running and accessible
+
+**Redis Connection Problems:**
+- Verify both `PLATFORM_REDIS_URL` and `WEBHOOK_REDIS_URL` are correct
+- Check Redis services are running (both required)
+- For Docker: ensure Redis containers are started
+
+**Debug Mode:**
+Enable detailed logging for troubleshooting:
+```bash
+LOG_LEVEL=debug
+VERBOSE_LOGGING=true
+```
+
+**Admin Access Issues:**
+- Verify your Telegram user ID is in `ADMIN_USERS` environment variable
+- Get your user ID from [@userinfobot](https://t.me/userinfobot)
+- Use `/activate` command in private chat to enable admin features
+
+## 🔗 System Architecture & Integration
+
+### **Webhook Server Integration**
+
+This bot works in conjunction with the [`unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server) for complete bidirectional communication:
+
+- **Webhook Server**: Receives events from Unthread dashboard and routes them to the bot
+- **Bot Service**: Handles Telegram interactions and creates tickets in Unthread
+- **Platform Detection**: Smart username formatting ensures proper event classification
+
+### **Username Format Compatibility**
+
+The bot implements a sophisticated username format that ensures seamless integration:
+
+```typescript
+// Format Priority for Unthread Dashboard Display:
+"Emily (@emilynatividad)"  // ✅ Best UX - detected as Telegram platform
+"@emilynatividad"          // ✅ Minimal - detected as Telegram platform  
+"Emily Smith"              // ✅ Fallback - detected as Dashboard origin
+"User 784879963"           // ✅ Legacy - detected as Dashboard origin
+```
+
+**Integration Benefits:**
+
+- ✅ **Proper Analytics**: Webhook server correctly classifies events by platform
+- ✅ **Enhanced Monitoring**: Clear distinction between bot vs dashboard activities
+- ✅ **Audit Compliance**: Complete traceability of user interactions
+- ✅ **Event Routing**: Accurate downstream processing and workflow automation
+
+**Technical Reference:** [Webhook Server Platform Detection Logic](https://github.com/wgtechlabs/unthread-webhook-server/blob/main/src/services/webhookService.ts#L118-L144)
 
 ## 💬 Community Discussions
 
@@ -241,7 +405,16 @@ Your contributions to improving this project are greatly appreciated! 🙏✨
 
 ## 🎯 Contributing
 
-Contributions are welcome! Create a pull request to this repo and I will review your code. Please consider submitting your pull request to the `dev` branch. Thank you!
+**Important**: All pull requests must be submitted to the `dev` branch. PRs to `main` will be automatically rejected.
+
+Contributions are welcome! Create a pull request to the `dev` branch and your code will be reviewed. All code must pass build and type checks before merging.
+
+**Requirements:**
+
+- Code must pass `yarn build` and `yarn type-check`
+- Follow existing code style and patterns
+- Test your changes thoroughly
+- Submit PRs to `dev` branch only
 
 For detailed setup instructions, technical documentation, architecture details, and development guidelines, see our comprehensive [Contributing Guide](./CONTRIBUTING.md).
 
