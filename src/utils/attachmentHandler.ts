@@ -251,6 +251,9 @@ export const STREAM_ATTACHMENT_CONFIG = {
     }
 };
 
+// Type alias for better readability with extension to MIME mapping
+type ExtensionMimeMapKey = keyof typeof STREAM_ATTACHMENT_CONFIG.extensionToMime;
+
 /**
  * Stream error recovery configuration
  */
@@ -520,7 +523,7 @@ export class AttachmentHandler {
             // Determine MIME type (Telegram doesn't always provide accurate mime_type)
             let mimeType = telegramFile.mime_type || '';
             if (!mimeType || mimeType === 'application/octet-stream') {
-                mimeType = STREAM_ATTACHMENT_CONFIG.extensionToMime[fileExtension as keyof typeof STREAM_ATTACHMENT_CONFIG.extensionToMime] || 'application/octet-stream';
+                mimeType = STREAM_ATTACHMENT_CONFIG.extensionToMime[fileExtension as ExtensionMimeMapKey] || 'application/octet-stream';
             }
 
             // Step 4: Validate file type using stream config
@@ -609,7 +612,7 @@ export class AttachmentHandler {
         
         // Fallback to file extension
         const extension = path.extname(fileName).toLowerCase();
-        const expectedMime = STREAM_ATTACHMENT_CONFIG.extensionToMime[extension as keyof typeof STREAM_ATTACHMENT_CONFIG.extensionToMime];
+        const expectedMime = STREAM_ATTACHMENT_CONFIG.extensionToMime[extension as ExtensionMimeMapKey];
         
         return expectedMime ? STREAM_ATTACHMENT_CONFIG.allowedMimeTypes.includes(expectedMime) : false;
     }
@@ -832,7 +835,7 @@ export class AttachmentHandler {
 
         // Fallback to extension-based detection
         const extension = path.extname(fileName).toLowerCase();
-        return STREAM_ATTACHMENT_CONFIG.extensionToMime[extension as keyof typeof STREAM_ATTACHMENT_CONFIG.extensionToMime] || null;
+        return STREAM_ATTACHMENT_CONFIG.extensionToMime[extension as ExtensionMimeMapKey] || null;
     }
 
     /**

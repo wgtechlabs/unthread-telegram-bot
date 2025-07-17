@@ -54,7 +54,7 @@ export class TimeoutManager {
             return ''; // Return empty string to indicate no timeout was created
         }
 
-        const timeoutKey = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const timeoutKey = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
         
         const wrappedCallback = async () => {
             try {
