@@ -22,6 +22,15 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 import type { UserData } from '../sdk/types.js';
 
 /**
+ * Configuration for email domain generation
+ * Made configurable to support different environments and testing scenarios
+ */
+const EMAIL_CONFIG = {
+    // Default domain for dummy emails - can be overridden via environment variable
+    dummyEmailDomain: process.env.DUMMY_EMAIL_DOMAIN || 'telegram.user'
+};
+
+/**
  * Email validation result interface
  */
 export interface EmailValidationResult {
@@ -106,8 +115,8 @@ export function generateDummyEmail(userId: number, username?: string): string {
         .replace(/[^a-z0-9]/g, '')
         .substring(0, 20); // Limit length
     
-    // Generate email in same format as auto-generated ones
-    return `${cleanIdentifier}_${userId}@telegram.user`;
+    // Generate email using configurable domain for better testing and environment flexibility
+    return `${cleanIdentifier}_${userId}@${EMAIL_CONFIG.dummyEmailDomain}`;
 }
 
 /**
