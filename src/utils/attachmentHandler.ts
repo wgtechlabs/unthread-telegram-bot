@@ -30,7 +30,7 @@
 
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fetch from 'node-fetch';
+import fetch, { Response } from 'node-fetch';
 import FormData from 'form-data';
 import dotenv from 'dotenv';
 import { Readable } from 'stream';
@@ -473,10 +473,28 @@ export class AttachmentHandler {
         try {
             console.log('[AttachmentHandler] Starting Telegram file stream download, fileId:', fileId);
 
-            // Step 1: Get file info from Telegram
+            // Step 1: Get file info from Telegram with timeout protection
             const fileInfoUrl = `https://api.telegram.org/bot${this.botToken}/getFile?file_id=${fileId}`;
-            const fileInfoResponse = await fetch(fileInfoUrl);
-            const fileInfo = await fileInfoResponse.json() as TelegramApiResponse;
+            
+            // Create AbortController for timeout handling
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), STREAM_ERROR_CONFIG.networkTimeout);
+            
+            let fileInfo: TelegramApiResponse;
+            try {
+                const fileInfoResponse = await fetch(fileInfoUrl, {
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                
+                fileInfo = await fileInfoResponse.json() as TelegramApiResponse;
+            } catch (fetchError) {
+                clearTimeout(timeoutId);
+                if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+                    throw new Error('Request timeout while getting file info from Telegram');
+                }
+                throw fetchError;
+            }
 
             if (!fileInfo.ok) {
                 throw new Error(`Telegram API error: ${fileInfo.description}`);
@@ -513,9 +531,26 @@ export class AttachmentHandler {
                 };
             }
 
-            // Step 5: Create streaming download
+            // Step 5: Create streaming download with timeout protection
             const fileDownloadUrl = `https://api.telegram.org/file/bot${this.botToken}/${telegramFile.file_path}`;
-            const fileResponse = await fetch(fileDownloadUrl);
+            
+            // Create AbortController for download timeout
+            const downloadController = new AbortController();
+            const downloadTimeoutId = setTimeout(() => downloadController.abort(), STREAM_ERROR_CONFIG.networkTimeout);
+            
+            let fileResponse: Response;
+            try {
+                fileResponse = await fetch(fileDownloadUrl, {
+                    signal: downloadController.signal
+                });
+                clearTimeout(downloadTimeoutId);
+            } catch (downloadError) {
+                clearTimeout(downloadTimeoutId);
+                if (downloadError instanceof Error && downloadError.name === 'AbortError') {
+                    throw new Error('Request timeout while downloading file from Telegram');
+                }
+                throw downloadError;
+            }
             
             if (!fileResponse.ok) {
                 throw new Error(`Failed to download file: ${fileResponse.status} ${fileResponse.statusText}`);
@@ -1341,10 +1376,10 @@ export class AttachmentHandler {
         // Emergency cleanup
         this.emergencyCleanup();
 
-        // Force garbage collection if available
-        if (global.gc) {
+        // Force garbage collection only in development environments
+        if (process.env.NODE_ENV !== 'production' && global.gc) {
             global.gc();
-            console.log('[MemoryOptimizer] Emergency garbage collection triggered');
+            console.log('[MemoryOptimizer] Emergency garbage collection triggered (development mode)');
         }
 
         // Reduce concurrency limit temporarily
@@ -1365,10 +1400,11 @@ export class AttachmentHandler {
         // Proactive cleanup
         this.cleanupResources();
 
-        // Suggest garbage collection
-        if (Date.now() - this.lastGcTime > 30000 && global.gc) { // Max once per 30 seconds
+        // Suggest garbage collection only in development environments
+        if (Date.now() - this.lastGcTime > 30000 && process.env.NODE_ENV !== 'production' && global.gc) {
             global.gc();
             this.lastGcTime = Date.now();
+            console.log('[MemoryOptimizer] Garbage collection suggested (development mode)');
         }
     }
 
