@@ -16,6 +16,7 @@ import { BotsStore } from '../../sdk/bots-brain/index.js';
 import * as unthreadService from '../../services/unthread.js';
 import { generateDummyEmail, updateUserEmail } from '../../utils/emailManager.js';
 import { escapeMarkdown } from '../../utils/markdownEscape.js';
+import { attachmentHandler } from '../../utils/attachmentHandler.js';
 
 // Clean Code: Extract constants to avoid magic strings and numbers
 const CALLBACK_CONSTANTS = {
@@ -539,6 +540,18 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 return false;
             }
 
+            // Detect file attachments from stored user state (not from callback message)
+            const attachmentIds = userState.attachmentIds || [];
+            const hasAttachments = userState.hasAttachments || false;
+
+            // Show processing message with attachment awareness
+            let processingText = "🎫 **Creating Your Ticket**\n\n⏳ Please wait while I create your support ticket...";
+            if (hasAttachments) {
+                processingText = `🎫 **Creating Your Ticket**\n\n⏳ Processing ${attachmentIds.length} file attachment${attachmentIds.length > 1 ? 's' : ''} and creating your support ticket...`;
+            }
+
+            await ctx.editMessageText(processingText, { parse_mode: 'Markdown' });
+
             // Get user data using the unified function for consistent naming
             const userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
             
@@ -548,13 +561,81 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 email: userState.email // Must exist at this point
             };
 
-            // Create ticket using the unthread service with correct parameters
+            // Create ticket first (always), then handle attachments separately
             const ticketResponse = await unthreadService.createTicket({
                 groupChatName: 'Telegram Support', // Default group chat name
                 customerId: process.env.UNTHREAD_CUSTOMER_ID!,
                 summary: userState.summary,
                 onBehalfOf
             });
+
+            LogEngine.info('Ticket created successfully via callback', {
+                ticketId: ticketResponse.id,
+                friendlyId: ticketResponse.friendlyId,
+                hasAttachments: hasAttachments,
+                attachmentCount: hasAttachments ? attachmentIds.length : 0,
+                attachmentIds: hasAttachments ? attachmentIds : [],
+                method: 'callback_createTicketDirectly'
+            });
+
+            // If there are attachments, add them as a follow-up message to the existing conversation
+            if (hasAttachments) {
+                LogEngine.info('Processing attachments for created ticket via callback', {
+                    userId,
+                    ticketId: ticketResponse.id,
+                    conversationId: ticketResponse.id,
+                    attachmentCount: attachmentIds.length
+                });
+                
+                try {
+                    // Update status to show attachment processing
+                    await ctx.editMessageText(
+                        `🎫 **Ticket Created**\n\n📎 Processing ${attachmentIds.length} file attachment${attachmentIds.length > 1 ? 's' : ''}...`,
+                        { parse_mode: 'Markdown' }
+                    );
+                    
+                    // Process attachments using stream-based approach with the created conversation ID
+                    const attachmentProcessingResult = await attachmentHandler.processAttachments(
+                        attachmentIds,
+                        ticketResponse.id, // Use the conversation ID from the created ticket
+                        'Customer file attachment submitted with support ticket via Telegram (callback)'
+                    );
+                    
+                    if (attachmentProcessingResult) {
+                        LogEngine.info('Attachments processed successfully for ticket via callback', {
+                            ticketId: ticketResponse.id,
+                            conversationId: ticketResponse.id,
+                            attachmentCount: attachmentIds.length,
+                            method: 'callback_stream-based_post_creation'
+                        });
+                    } else {
+                        LogEngine.warn('Failed to process some attachments for ticket via callback', {
+                            ticketId: ticketResponse.id,
+                            conversationId: ticketResponse.id,
+                            attemptedAttachments: attachmentIds.length,
+                            method: 'callback_stream-based_post_creation'
+                        });
+                        
+                        // Update status to reflect partial success
+                        await ctx.editMessageText(
+                            `🎫 **Ticket Created**\n\n⚠️ Some attachments failed to process, but your ticket was created successfully.`,
+                            { parse_mode: 'Markdown' }
+                        );
+                    }
+                } catch (attachmentError) {
+                    LogEngine.error('Error processing attachments for created ticket via callback', {
+                        error: attachmentError instanceof Error ? attachmentError.message : 'Unknown error',
+                        ticketId: ticketResponse.id,
+                        conversationId: ticketResponse.id,
+                        attachmentCount: attachmentIds.length
+                    });
+                    
+                    // Don't fail the ticket creation due to attachment processing errors
+                    LogEngine.info('Continuing with ticket creation despite attachment processing failure via callback', {
+                        ticketId: ticketResponse.id
+                    });
+                }
+            }
 
             // The response is just { id, friendlyId }
             const ticket = ticketResponse;

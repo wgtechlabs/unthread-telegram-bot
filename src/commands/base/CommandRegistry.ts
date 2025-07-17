@@ -174,15 +174,26 @@ export class CommandRegistry {
         for (const processor of this.conversationProcessors) {
             try {
                 if (await processor.canHandle(ctx)) {
+                    LogEngine.debug(`Processor can handle message`, {
+                        processorName: processor.constructor.name,
+                        userId: ctx.from?.id,
+                        messageId: ctx.message?.message_id
+                    });
+                    
                     const handled = await processor.process(ctx);
                     if (handled) {
-                        LogEngine.info(`Conversation processed by processor`);
-                        return true;
+                        LogEngine.info(`Conversation processed by processor`, {
+                            processorName: processor.constructor.name,
+                            userId: ctx.from?.id,
+                            messageId: ctx.message?.message_id
+                        });
+                        return true; // Stop processing once a processor handles the message
                     }
                 }
             } catch (error) {
                 LogEngine.error(`Error in conversation processor`, {
                     error: error instanceof Error ? error.message : String(error),
+                    processorName: processor.constructor.name,
                     userId: ctx.from?.id,
                     chatId: ctx.chat?.id
                 });

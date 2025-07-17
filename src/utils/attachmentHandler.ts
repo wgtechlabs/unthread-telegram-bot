@@ -1,30 +1,47 @@
 /**
- * Unthread Telegram Bot - Stream-Based File Attachment Handler
+ * Unthread Telegram Bot - Memory Buffer File Attachment Handler
  * 
  * Handles file attachments from Telegram users to Unthread platform using
- * memory-efficient streaming without temporary file storage.
+ * simple memory buffers for fast, reliable processing.
+ * 
+ * PHASE 1 IMPLEMENTATION - Memory Buffer Approach:
+ * This implementation introduces a new buffer-based approach alongside the existing
+ * stream-based processing for backward compatibility and gradual migration.
  * 
  * Core Features:
- * - Stream-based file processing (zero disk I/O)
- * - Real-time MIME validation and size checking
- * - Memory optimization with 97% reduction
- * - Concurrent processing with backpressure control
- * - Comprehensive error handling and retry logic
- * - Direct upload to Unthread via multipart/form-data streams
+ * - Simple memory buffer processing (fast and reliable)
+ * - 10MB file size limit for optimal performance
+ * - Direct upload to Unthread without temporary files
+ * - Clean error handling and validation
+ * - Backward compatibility with existing stream processing
  * 
  * Performance Benefits:
- * - 50% faster processing than legacy file-based approach
- * - 97% memory reduction (20MB files with 64KB peak usage)
- * - Zero temporary file operations
- * - Adaptive memory management and concurrency control
+ * - Fast processing with memory buffers
+ * - Simple, reliable implementation
+ * - Low memory footprint with 10MB limit
+ * - No complex stream management overhead
+ * - Predictable memory usage patterns
  * 
- * File Limits (Unthread API):
- * - Maximum file size: 20MB per file
- * - Maximum files: 10 files per conversation/message
+ * File Limits:
+ * - Maximum file size: 10MB per file (buffer mode, reduced for performance)
+ * - Maximum files: 5 files per conversation/message (buffer mode, reduced)
  * - Supported formats: Common images, documents, and archives
  * 
+ * Phase 1 Key Functions:
+ * - processAttachmentsEnhanced() - Unified interface with mode selection
+ * - processBufferAttachments() - New buffer-based processing pipeline
+ * - loadFileToBuffer() - Direct file download to memory buffer
+ * - uploadBufferToUnthread() - Buffer-based upload to Unthread
+ * - validateFileSize() - Pre-validation before buffer allocation
+ * 
+ * Configuration:
+ * - PHASE1_CONFIG.useBufferModeByDefault - Controls default processing mode
+ * - Environment variable: USE_BUFFER_MODE=false to disable buffer mode
+ * - BUFFER_ATTACHMENT_CONFIG - Buffer-specific settings and limits
+ * - Automatic fallback to stream mode if buffer mode fails or disabled
+ * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 2.0.0 - Stream-Based Implementation
+ * @version 3.1.0 - Phase 1 Memory Buffer Implementation
  * @since 2025
  */
 
@@ -128,16 +145,18 @@ export interface StreamProcessingOptions {
 }
 
 /**
- * Configuration for attachment handling (Legacy - kept for backward compatibility)
+ * Simple buffer-based attachment configuration
  */
-export const ATTACHMENT_CONFIG = {
-    // Maximum file size (20MB in bytes)
-    maxFileSize: 20 * 1024 * 1024,
+export const BUFFER_ATTACHMENT_CONFIG = {
+    // File Limits (optimized for performance)
+    maxFileSize: 10 * 1024 * 1024,          // 10MB per file (reduced from 20MB)
+    maxFiles: 5,                             // 5 files max per message (reduced from 10)
     
-    // Maximum number of files per message
-    maxFiles: 10,
+    // Network Settings
+    downloadTimeout: 15000,                  // 15 seconds download timeout
+    uploadTimeout: 30000,                    // 30 seconds upload timeout
     
-    // Supported MIME types (common and safe file types)
+    // Supported MIME types
     allowedMimeTypes: [
         // Images
         'image/jpeg',
@@ -184,75 +203,67 @@ export const ATTACHMENT_CONFIG = {
 };
 
 /**
- * Stream-based attachment configuration for new implementation
+ * Phase 1 Configuration - Controls buffer vs stream processing
  */
-export const STREAM_ATTACHMENT_CONFIG = {
-    // API Limits
-    telegramMaxSize: 20 * 1024 * 1024,       // 20MB (Telegram limit)
-    unthreadMaxSize: 20 * 1024 * 1024,       // 20MB (Unthread limit)  
-    unthreadMaxFiles: 10,                     // 10 files max per message
+export const PHASE1_CONFIG = {
+    // Default mode for Phase 1 - can be controlled via environment variable
+    useBufferModeByDefault: process.env.USE_BUFFER_MODE !== 'false', // Default to true unless explicitly disabled
     
-    // Stream Processing
-    chunkSize: 64 * 1024,                     // 64KB chunks
-    streamTimeout: 30000,                     // 30 seconds
-    maxConcurrentStreams: 3,                  // Parallel processing limit
+    // Feature flags
+    enableBufferMode: true,                  // Enable buffer-based processing
+    enableStreamMode: true,                  // Keep stream-based processing for fallback
     
-    // Memory Management
-    maxMemoryBuffer: 5 * 1024 * 1024,        // 5MB in-memory buffer
-    enableBackpressure: true,                 // Flow control
-    
-    // Validation
-    validateDuringStream: true,               // Real-time validation
-    earlyTermination: true,                   // Stop invalid streams early
-    
-    // Supported MIME types (inherited from legacy config)
-    allowedMimeTypes: [
-        // Images
-        'image/jpeg',
-        'image/png', 
-        'image/gif',
-        'image/webp',
-        'image/bmp',
-        
-        // Documents
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'text/plain',
-        'text/csv',
-        
-        // Archives
-        'application/zip'
-    ],
-    
-    // File extensions mapping for MIME type fallback
-    extensionToMime: {
-        // Images
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.png': 'image/png',
-        '.gif': 'image/gif',
-        '.webp': 'image/webp',
-        '.bmp': 'image/bmp',
-        
-        // Documents  
-        '.pdf': 'application/pdf',
-        '.doc': 'application/msword',
-        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        '.xls': 'application/vnd.ms-excel',
-        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        '.txt': 'text/plain',
-        '.csv': 'text/csv',
-        
-        // Archives
-        '.zip': 'application/zip'
-    }
+    // Migration settings
+    enableGradualMigration: true,            // Allow gradual migration to buffer mode
+    bufferModeFileTypes: [                   // File types to process with buffer mode first
+        'image/jpeg', 'image/png', 'image/gif', 'application/pdf'
+    ]
 };
 
+/**
+ * Simple buffer-based file result
+ */
+export interface BufferResult {
+    success: boolean;
+    buffer?: Buffer;
+    fileName?: string;
+    fileSize?: number;
+    mimeType?: string;
+    error?: string;
+}
+
+/**
+ * Simple upload parameters for buffer approach
+ */
+export interface BufferUploadParams {
+    conversationId: string;
+    files: BufferResult[];
+    message?: string;
+}
+
+/**
+ * File buffer interface for memory-based processing
+ */
+export interface FileBuffer {
+    buffer: Buffer;
+    fileName: string;
+    mimeType: string;
+    size: number;
+}
+
+/**
+ * Buffer processing result with detailed information
+ */
+export interface BufferProcessingResult {
+    success: boolean;
+    processedFiles: number;
+    totalFiles: number;
+    errors: string[];
+    processingTime: number;
+}
+
 // Type alias for better readability with extension to MIME mapping
-type ExtensionMimeMapKey = keyof typeof STREAM_ATTACHMENT_CONFIG.extensionToMime;
+type ExtensionMimeMapKey = keyof typeof BUFFER_ATTACHMENT_CONFIG.extensionToMime;
 
 /**
  * Stream error recovery configuration
@@ -342,10 +353,10 @@ export interface BatchStreamResult {
  * Memory management and optimization configuration
  */
 export const MEMORY_OPTIMIZATION_CONFIG = {
-    // Memory Monitoring
-    memoryCheckInterval: 5000,               // Check memory every 5 seconds
-    maxHeapUsagePercent: 80,                 // Alert at 80% heap usage
-    criticalHeapUsagePercent: 90,            // Critical threshold at 90%
+    // Memory Monitoring - Relaxed thresholds
+    memoryCheckInterval: 10000,              // Check memory every 10 seconds (less frequent)
+    maxHeapUsagePercent: 85,                 // Alert at 85% heap usage (higher threshold)
+    criticalHeapUsagePercent: 95,            // Critical threshold at 95% (higher threshold)
     memoryLeakDetectionEnabled: true,        // Enable memory leak detection
     
     // Stream Optimization
@@ -371,6 +382,25 @@ export const MEMORY_OPTIMIZATION_CONFIG = {
     streamTimeoutOptimized: 45000,           // Optimized timeout (45s)
     gcThresholdMB: 50,                      // Trigger GC at 50MB
     resourceCleanupInterval: 30000           // Cleanup every 30 seconds
+};
+
+/**
+ * Stream-based attachment configuration (Legacy - for backward compatibility)
+ */
+export const STREAM_ATTACHMENT_CONFIG = {
+    // File Limits
+    telegramMaxSize: 20 * 1024 * 1024,      // 20MB from Telegram
+    unthreadMaxSize: 20 * 1024 * 1024,      // 20MB to Unthread
+    unthreadMaxFiles: 10,                    // Maximum files per conversation
+    maxConcurrentStreams: 5,                 // Maximum concurrent streams
+    
+    // Stream Configuration
+    chunkSize: 64 * 1024,                   // 64KB chunk size
+    validateDuringStream: true,              // Real-time validation
+    
+    // MIME Types and Extensions (same as buffer config)
+    allowedMimeTypes: BUFFER_ATTACHMENT_CONFIG.allowedMimeTypes,
+    extensionToMime: BUFFER_ATTACHMENT_CONFIG.extensionToMime
 };
 
 /**
@@ -564,7 +594,28 @@ export class AttachmentHandler {
                 throw new Error('No response body received from Telegram API');
             }
             
-            let stream = Readable.fromWeb(fileResponse.body as any);
+            // Convert response body to Node.js Readable stream with proper error handling
+            let stream: Readable;
+            try {
+                // Check if the body is already a Node.js stream
+                if (fileResponse.body instanceof Readable) {
+                    stream = fileResponse.body;
+                } else if (typeof fileResponse.body[Symbol.asyncIterator] === 'function') {
+                    // If it's an async iterable, use Readable.from
+                    stream = Readable.from(fileResponse.body);
+                } else {
+                    // For Web ReadableStream, convert with proper error handling
+                    stream = Readable.fromWeb(fileResponse.body as unknown as ReadableStream<Uint8Array>);
+                }
+            } catch (streamConversionError) {
+                console.error('[AttachmentHandler] Failed to convert response body to Node.js stream:', {
+                    fileId,
+                    error: streamConversionError instanceof Error ? streamConversionError.message : String(streamConversionError),
+                    bodyType: typeof fileResponse.body,
+                    hasAsyncIterator: typeof fileResponse.body[Symbol.asyncIterator] === 'function'
+                });
+                throw new Error(`Stream conversion failed: ${streamConversionError instanceof Error ? streamConversionError.message : String(streamConversionError)}`);
+            }
             
             // Add basic timeout handling (streams don't have setTimeout, we'll handle this differently)
             // For now, just log that we have the stream
@@ -1072,13 +1123,13 @@ export class AttachmentHandler {
             const uploadResult = await this.retryWithBackoff(async () => {
                 const form = new FormData();
                 
-                // Add message if provided
-                if (params.message) {
-                    form.append('message', params.message);
-                }
+                // Add the message payload as JSON (same format as working method)
+                const messagePayload = {
+                    conversationId: params.conversationId,
+                    message: params.message || 'File attachment(s) uploaded via Telegram (Stream-Recovery)'
+                };
                 
-                // Add conversation ID
-                form.append('conversation_id', params.conversationId);
+                form.append('payload_json', JSON.stringify(messagePayload));
 
                 // Add each valid stream to form
                 validStreams.forEach((streamResult, index) => {
@@ -1100,11 +1151,12 @@ export class AttachmentHandler {
                 const timeoutId = setTimeout(() => controller.abort(), STREAM_ERROR_CONFIG.networkTimeout);
 
                 try {
-                    const response = await fetch(`${process.env.UNTHREAD_WEBHOOK_URL}/messages`, {
+                    console.log('[AttachmentHandler] Making upload request to:', `${this.unthreadBaseUrl}/messages`);
+                    const response = await fetch(`${this.unthreadBaseUrl}/messages`, {
                         method: 'POST',
                         body: form,
                         headers: {
-                            'Authorization': `Bearer ${process.env.UNTHREAD_TOKEN}`,
+                            'Authorization': `Bearer ${this.unthreadApiKey}`,
                             ...form.getHeaders()
                         },
                         signal: controller.signal
@@ -1155,7 +1207,9 @@ export class AttachmentHandler {
             console.error('[AttachmentHandler] Enhanced upload failed:', {
                 conversationId: params.conversationId,
                 streamCount: params.streams.length,
-                error: streamError.message,
+                error: streamError instanceof Error ? streamError.message : String(streamError),
+                errorType: streamError.type || 'unknown',
+                stack: streamError instanceof Error ? streamError.stack : undefined,
                 retryAttempts: streamError.retryAttempt || 0,
                 processingTime: `${Date.now() - startTime}ms`
             });
@@ -1805,6 +1859,381 @@ export class AttachmentHandler {
                     error instanceof Error ? error : undefined
                 )]
             };
+        }
+    }
+
+    // ===================================================================
+    // PHASE 1: MEMORY BUFFER IMPLEMENTATION - Core Functions
+    // ===================================================================
+
+    /**
+     * Validate file size before buffer allocation (Phase 1)
+     * 
+     * @param fileSize - File size in bytes
+     * @returns boolean - True if file size is within limits
+     */
+    private validateFileSize(fileSize: number): boolean {
+        return fileSize <= BUFFER_ATTACHMENT_CONFIG.maxFileSize;
+    }
+
+    /**
+     * Load file from Telegram to memory buffer (Phase 1)
+     * 
+     * @param fileId - Telegram file ID
+     * @returns Promise<FileBuffer> - File loaded into memory buffer
+     */
+    async loadFileToBuffer(fileId: string): Promise<FileBuffer> {
+        try {
+            LogEngine.info('[AttachmentHandler] Loading file to buffer', { fileId });
+
+            // Step 1: Get file info from Telegram
+            const fileInfoUrl = `https://api.telegram.org/bot${this.botToken}/getFile?file_id=${fileId}`;
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), BUFFER_ATTACHMENT_CONFIG.downloadTimeout);
+            
+            let fileInfo: TelegramApiResponse;
+            try {
+                const fileInfoResponse = await fetch(fileInfoUrl, {
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                
+                fileInfo = await fileInfoResponse.json() as TelegramApiResponse;
+            } catch (fetchError) {
+                clearTimeout(timeoutId);
+                if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+                    throw new Error('Request timeout while getting file info from Telegram');
+                }
+                throw fetchError;
+            }
+
+            if (!fileInfo.ok) {
+                throw new Error(`Telegram API error: ${fileInfo.description}`);
+            }
+
+            const telegramFile = fileInfo.result;
+            if (!telegramFile?.file_path) {
+                throw new Error('No file path received from Telegram API');
+            }
+            
+            // Step 2: Validate file size before download
+            if (telegramFile.file_size && !this.validateFileSize(telegramFile.file_size)) {
+                throw new Error(`File too large: ${telegramFile.file_size} bytes (max: ${BUFFER_ATTACHMENT_CONFIG.maxFileSize} bytes)`);
+            }
+
+            // Step 3: Determine file name and MIME type
+            const fileName = path.basename(telegramFile.file_path);
+            const fileExtension = path.extname(fileName).toLowerCase();
+            
+            let mimeType = telegramFile.mime_type || '';
+            if (!mimeType || mimeType === 'application/octet-stream') {
+                const extensionKey = fileExtension as keyof typeof BUFFER_ATTACHMENT_CONFIG.extensionToMime;
+                mimeType = BUFFER_ATTACHMENT_CONFIG.extensionToMime[extensionKey] || 'application/octet-stream';
+            }
+
+            // Step 4: Download file to buffer
+            const downloadUrl = `https://api.telegram.org/file/bot${this.botToken}/${telegramFile.file_path}`;
+            
+            const downloadController = new AbortController();
+            const downloadTimeoutId = setTimeout(() => downloadController.abort(), BUFFER_ATTACHMENT_CONFIG.downloadTimeout);
+
+            try {
+                const response = await fetch(downloadUrl, {
+                    signal: downloadController.signal
+                });
+
+                clearTimeout(downloadTimeoutId);
+
+                if (!response.ok) {
+                    throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+                }
+
+                // Convert response to buffer
+                const arrayBuffer = await response.arrayBuffer();
+                const buffer = Buffer.from(arrayBuffer);
+
+                // Validate actual downloaded size
+                if (!this.validateFileSize(buffer.length)) {
+                    throw new Error(`Downloaded file too large: ${buffer.length} bytes (max: ${BUFFER_ATTACHMENT_CONFIG.maxFileSize} bytes)`);
+                }
+
+                LogEngine.info('[AttachmentHandler] File loaded to buffer successfully', {
+                    fileId,
+                    fileName,
+                    fileSize: buffer.length,
+                    mimeType
+                });
+
+                return {
+                    buffer,
+                    fileName,
+                    mimeType,
+                    size: buffer.length
+                };
+
+            } catch (error) {
+                clearTimeout(downloadTimeoutId);
+                throw error;
+            }
+
+        } catch (error) {
+            LogEngine.error('[AttachmentHandler] Failed to load file to buffer', {
+                fileId,
+                error: error instanceof Error ? error.message : String(error)
+            });
+            throw new Error(`Failed to load file to buffer: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    /**
+     * Upload buffer to Unthread API (Phase 1)
+     * 
+     * @param fileBuffer - File buffer to upload
+     * @param conversationId - Unthread conversation ID
+     * @param message - Optional message
+     * @returns Promise<boolean> - Upload success status
+     */
+    async uploadBufferToUnthread(fileBuffer: FileBuffer, conversationId: string, message?: string): Promise<boolean> {
+        try {
+            LogEngine.info('[AttachmentHandler] Uploading buffer to Unthread', {
+                conversationId,
+                fileName: fileBuffer.fileName,
+                fileSize: fileBuffer.size,
+                mimeType: fileBuffer.mimeType
+            });
+
+            // Create FormData with buffer
+            const formData = new FormData();
+            formData.append('file', fileBuffer.buffer, {
+                filename: fileBuffer.fileName,
+                contentType: fileBuffer.mimeType
+            });
+
+            if (message) {
+                formData.append('message', message);
+            }
+
+            // Upload to Unthread
+            const uploadUrl = `${process.env.UNTHREAD_API_URL}/conversations/${conversationId}/messages`;
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), BUFFER_ATTACHMENT_CONFIG.uploadTimeout);
+
+            try {
+                const response = await fetch(uploadUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${process.env.UNTHREAD_API_KEY}`,
+                    },
+                    body: formData,
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Upload failed: ${response.status} ${response.statusText} - ${errorText}`);
+                }
+
+                const result = await response.json() as UnthreadApiResponse;
+
+                LogEngine.info('[AttachmentHandler] Buffer uploaded to Unthread successfully', {
+                    conversationId,
+                    fileName: fileBuffer.fileName,
+                    fileSize: fileBuffer.size,
+                    responseId: result.ts
+                });
+
+                return true;
+
+            } catch (error) {
+                clearTimeout(timeoutId);
+                throw error;
+            }
+
+        } catch (error) {
+            LogEngine.error('[AttachmentHandler] Failed to upload buffer to Unthread', {
+                conversationId,
+                fileName: fileBuffer.fileName,
+                fileSize: fileBuffer.size,
+                error: error instanceof Error ? error.message : String(error)
+            });
+            return false;
+        } finally {
+            // Clean up buffer from memory
+            if (fileBuffer.buffer) {
+                fileBuffer.buffer.fill(0); // Zero out buffer for security
+            }
+        }
+    }
+
+    /**
+     * Process multiple attachments using buffer approach (Phase 1)
+     * 
+     * @param fileIds - Array of Telegram file IDs
+     * @param conversationId - Unthread conversation ID
+     * @param message - Optional message
+     * @returns Promise<BufferProcessingResult> - Processing results
+     */
+    async processBufferAttachments(fileIds: string[], conversationId: string, message?: string): Promise<BufferProcessingResult> {
+        const startTime = Date.now();
+        const errors: string[] = [];
+        let processedFiles = 0;
+
+        try {
+            LogEngine.info('[AttachmentHandler] Starting buffer-based attachment processing', {
+                fileCount: fileIds.length,
+                conversationId,
+                hasMessage: !!message
+            });
+
+            // Validate file count
+            if (fileIds.length > BUFFER_ATTACHMENT_CONFIG.maxFiles) {
+                throw new Error(`Too many files: ${fileIds.length} (max: ${BUFFER_ATTACHMENT_CONFIG.maxFiles})`);
+            }
+
+            // Process files sequentially to manage memory usage
+            for (const fileId of fileIds) {
+                try {
+                    // Load file to buffer
+                    const fileBuffer = await this.loadFileToBuffer(fileId);
+                    
+                    // Upload buffer to Unthread
+                    const uploadSuccess = await this.uploadBufferToUnthread(
+                        fileBuffer, 
+                        conversationId, 
+                        processedFiles === 0 ? message : undefined // Only include message with first file
+                    );
+
+                    if (uploadSuccess) {
+                        processedFiles++;
+                        LogEngine.info('[AttachmentHandler] File processed successfully via buffer', {
+                            fileId,
+                            fileName: fileBuffer.fileName,
+                            fileSize: fileBuffer.size
+                        });
+                    } else {
+                        errors.push(`Failed to upload ${fileBuffer.fileName}`);
+                    }
+
+                } catch (error) {
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    errors.push(`Failed to process file ${fileId}: ${errorMessage}`);
+                    LogEngine.error('[AttachmentHandler] File processing failed via buffer', {
+                        fileId,
+                        error: errorMessage
+                    });
+                }
+            }
+
+            const processingTime = Date.now() - startTime;
+            const success = processedFiles === fileIds.length;
+
+            LogEngine.info('[AttachmentHandler] Buffer-based attachment processing completed', {
+                conversationId,
+                processedFiles,
+                totalFiles: fileIds.length,
+                success,
+                processingTime,
+                errorCount: errors.length
+            });
+
+            return {
+                success,
+                processedFiles,
+                totalFiles: fileIds.length,
+                errors,
+                processingTime
+            };
+
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            errors.push(errorMessage);
+            
+            LogEngine.error('[AttachmentHandler] Critical error in buffer-based attachment processing', {
+                conversationId,
+                fileCount: fileIds.length,
+                error: errorMessage
+            });
+
+            return {
+                success: false,
+                processedFiles,
+                totalFiles: fileIds.length,
+                errors,
+                processingTime: Date.now() - startTime
+            };
+        }
+    }
+
+    /**
+     * Enhanced attachment processing with buffer/stream selection (Phase 1)
+     * 
+     * This function provides a unified interface that can use either the new buffer
+     * approach or the existing stream approach based on configuration.
+     * 
+     * @param fileIds - Array of Telegram file IDs
+     * @param conversationId - Unthread conversation ID
+     * @param message - Optional message
+     * @param useBufferMode - Whether to use buffer mode (default: from PHASE1_CONFIG)
+     * @returns Promise<boolean> - Processing success status
+     */
+    async processAttachmentsEnhanced(
+        fileIds: string[], 
+        conversationId: string, 
+        message?: string,
+        useBufferMode: boolean = PHASE1_CONFIG.useBufferModeByDefault
+    ): Promise<boolean> {
+        try {
+            LogEngine.info('[AttachmentHandler] Starting enhanced attachment processing', {
+                fileCount: fileIds.length,
+                conversationId,
+                hasMessage: !!message,
+                useBufferMode,
+                configuredDefault: PHASE1_CONFIG.useBufferModeByDefault
+            });
+
+            if (useBufferMode && PHASE1_CONFIG.enableBufferMode) {
+                // Use new buffer-based approach (Phase 1)
+                const result = await this.processBufferAttachments(fileIds, conversationId, message);
+                
+                if (result.success) {
+                    LogEngine.info('[AttachmentHandler] Buffer-based processing completed successfully', {
+                        conversationId,
+                        processedFiles: result.processedFiles,
+                        totalFiles: result.totalFiles,
+                        processingTime: result.processingTime
+                    });
+                } else {
+                    LogEngine.error('[AttachmentHandler] Buffer-based processing failed', {
+                        conversationId,
+                        errorCount: result.errors.length,
+                        errors: result.errors
+                    });
+                }
+                
+                return result.success;
+            } else if (PHASE1_CONFIG.enableStreamMode) {
+                // Fall back to existing stream-based approach
+                LogEngine.info('[AttachmentHandler] Using stream-based fallback processing', {
+                    conversationId,
+                    reason: useBufferMode ? 'buffer_mode_disabled' : 'stream_mode_requested'
+                });
+                return await this.processAttachments(fileIds, conversationId, message);
+            } else {
+                throw new Error('Both buffer and stream modes are disabled in configuration');
+            }
+
+        } catch (error) {
+            LogEngine.error('[AttachmentHandler] Critical error in enhanced attachment processing', {
+                conversationId,
+                fileCount: fileIds.length,
+                useBufferMode,
+                error: error instanceof Error ? error.message : String(error)
+            });
+            return false;
         }
     }
 

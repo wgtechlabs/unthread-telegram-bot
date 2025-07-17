@@ -40,8 +40,19 @@ export class SupportConversationProcessor implements IConversationProcessor {
 
         try {
             const userState = await BotsStore.getUserState(userId);
-            return userState?.field === 'summary' || 
-                   userState?.field === 'email';
+            const canHandle = userState?.field === 'summary' || 
+                              userState?.field === 'email';
+                              
+            LogEngine.debug('SupportConversationProcessor.canHandle evaluation', {
+                userId,
+                chatType: ctx.chat?.type,
+                hasUserState: !!userState,
+                userStateField: userState?.field,
+                canHandle,
+                messageId: ctx.message?.message_id
+            });
+            
+            return canHandle;
         } catch (error) {
             logError(error, 'SupportConversationProcessor.canHandle', { userId });
             return false;
@@ -120,23 +131,54 @@ export class SupportConversationProcessor implements IConversationProcessor {
             return true;
         }
 
-        // Store the summary
+        // Store the summary and detect any file attachments from message event data
         userState.summary = summary.trim();
+        
+        // Get attachment information that was already detected in message handler
+        // to avoid duplicate detection and processing
+        const attachmentIds: string[] = [];
+        const hasAttachments = false; // Will be updated when we get attachments from message context
+        
+        // For now, we'll detect attachments here but we should optimize this later
+        // to use pre-detected attachment data from the message handler
+        const detectedAttachmentIds = extractFileAttachments(ctx);
+        const detectedHasAttachments = detectedAttachmentIds.length > 0;
+        
+        // Store attachment information in user state for callback processor
+        userState.attachmentIds = detectedAttachmentIds;
+        userState.hasAttachments = detectedHasAttachments;
 
         // Set confirmation state
         await BotsStore.setUserState(userId, {
             ...userState,
             field: 'confirmation',
-            step: 2
+            step: 2,
+            attachmentIds: detectedAttachmentIds,
+            hasAttachments: detectedHasAttachments
         });
 
-        // Show simple confirmation without unnecessary feedback
+        // Show confirmation with attachment awareness
         const safeSummary = lightEscapeMarkdown(truncateText(summary.trim(), 200));
         
-        const confirmationMessage = 
+        let confirmationMessage = 
             "📝 **Review Your Issue**\n\n" +
-            `**Summary:** ${safeSummary}\n\n` +
-            "Please review your issue description above. What would you like to do?";
+            `**Summary:** ${safeSummary}\n\n`;
+            
+        // Add attachment information if present
+        if (detectedHasAttachments) {
+            confirmationMessage += `**Attachments:** ${detectedAttachmentIds.length} file${detectedAttachmentIds.length > 1 ? 's' : ''} attached\n\n`;
+        }
+        
+        confirmationMessage += "Please review your issue description above. What would you like to do?";
+
+        LogEngine.info('Summary accepted with attachment detection', { 
+            userId, 
+            summaryLength: summary.trim().length,
+            wordCount: summary.trim().split(/\s+/).length,
+            hasAttachments: detectedHasAttachments,
+            attachmentCount: detectedAttachmentIds.length,
+            attachmentIds: detectedAttachmentIds
+        });
 
         // Generate short callback IDs for the three-button interface
         const { SupportCallbackProcessor } = await import('./CallbackProcessors.js');
@@ -157,12 +199,6 @@ export class SupportConversationProcessor implements IConversationProcessor {
                     ]
                 ]
             }
-        });
-
-        LogEngine.info('Summary accepted', { 
-            userId, 
-            summaryLength: summary.trim().length,
-            wordCount: summary.trim().split(/\s+/).length
         });
 
         return true;
@@ -256,113 +292,84 @@ export class SupportConversationProcessor implements IConversationProcessor {
                 userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
             }
 
-            // Create the ticket with or without attachments
+            // Create the ticket first (always), then handle attachments separately
             let ticketResponse;
             
+            // Always create the ticket first to get the conversation ID
+            ticketResponse = await unthreadService.createTicket({
+                groupChatName: chatTitle,
+                customerId: customer.id,
+                summary: userState.summary,
+                onBehalfOf: {
+                    name: userData.name || ctx.from?.first_name || 'Telegram User',
+                    email: emailToUse
+                }
+            });
+
+            LogEngine.info('Ticket created successfully', {
+                ticketId: ticketResponse.id,
+                friendlyId: ticketResponse.friendlyId,
+                hasAttachments: hasAttachments,
+                attachmentCount: hasAttachments ? attachmentIds.length : 0
+            });
+            
+            // If there are attachments, add them as a follow-up message to the existing conversation
             if (hasAttachments) {
-                LogEngine.info('Creating ticket with attachments', {
+                LogEngine.info('Processing attachments for created ticket', {
                     userId,
-                    customerId: customer.id,
-                    attachmentCount: attachmentIds.length,
-                    summary: userState.summary
+                    ticketId: ticketResponse.id,
+                    conversationId: ticketResponse.id,
+                    attachmentCount: attachmentIds.length
                 });
-                
-                // Download attachments first
-                const tempFiles: string[] = [];
-                let attachmentProcessingSuccess = true;
                 
                 try {
                     // Update status to show attachment processing
                     await ctx.editMessageText(
-                        `🎫 **Creating Your Ticket**\n\n📎 Downloading ${attachmentIds.length} file attachment${attachmentIds.length > 1 ? 's' : ''}...`,
+                        `🎫 **Ticket Created**\n\n� Processing ${attachmentIds.length} file attachment${attachmentIds.length > 1 ? 's' : ''}...`,
                         { parse_mode: 'Markdown' }
                     );
                     
-                    // Download all attachments
-                    for (const fileId of attachmentIds) {
-                        // Use stream-based approach instead of legacy downloadTelegramFile
-                        const attachmentProcessingResult = await attachmentHandler.processAttachments(
-                            [fileId],
-                            ticketResponse.conversationId || ticketResponse.ticketId,
-                            'Customer file attachment for new ticket via Telegram'
-                        );
-                        
-                        if (attachmentProcessingResult) {
-                            LogEngine.debug('Processed attachment for ticket creation using stream-based approach', {
-                                fileId,
-                                ticketId: ticketResponse.ticketId
-                            });
-                        } else {
-                            LogEngine.warn('Failed to process attachment for ticket', {
-                                fileId,
-                                error: 'Stream-based processing failed'
-                            });
-                            attachmentProcessingSuccess = false;
-                            break;
-                        }
-                    }
+                    // Process attachments using stream-based approach with the created conversation ID
+                    const attachmentProcessingResult = await attachmentHandler.processAttachments(
+                        attachmentIds,
+                        ticketResponse.id, // Use the conversation ID from the created ticket
+                        'Customer file attachment submitted with support ticket via Telegram'
+                    );
                     
-                    if (attachmentProcessingSuccess && tempFiles.length > 0) {
-                        // Update status to show ticket creation
-                        await ctx.editMessageText(
-                            `🎫 **Creating Your Ticket**\n\n🔄 Creating ticket with ${tempFiles.length} attachment${tempFiles.length > 1 ? 's' : ''}...`,
-                            { parse_mode: 'Markdown' }
-                        );
-                        
-                        // Create ticket with attachments
-                        ticketResponse = await unthreadService.createTicketWithAttachments({
-                            title: chatTitle,
-                            summary: userState.summary,
-                            customerId: customer.id,
-                            onBehalfOf: {
-                                name: userData.name || ctx.from?.first_name || 'Telegram User',
-                                email: emailToUse
-                            },
-                            filePaths: tempFiles
-                        });
-                        
-                        LogEngine.info('Ticket created successfully with attachments', {
+                    if (attachmentProcessingResult) {
+                        LogEngine.info('Attachments processed successfully for ticket', {
                             ticketId: ticketResponse.id,
-                            friendlyId: ticketResponse.friendlyId,
-                            attachmentCount: tempFiles.length
+                            conversationId: ticketResponse.id,
+                            attachmentCount: attachmentIds.length,
+                            method: 'stream-based_post_creation'
                         });
                     } else {
-                        // Fallback to creating ticket without attachments
-                        LogEngine.warn('Creating ticket without attachments due to processing failure', {
-                            userId,
-                            attemptedAttachments: attachmentIds.length
+                        LogEngine.warn('Failed to process some attachments for ticket', {
+                            ticketId: ticketResponse.id,
+                            conversationId: ticketResponse.id,
+                            attemptedAttachments: attachmentIds.length,
+                            method: 'stream-based_post_creation'
                         });
                         
+                        // Update status to reflect partial success
                         await ctx.editMessageText(
-                            "🎫 **Creating Your Ticket**\n\n⚠️ Some attachments failed to process. Creating ticket without attachments...",
+                            `🎫 **Ticket Created**\n\n⚠️ Some attachments failed to process, but your ticket was created successfully.`,
                             { parse_mode: 'Markdown' }
                         );
-                        
-                        ticketResponse = await unthreadService.createTicket({
-                            groupChatName: chatTitle,
-                            customerId: customer.id,
-                            summary: userState.summary,
-                            onBehalfOf: {
-                                name: userData.name || ctx.from?.first_name || 'Telegram User',
-                                email: emailToUse
-                            }
-                        });
                     }
-                } finally {
-                    // Stream-based implementation - no temporary files to cleanup
-                    LogEngine.debug('Stream-based attachment processing completed - no cleanup required');
+                } catch (attachmentError) {
+                    LogEngine.error('Error processing attachments for created ticket', {
+                        error: attachmentError instanceof Error ? attachmentError.message : 'Unknown error',
+                        ticketId: ticketResponse.id,
+                        conversationId: ticketResponse.id,
+                        attachmentCount: attachmentIds.length
+                    });
+                    
+                    // Don't fail the ticket creation due to attachment processing errors
+                    LogEngine.info('Continuing with ticket creation despite attachment processing failure', {
+                        ticketId: ticketResponse.id
+                    });
                 }
-            } else {
-                // Create ticket without attachments (original flow)
-                ticketResponse = await unthreadService.createTicket({
-                    groupChatName: chatTitle,
-                    customerId: customer.id,
-                    summary: userState.summary,
-                    onBehalfOf: {
-                        name: userData.name || ctx.from?.first_name || 'Telegram User',
-                        email: emailToUse // Guaranteed to exist at this point
-                    }
-                });
             }
 
             // Register ticket confirmation for bidirectional messaging
@@ -549,6 +556,8 @@ export class SupportConversationProcessor implements IConversationProcessor {
 export class DmSetupInputProcessor implements IConversationProcessor {
     async canHandle(ctx: BotContext): Promise<boolean> {
         const userId = ctx.from?.id;
+        
+        // DmSetupInputProcessor ONLY handles private chat messages
         if (!userId || ctx.chat?.type !== 'private' || !ctx.message || !('text' in ctx.message)) {
             return false;
         }
@@ -581,6 +590,15 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             const canHandle = activeSessions.currentStep === 'awaiting_custom_name' || 
                               activeSessions.currentStep === 'awaiting_customer_id' ||
                               activeSessions.currentStep === 'awaiting_template_content';
+            
+            LogEngine.debug('DmSetupInputProcessor.canHandle evaluation', {
+                userId,
+                chatType: ctx.chat?.type,
+                hasActiveSessions: !!activeSessions,
+                currentStep: activeSessions?.currentStep,
+                canHandle,
+                messageId: ctx.message?.message_id
+            });
             
             return canHandle;
         } catch (error) {
