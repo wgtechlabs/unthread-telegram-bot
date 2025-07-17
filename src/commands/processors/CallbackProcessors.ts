@@ -594,7 +594,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                         { parse_mode: 'Markdown' }
                     );
                     
-                    // Process attachments using stream-based approach with the created conversation ID
+                    // Process attachments using the buffer-only approach
                     const attachmentProcessingResult = await attachmentHandler.processAttachments(
                         attachmentIds,
                         ticketResponse.id, // Use the conversation ID from the created ticket
@@ -606,14 +606,14 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                             ticketId: ticketResponse.id,
                             conversationId: ticketResponse.id,
                             attachmentCount: attachmentIds.length,
-                            method: 'callback_stream-based_post_creation'
+                            method: 'callback_buffer_processing'
                         });
                     } else {
                         LogEngine.warn('Failed to process some attachments for ticket via callback', {
                             ticketId: ticketResponse.id,
                             conversationId: ticketResponse.id,
                             attemptedAttachments: attachmentIds.length,
-                            method: 'callback_stream-based_post_creation'
+                            method: 'callback_buffer_processing'
                         });
                         
                         // Update status to reflect partial success

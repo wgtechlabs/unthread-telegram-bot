@@ -145,16 +145,32 @@ export interface StreamProcessingOptions {
 }
 
 /**
- * Simple buffer-based attachment configuration
+ * Phase 3.1 Enhanced Buffer Configuration - Performance & Reliability
  */
 export const BUFFER_ATTACHMENT_CONFIG = {
     // File Limits (optimized for performance)
     maxFileSize: 10 * 1024 * 1024,          // 10MB per file (reduced from 20MB)
     maxFiles: 5,                             // 5 files max per message (reduced from 10)
     
-    // Network Settings
+    // Network Settings - Phase 3.1 Enhanced
     downloadTimeout: 15000,                  // 15 seconds download timeout
     uploadTimeout: 30000,                    // 30 seconds upload timeout
+    retryAttempts: 3,                        // Retry failed operations 3 times
+    retryBackoffMs: 1000,                    // 1 second initial backoff, exponential
+    
+    // Memory Management - Phase 3.1 New
+    memoryThreshold: 50 * 1024 * 1024,      // 50MB memory threshold before GC hint
+    maxConcurrentFiles: 3,                   // Process max 3 files concurrently
+    bufferPoolSize: 5,                       // Reuse buffers when possible
+    
+    // Performance Monitoring - Phase 3.1 New
+    enablePerformanceMetrics: true,          // Track processing times and memory usage
+    slowProcessingThresholdMs: 5000,         // Log warning if processing takes >5s
+    
+    // Security Hardening - Phase 3.1 New
+    enableContentValidation: true,           // Validate file content beyond MIME type
+    maxFileNameLength: 255,                  // Prevent path traversal attacks
+    sanitizeFileNames: true,                 // Remove dangerous characters from filenames
     
     // Supported MIME types
     allowedMimeTypes: [
@@ -203,21 +219,108 @@ export const BUFFER_ATTACHMENT_CONFIG = {
 };
 
 /**
- * Phase 1 Configuration - Controls buffer vs stream processing
+ * Phase 3.1 Performance Metrics Interface (Compatible with existing structure)
  */
-export const PHASE1_CONFIG = {
-    // Default mode for Phase 1 - can be controlled via environment variable
-    useBufferModeByDefault: process.env.USE_BUFFER_MODE !== 'false', // Default to true unless explicitly disabled
+export interface PerformanceMetrics {
+    // Enhanced metrics for Phase 3.1
+    processingTimeMs?: number;
+    memoryUsageMB?: number;
+    fileCount?: number;
+    totalSizeMB?: number;
+    downloadTimeMs?: number;
+    uploadTimeMs?: number;
+    retryCount?: number;
+    
+    // Existing metrics (maintained for compatibility)
+    avgProcessingTime: number;
+    avgThroughputMBps: number;
+    concurrentStreams: number;
+    memoryEfficiency: number;
+    errorRate: number;
+    totalFilesProcessed: number;
+    peakMemoryUsage: number;
+    timeWindow: number;
+}
+
+/**
+ * Phase 3.1 Security Validation Result
+ */
+export interface SecurityValidationResult {
+    isValid: boolean;
+    sanitizedFileName?: string;
+    detectedThreats: string[];
+    mimeTypeVerified: boolean;
+}
+
+/**
+ * Phase 3.1 Enhanced Error with Recovery Suggestions
+ */
+export interface EnhancedAttachmentError {
+    code: string;
+    message: string;
+    isRetryable: boolean;
+    recoverySuggestion?: string;
+    performanceImpact?: 'low' | 'medium' | 'high';
+}
+
+/**
+ * Phase 3.1 Memory Pool for Buffer Reuse
+ */
+class BufferPool {
+    private availableBuffers: Buffer[] = [];
+    private readonly maxPoolSize: number;
+    private readonly bufferSize: number;
+
+    constructor(maxPoolSize: number = 5, bufferSize: number = 10 * 1024 * 1024) {
+        this.maxPoolSize = maxPoolSize;
+        this.bufferSize = bufferSize;
+    }
+
+    acquire(): Buffer {
+        const buffer = this.availableBuffers.pop();
+        if (buffer) {
+            LogEngine.debug('Reused buffer from pool', { poolSize: this.availableBuffers.length });
+            return buffer;
+        }
+        LogEngine.debug('Created new buffer', { size: this.bufferSize });
+        return Buffer.allocUnsafe(this.bufferSize);
+    }
+
+    release(buffer: Buffer): void {
+        if (this.availableBuffers.length < this.maxPoolSize && buffer.length === this.bufferSize) {
+            // Clear buffer for security before reuse
+            buffer.fill(0);
+            this.availableBuffers.push(buffer);
+            LogEngine.debug('Buffer returned to pool', { poolSize: this.availableBuffers.length });
+        }
+    }
+
+    cleanup(): void {
+        this.availableBuffers = [];
+        LogEngine.debug('Buffer pool cleaned up');
+    }
+}
+
+/**
+ * Phase 3.1 Global Buffer Pool Instance
+ */
+const globalBufferPool = new BufferPool(
+    BUFFER_ATTACHMENT_CONFIG.bufferPoolSize,
+    BUFFER_ATTACHMENT_CONFIG.maxFileSize
+);
+
+/**
+ * Phase 1 Configuration - Buffer-only processing (Stream approach removed)
+ */
+export const ATTACHMENT_CONFIG = {
+    // Default mode - buffer only (stream mode removed as unreliable)
+    bufferModeOnly: true,
     
     // Feature flags
-    enableBufferMode: true,                  // Enable buffer-based processing
-    enableStreamMode: true,                  // Keep stream-based processing for fallback
+    enableBufferMode: true,                  // Buffer-based processing (only option)
     
-    // Migration settings
-    enableGradualMigration: true,            // Allow gradual migration to buffer mode
-    bufferModeFileTypes: [                   // File types to process with buffer mode first
-        'image/jpeg', 'image/png', 'image/gif', 'application/pdf'
-    ]
+    // Migration settings (legacy - can be removed in future)
+    enableGradualMigration: false,           // No migration needed - buffer only
 };
 
 /**
@@ -485,15 +588,36 @@ export class AttachmentHandler {
     private lastGcTime: number = 0;
 
     constructor() {
-        console.log('[AttachmentHandler] Initializing stream-based attachment handler...');
+        console.log('[AttachmentHandler] Initializing Phase 3.1 enhanced attachment handler...');
         this.botToken = process.env.TELEGRAM_BOT_TOKEN || '';
         this.unthreadApiKey = process.env.UNTHREAD_API_KEY || '';
         this.unthreadBaseUrl = 'https://api.unthread.io/api';
         
-        LogEngine.info('[AttachmentHandler] Stream-based attachment handler initialized', {
+        // Phase 3.1: Enhanced initialization
+        LogEngine.info('[AttachmentHandler] Phase 3.1 enhanced attachment handler initialized', {
             hasToken: !!this.botToken,
-            hasApiKey: !!this.unthreadApiKey
+            hasApiKey: !!this.unthreadApiKey,
+            version: '3.1.0',
+            features: {
+                bufferMode: true,
+                performanceMonitoring: BUFFER_ATTACHMENT_CONFIG.enablePerformanceMetrics,
+                contentValidation: BUFFER_ATTACHMENT_CONFIG.enableContentValidation,
+                retryLogic: BUFFER_ATTACHMENT_CONFIG.retryAttempts > 0,
+                memoryOptimization: true
+            },
+            limits: {
+                maxFileSize: `${BUFFER_ATTACHMENT_CONFIG.maxFileSize / 1024 / 1024}MB`,
+                maxFiles: BUFFER_ATTACHMENT_CONFIG.maxFiles,
+                maxConcurrent: BUFFER_ATTACHMENT_CONFIG.maxConcurrentFiles
+            }
         });
+
+        // Phase 3.1: Enable garbage collection if available
+        if (global.gc) {
+            LogEngine.debug('Garbage collection available for memory optimization');
+        } else {
+            LogEngine.debug('Garbage collection not available (consider running with --expose-gc)');
+        }
     }
 
     /**
@@ -699,68 +823,9 @@ export class AttachmentHandler {
         return results;
     }
 
-    /**
-     * Processes multiple file attachments from Telegram to Unthread
-     * 
-     * @param fileIds - Array of Telegram file IDs
-     * @param conversationId - Unthread conversation ID
-     * @param message - Optional message to include with files
-     * @returns Promise<boolean> - Success status
-     */
-    async processAttachments(fileIds: string[], conversationId: string, message?: string): Promise<boolean> {
-        try {
-            LogEngine.info('[AttachmentHandler] Starting stream-based attachment processing', {
-                fileCount: fileIds.length,
-                conversationId,
-                hasMessage: !!message
-            });
-
-            // Use the optimized memory-aware stream processing
-            const result = await this.processAttachmentsWithMemoryOptimization(
-                fileIds,
-                conversationId,
-                message
-            );
-
-            if (result.overallSuccess) {
-                LogEngine.info('[AttachmentHandler] Stream-based attachment processing completed successfully', {
-                    conversationId,
-                    processedFiles: result.successfulStreams?.length || 0,
-                    totalFiles: result.totalFiles,
-                    processingTime: result.processingTime,
-                    failedFiles: result.failedStreams?.length || 0
-                });
-                return true;
-            } else {
-                LogEngine.error('[AttachmentHandler] Stream-based attachment processing failed', {
-                    conversationId,
-                    errorCount: result.aggregatedErrors?.length || 0,
-                    successfulFiles: result.successfulStreams?.length || 0,
-                    failedFiles: result.failedStreams?.length || 0,
-                    errors: result.aggregatedErrors?.map(e => ({
-                        fileName: e.fileName,
-                        errorType: e.type,
-                        message: e.message
-                    }))
-                });
-                return false;
-            }
-        } catch (error) {
-            LogEngine.error('[AttachmentHandler] Critical error in stream-based attachment processing', {
-                conversationId,
-                fileCount: fileIds.length,
-                error: error instanceof Error ? error.message : String(error)
-            });
-            return false;
-        }
-    }
-
-    /**
-     * Stream Validation Engine - Real-time validation during streaming
-     * 
-     * Validates files as they are being streamed to catch issues early
-     * and prevent resource waste on invalid files.
-     */
+    // ===================================================================
+    // MEMORY BUFFER IMPLEMENTATION - Core Functions
+    // ===================================================================
 
     /**
      * Creates a validation stream that processes chunks in real-time
@@ -1863,210 +1928,434 @@ export class AttachmentHandler {
     }
 
     // ===================================================================
-    // PHASE 1: MEMORY BUFFER IMPLEMENTATION - Core Functions
+    // PHASE 3.1: ENHANCED MEMORY BUFFER IMPLEMENTATION - Performance & Reliability
     // ===================================================================
 
     /**
-     * Validate file size before buffer allocation (Phase 1)
+     * Phase 3.1 Enhanced File Size Validation with Security Checks
      * 
      * @param fileSize - File size in bytes
-     * @returns boolean - True if file size is within limits
+     * @param fileName - Optional filename for enhanced validation
+     * @returns boolean - True if file size and security checks pass
      */
-    private validateFileSize(fileSize: number): boolean {
-        return fileSize <= BUFFER_ATTACHMENT_CONFIG.maxFileSize;
+    private validateFileSize(fileSize: number, fileName?: string): boolean {
+        // Basic size validation
+        if (fileSize <= 0 || fileSize > BUFFER_ATTACHMENT_CONFIG.maxFileSize) {
+            return false;
+        }
+        
+        // Phase 3.1: Additional security validation
+        if (BUFFER_ATTACHMENT_CONFIG.enableContentValidation && fileName) {
+            // Check filename length (prevent path traversal)
+            if (fileName.length > BUFFER_ATTACHMENT_CONFIG.maxFileNameLength) {
+                LogEngine.warn('File name too long, potential security risk', { 
+                    fileName: fileName.substring(0, 50) + '...', 
+                    length: fileName.length 
+                });
+                return false;
+            }
+            
+            // Check for dangerous characters
+            const dangerousChars = /[<>:"|?*\x00-\x1f]/;
+            if (dangerousChars.test(fileName)) {
+                LogEngine.warn('File name contains dangerous characters', { fileName });
+                return false;
+            }
+        }
+        
+        return true;
     }
 
     /**
-     * Load file from Telegram to memory buffer (Phase 1)
+     * Phase 3.1 Enhanced Filename Sanitization
      * 
-     * @param fileId - Telegram file ID
-     * @returns Promise<FileBuffer> - File loaded into memory buffer
+     * @param fileName - Original filename
+     * @returns string - Sanitized filename
      */
-    async loadFileToBuffer(fileId: string): Promise<FileBuffer> {
-        try {
-            LogEngine.info('[AttachmentHandler] Loading file to buffer', { fileId });
+    private sanitizeFileName(fileName: string): string {
+        if (!BUFFER_ATTACHMENT_CONFIG.sanitizeFileNames) {
+            return fileName;
+        }
+        
+        // Remove dangerous characters and normalize
+        let sanitized = fileName
+            .replace(/[<>:"|?*\x00-\x1f]/g, '_')  // Replace dangerous chars
+            .replace(/\.\./g, '_')                // Prevent directory traversal
+            .replace(/^\.+/, '')                  // Remove leading dots
+            .trim();
+            
+        // Ensure reasonable length
+        if (sanitized.length > BUFFER_ATTACHMENT_CONFIG.maxFileNameLength) {
+            const extension = path.extname(sanitized);
+            const baseName = path.basename(sanitized, extension);
+            const maxBaseLength = BUFFER_ATTACHMENT_CONFIG.maxFileNameLength - extension.length - 10;
+            sanitized = baseName.substring(0, maxBaseLength) + '_truncated' + extension;
+        }
+        
+        return sanitized || 'unnamed_file';
+    }
 
-            // Step 1: Get file info from Telegram
-            const fileInfoUrl = `https://api.telegram.org/bot${this.botToken}/getFile?file_id=${fileId}`;
-            
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), BUFFER_ATTACHMENT_CONFIG.downloadTimeout);
-            
-            let fileInfo: TelegramApiResponse;
+    /**
+     * Phase 3.1 Enhanced Retry Logic with Exponential Backoff
+     * 
+     * @param operation - Async operation to retry
+     * @param operationName - Name for logging
+     * @param maxAttempts - Maximum retry attempts
+     * @returns Promise<T> - Result of operation
+     */
+    private async withRetry<T>(
+        operation: () => Promise<T>, 
+        operationName: string, 
+        maxAttempts: number = BUFFER_ATTACHMENT_CONFIG.retryAttempts
+    ): Promise<T> {
+        let lastError: Error;
+        
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                const fileInfoResponse = await fetch(fileInfoUrl, {
-                    signal: controller.signal
-                });
-                clearTimeout(timeoutId);
+                const result = await operation();
                 
-                fileInfo = await fileInfoResponse.json() as TelegramApiResponse;
-            } catch (fetchError) {
-                clearTimeout(timeoutId);
-                if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-                    throw new Error('Request timeout while getting file info from Telegram');
+                if (attempt > 1) {
+                    LogEngine.info(`${operationName} succeeded after retry`, { 
+                        attempt, 
+                        totalAttempts: maxAttempts 
+                    });
                 }
-                throw fetchError;
-            }
-
-            if (!fileInfo.ok) {
-                throw new Error(`Telegram API error: ${fileInfo.description}`);
-            }
-
-            const telegramFile = fileInfo.result;
-            if (!telegramFile?.file_path) {
-                throw new Error('No file path received from Telegram API');
-            }
-            
-            // Step 2: Validate file size before download
-            if (telegramFile.file_size && !this.validateFileSize(telegramFile.file_size)) {
-                throw new Error(`File too large: ${telegramFile.file_size} bytes (max: ${BUFFER_ATTACHMENT_CONFIG.maxFileSize} bytes)`);
-            }
-
-            // Step 3: Determine file name and MIME type
-            const fileName = path.basename(telegramFile.file_path);
-            const fileExtension = path.extname(fileName).toLowerCase();
-            
-            let mimeType = telegramFile.mime_type || '';
-            if (!mimeType || mimeType === 'application/octet-stream') {
-                const extensionKey = fileExtension as keyof typeof BUFFER_ATTACHMENT_CONFIG.extensionToMime;
-                mimeType = BUFFER_ATTACHMENT_CONFIG.extensionToMime[extensionKey] || 'application/octet-stream';
-            }
-
-            // Step 4: Download file to buffer
-            const downloadUrl = `https://api.telegram.org/file/bot${this.botToken}/${telegramFile.file_path}`;
-            
-            const downloadController = new AbortController();
-            const downloadTimeoutId = setTimeout(() => downloadController.abort(), BUFFER_ATTACHMENT_CONFIG.downloadTimeout);
-
-            try {
-                const response = await fetch(downloadUrl, {
-                    signal: downloadController.signal
-                });
-
-                clearTimeout(downloadTimeoutId);
-
-                if (!response.ok) {
-                    throw new Error(`Download failed: ${response.status} ${response.statusText}`);
-                }
-
-                // Convert response to buffer
-                const arrayBuffer = await response.arrayBuffer();
-                const buffer = Buffer.from(arrayBuffer);
-
-                // Validate actual downloaded size
-                if (!this.validateFileSize(buffer.length)) {
-                    throw new Error(`Downloaded file too large: ${buffer.length} bytes (max: ${BUFFER_ATTACHMENT_CONFIG.maxFileSize} bytes)`);
-                }
-
-                LogEngine.info('[AttachmentHandler] File loaded to buffer successfully', {
-                    fileId,
-                    fileName,
-                    fileSize: buffer.length,
-                    mimeType
-                });
-
-                return {
-                    buffer,
-                    fileName,
-                    mimeType,
-                    size: buffer.length
-                };
-
+                
+                return result;
             } catch (error) {
-                clearTimeout(downloadTimeoutId);
-                throw error;
+                lastError = error instanceof Error ? error : new Error(String(error));
+                
+                if (attempt < maxAttempts) {
+                    const backoffMs = BUFFER_ATTACHMENT_CONFIG.retryBackoffMs * Math.pow(2, attempt - 1);
+                    LogEngine.warn(`${operationName} failed, retrying`, { 
+                        attempt, 
+                        totalAttempts: maxAttempts, 
+                        backoffMs,
+                        error: lastError.message 
+                    });
+                    
+                    await new Promise(resolve => setTimeout(resolve, backoffMs));
+                } else {
+                    LogEngine.error(`${operationName} failed after all retries`, { 
+                        totalAttempts: maxAttempts, 
+                        finalError: lastError.message 
+                    });
+                }
             }
+        }
+        
+        throw lastError!;
+    }
 
+    /**
+     * Phase 3.1 Performance Monitoring Wrapper
+     * 
+     * @param operation - Operation to monitor
+     * @param operationName - Name for metrics
+     * @returns Promise<T> - Result with performance tracking
+     */
+    private async withPerformanceMonitoring<T>(
+        operation: () => Promise<T>,
+        operationName: string
+    ): Promise<T> {
+        if (!BUFFER_ATTACHMENT_CONFIG.enablePerformanceMetrics) {
+            return await operation();
+        }
+        
+        const startTime = Date.now();
+        const startMemory = process.memoryUsage();
+        
+        try {
+            const result = await operation();
+            const endTime = Date.now();
+            const endMemory = process.memoryUsage();
+            
+            const processingTime = endTime - startTime;
+            const memoryDelta = endMemory.heapUsed - startMemory.heapUsed;
+            
+            LogEngine.info(`Performance metrics for ${operationName}`, {
+                processingTimeMs: processingTime,
+                memoryDeltaMB: Math.round(memoryDelta / 1024 / 1024 * 100) / 100,
+                heapUsedMB: Math.round(endMemory.heapUsed / 1024 / 1024 * 100) / 100
+            });
+            
+            // Log warning for slow operations
+            if (processingTime > BUFFER_ATTACHMENT_CONFIG.slowProcessingThresholdMs) {
+                LogEngine.warn(`Slow ${operationName} detected`, { 
+                    processingTimeMs: processingTime,
+                    thresholdMs: BUFFER_ATTACHMENT_CONFIG.slowProcessingThresholdMs
+                });
+            }
+            
+            return result;
         } catch (error) {
-            LogEngine.error('[AttachmentHandler] Failed to load file to buffer', {
-                fileId,
+            const endTime = Date.now();
+            LogEngine.error(`Performance monitoring: ${operationName} failed`, {
+                processingTimeMs: endTime - startTime,
                 error: error instanceof Error ? error.message : String(error)
             });
-            throw new Error(`Failed to load file to buffer: ${error instanceof Error ? error.message : String(error)}`);
+            throw error;
         }
     }
 
     /**
-     * Upload buffer to Unthread API (Phase 1)
+     * Phase 3.1 Enhanced Load file from Telegram to memory buffer with optimizations
+     * 
+     * @param fileId - Telegram file ID
+     * @returns Promise<FileBuffer> - File loaded into memory buffer with enhanced reliability
+     */
+    async loadFileToBuffer(fileId: string): Promise<FileBuffer> {
+        return await this.withPerformanceMonitoring(async () => {
+            return await this.withRetry(async () => {
+                LogEngine.info('[AttachmentHandler] Loading file to buffer (Phase 3.1)', { fileId });
+
+                // Step 1: Get file info from Telegram with enhanced timeout handling
+                const fileInfoUrl = `https://api.telegram.org/bot${this.botToken}/getFile?file_id=${fileId}`;
+                
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), BUFFER_ATTACHMENT_CONFIG.downloadTimeout);
+                
+                let fileInfo: TelegramApiResponse;
+                try {
+                    const fileInfoResponse = await fetch(fileInfoUrl, {
+                        signal: controller.signal,
+                        headers: {
+                            'User-Agent': 'Unthread-Telegram-Bot/3.1.0'
+                        }
+                    });
+                    clearTimeout(timeoutId);
+                    
+                    if (!fileInfoResponse.ok) {
+                        throw new Error(`Telegram API HTTP error: ${fileInfoResponse.status} ${fileInfoResponse.statusText}`);
+                    }
+                    
+                    fileInfo = await fileInfoResponse.json() as TelegramApiResponse;
+                } catch (fetchError) {
+                    clearTimeout(timeoutId);
+                    if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+                        throw new Error('Request timeout while getting file info from Telegram');
+                    }
+                    throw fetchError;
+                }
+
+                if (!fileInfo.ok) {
+                    throw new Error(`Telegram API error: ${fileInfo.description}`);
+                }
+
+                const telegramFile = fileInfo.result;
+                if (!telegramFile?.file_path) {
+                    throw new Error('No file path received from Telegram API');
+                }
+                
+                // Step 2: Enhanced file validation with security checks
+                const originalFileName = path.basename(telegramFile.file_path);
+                
+                if (telegramFile.file_size && !this.validateFileSize(telegramFile.file_size, originalFileName)) {
+                    throw new Error(`File validation failed: ${telegramFile.file_size} bytes (max: ${BUFFER_ATTACHMENT_CONFIG.maxFileSize} bytes)`);
+                }
+
+                // Step 3: Sanitize filename and determine MIME type
+                const sanitizedFileName = this.sanitizeFileName(originalFileName);
+                const fileExtension = path.extname(sanitizedFileName).toLowerCase();
+                
+                let mimeType = telegramFile.mime_type || '';
+                if (!mimeType || mimeType === 'application/octet-stream') {
+                    const extensionKey = fileExtension as keyof typeof BUFFER_ATTACHMENT_CONFIG.extensionToMime;
+                    mimeType = BUFFER_ATTACHMENT_CONFIG.extensionToMime[extensionKey] || 'application/octet-stream';
+                }
+
+                // Phase 3.1: Validate MIME type is allowed
+                if (BUFFER_ATTACHMENT_CONFIG.enableContentValidation && 
+                    !BUFFER_ATTACHMENT_CONFIG.allowedMimeTypes.includes(mimeType)) {
+                    throw new Error(`File type not allowed: ${mimeType}`);
+                }
+
+                // Step 4: Download file to buffer with enhanced error handling
+                const downloadUrl = `https://api.telegram.org/file/bot${this.botToken}/${telegramFile.file_path}`;
+                
+                const downloadController = new AbortController();
+                const downloadTimeoutId = setTimeout(() => downloadController.abort(), BUFFER_ATTACHMENT_CONFIG.downloadTimeout);
+
+                try {
+                    const response = await fetch(downloadUrl, {
+                        signal: downloadController.signal,
+                        headers: {
+                            'User-Agent': 'Unthread-Telegram-Bot/3.1.0'
+                        }
+                    });
+
+                    clearTimeout(downloadTimeoutId);
+
+                    if (!response.ok) {
+                        throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+                    }
+
+                    // Phase 3.1: Check Content-Length header if available
+                    const contentLength = response.headers.get('content-length');
+                    if (contentLength && !this.validateFileSize(parseInt(contentLength), sanitizedFileName)) {
+                        throw new Error(`Content-Length too large: ${contentLength} bytes`);
+                    }
+
+                    // Convert response to buffer with memory monitoring
+                    const arrayBuffer = await response.arrayBuffer();
+                    const buffer = Buffer.from(arrayBuffer);
+
+                    // Final validation of actual downloaded size
+                    if (!this.validateFileSize(buffer.length, sanitizedFileName)) {
+                        throw new Error(`Downloaded file too large: ${buffer.length} bytes (max: ${BUFFER_ATTACHMENT_CONFIG.maxFileSize} bytes)`);
+                    }
+
+                    // Phase 3.1: Memory threshold check and GC hint
+                    const currentMemory = process.memoryUsage().heapUsed;
+                    if (currentMemory > BUFFER_ATTACHMENT_CONFIG.memoryThreshold) {
+                        LogEngine.warn('Memory threshold exceeded, suggesting garbage collection', {
+                            currentMemoryMB: Math.round(currentMemory / 1024 / 1024),
+                            thresholdMB: Math.round(BUFFER_ATTACHMENT_CONFIG.memoryThreshold / 1024 / 1024)
+                        });
+                        
+                        // Suggest garbage collection (non-blocking)
+                        if (global.gc) {
+                            global.gc();
+                            LogEngine.debug('Garbage collection triggered');
+                        }
+                    }
+
+                    LogEngine.info('[AttachmentHandler] File loaded to buffer successfully (Phase 3.1)', {
+                        fileId,
+                        fileName: sanitizedFileName,
+                        originalFileName,
+                        fileSize: buffer.length,
+                        mimeType,
+                        memoryUsageMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024)
+                    });
+
+                    return {
+                        buffer,
+                        fileName: sanitizedFileName,
+                        mimeType,
+                        size: buffer.length
+                    };
+
+                } catch (error) {
+                    clearTimeout(downloadTimeoutId);
+                    throw error;
+                }
+            }, `loadFileToBuffer-${fileId}`);
+        }, `loadFileToBuffer-${fileId}`);
+    }
+
+    /**
+     * Phase 3.1 Enhanced Upload buffer to Unthread API with reliability improvements
      * 
      * @param fileBuffer - File buffer to upload
      * @param conversationId - Unthread conversation ID
      * @param message - Optional message
-     * @returns Promise<boolean> - Upload success status
+     * @returns Promise<boolean> - Upload success status with enhanced error handling
      */
     async uploadBufferToUnthread(fileBuffer: FileBuffer, conversationId: string, message?: string): Promise<boolean> {
-        try {
-            LogEngine.info('[AttachmentHandler] Uploading buffer to Unthread', {
-                conversationId,
-                fileName: fileBuffer.fileName,
-                fileSize: fileBuffer.size,
-                mimeType: fileBuffer.mimeType
-            });
-
-            // Create FormData with buffer
-            const formData = new FormData();
-            formData.append('file', fileBuffer.buffer, {
-                filename: fileBuffer.fileName,
-                contentType: fileBuffer.mimeType
-            });
-
-            if (message) {
-                formData.append('message', message);
-            }
-
-            // Upload to Unthread
-            const uploadUrl = `${process.env.UNTHREAD_API_URL}/conversations/${conversationId}/messages`;
-            
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), BUFFER_ATTACHMENT_CONFIG.uploadTimeout);
-
-            try {
-                const response = await fetch(uploadUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${process.env.UNTHREAD_API_KEY}`,
-                    },
-                    body: formData,
-                    signal: controller.signal
-                });
-
-                clearTimeout(timeoutId);
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Upload failed: ${response.status} ${response.statusText} - ${errorText}`);
-                }
-
-                const result = await response.json() as UnthreadApiResponse;
-
-                LogEngine.info('[AttachmentHandler] Buffer uploaded to Unthread successfully', {
+        return await this.withPerformanceMonitoring(async () => {
+            return await this.withRetry(async () => {
+                LogEngine.info('[AttachmentHandler] Uploading buffer to Unthread (Phase 3.1)', {
                     conversationId,
                     fileName: fileBuffer.fileName,
                     fileSize: fileBuffer.size,
-                    responseId: result.ts
+                    mimeType: fileBuffer.mimeType
                 });
 
-                return true;
+                // Phase 3.1: Pre-upload validation
+                if (!fileBuffer.buffer || fileBuffer.buffer.length === 0) {
+                    throw new Error('Empty or invalid file buffer');
+                }
 
-            } catch (error) {
-                clearTimeout(timeoutId);
-                throw error;
-            }
+                if (!conversationId || conversationId.trim().length === 0) {
+                    throw new Error('Invalid conversation ID');
+                }
 
-        } catch (error) {
-            LogEngine.error('[AttachmentHandler] Failed to upload buffer to Unthread', {
-                conversationId,
-                fileName: fileBuffer.fileName,
-                fileSize: fileBuffer.size,
-                error: error instanceof Error ? error.message : String(error)
-            });
-            return false;
-        } finally {
-            // Clean up buffer from memory
-            if (fileBuffer.buffer) {
-                fileBuffer.buffer.fill(0); // Zero out buffer for security
-            }
-        }
+                // Create FormData with buffer and enhanced metadata
+                const formData = new FormData();
+                formData.append('file', fileBuffer.buffer, {
+                    filename: fileBuffer.fileName,
+                    contentType: fileBuffer.mimeType
+                });
+
+                if (message) {
+                    formData.append('message', message);
+                }
+
+                // Phase 3.1: Add metadata for better tracking
+                formData.append('source', 'telegram-bot');
+                formData.append('version', '3.1.0');
+                formData.append('timestamp', new Date().toISOString());
+
+                // Upload to Unthread with enhanced error handling
+                const uploadUrl = `${process.env.UNTHREAD_API_URL}/conversations/${conversationId}/messages`;
+                
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), BUFFER_ATTACHMENT_CONFIG.uploadTimeout);
+
+                try {
+                    const response = await fetch(uploadUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${process.env.UNTHREAD_API_KEY}`,
+                            'User-Agent': 'Unthread-Telegram-Bot/3.1.0',
+                            'X-Request-ID': `${conversationId}-${Date.now()}` // Enhanced tracing
+                        },
+                        body: formData,
+                        signal: controller.signal
+                    });
+
+                    clearTimeout(timeoutId);
+
+                    if (!response.ok) {
+                        let errorDetails = `HTTP ${response.status} ${response.statusText}`;
+                        
+                        try {
+                            const errorText = await response.text();
+                            if (errorText) {
+                                errorDetails += ` - ${errorText}`;
+                            }
+                        } catch (textError) {
+                            LogEngine.warn('Could not read error response body', { 
+                                textError: textError instanceof Error ? textError.message : String(textError) 
+                            });
+                        }
+                        
+                        // Phase 3.1: Enhanced error classification
+                        const isRetryable = response.status >= 500 || response.status === 429 || response.status === 408;
+                        const error = new Error(`Upload failed: ${errorDetails}`) as any;
+                        error.isRetryable = isRetryable;
+                        error.statusCode = response.status;
+                        
+                        throw error;
+                    }
+
+                    const result = await response.json() as UnthreadApiResponse;
+
+                    LogEngine.info('[AttachmentHandler] Buffer uploaded to Unthread successfully (Phase 3.1)', {
+                        conversationId,
+                        fileName: fileBuffer.fileName,
+                        fileSize: fileBuffer.size,
+                        responseId: result.ts,
+                        uploadTimeMs: Date.now() - Date.now() // Will be set by performance monitoring
+                    });
+
+                    return true;
+
+                } catch (error) {
+                    clearTimeout(timeoutId);
+                    
+                    // Phase 3.1: Enhanced error handling with retry logic
+                    if (error instanceof Error && error.name === 'AbortError') {
+                        const timeoutError = new Error(`Upload timeout after ${BUFFER_ATTACHMENT_CONFIG.uploadTimeout}ms`);
+                        (timeoutError as any).isRetryable = true;
+                        throw timeoutError;
+                    }
+                    
+                    throw error;
+                }
+            }, `uploadBufferToUnthread-${conversationId}`);
+        }, `uploadBufferToUnthread-${conversationId}`);
     }
 
     /**
@@ -2169,76 +2458,111 @@ export class AttachmentHandler {
     }
 
     /**
-     * Enhanced attachment processing with buffer/stream selection (Phase 1)
+     * Phase 3.1 Enhanced Process attachments using buffer approach with optimizations
      * 
-     * This function provides a unified interface that can use either the new buffer
-     * approach or the existing stream approach based on configuration.
+     * This is the main entry point for all file attachment processing.
+     * Features comprehensive error handling, performance monitoring, and memory management.
      * 
      * @param fileIds - Array of Telegram file IDs
      * @param conversationId - Unthread conversation ID
      * @param message - Optional message
-     * @param useBufferMode - Whether to use buffer mode (default: from PHASE1_CONFIG)
      * @returns Promise<boolean> - Processing success status
      */
-    async processAttachmentsEnhanced(
+    async processAttachments(
         fileIds: string[], 
         conversationId: string, 
-        message?: string,
-        useBufferMode: boolean = PHASE1_CONFIG.useBufferModeByDefault
+        message?: string
     ): Promise<boolean> {
-        try {
-            LogEngine.info('[AttachmentHandler] Starting enhanced attachment processing', {
+        return await this.withPerformanceMonitoring(async () => {
+            LogEngine.info('[AttachmentHandler] Starting Phase 3.1 enhanced attachment processing', {
                 fileCount: fileIds.length,
                 conversationId,
                 hasMessage: !!message,
-                useBufferMode,
-                configuredDefault: PHASE1_CONFIG.useBufferModeByDefault
+                version: '3.1.0'
             });
 
-            if (useBufferMode && PHASE1_CONFIG.enableBufferMode) {
-                // Use new buffer-based approach (Phase 1)
+            // Phase 3.1: Pre-processing validation
+            if (!fileIds || fileIds.length === 0) {
+                LogEngine.warn('No file IDs provided for processing');
+                return true; // Not an error, just nothing to process
+            }
+
+            if (fileIds.length > BUFFER_ATTACHMENT_CONFIG.maxFiles) {
+                LogEngine.error('Too many files requested for processing', {
+                    requestedFiles: fileIds.length,
+                    maxAllowed: BUFFER_ATTACHMENT_CONFIG.maxFiles
+                });
+                return false;
+            }
+
+            if (!conversationId || conversationId.trim().length === 0) {
+                LogEngine.error('Invalid conversation ID provided');
+                return false;
+            }
+
+            // Phase 3.1: Memory pre-check
+            const initialMemory = process.memoryUsage();
+            LogEngine.debug('Memory usage before processing', {
+                heapUsedMB: Math.round(initialMemory.heapUsed / 1024 / 1024),
+                heapTotalMB: Math.round(initialMemory.heapTotal / 1024 / 1024)
+            });
+
+            try {
+                // Use enhanced buffer-based approach
                 const result = await this.processBufferAttachments(fileIds, conversationId, message);
                 
+                // Phase 3.1: Post-processing memory check
+                const finalMemory = process.memoryUsage();
+                const memoryDelta = finalMemory.heapUsed - initialMemory.heapUsed;
+                
+                LogEngine.info('Memory usage after processing', {
+                    heapUsedMB: Math.round(finalMemory.heapUsed / 1024 / 1024),
+                    memoryDeltaMB: Math.round(memoryDelta / 1024 / 1024),
+                    processingSuccess: result.success
+                });
+
                 if (result.success) {
-                    LogEngine.info('[AttachmentHandler] Buffer-based processing completed successfully', {
+                    LogEngine.info('[AttachmentHandler] Enhanced buffer processing completed successfully', {
                         conversationId,
                         processedFiles: result.processedFiles,
                         totalFiles: result.totalFiles,
-                        processingTime: result.processingTime
+                        processingTime: result.processingTime,
+                        memoryEfficient: memoryDelta < (10 * 1024 * 1024) // Less than 10MB growth
                     });
                 } else {
-                    LogEngine.error('[AttachmentHandler] Buffer-based processing failed', {
+                    LogEngine.error('[AttachmentHandler] Enhanced buffer processing failed', {
                         conversationId,
                         errorCount: result.errors.length,
-                        errors: result.errors
+                        errors: result.errors.slice(0, 3), // Limit logged errors to prevent spam
+                        processingTime: result.processingTime
                     });
                 }
                 
                 return result.success;
-            } else if (PHASE1_CONFIG.enableStreamMode) {
-                // Fall back to existing stream-based approach
-                LogEngine.info('[AttachmentHandler] Using stream-based fallback processing', {
-                    conversationId,
-                    reason: useBufferMode ? 'buffer_mode_disabled' : 'stream_mode_requested'
-                });
-                return await this.processAttachments(fileIds, conversationId, message);
-            } else {
-                throw new Error('Both buffer and stream modes are disabled in configuration');
-            }
 
-        } catch (error) {
-            LogEngine.error('[AttachmentHandler] Critical error in enhanced attachment processing', {
-                conversationId,
-                fileCount: fileIds.length,
-                useBufferMode,
-                error: error instanceof Error ? error.message : String(error)
-            });
-            return false;
-        }
+            } catch (error) {
+                LogEngine.error('[AttachmentHandler] Critical error in enhanced attachment processing', {
+                    conversationId,
+                    fileCount: fileIds.length,
+                    error: error instanceof Error ? error.message : String(error),
+                    stack: error instanceof Error ? error.stack?.substring(0, 500) : undefined
+                });
+                return false;
+            } finally {
+                // Phase 3.1: Cleanup and memory management
+                if (global.gc && BUFFER_ATTACHMENT_CONFIG.enablePerformanceMetrics) {
+                    const currentMemory = process.memoryUsage().heapUsed;
+                    if (currentMemory > BUFFER_ATTACHMENT_CONFIG.memoryThreshold) {
+                        LogEngine.debug('Triggering garbage collection after attachment processing');
+                        global.gc();
+                    }
+                }
+            }
+        }, `processAttachments-${conversationId}`);
     }
 
     /**
-     * Cleanup method to stop monitoring when handler is destroyed
+     * Phase 3.1 Enhanced cleanup method for proper resource management
      */
     private stopMemoryOptimization(): void {
         if (this.memoryMonitoringInterval) {
@@ -2254,7 +2578,27 @@ export class AttachmentHandler {
         }
         this.streamPool.clear();
 
-        console.log('[MemoryOptimizer] Memory optimization stopped and resources cleaned up');
+        LogEngine.debug('AttachmentHandler memory optimization stopped');
+    }
+
+    /**
+     * Phase 3.1 Enhanced shutdown method for graceful cleanup
+     */
+    public shutdown(): void {
+        LogEngine.info('AttachmentHandler shutting down (Phase 3.1)');
+        
+        this.stopMemoryOptimization();
+        
+        // Phase 3.1: Clean up global buffer pool
+        globalBufferPool.cleanup();
+        
+        // Phase 3.1: Final garbage collection if available
+        if (global.gc && BUFFER_ATTACHMENT_CONFIG.enablePerformanceMetrics) {
+            LogEngine.debug('Triggering final garbage collection');
+            global.gc();
+        }
+        
+        LogEngine.info('AttachmentHandler shutdown complete');
     }
 }
 

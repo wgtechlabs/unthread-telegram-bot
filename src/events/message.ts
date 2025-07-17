@@ -13,7 +13,12 @@
  * - Smart routing based on user intent and context
  * 
  * Supported Chat Types:
- * - Private chats: Direct support form collection and ticket creation
+ * - Private chats: D                // Process attachments using the buffer-only approach
+                const attachmentSuccess = await attachmentHandler.processAttachments(
+                    attachmentFileIds,
+                    agentMessageInfo.conversationId,
+                    message || 'Customer reply with attachments via Telegram'
+                );support form collection and ticket creation
  * - Group chats: Automatic ticket creation for all messages
  * - Supergroups: Enhanced group message handling with threading
  * - Channels: Read-only message monitoring (if applicable)
@@ -471,7 +476,7 @@ async function processTicketMessage(ticketInfo: any, telegramUserId: number, use
             fileIds: attachmentFileIds
         });
         
-        // Process attachments using the AttachmentHandler (Stream-based Implementation)
+        // Process attachments using the buffer-only approach
         const attachmentSuccess = await attachmentHandler.processAttachments(
             attachmentFileIds,
             ticketInfo.conversationId || ticketInfo.ticketId,
@@ -479,14 +484,14 @@ async function processTicketMessage(ticketInfo: any, telegramUserId: number, use
         );
         
         if (!attachmentSuccess) {
-            throw new Error('Failed to process file attachments using stream-based upload');
+            throw new Error('Failed to process file attachments using enhanced processing');
         }
         
-        LogEngine.info('File attachments processed successfully for ticket reply using stream-based processing', {
+        LogEngine.info('File attachments processed successfully for ticket reply using enhanced processing', {
             ticketNumber: ticketInfo.friendlyId,
             conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
             attachmentCount: attachmentFileIds.length,
-            processingMethod: 'stream-based'
+            processingMethod: 'enhanced_buffer_or_stream'
         });
     } else {
         // Send text-only message if no attachments
@@ -649,7 +654,7 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
                     fileIds: attachmentFileIds
                 });
                 
-                // Process attachments using the AttachmentHandler (Stream-based Implementation)
+                // Process attachments using the buffer-only approach
                 const attachmentSuccess = await attachmentHandler.processAttachments(
                     attachmentFileIds,
                     agentMessageInfo.conversationId,
@@ -657,13 +662,13 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
                 );
                 
                 if (!attachmentSuccess) {
-                    throw new Error('Failed to process file attachments using stream-based upload');
+                    throw new Error('Failed to process file attachments using buffer processing');
                 }
                 
-                LogEngine.info('File attachments processed successfully for agent reply using stream-based processing', {
+                LogEngine.info('File attachments processed successfully for agent reply using enhanced processing', {
                     conversationId: agentMessageInfo.conversationId,
                     attachmentCount: attachmentFileIds.length,
-                    processingMethod: 'stream-based'
+                    processingMethod: 'enhanced_buffer_or_stream'
                 });
             } else {
                 // Send text-only message if no attachments

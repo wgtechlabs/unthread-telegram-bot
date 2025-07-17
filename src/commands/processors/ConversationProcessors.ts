@@ -329,7 +329,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
                         { parse_mode: 'Markdown' }
                     );
                     
-                    // Process attachments using stream-based approach with the created conversation ID
+                    // Process attachments using the buffer-only approach
                     const attachmentProcessingResult = await attachmentHandler.processAttachments(
                         attachmentIds,
                         ticketResponse.id, // Use the conversation ID from the created ticket
@@ -341,14 +341,14 @@ export class SupportConversationProcessor implements IConversationProcessor {
                             ticketId: ticketResponse.id,
                             conversationId: ticketResponse.id,
                             attachmentCount: attachmentIds.length,
-                            method: 'stream-based_post_creation'
+                            method: 'enhanced_buffer_or_stream_post_creation'
                         });
                     } else {
                         LogEngine.warn('Failed to process some attachments for ticket', {
                             ticketId: ticketResponse.id,
                             conversationId: ticketResponse.id,
                             attemptedAttachments: attachmentIds.length,
-                            method: 'stream-based_post_creation'
+                            method: 'enhanced_buffer_or_stream_post_creation'
                         });
                         
                         // Update status to reflect partial success
