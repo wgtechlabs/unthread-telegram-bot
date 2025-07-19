@@ -50,7 +50,7 @@ export async function retryWithExponentialBackoff<T>(
     } = options;
 
     const startTime = Date.now();
-    let lastError: Error = new Error('Unknown error');
+    let lastError: Error | null = null;
     let attemptCount = 0;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -113,16 +113,18 @@ export async function retryWithExponentialBackoff<T>(
     }
 
     const totalTime = Date.now() - startTime;
+    const finalError = lastError || new Error('Operation failed with unknown error');
+    
     LogEngine.error(`Operation failed after all retry attempts`, {
         context,
         attemptCount,
         totalTimeMs: totalTime,
-        finalError: lastError.message
+        finalError: finalError.message
     });
 
     return {
         success: false,
-        error: lastError,
+        error: finalError,
         attemptCount,
         totalTimeMs: totalTime
     };

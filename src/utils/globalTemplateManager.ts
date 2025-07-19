@@ -123,14 +123,18 @@ export class GlobalTemplateManager {
       let content = template.content;
       
       // Replace all variables in the format {{variableName}} with sanitized values
+      // Using pre-compiled regex patterns and simple string replacement to prevent ReDoS attacks
       for (const [key, value] of Object.entries(variables)) {
         const placeholder = `{{${key}}}`;
         const sanitizedValue = this.sanitizeTemplateValue(value || '');
-        content = content.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), sanitizedValue);
+        // Use simple string replacement instead of regex to avoid ReDoS vulnerability
+        content = content.split(placeholder).join(sanitizedValue);
       }
       
-      // Clean up any remaining unreplaced variables
-      content = content.replace(/\{\{[^}]+\}\}/g, '[N/A]');
+      // Clean up any remaining unreplaced variables with a safe, non-backtracking pattern
+      // Limit the search to prevent catastrophic backtracking on malicious input
+      const remainingVarsPattern = /\{\{[a-zA-Z0-9_-]{1,50}\}\}/g;
+      content = content.replace(remainingVarsPattern, '[N/A]');
       
       return content;
     } catch (error) {

@@ -46,18 +46,18 @@ export class SmartInputValidator {
     private static readonly MAX_LENGTH = 2000;
     private static readonly MIN_WORDS = 3;
     
-    // Technical keywords for support context
-    private static readonly TECHNICAL_KEYWORDS = [
+    // Technical keywords for support context - optimized with Set for O(1) lookup
+    private static readonly TECHNICAL_KEYWORDS = new Set([
         'error', 'bug', 'issue', 'problem', 'broken', 'not working',
         'crash', 'freeze', 'slow', 'timeout', 'connection', 'loading',
         'feature', 'function', 'button', 'page', 'screen', 'menu'
-    ];
+    ]);
     
-    // Context indicator words
-    private static readonly CONTEXT_WORDS = [
+    // Context indicator words - optimized with Set for O(1) lookup
+    private static readonly CONTEXT_WORDS = new Set([
         'when', 'how', 'why', 'where', 'after', 'before', 'during',
         'while', 'tried', 'attempt', 'step', 'process'
-    ];
+    ]);
 
     /**
      * Validates support ticket summary input with comprehensive feedback
@@ -166,9 +166,9 @@ export class SmartInputValidator {
             suggestions.push('Add more details about the issue');
         }
         
-        // Technical terms detection
-        const hasTechnicalTerms = this.TECHNICAL_KEYWORDS.some(keyword => 
-            text.includes(keyword)
+        // Technical terms detection with optimized Set lookup
+        const hasTechnicalTerms = words.some(word => 
+            this.TECHNICAL_KEYWORDS.has(word)
         );
         if (hasTechnicalTerms) {
             score += 0.2;
@@ -177,9 +177,9 @@ export class SmartInputValidator {
             suggestions.push('Include specific error messages or feature names');
         }
         
-        // Context analysis
-        const hasContext = this.CONTEXT_WORDS.some(word => 
-            text.includes(word)
+        // Context analysis with optimized Set lookup
+        const hasContext = words.some(word => 
+            this.CONTEXT_WORDS.has(word)
         );
         if (hasContext) {
             score += 0.15;

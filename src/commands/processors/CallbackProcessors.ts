@@ -16,6 +16,7 @@ import { BotsStore } from '../../sdk/bots-brain/index.js';
 import * as unthreadService from '../../services/unthread.js';
 import { generateDummyEmail, updateUserEmail } from '../../utils/emailManager.js';
 import { escapeMarkdown } from '../../utils/markdownEscape.js';
+import { attachmentHandler } from '../../utils/attachmentHandler.js';
 
 // Clean Code: Extract constants to avoid magic strings and numbers
 const CALLBACK_CONSTANTS = {
@@ -539,6 +540,18 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 return false;
             }
 
+            // Detect file attachments from stored user state (not from callback message)
+            const attachmentIds = userState.attachmentIds || [];
+            const hasAttachments = userState.hasAttachments || false;
+
+            // Show processing message with attachment awareness
+            let processingText = "🎫 **Creating Your Ticket**\n\n⏳ Please wait while I create your support ticket...";
+            if (hasAttachments) {
+                processingText = `🎫 **Creating Your Ticket**\n\n⏳ Processing ${attachmentIds.length} file attachment${attachmentIds.length > 1 ? 's' : ''} and creating your support ticket...`;
+            }
+
+            await ctx.editMessageText(processingText, { parse_mode: 'Markdown' });
+
             // Get user data using the unified function for consistent naming
             const userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
             
@@ -548,12 +561,94 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 email: userState.email // Must exist at this point
             };
 
-            // Create ticket using the unthread service with correct parameters
-            const ticketResponse = await unthreadService.createTicket({
-                groupChatName: 'Telegram Support', // Default group chat name
-                customerId: process.env.UNTHREAD_CUSTOMER_ID!,
-                summary: userState.summary,
-                onBehalfOf
+            // Use unified approach: create ticket with attachments in single API call when attachments exist
+            let ticketResponse;
+            
+            if (hasAttachments) {
+                LogEngine.info('Creating ticket with unified attachment approach via callback', {
+                    userId,
+                    attachmentCount: attachmentIds.length,
+                    method: 'callback_unified_buffer_approach'
+                });
+                
+                try {
+                    // Update status to show unified processing
+                    await ctx.editMessageText(
+                        `🎫 **Creating Unified Ticket**\n\n⚡ Creating ticket with ${attachmentIds.length} attachment${attachmentIds.length > 1 ? 's' : ''} in a single operation...`,
+                        { parse_mode: 'Markdown' }
+                    );
+                    
+                    // Convert file IDs to buffers for unified processing
+                    const attachmentBuffers = await attachmentHandler.convertFileIdsToBuffers(attachmentIds);
+                    
+                    if (attachmentBuffers.length === 0) {
+                        LogEngine.warn('Failed to convert file IDs to buffers via callback, falling back to standard ticket creation', {
+                            originalAttachmentCount: attachmentIds.length,
+                            userId
+                        });
+                        
+                        // Fallback to standard ticket creation without attachments
+                        ticketResponse = await unthreadService.createTicket({
+                            groupChatName: 'Telegram Support', // Default group chat name
+                            customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                            summary: userState.summary,
+                            onBehalfOf
+                        });
+                    } else {
+                        // Use unified ticket creation with buffer attachments
+                        ticketResponse = await unthreadService.createTicketWithBufferAttachments({
+                            groupChatName: 'Telegram Support', // Default group chat name
+                            customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                            summary: userState.summary,
+                            onBehalfOf,
+                            attachments: attachmentBuffers
+                        });
+                        
+                        LogEngine.info('Unified ticket with attachments created successfully via callback', {
+                            ticketId: ticketResponse.id,
+                            friendlyId: ticketResponse.friendlyId,
+                            attachmentCount: attachmentBuffers.length,
+                            method: 'callback_unified_buffer_approach'
+                        });
+                    }
+                } catch (unifiedError) {
+                    LogEngine.error('Error in unified ticket creation via callback, falling back to standard approach', {
+                        error: unifiedError instanceof Error ? unifiedError.message : 'Unknown error',
+                        userId,
+                        attachmentCount: attachmentIds.length
+                    });
+                    
+                    // Fallback to standard ticket creation
+                    ticketResponse = await unthreadService.createTicket({
+                        groupChatName: 'Telegram Support', // Default group chat name
+                        customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                        summary: userState.summary,
+                        onBehalfOf
+                    });
+                }
+            } else {
+                // Standard ticket creation without attachments
+                ticketResponse = await unthreadService.createTicket({
+                    groupChatName: 'Telegram Support', // Default group chat name
+                    customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                    summary: userState.summary,
+                    onBehalfOf
+                });
+                
+                LogEngine.info('Standard ticket created successfully via callback', {
+                    ticketId: ticketResponse.id,
+                    friendlyId: ticketResponse.friendlyId,
+                    method: 'callback_standard_no_attachments'
+                });
+            }
+
+            LogEngine.info('Ticket creation completed via callback', {
+                ticketId: ticketResponse.id,
+                friendlyId: ticketResponse.friendlyId,
+                hasAttachments: hasAttachments,
+                attachmentCount: hasAttachments ? attachmentIds.length : 0,
+                attachmentIds: hasAttachments ? attachmentIds : [],
+                method: 'callback_createTicketDirectly'
             });
 
             // The response is just { id, friendlyId }

@@ -29,28 +29,10 @@ export function escapeMarkdown(text: string): string {
         return '';
     }
 
-    // Escape all special Markdown characters that can break entity parsing
-    // Order matters - backslash must be first to avoid double-escaping
-    return text
-        .replace(/\\/g, '\\\\')   // Backslash (must be first)
-        .replace(/\*/g, '\\*')    // Asterisk (bold)
-        .replace(/_/g, '\\_')     // Underscore (italic)
-        .replace(/`/g, '\\`')     // Backtick (code)
-        .replace(/\[/g, '\\[')    // Left square bracket (links)
-        .replace(/\]/g, '\\]')    // Right square bracket (links)
-        .replace(/\(/g, '\\(')    // Left parenthesis (links)
-        .replace(/\)/g, '\\)')    // Right parenthesis (links)
-        .replace(/~/g, '\\~')     // Tilde (strikethrough)
-        .replace(/>/g, '\\>')     // Greater than (blockquote)
-        .replace(/#/g, '\\#')     // Hash (heading)
-        .replace(/\+/g, '\\+')    // Plus (list)
-        .replace(/-/g, '\\-')     // Minus (list)
-        .replace(/=/g, '\\=')     // Equals (heading)
-        .replace(/\|/g, '\\|')    // Pipe (table)
-        .replace(/\{/g, '\\{')    // Left brace
-        .replace(/\}/g, '\\}')    // Right brace
-        .replace(/\./g, '\\.')    // Period (list)
-        .replace(/!/g, '\\!');    // Exclamation (emphasis)
+    // Escape all special Markdown characters with optimized single regex pass
+    // Single regex with replacement function is more efficient than multiple chained .replace() calls
+    const markdownChars = /[\\*_`\[\]()~>#+=|\{\}.!-]/g;
+    return text.replace(markdownChars, (char) => `\\${char}`);
 }
 
 /**

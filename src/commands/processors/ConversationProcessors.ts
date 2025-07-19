@@ -13,6 +13,9 @@ import { BotsStore } from '../../sdk/bots-brain/index.js';
 import { SupportCommand } from '../support/SupportCommandClean.js';
 import { logError } from '../utils/errorHandler.js';
 import * as unthreadService from '../../services/unthread.js';
+import { attachmentHandler } from '../../utils/attachmentHandler.js';
+import { extractFileAttachments } from '../../events/message.js';
+import { getMessageText, hasTextContent } from '../../utils/messageContentExtractor.js';
 import { SetupCallbackProcessor } from './CallbackProcessors.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { 
@@ -31,14 +34,25 @@ import { SimpleInputValidator, SimpleValidationResult } from '../../utils/simple
 export class SupportConversationProcessor implements IConversationProcessor {
     async canHandle(ctx: BotContext): Promise<boolean> {
         const userId = ctx.from?.id;
-        if (!userId || !ctx.message || !('text' in ctx.message) || !ctx.message.text) {
+        if (!userId || !ctx.message || !hasTextContent(ctx)) {
             return false;
         }
 
         try {
             const userState = await BotsStore.getUserState(userId);
-            return userState?.field === 'summary' || 
-                   userState?.field === 'email';
+            const canHandle = userState?.field === 'summary' || 
+                              userState?.field === 'email';
+                              
+            LogEngine.debug('SupportConversationProcessor.canHandle evaluation', {
+                userId,
+                chatType: ctx.chat?.type,
+                hasUserState: !!userState,
+                userStateField: userState?.field,
+                canHandle,
+                messageId: ctx.message?.message_id
+            });
+            
+            return canHandle;
         } catch (error) {
             logError(error, 'SupportConversationProcessor.canHandle', { userId });
             return false;
@@ -57,7 +71,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
             }
 
             const userId = ctx.from.id;
-            const userInput = (ctx.message && 'text' in ctx.message ? ctx.message.text : '') || '';
+            const userInput = getMessageText(ctx) || '';
             const userState = await BotsStore.getUserState(userId);
 
             if (!userState) {
@@ -117,23 +131,49 @@ export class SupportConversationProcessor implements IConversationProcessor {
             return true;
         }
 
-        // Store the summary
+        // Store the summary and detect any file attachments from message event data
         userState.summary = summary.trim();
+        
+        // Detect attachments here - this should be optimized later
+        // to use pre-detected attachment data from the message handler
+        const detectedAttachmentIds = extractFileAttachments(ctx);
+        const detectedHasAttachments = detectedAttachmentIds.length > 0;
+        
+        // Store attachment information in user state for callback processor
+        userState.attachmentIds = detectedAttachmentIds;
+        userState.hasAttachments = detectedHasAttachments;
 
         // Set confirmation state
         await BotsStore.setUserState(userId, {
             ...userState,
             field: 'confirmation',
-            step: 2
+            step: 2,
+            attachmentIds: detectedAttachmentIds,
+            hasAttachments: detectedHasAttachments
         });
 
-        // Show simple confirmation without unnecessary feedback
+        // Show confirmation with attachment awareness
         const safeSummary = lightEscapeMarkdown(truncateText(summary.trim(), 200));
         
-        const confirmationMessage = 
+        let confirmationMessage = 
             "📝 **Review Your Issue**\n\n" +
-            `**Summary:** ${safeSummary}\n\n` +
-            "Please review your issue description above. What would you like to do?";
+            `**Summary:** ${safeSummary}\n\n`;
+            
+        // Add attachment information if present
+        if (detectedHasAttachments) {
+            confirmationMessage += `**Attachments:** ${detectedAttachmentIds.length} file${detectedAttachmentIds.length > 1 ? 's' : ''} attached\n\n`;
+        }
+        
+        confirmationMessage += "Please review your issue description above. What would you like to do?";
+
+        LogEngine.info('Summary accepted with attachment detection', { 
+            userId, 
+            summaryLength: summary.trim().length,
+            wordCount: summary.trim().split(/\s+/).length,
+            hasAttachments: detectedHasAttachments,
+            attachmentCount: detectedAttachmentIds.length,
+            attachmentIds: detectedAttachmentIds
+        });
 
         // Generate short callback IDs for the three-button interface
         const { SupportCallbackProcessor } = await import('./CallbackProcessors.js');
@@ -154,12 +194,6 @@ export class SupportConversationProcessor implements IConversationProcessor {
                     ]
                 ]
             }
-        });
-
-        LogEngine.info('Summary accepted', { 
-            userId, 
-            summaryLength: summary.trim().length,
-            wordCount: summary.trim().split(/\s+/).length
         });
 
         return true;
@@ -206,11 +240,17 @@ export class SupportConversationProcessor implements IConversationProcessor {
         const chatId = ctx.chat.id;
 
         try {
-            // Show processing message
-            const statusMsg = await ctx.reply(
-                "🎫 **Creating Your Ticket**\n\n⏳ Please wait while I create your support ticket...",
-                { parse_mode: 'Markdown' }
-            );
+            // Get attachment information from userState if available, otherwise extract from message
+            const attachmentIds = userState.attachmentIds || extractFileAttachments(ctx);
+            const hasAttachments = userState.hasAttachments ?? (attachmentIds.length > 0);
+            
+            // Show processing message with attachment awareness
+            let processingText = "🎫 **Creating Your Ticket**\n\n⏳ Please wait while I create your support ticket...";
+            if (hasAttachments) {
+                processingText = `🎫 **Creating Your Ticket**\n\n⏳ Processing ${attachmentIds.length} file attachment${attachmentIds.length > 1 ? 's' : ''} and creating your support ticket...`;
+            }
+            
+            const statusMsg = await ctx.reply(processingText, { parse_mode: 'Markdown' });
 
             // Get or create customer for this chat
             const chatTitle = this.getChatTitle(ctx);
@@ -247,17 +287,105 @@ export class SupportConversationProcessor implements IConversationProcessor {
                 userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
             }
 
-            // Create the ticket with confirmed email
-            const ticketResponse = await unthreadService.createTicket({
-                groupChatName: chatTitle,
-                customerId: customer.id,
-                summary: userState.summary,
-                onBehalfOf: {
-                    name: userData.name || ctx.from?.first_name || 'Telegram User',
-                    email: emailToUse // Guaranteed to exist at this point
+            // Use unified approach: create ticket with attachments in single API call when attachments exist
+            let ticketResponse;
+            
+            if (hasAttachments) {
+                LogEngine.info('Creating ticket with unified attachment approach', {
+                    userId,
+                    attachmentCount: attachmentIds.length,
+                    method: 'unified_buffer_approach'
+                });
+                
+                try {
+                    // Update status to show unified processing
+                    await ctx.editMessageText(
+                        `🎫 **Creating Unified Ticket**\n\n⚡ Creating ticket with ${attachmentIds.length} attachment${attachmentIds.length > 1 ? 's' : ''} in a single operation...`,
+                        { parse_mode: 'Markdown' }
+                    );
+                    
+                    // Convert file IDs to buffers for unified processing
+                    const attachmentBuffers = await attachmentHandler.convertFileIdsToBuffers(attachmentIds);
+                    
+                    if (attachmentBuffers.length === 0) {
+                        LogEngine.warn('Failed to convert file IDs to buffers, falling back to standard ticket creation', {
+                            originalAttachmentCount: attachmentIds.length,
+                            userId
+                        });
+                        
+                        // Fallback to standard ticket creation without attachments
+                        ticketResponse = await unthreadService.createTicket({
+                            groupChatName: chatTitle,
+                            customerId: customer.id,
+                            summary: userState.summary,
+                            onBehalfOf: {
+                                name: userData.name || ctx.from?.first_name || 'Telegram User',
+                                email: emailToUse
+                            }
+                        });
+                    } else {
+                        // Use unified ticket creation with buffer attachments
+                        ticketResponse = await unthreadService.createTicketWithBufferAttachments({
+                            groupChatName: chatTitle,
+                            customerId: customer.id,
+                            summary: userState.summary,
+                            onBehalfOf: {
+                                name: userData.name || ctx.from?.first_name || 'Telegram User',
+                                email: emailToUse
+                            },
+                            attachments: attachmentBuffers
+                        });
+                        
+                        LogEngine.info('Unified ticket with attachments created successfully', {
+                            ticketId: ticketResponse.id,
+                            friendlyId: ticketResponse.friendlyId,
+                            attachmentCount: attachmentBuffers.length,
+                            method: 'unified_buffer_approach'
+                        });
+                    }
+                } catch (unifiedError) {
+                    LogEngine.error('Error in unified ticket creation, falling back to standard approach', {
+                        error: unifiedError instanceof Error ? unifiedError.message : 'Unknown error',
+                        userId,
+                        attachmentCount: attachmentIds.length
+                    });
+                    
+                    // Fallback to standard ticket creation
+                    ticketResponse = await unthreadService.createTicket({
+                        groupChatName: chatTitle,
+                        customerId: customer.id,
+                        summary: userState.summary,
+                        onBehalfOf: {
+                            name: userData.name || ctx.from?.first_name || 'Telegram User',
+                            email: emailToUse
+                        }
+                    });
                 }
-            });
+            } else {
+                // Standard ticket creation without attachments
+                ticketResponse = await unthreadService.createTicket({
+                    groupChatName: chatTitle,
+                    customerId: customer.id,
+                    summary: userState.summary,
+                    onBehalfOf: {
+                        name: userData.name || ctx.from?.first_name || 'Telegram User',
+                        email: emailToUse
+                    }
+                });
+                
+                LogEngine.info('Standard ticket created successfully', {
+                    ticketId: ticketResponse.id,
+                    friendlyId: ticketResponse.friendlyId,
+                    method: 'standard_no_attachments'
+                });
+            }
 
+            LogEngine.info('Ticket creation completed', {
+                ticketId: ticketResponse.id,
+                friendlyId: ticketResponse.friendlyId,
+                hasAttachments: hasAttachments,
+                attachmentCount: hasAttachments ? attachmentIds.length : 0
+            });
             // Register ticket confirmation for bidirectional messaging
             await unthreadService.registerTicketConfirmation({
                 messageId: statusMsg.message_id,
@@ -442,6 +570,8 @@ export class SupportConversationProcessor implements IConversationProcessor {
 export class DmSetupInputProcessor implements IConversationProcessor {
     async canHandle(ctx: BotContext): Promise<boolean> {
         const userId = ctx.from?.id;
+        
+        // DmSetupInputProcessor ONLY handles private chat messages
         if (!userId || ctx.chat?.type !== 'private' || !ctx.message || !('text' in ctx.message)) {
             return false;
         }
@@ -475,6 +605,15 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                               activeSessions.currentStep === 'awaiting_customer_id' ||
                               activeSessions.currentStep === 'awaiting_template_content';
             
+            LogEngine.debug('DmSetupInputProcessor.canHandle evaluation', {
+                userId,
+                chatType: ctx.chat?.type,
+                hasActiveSessions: !!activeSessions,
+                currentStep: activeSessions?.currentStep,
+                canHandle,
+                messageId: ctx.message?.message_id
+            });
+            
             return canHandle;
         } catch (error) {
             logError(error, 'DmSetupInputProcessor.canHandle', { userId });
@@ -484,7 +623,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
 
     async process(ctx: BotContext): Promise<boolean> {
         const userId = ctx.from?.id;
-        const inputText = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
+        const inputText = getMessageText(ctx);
 
         if (!userId || !inputText) {
             return false;
