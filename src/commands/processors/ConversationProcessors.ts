@@ -292,86 +292,105 @@ export class SupportConversationProcessor implements IConversationProcessor {
                 userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
             }
 
-            // Create the ticket first (always), then handle attachments separately
+            // Use unified approach: create ticket with attachments in single API call when attachments exist
             let ticketResponse;
             
-            // Always create the ticket first to get the conversation ID
-            ticketResponse = await unthreadService.createTicket({
-                groupChatName: chatTitle,
-                customerId: customer.id,
-                summary: userState.summary,
-                onBehalfOf: {
-                    name: userData.name || ctx.from?.first_name || 'Telegram User',
-                    email: emailToUse
+            if (hasAttachments) {
+                LogEngine.info('Creating ticket with unified attachment approach', {
+                    userId,
+                    attachmentCount: attachmentIds.length,
+                    method: 'unified_buffer_approach'
+                });
+                
+                try {
+                    // Update status to show unified processing
+                    await ctx.editMessageText(
+                        `🎫 **Creating Unified Ticket**\n\n⚡ Creating ticket with ${attachmentIds.length} attachment${attachmentIds.length > 1 ? 's' : ''} in a single operation...`,
+                        { parse_mode: 'Markdown' }
+                    );
+                    
+                    // Convert file IDs to buffers for unified processing
+                    const attachmentBuffers = await attachmentHandler.convertFileIdsToBuffers(attachmentIds);
+                    
+                    if (attachmentBuffers.length === 0) {
+                        LogEngine.warn('Failed to convert file IDs to buffers, falling back to standard ticket creation', {
+                            originalAttachmentCount: attachmentIds.length,
+                            userId
+                        });
+                        
+                        // Fallback to standard ticket creation without attachments
+                        ticketResponse = await unthreadService.createTicket({
+                            groupChatName: chatTitle,
+                            customerId: customer.id,
+                            summary: userState.summary,
+                            onBehalfOf: {
+                                name: userData.name || ctx.from?.first_name || 'Telegram User',
+                                email: emailToUse
+                            }
+                        });
+                    } else {
+                        // Use unified ticket creation with buffer attachments
+                        ticketResponse = await unthreadService.createTicketWithBufferAttachments({
+                            groupChatName: chatTitle,
+                            customerId: customer.id,
+                            summary: userState.summary,
+                            onBehalfOf: {
+                                name: userData.name || ctx.from?.first_name || 'Telegram User',
+                                email: emailToUse
+                            },
+                            attachments: attachmentBuffers
+                        });
+                        
+                        LogEngine.info('Unified ticket with attachments created successfully', {
+                            ticketId: ticketResponse.id,
+                            friendlyId: ticketResponse.friendlyId,
+                            attachmentCount: attachmentBuffers.length,
+                            method: 'unified_buffer_approach'
+                        });
+                    }
+                } catch (unifiedError) {
+                    LogEngine.error('Error in unified ticket creation, falling back to standard approach', {
+                        error: unifiedError instanceof Error ? unifiedError.message : 'Unknown error',
+                        userId,
+                        attachmentCount: attachmentIds.length
+                    });
+                    
+                    // Fallback to standard ticket creation
+                    ticketResponse = await unthreadService.createTicket({
+                        groupChatName: chatTitle,
+                        customerId: customer.id,
+                        summary: userState.summary,
+                        onBehalfOf: {
+                            name: userData.name || ctx.from?.first_name || 'Telegram User',
+                            email: emailToUse
+                        }
+                    });
                 }
-            });
+            } else {
+                // Standard ticket creation without attachments
+                ticketResponse = await unthreadService.createTicket({
+                    groupChatName: chatTitle,
+                    customerId: customer.id,
+                    summary: userState.summary,
+                    onBehalfOf: {
+                        name: userData.name || ctx.from?.first_name || 'Telegram User',
+                        email: emailToUse
+                    }
+                });
+                
+                LogEngine.info('Standard ticket created successfully', {
+                    ticketId: ticketResponse.id,
+                    friendlyId: ticketResponse.friendlyId,
+                    method: 'standard_no_attachments'
+                });
+            }
 
-            LogEngine.info('Ticket created successfully', {
+            LogEngine.info('Ticket creation completed', {
                 ticketId: ticketResponse.id,
                 friendlyId: ticketResponse.friendlyId,
                 hasAttachments: hasAttachments,
                 attachmentCount: hasAttachments ? attachmentIds.length : 0
             });
-            
-            // If there are attachments, add them as a follow-up message to the existing conversation
-            if (hasAttachments) {
-                LogEngine.info('Processing attachments for created ticket', {
-                    userId,
-                    ticketId: ticketResponse.id,
-                    conversationId: ticketResponse.id,
-                    attachmentCount: attachmentIds.length
-                });
-                
-                try {
-                    // Update status to show attachment processing
-                    await ctx.editMessageText(
-                        `🎫 **Ticket Created**\n\n� Processing ${attachmentIds.length} file attachment${attachmentIds.length > 1 ? 's' : ''}...`,
-                        { parse_mode: 'Markdown' }
-                    );
-                    
-                    // Process attachments using the buffer-only approach
-                    const attachmentProcessingResult = await attachmentHandler.processAttachments(
-                        attachmentIds,
-                        ticketResponse.id, // Use the conversation ID from the created ticket
-                        'Customer file attachment submitted with support ticket via Telegram'
-                    );
-                    
-                    if (attachmentProcessingResult) {
-                        LogEngine.info('Attachments processed successfully for ticket', {
-                            ticketId: ticketResponse.id,
-                            conversationId: ticketResponse.id,
-                            attachmentCount: attachmentIds.length,
-                            method: 'pure_buffer_post_creation'
-                        });
-                    } else {
-                        LogEngine.warn('Failed to process some attachments for ticket', {
-                            ticketId: ticketResponse.id,
-                            conversationId: ticketResponse.id,
-                            attemptedAttachments: attachmentIds.length,
-                            method: 'pure_buffer_post_creation'
-                        });
-                        
-                        // Update status to reflect partial success
-                        await ctx.editMessageText(
-                            `🎫 **Ticket Created**\n\n⚠️ Some attachments failed to process, but your ticket was created successfully.`,
-                            { parse_mode: 'Markdown' }
-                        );
-                    }
-                } catch (attachmentError) {
-                    LogEngine.error('Error processing attachments for created ticket', {
-                        error: attachmentError instanceof Error ? attachmentError.message : 'Unknown error',
-                        ticketId: ticketResponse.id,
-                        conversationId: ticketResponse.id,
-                        attachmentCount: attachmentIds.length
-                    });
-                    
-                    // Don't fail the ticket creation due to attachment processing errors
-                    LogEngine.info('Continuing with ticket creation despite attachment processing failure', {
-                        ticketId: ticketResponse.id
-                    });
-                }
-            }
-
             // Register ticket confirmation for bidirectional messaging
             await unthreadService.registerTicketConfirmation({
                 messageId: statusMsg.message_id,

@@ -116,6 +116,15 @@ export interface ProcessingError {
 }
 
 /**
+ * Buffer attachment interface for unified ticket creation
+ */
+export interface BufferAttachment {
+    filename: string;
+    buffer: Buffer;
+    mimeType: string;
+}
+
+/**
  * Enhanced Buffer Configuration - Performance & Reliability
  * Configuration for buffer-based file processing
  */
@@ -152,6 +161,9 @@ export const BUFFER_ATTACHMENT_CONFIG = {
         'image/gif',
         'image/webp',
         'image/bmp',
+        'image/svg+xml',
+        'image/tiff',
+        'image/x-icon',
         
         // Documents
         'application/pdf',
@@ -161,9 +173,22 @@ export const BUFFER_ATTACHMENT_CONFIG = {
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'text/plain',
         'text/csv',
+        'application/rtf',
+        'text/markdown',
         
         // Archives
-        'application/zip'
+        'application/zip',
+        'application/x-rar-compressed',
+        'application/x-7z-compressed',
+        'application/x-tar',
+        'application/gzip',
+        
+        // Audio/Video (common formats)
+        'audio/mpeg',
+        'video/mp4',
+        'video/x-msvideo',
+        'video/quicktime',
+        'audio/wav'
     ],
     
     // File extensions mapping for MIME type fallback
@@ -175,6 +200,10 @@ export const BUFFER_ATTACHMENT_CONFIG = {
         '.gif': 'image/gif',
         '.webp': 'image/webp',
         '.bmp': 'image/bmp',
+        '.svg': 'image/svg+xml',
+        '.tiff': 'image/tiff',
+        '.tif': 'image/tiff',
+        '.ico': 'image/x-icon',
         
         // Documents  
         '.pdf': 'application/pdf',
@@ -184,9 +213,22 @@ export const BUFFER_ATTACHMENT_CONFIG = {
         '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         '.txt': 'text/plain',
         '.csv': 'text/csv',
+        '.rtf': 'application/rtf',
+        '.md': 'text/markdown',
         
         // Archives
-        '.zip': 'application/zip'
+        '.zip': 'application/zip',
+        '.rar': 'application/x-rar-compressed',
+        '.7z': 'application/x-7z-compressed',
+        '.tar': 'application/x-tar',
+        '.gz': 'application/gzip',
+        
+        // Audio/Video (common formats)
+        '.mp3': 'audio/mpeg',
+        '.mp4': 'video/mp4',
+        '.avi': 'video/x-msvideo',
+        '.mov': 'video/quicktime',
+        '.wav': 'audio/wav'
     }
 };
 
@@ -540,8 +582,20 @@ export class AttachmentHandler {
                     throw new Error(`Downloaded file too large: ${buffer.length} bytes`);
                 }
 
-                // Detect MIME type
-                const mimeType = downloadResponse.headers.get('content-type') || detectMimeTypeFromExtension(sanitizedFileName);
+                // Detect MIME type - prioritize extension-based detection for reliable results
+                const contentTypeMime = downloadResponse.headers.get('content-type');
+                const extensionMime = detectMimeTypeFromExtension(sanitizedFileName);
+                
+                // Use extension-based detection if available, otherwise fall back to content-type header
+                const mimeType = (extensionMime !== 'application/octet-stream') ? extensionMime : contentTypeMime || 'application/octet-stream';
+                
+                LogEngine.debug('[AttachmentHandler] MIME type detection', {
+                    fileName: sanitizedFileName,
+                    contentTypeMime,
+                    extensionMime,
+                    finalMimeType: mimeType,
+                    detectionMethod: (extensionMime !== 'application/octet-stream') ? 'extension' : 'content-type'
+                });
 
                 // Phase 3.1 Security: Validate MIME type
                 if (BUFFER_ATTACHMENT_CONFIG.enableContentValidation && 
@@ -575,7 +629,101 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 3.1 Enhanced upload buffer to Unthread with retry logic
+     * Convert multiple file IDs to buffers for unified ticket creation
+     * This method processes multiple file IDs in parallel and returns prepared buffer attachments
+     */
+    async convertFileIdsToBuffers(fileIds: string[]): Promise<BufferAttachment[]> {
+        LogEngine.info('[AttachmentHandler] Converting file IDs to buffers for unified processing', {
+            fileCount: fileIds.length,
+            method: 'convertFileIdsToBuffers'
+        });
+
+        if (!fileIds || fileIds.length === 0) {
+            LogEngine.warn('[AttachmentHandler] No file IDs provided for buffer conversion');
+            return [];
+        }
+
+        if (fileIds.length > BUFFER_ATTACHMENT_CONFIG.maxFiles) {
+            LogEngine.warn('[AttachmentHandler] Too many files for unified processing', {
+                providedCount: fileIds.length,
+                maxAllowed: BUFFER_ATTACHMENT_CONFIG.maxFiles
+            });
+            return [];
+        }
+
+        const conversionResults: BufferAttachment[] = [];
+        const conversionErrors: string[] = [];
+
+        // Process files in parallel for better performance
+        const conversionPromises = fileIds.map(async (fileId, index) => {
+            try {
+                LogEngine.debug('[AttachmentHandler] Converting file ID to buffer', {
+                    fileId,
+                    index,
+                    totalFiles: fileIds.length
+                });
+
+                const fileBuffer = await this.loadFileToBuffer(fileId);
+                
+                // Validate buffer data
+                if (!fileBuffer.buffer || fileBuffer.buffer.length === 0) {
+                    throw new Error(`Empty buffer received for file ID: ${fileId}`);
+                }
+
+                if (!this.validateFileSize(fileBuffer.size, fileBuffer.fileName)) {
+                    throw new Error(`File size validation failed for: ${fileBuffer.fileName}`);
+                }
+
+                const bufferAttachment: BufferAttachment = {
+                    filename: fileBuffer.fileName,
+                    buffer: fileBuffer.buffer,
+                    mimeType: fileBuffer.mimeType
+                };
+
+                LogEngine.debug('[AttachmentHandler] File ID converted to buffer successfully', {
+                    fileId,
+                    fileName: fileBuffer.fileName,
+                    size: fileBuffer.size,
+                    mimeType: fileBuffer.mimeType
+                });
+
+                return bufferAttachment;
+
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                LogEngine.error('[AttachmentHandler] Failed to convert file ID to buffer', {
+                    fileId,
+                    error: errorMessage,
+                    index
+                });
+                
+                conversionErrors.push(`File ${index + 1}: ${errorMessage}`);
+                return null;
+            }
+        });
+
+        // Wait for all conversions to complete
+        const results = await Promise.all(conversionPromises);
+        
+        // Filter out failed conversions
+        for (const result of results) {
+            if (result !== null) {
+                conversionResults.push(result);
+            }
+        }
+
+        LogEngine.info('[AttachmentHandler] File ID to buffer conversion completed', {
+            totalRequested: fileIds.length,
+            successfulConversions: conversionResults.length,
+            failedConversions: conversionErrors.length,
+            errors: conversionErrors.length > 0 ? conversionErrors : undefined
+        });
+
+        return conversionResults;
+    }
+
+    /**
+     * Phase 3.1 Enhanced upload buffer to Unthread with retry logic using proper Unthread API
      */
     async uploadBufferToUnthread(fileBuffer: FileBuffer, conversationId: string, message?: string): Promise<boolean> {
         const { result } = await withPerformanceMonitoring(async () => {
@@ -587,24 +735,50 @@ export class AttachmentHandler {
                     version: '4.0.0'
                 });
 
-                const formData = new FormData();
-                formData.append('file', fileBuffer.buffer, fileBuffer.fileName);
-                formData.append('conversation_id', conversationId);
-                if (message) {
-                    formData.append('message', message);
+                // Use proper Unthread API base URL from the service
+                const API_BASE_URL = 'https://api.unthread.io/api';
+                const UNTHREAD_API_KEY = process.env.UNTHREAD_API_KEY!;
+
+                if (!UNTHREAD_API_KEY) {
+                    throw new Error('UNTHREAD_API_KEY environment variable is not set');
                 }
 
-                // Phase 3.1 Enhanced request metadata
-                formData.append('source', 'telegram-bot');
-                formData.append('version', '4.0.0');
-                formData.append('implementation', 'buffer-only');
-                formData.append('timestamp', new Date().toISOString());
+                // Create FormData with proper structure for Unthread API
+                const formData = new FormData();
+                
+                // The Unthread API requires either body OR blocks to be provided
+                // We'll always provide a message body when uploading attachments
+                const messagePayload = {
+                    body: {
+                        type: "markdown",
+                        value: message || "📎 File attachment"  // Always provide a message body
+                    },
+                    onBehalfOf: {
+                        name: "Telegram Bot",
+                        email: "bot@telegram.local"
+                    }
+                };
 
-                const uploadResponse = await fetch(`${process.env.UNTHREAD_API_BASE_URL}/upload-attachment`, {
+                // According to API docs: use 'json' field for message payload (not 'payload_json')
+                formData.append('json', JSON.stringify(messagePayload));
+                
+                // According to API docs: use 'attachments' field for files (not 'files')
+                formData.append('attachments', fileBuffer.buffer, fileBuffer.fileName);
+                
+                LogEngine.debug('[AttachmentHandler] FormData prepared with correct API structure', {
+                    fileName: fileBuffer.fileName,
+                    fileSize: fileBuffer.size,
+                    messageBody: messagePayload.body.value,
+                    apiStructure: 'json + attachments fields'
+                });
+
+                // Use the proper Unthread conversation endpoint
+                const uploadResponse = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${process.env.UNTHREAD_API_KEY}`,
-                        'X-Request-ID': `${conversationId}-${Date.now()}`
+                        'X-API-KEY': UNTHREAD_API_KEY,
+                        'X-Request-ID': `telegram-bot-${conversationId}-${Date.now()}`,
+                        ...formData.getHeaders()
                     },
                     body: formData
                 });
@@ -614,10 +788,13 @@ export class AttachmentHandler {
                     throw new Error(`Upload failed: ${uploadResponse.status} ${uploadResponse.statusText} - ${errorText}`);
                 }
 
+                const responseData = await uploadResponse.json();
+
                 LogEngine.info('[AttachmentHandler] File uploaded to Unthread successfully', {
                     fileName: fileBuffer.fileName,
                     fileSize: fileBuffer.size,
                     conversationId,
+                    messageId: (responseData as any)?.ts || 'unknown',
                     version: '4.0.0'
                 });
 

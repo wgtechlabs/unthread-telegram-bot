@@ -561,15 +561,88 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 email: userState.email // Must exist at this point
             };
 
-            // Create ticket first (always), then handle attachments separately
-            const ticketResponse = await unthreadService.createTicket({
-                groupChatName: 'Telegram Support', // Default group chat name
-                customerId: process.env.UNTHREAD_CUSTOMER_ID!,
-                summary: userState.summary,
-                onBehalfOf
-            });
+            // Use unified approach: create ticket with attachments in single API call when attachments exist
+            let ticketResponse;
+            
+            if (hasAttachments) {
+                LogEngine.info('Creating ticket with unified attachment approach via callback', {
+                    userId,
+                    attachmentCount: attachmentIds.length,
+                    method: 'callback_unified_buffer_approach'
+                });
+                
+                try {
+                    // Update status to show unified processing
+                    await ctx.editMessageText(
+                        `🎫 **Creating Unified Ticket**\n\n⚡ Creating ticket with ${attachmentIds.length} attachment${attachmentIds.length > 1 ? 's' : ''} in a single operation...`,
+                        { parse_mode: 'Markdown' }
+                    );
+                    
+                    // Convert file IDs to buffers for unified processing
+                    const attachmentBuffers = await attachmentHandler.convertFileIdsToBuffers(attachmentIds);
+                    
+                    if (attachmentBuffers.length === 0) {
+                        LogEngine.warn('Failed to convert file IDs to buffers via callback, falling back to standard ticket creation', {
+                            originalAttachmentCount: attachmentIds.length,
+                            userId
+                        });
+                        
+                        // Fallback to standard ticket creation without attachments
+                        ticketResponse = await unthreadService.createTicket({
+                            groupChatName: 'Telegram Support', // Default group chat name
+                            customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                            summary: userState.summary,
+                            onBehalfOf
+                        });
+                    } else {
+                        // Use unified ticket creation with buffer attachments
+                        ticketResponse = await unthreadService.createTicketWithBufferAttachments({
+                            groupChatName: 'Telegram Support', // Default group chat name
+                            customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                            summary: userState.summary,
+                            onBehalfOf,
+                            attachments: attachmentBuffers
+                        });
+                        
+                        LogEngine.info('Unified ticket with attachments created successfully via callback', {
+                            ticketId: ticketResponse.id,
+                            friendlyId: ticketResponse.friendlyId,
+                            attachmentCount: attachmentBuffers.length,
+                            method: 'callback_unified_buffer_approach'
+                        });
+                    }
+                } catch (unifiedError) {
+                    LogEngine.error('Error in unified ticket creation via callback, falling back to standard approach', {
+                        error: unifiedError instanceof Error ? unifiedError.message : 'Unknown error',
+                        userId,
+                        attachmentCount: attachmentIds.length
+                    });
+                    
+                    // Fallback to standard ticket creation
+                    ticketResponse = await unthreadService.createTicket({
+                        groupChatName: 'Telegram Support', // Default group chat name
+                        customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                        summary: userState.summary,
+                        onBehalfOf
+                    });
+                }
+            } else {
+                // Standard ticket creation without attachments
+                ticketResponse = await unthreadService.createTicket({
+                    groupChatName: 'Telegram Support', // Default group chat name
+                    customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                    summary: userState.summary,
+                    onBehalfOf
+                });
+                
+                LogEngine.info('Standard ticket created successfully via callback', {
+                    ticketId: ticketResponse.id,
+                    friendlyId: ticketResponse.friendlyId,
+                    method: 'callback_standard_no_attachments'
+                });
+            }
 
-            LogEngine.info('Ticket created successfully via callback', {
+            LogEngine.info('Ticket creation completed via callback', {
                 ticketId: ticketResponse.id,
                 friendlyId: ticketResponse.friendlyId,
                 hasAttachments: hasAttachments,
@@ -577,65 +650,6 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 attachmentIds: hasAttachments ? attachmentIds : [],
                 method: 'callback_createTicketDirectly'
             });
-
-            // If there are attachments, add them as a follow-up message to the existing conversation
-            if (hasAttachments) {
-                LogEngine.info('Processing attachments for created ticket via callback', {
-                    userId,
-                    ticketId: ticketResponse.id,
-                    conversationId: ticketResponse.id,
-                    attachmentCount: attachmentIds.length
-                });
-                
-                try {
-                    // Update status to show attachment processing
-                    await ctx.editMessageText(
-                        `🎫 **Ticket Created**\n\n📎 Processing ${attachmentIds.length} file attachment${attachmentIds.length > 1 ? 's' : ''}...`,
-                        { parse_mode: 'Markdown' }
-                    );
-                    
-                    // Process attachments using the buffer-only approach
-                    const attachmentProcessingResult = await attachmentHandler.processAttachments(
-                        attachmentIds,
-                        ticketResponse.id, // Use the conversation ID from the created ticket
-                        'Customer file attachment submitted with support ticket via Telegram (callback)'
-                    );
-                    
-                    if (attachmentProcessingResult) {
-                        LogEngine.info('Attachments processed successfully for ticket via callback', {
-                            ticketId: ticketResponse.id,
-                            conversationId: ticketResponse.id,
-                            attachmentCount: attachmentIds.length,
-                            method: 'callback_buffer_processing'
-                        });
-                    } else {
-                        LogEngine.warn('Failed to process some attachments for ticket via callback', {
-                            ticketId: ticketResponse.id,
-                            conversationId: ticketResponse.id,
-                            attemptedAttachments: attachmentIds.length,
-                            method: 'callback_buffer_processing'
-                        });
-                        
-                        // Update status to reflect partial success
-                        await ctx.editMessageText(
-                            `🎫 **Ticket Created**\n\n⚠️ Some attachments failed to process, but your ticket was created successfully.`,
-                            { parse_mode: 'Markdown' }
-                        );
-                    }
-                } catch (attachmentError) {
-                    LogEngine.error('Error processing attachments for created ticket via callback', {
-                        error: attachmentError instanceof Error ? attachmentError.message : 'Unknown error',
-                        ticketId: ticketResponse.id,
-                        conversationId: ticketResponse.id,
-                        attachmentCount: attachmentIds.length
-                    });
-                    
-                    // Don't fail the ticket creation due to attachment processing errors
-                    LogEngine.info('Continuing with ticket creation despite attachment processing failure via callback', {
-                        ticketId: ticketResponse.id
-                    });
-                }
-            }
 
             // The response is just { id, friendlyId }
             const ticket = ticketResponse;

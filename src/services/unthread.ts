@@ -126,6 +126,21 @@ interface SendMessageWithAttachmentsParams {
 }
 
 /**
+ * Ticket creation parameters with file attachments using buffers
+ */
+interface CreateTicketWithBufferAttachmentsParams {
+  groupChatName: string;
+  customerId: string;
+  summary: string;
+  onBehalfOf: OnBehalfOfUser;
+  attachments: Array<{
+    filename: string;
+    buffer: Buffer;
+    mimeType: string;
+  }>;
+}
+
+/**
  * Ticket creation parameters with file attachments
  */
 interface CreateTicketWithAttachmentsParams {
@@ -1194,6 +1209,37 @@ export async function createTicketWithAttachments(params: CreateTicketWithAttach
 }
 
 /**
+ * Creates a ticket with file attachments using memory buffers and multipart/form-data.
+ * This version accepts file buffers directly instead of file paths, making it ideal
+ * for integration with the AttachmentHandler's buffer-based approach.
+ *
+ * @param params - Contains ticket data and file buffers for attachments.
+ * @returns The ticket creation response with ID and friendly ID.
+ * @throws If the API request fails or buffer processing fails.
+ */
+export async function createTicketWithBufferAttachments(params: CreateTicketWithBufferAttachmentsParams): Promise<CreateTicketResponse> {
+    try {
+        LogEngine.info('Creating ticket with buffer attachments in Unthread', {
+            groupChatName: params.groupChatName,
+            customerId: params.customerId,
+            fileCount: params.attachments.length,
+            onBehalfOf: params.onBehalfOf.name,
+            implementation: 'buffer-based'
+        });
+
+        return await createTicketMultipartBuffer(params);
+    } catch (error) {
+        LogEngine.error('Error creating ticket with buffer attachments', {
+            error: (error as Error).message,
+            groupChatName: params.groupChatName,
+            customerId: params.customerId,
+            fileCount: params.attachments.length
+        });
+        throw error;
+    }
+}
+
+/**
  * Internal method to send a message with attachments using multipart/form-data.
  *
  * @param params - Message parameters with file paths.
@@ -1324,6 +1370,79 @@ async function createTicketMultipart(params: CreateTicketWithAttachmentsParams):
         ticketId: result.id,
         friendlyId: result.friendlyId,
         fileCount: filePaths.length
+    });
+
+    return result;
+}
+
+/**
+ * Internal method to create a ticket with buffer attachments using multipart/form-data.
+ * Uses the correct Unthread API structure for creating conversations with attachments.
+ *
+ * @param params - Ticket creation parameters with file buffers.
+ * @returns The ticket creation response.
+ * @throws If the API request fails or buffer processing fails.
+ */
+async function createTicketMultipartBuffer(params: CreateTicketWithBufferAttachmentsParams): Promise<CreateTicketResponse> {
+    const { groupChatName, summary, customerId, onBehalfOf, attachments } = params;
+
+    // Create form data
+    const form = new FormData();
+
+    // Add the ticket payload as JSON - use correct field name for Unthread API
+    const defaultPriority = getDefaultTicketPriority();
+    const ticketPayload: CreateTicketPayload = {
+        type: "slack",
+        title: groupChatName,
+        markdown: summary,
+        status: "open",
+        channelId: CHANNEL_ID!,  // Use proper channel ID
+        customerId: customerId,
+        onBehalfOf: onBehalfOf
+    };
+
+    // Add priority only if it's defined
+    if (defaultPriority !== undefined) {
+        ticketPayload.priority = defaultPriority;
+    }
+
+    // According to Unthread API docs: use 'json' field for conversation creation (not 'payload_json')
+    form.append('json', JSON.stringify(ticketPayload));
+
+    // Add each file buffer to the form using correct field name
+    for (const attachment of attachments) {
+        // According to Unthread API docs: use 'attachments' field for files in conversation creation
+        form.append('attachments', attachment.buffer, attachment.filename);
+        
+        LogEngine.debug('Added buffer to ticket form', { 
+            fileName: attachment.filename, 
+            size: attachment.buffer.length,
+            mimeType: attachment.mimeType 
+        });
+    }
+
+    // Send request to Unthread
+    const response = await fetch(`${API_BASE_URL}/conversations`, {
+        method: 'POST',
+        headers: {
+            'X-API-KEY': UNTHREAD_API_KEY!,
+            ...form.getHeaders()
+        },
+        body: form
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to create ticket with buffer attachments: ${response.status} ${errorText}`);
+    }
+
+    const result = await response.json() as CreateTicketResponse;
+    
+    LogEngine.info('Ticket with buffer attachments created successfully', {
+        ticketId: result.id,
+        friendlyId: result.friendlyId,
+        fileCount: attachments.length,
+        implementation: 'buffer-based'
     });
 
     return result;
