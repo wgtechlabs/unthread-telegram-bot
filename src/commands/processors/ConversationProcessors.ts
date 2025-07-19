@@ -134,12 +134,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
         // Store the summary and detect any file attachments from message event data
         userState.summary = summary.trim();
         
-        // Get attachment information that was already detected in message handler
-        // to avoid duplicate detection and processing
-        const attachmentIds: string[] = [];
-        const hasAttachments = false; // Will be updated when we get attachments from message context
-        
-        // For now, we'll detect attachments here but we should optimize this later
+        // Detect attachments here - this should be optimized later
         // to use pre-detected attachment data from the message handler
         const detectedAttachmentIds = extractFileAttachments(ctx);
         const detectedHasAttachments = detectedAttachmentIds.length > 0;
@@ -245,9 +240,9 @@ export class SupportConversationProcessor implements IConversationProcessor {
         const chatId = ctx.chat.id;
 
         try {
-            // Detect file attachments from the message
-            const attachmentIds = extractFileAttachments(ctx);
-            const hasAttachments = attachmentIds.length > 0;
+            // Get attachment information from userState if available, otherwise extract from message
+            const attachmentIds = userState.attachmentIds || extractFileAttachments(ctx);
+            const hasAttachments = userState.hasAttachments ?? (attachmentIds.length > 0);
             
             // Show processing message with attachment awareness
             let processingText = "🎫 **Creating Your Ticket**\n\n⏳ Please wait while I create your support ticket...";

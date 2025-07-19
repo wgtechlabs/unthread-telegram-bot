@@ -254,7 +254,7 @@ class BufferPool {
             return buffer;
         }
         LogEngine.debug('Created new buffer', { size: this.bufferSize });
-        return Buffer.allocUnsafe(this.bufferSize);
+        return Buffer.alloc(this.bufferSize);
     }
 
     release(buffer: Buffer): void {
