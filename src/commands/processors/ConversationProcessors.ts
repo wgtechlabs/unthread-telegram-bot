@@ -341,14 +341,14 @@ export class SupportConversationProcessor implements IConversationProcessor {
                             ticketId: ticketResponse.id,
                             conversationId: ticketResponse.id,
                             attachmentCount: attachmentIds.length,
-                            method: 'enhanced_buffer_or_stream_post_creation'
+                            method: 'pure_buffer_post_creation'
                         });
                     } else {
                         LogEngine.warn('Failed to process some attachments for ticket', {
                             ticketId: ticketResponse.id,
                             conversationId: ticketResponse.id,
                             attemptedAttachments: attachmentIds.length,
-                            method: 'enhanced_buffer_or_stream_post_creation'
+                            method: 'pure_buffer_post_creation'
                         });
                         
                         // Update status to reflect partial success

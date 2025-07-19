@@ -491,7 +491,7 @@ async function processTicketMessage(ticketInfo: any, telegramUserId: number, use
             ticketNumber: ticketInfo.friendlyId,
             conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
             attachmentCount: attachmentFileIds.length,
-            processingMethod: 'enhanced_buffer_or_stream'
+            processingMethod: 'pure_buffer'
         });
     } else {
         // Send text-only message if no attachments
@@ -668,7 +668,7 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
                 LogEngine.info('File attachments processed successfully for agent reply using enhanced processing', {
                     conversationId: agentMessageInfo.conversationId,
                     attachmentCount: attachmentFileIds.length,
-                    processingMethod: 'enhanced_buffer_or_stream'
+                    processingMethod: 'pure_buffer'
                 });
             } else {
                 // Send text-only message if no attachments

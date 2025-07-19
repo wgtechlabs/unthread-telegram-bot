@@ -1217,7 +1217,7 @@ async function sendMessageMultipart(params: SendMessageWithAttachmentsParams): P
 
     form.append('payload_json', JSON.stringify(messagePayload));
 
-    // Add each file to the form
+    // Add each file to the form using buffer-based approach
     for (const filePath of filePaths) {
         if (!fs.existsSync(filePath)) {
             LogEngine.warn('File not found, skipping attachment', { filePath });
@@ -1225,10 +1225,10 @@ async function sendMessageMultipart(params: SendMessageWithAttachmentsParams): P
         }
 
         const fileName = path.basename(filePath);
-        const fileStream = fs.createReadStream(filePath);
-        form.append('files', fileStream, fileName);
+        const fileBuffer = fs.readFileSync(filePath);
+        form.append('files', fileBuffer, fileName);
         
-        LogEngine.debug('Added file to multipart form', { fileName, filePath });
+        LogEngine.debug('Added file to multipart form', { fileName, filePath, size: fileBuffer.length });
     }
 
     // Send request to Unthread
@@ -1289,7 +1289,7 @@ async function createTicketMultipart(params: CreateTicketWithAttachmentsParams):
 
     form.append('payload_json', JSON.stringify(ticketPayload));
 
-    // Add each file to the form
+    // Add each file to the form using buffer-based approach
     for (const filePath of filePaths) {
         if (!fs.existsSync(filePath)) {
             LogEngine.warn('File not found, skipping attachment', { filePath });
@@ -1297,10 +1297,10 @@ async function createTicketMultipart(params: CreateTicketWithAttachmentsParams):
         }
 
         const fileName = path.basename(filePath);
-        const fileStream = fs.createReadStream(filePath);
-        form.append('files', fileStream, fileName);
+        const fileBuffer = fs.readFileSync(filePath);
+        form.append('files', fileBuffer, fileName);
         
-        LogEngine.debug('Added file to ticket form', { fileName, filePath });
+        LogEngine.debug('Added file to ticket form', { fileName, filePath, size: fileBuffer.length });
     }
 
     // Send request to Unthread
