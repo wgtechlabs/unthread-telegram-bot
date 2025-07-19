@@ -141,17 +141,6 @@ interface CreateTicketWithBufferAttachmentsParams {
 }
 
 /**
- * Ticket creation parameters with file attachments
- */
-interface CreateTicketWithAttachmentsParams {
-  title: string;
-  summary: string;
-  customerId: string;
-  onBehalfOf: OnBehalfOfUser;
-  filePaths: string[];
-}
-
-/**
  * Ticket creation response
  */
 interface CreateTicketResponse {
@@ -1181,34 +1170,6 @@ export async function sendMessageWithAttachments(params: SendMessageWithAttachme
 }
 
 /**
- * Creates a ticket with file attachments using multipart/form-data.
- *
- * @param params - Contains ticket data and file paths for attachments.
- * @returns The ticket creation response with ID and friendly ID.
- * @throws If the API request fails or file paths are invalid.
- */
-export async function createTicketWithAttachments(params: CreateTicketWithAttachmentsParams): Promise<CreateTicketResponse> {
-    try {
-        LogEngine.info('Creating ticket with attachments in Unthread', {
-            title: params.title,
-            customerId: params.customerId,
-            fileCount: params.filePaths.length,
-            onBehalfOf: params.onBehalfOf.name
-        });
-
-        return await createTicketMultipart(params);
-    } catch (error) {
-        LogEngine.error('Error creating ticket with attachments', {
-            error: (error as Error).message,
-            title: params.title,
-            customerId: params.customerId,
-            fileCount: params.filePaths.length
-        });
-        throw error;
-    }
-}
-
-/**
  * Creates a ticket with file attachments using memory buffers and multipart/form-data.
  * This version accepts file buffers directly instead of file paths, making it ideal
  * for integration with the AttachmentHandler's buffer-based approach.
@@ -1261,7 +1222,7 @@ async function sendMessageMultipart(params: SendMessageWithAttachmentsParams): P
         onBehalfOf: onBehalfOf
     };
 
-    form.append('payload_json', JSON.stringify(messagePayload));
+    form.append('json', JSON.stringify(messagePayload));
 
     // Add each file to the form using buffer-based approach
     for (const filePath of filePaths) {
@@ -1272,7 +1233,7 @@ async function sendMessageMultipart(params: SendMessageWithAttachmentsParams): P
 
         const fileName = path.basename(filePath);
         const fileBuffer = fs.readFileSync(filePath);
-        form.append('files', fileBuffer, fileName);
+        form.append('attachments', fileBuffer, fileName);
         
         LogEngine.debug('Added file to multipart form', { fileName, filePath, size: fileBuffer.length });
     }
@@ -1304,80 +1265,10 @@ async function sendMessageMultipart(params: SendMessageWithAttachmentsParams): P
 }
 
 /**
- * Internal method to create a ticket with attachments using multipart/form-data.
- *
- * @param params - Ticket creation parameters with file paths.
- * @returns The ticket creation response.
- * @throws If the API request fails or files cannot be read.
- */
-async function createTicketMultipart(params: CreateTicketWithAttachmentsParams): Promise<CreateTicketResponse> {
-    const { title, summary, customerId, onBehalfOf, filePaths } = params;
-
-    // Create form data
-    const form = new FormData();
-
-    // Add the ticket payload as JSON
-    const defaultPriority = getDefaultTicketPriority();
-    const ticketPayload: CreateTicketPayload = {
-        type: "slack",
-        title: title,
-        markdown: summary,
-        status: "open",
-        channelId: extractCustomerCompanyName(title), // Use title as fallback for channelId
-        customerId: customerId,
-        onBehalfOf: onBehalfOf
-    };
-
-    // Add priority only if it's defined
-    if (defaultPriority !== undefined) {
-        ticketPayload.priority = defaultPriority;
-    }
-
-    form.append('payload_json', JSON.stringify(ticketPayload));
-
-    // Add each file to the form using buffer-based approach
-    for (const filePath of filePaths) {
-        if (!fs.existsSync(filePath)) {
-            LogEngine.warn('File not found, skipping attachment', { filePath });
-            continue;
-        }
-
-        const fileName = path.basename(filePath);
-        const fileBuffer = fs.readFileSync(filePath);
-        form.append('files', fileBuffer, fileName);
-        
-        LogEngine.debug('Added file to ticket form', { fileName, filePath, size: fileBuffer.length });
-    }
-
-    // Send request to Unthread
-    const response = await fetch(`${API_BASE_URL}/conversations`, {
-        method: 'POST',
-        headers: {
-            'X-API-KEY': UNTHREAD_API_KEY!,
-            ...form.getHeaders()
-        },
-        body: form
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to create ticket with attachments: ${response.status} ${errorText}`);
-    }
-
-    const result = await response.json() as CreateTicketResponse;
-    
-    LogEngine.info('Ticket with attachments created successfully', {
-        ticketId: result.id,
-        friendlyId: result.friendlyId,
-        fileCount: filePaths.length
-    });
-
-    return result;
-}
-
-/**
- * Internal method to create a ticket with buffer attachments using multipart/form-data.
- * Uses the correct Unthread API structure for creating conversations with attachments.
+ * Internal method to create a ticket with buffer attachments using the proven two-step approach.
+ * Step 1: Create ticket using JSON (reliable)
+ * Step 2: Send attachment as message to the created conversation (reliable)
+ * This ensures attachments are always visible in the Unthread dashboard.
  *
  * @param params - Ticket creation parameters with file buffers.
  * @returns The ticket creation response.
@@ -1386,64 +1277,134 @@ async function createTicketMultipart(params: CreateTicketWithAttachmentsParams):
 async function createTicketMultipartBuffer(params: CreateTicketWithBufferAttachmentsParams): Promise<CreateTicketResponse> {
     const { groupChatName, summary, customerId, onBehalfOf, attachments } = params;
 
-    // Create form data
-    const form = new FormData();
-
-    // Add the ticket payload as JSON - use correct field name for Unthread API
-    const defaultPriority = getDefaultTicketPriority();
-    const ticketPayload: CreateTicketPayload = {
-        type: "slack",
-        title: groupChatName,
-        markdown: summary,
-        status: "open",
-        channelId: CHANNEL_ID!,  // Use proper channel ID
-        customerId: customerId,
-        onBehalfOf: onBehalfOf
-    };
-
-    // Add priority only if it's defined
-    if (defaultPriority !== undefined) {
-        ticketPayload.priority = defaultPriority;
-    }
-
-    // According to Unthread API docs: use 'json' field for conversation creation (not 'payload_json')
-    form.append('json', JSON.stringify(ticketPayload));
-
-    // Add each file buffer to the form using correct field name
-    for (const attachment of attachments) {
-        // According to Unthread API docs: use 'attachments' field for files in conversation creation
-        form.append('attachments', attachment.buffer, attachment.filename);
-        
-        LogEngine.debug('Added buffer to ticket form', { 
-            fileName: attachment.filename, 
-            size: attachment.buffer.length,
-            mimeType: attachment.mimeType 
-        });
-    }
-
-    // Send request to Unthread
-    const response = await fetch(`${API_BASE_URL}/conversations`, {
-        method: 'POST',
-        headers: {
-            'X-API-KEY': UNTHREAD_API_KEY!,
-            ...form.getHeaders()
-        },
-        body: form
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to create ticket with buffer attachments: ${response.status} ${errorText}`);
-    }
-
-    const result = await response.json() as CreateTicketResponse;
-    
-    LogEngine.info('Ticket with buffer attachments created successfully', {
-        ticketId: result.id,
-        friendlyId: result.friendlyId,
+    LogEngine.info('Creating ticket with buffer attachments using two-step approach', {
+        groupChatName,
+        customerId,
         fileCount: attachments.length,
-        implementation: 'buffer-based'
+        onBehalfOf: onBehalfOf.name,
+        implementation: 'two-step-approach'
     });
 
-    return result;
+    try {
+        // STEP 1: Create the ticket using proven JSON approach
+        const customerCompanyName = extractCustomerCompanyName(groupChatName);
+        const title = `[Telegram Ticket] ${customerCompanyName}`;
+        
+        // Ensure summary is not empty
+        const ticketSummary = summary && summary.trim() ? summary.trim() : 'File attachment submitted via Telegram';
+        
+        LogEngine.debug('Step 1: Creating ticket with JSON approach', {
+            title,
+            summary: ticketSummary,
+            customerId,
+            attachmentCount: attachments.length
+        });
+
+        // Create ticket using the working JSON method
+        const ticket = await createTicketJSON({ 
+            title, 
+            summary: ticketSummary, 
+            customerId, 
+            onBehalfOf 
+        });
+
+        LogEngine.info('Step 1 completed: Ticket created successfully', {
+            ticketId: ticket.id,
+            friendlyId: ticket.friendlyId
+        });
+
+        // STEP 2: Send attachments as message to the created conversation
+        if (attachments.length > 0) {
+            LogEngine.debug('Step 2: Sending attachments as message to conversation', {
+                conversationId: ticket.id,
+                attachmentCount: attachments.length
+            });
+
+            // Create FormData for message with attachments
+            const form = new FormData();
+
+            // Add message payload - make it appear as a natural customer message
+            const attachmentNames = attachments.map(att => att.filename).join(', ');
+            const messagePayload = {
+                body: {
+                    type: "markdown",
+                    value: `*Attachment${attachments.length > 1 ? 's' : ''} shared:* ${attachmentNames}`
+                },
+                onBehalfOf: onBehalfOf
+            };
+
+            LogEngine.debug('Step 2: Message payload for attachment', {
+                conversationId: ticket.id,
+                onBehalfOfName: onBehalfOf.name,
+                onBehalfOfEmail: onBehalfOf.email,
+                messageContent: messagePayload.body.value
+            });
+
+            // Use correct field names per API documentation
+            form.append('json', JSON.stringify(messagePayload));
+
+            // Add each attachment buffer
+            for (const attachment of attachments) {
+                form.append('attachments', attachment.buffer, attachment.filename);
+                
+                LogEngine.debug('Added attachment to message form', { 
+                    fileName: attachment.filename, 
+                    size: attachment.buffer.length,
+                    mimeType: attachment.mimeType 
+                });
+            }
+
+            // Send message with attachments to the conversation
+            const messageResponse = await fetch(`${API_BASE_URL}/conversations/${ticket.id}/messages`, {
+                method: 'POST',
+                headers: {
+                    'X-API-KEY': UNTHREAD_API_KEY!,
+                    ...form.getHeaders()
+                },
+                body: form
+            });
+
+            if (!messageResponse.ok) {
+                const errorText = await messageResponse.text();
+                LogEngine.error('Step 2 failed: Could not send attachments as message', {
+                    status: messageResponse.status,
+                    statusText: messageResponse.statusText,
+                    errorText,
+                    conversationId: ticket.id,
+                    attachmentCount: attachments.length
+                });
+                // Don't throw here - ticket was created successfully, just log the attachment failure
+                LogEngine.warn('Ticket created but attachments could not be sent as follow-up message', {
+                    ticketId: ticket.id,
+                    friendlyId: ticket.friendlyId
+                });
+            } else {
+                const messageResult = await messageResponse.json() as any;
+                LogEngine.info('Step 2 completed: Attachments sent successfully as message', {
+                    conversationId: ticket.id,
+                    messageId: messageResult.ts || messageResult.id || 'unknown',
+                    attachmentCount: attachments.length
+                });
+            }
+        }
+
+        LogEngine.info('Two-step ticket creation with buffer attachments completed successfully', {
+            ticketId: ticket.id,
+            friendlyId: ticket.friendlyId,
+            fileCount: attachments.length,
+            implementation: 'two-step-approach-success'
+        });
+
+        return ticket;
+
+    } catch (error) {
+        LogEngine.error('Failed to create ticket with buffer attachments using two-step approach', {
+            error: (error as Error).message,
+            groupChatName,
+            customerId,
+            attachmentCount: attachments.length,
+            implementation: 'two-step-approach-error'
+        });
+        throw error;
+    }
 }

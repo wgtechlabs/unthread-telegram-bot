@@ -725,7 +725,7 @@ export class AttachmentHandler {
     /**
      * Phase 3.1 Enhanced upload buffer to Unthread with retry logic using proper Unthread API
      */
-    async uploadBufferToUnthread(fileBuffer: FileBuffer, conversationId: string, message?: string): Promise<boolean> {
+    async uploadBufferToUnthread(fileBuffer: FileBuffer, conversationId: string, message?: string, onBehalfOf?: { name: string; email: string | undefined }): Promise<boolean> {
         const { result } = await withPerformanceMonitoring(async () => {
             return await withRetry(async () => {
                 LogEngine.debug('[AttachmentHandler] Starting buffer upload to Unthread', {
@@ -753,7 +753,7 @@ export class AttachmentHandler {
                         type: "markdown",
                         value: message || "📎 File attachment"  // Always provide a message body
                     },
-                    onBehalfOf: {
+                    onBehalfOf: onBehalfOf || {
                         name: "Telegram Bot",
                         email: "bot@telegram.local"
                     }
@@ -816,7 +816,7 @@ export class AttachmentHandler {
     /**
      * Phase 3.1 Enhanced main buffer processing pipeline
      */
-    async processBufferAttachments(fileIds: string[], conversationId: string, message?: string): Promise<BufferProcessingResult> {
+    async processBufferAttachments(fileIds: string[], conversationId: string, message?: string, onBehalfOf?: { name: string; email: string | undefined }): Promise<BufferProcessingResult> {
         const startTime = Date.now();
         LogEngine.info('[AttachmentHandler] Starting buffer-based attachment processing', {
             fileCount: fileIds.length,
@@ -835,7 +835,8 @@ export class AttachmentHandler {
                 const uploadSuccess = await this.uploadBufferToUnthread(
                     fileBuffer, 
                     conversationId, 
-                    message
+                    message,
+                    onBehalfOf
                 );
 
                 if (uploadSuccess) {
@@ -885,7 +886,7 @@ export class AttachmentHandler {
     /**
      * Main public interface - COMPLETELY BUFFER-ONLY (No stream fallback)
      */
-    async processAttachments(fileIds: string[], conversationId: string, message?: string): Promise<boolean> {
+    async processAttachments(fileIds: string[], conversationId: string, message?: string, onBehalfOf?: { name: string; email: string | undefined }): Promise<boolean> {
         LogEngine.info('[AttachmentHandler] Processing attachments (Pure Buffer-Only v4.0.0)', {
             fileCount: fileIds.length,
             conversationId,
@@ -922,7 +923,7 @@ export class AttachmentHandler {
 
         try {
             // Use buffer-based approach (ONLY option)
-            const result = await this.processBufferAttachments(fileIds, conversationId, message);
+            const result = await this.processBufferAttachments(fileIds, conversationId, message, onBehalfOf);
             
             // Phase 3.1: Post-processing memory check
             const finalMemory = process.memoryUsage();

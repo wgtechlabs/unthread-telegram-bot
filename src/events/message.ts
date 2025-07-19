@@ -13,12 +13,7 @@
  * - Smart routing based on user intent and context
  * 
  * Supported Chat Types:
- * - Private chats: D                // Process attachments using the buffer-only approach
-                const attachmentSuccess = await attachmentHandler.processAttachments(
-                    attachmentFileIds,
-                    agentMessageInfo.conversationId,
-                    message || 'Customer reply with attachments via Telegram'
-                );support form collection and ticket creation
+ * - Private chats: Direct support form collection and ticket creation
  * - Group chats: Automatic ticket creation for all messages
  * - Supergroups: Enhanced group message handling with threading
  * - Channels: Read-only message monitoring (if applicable)
@@ -27,7 +22,8 @@
  * - Context-aware message processing
  * - Automatic support ticket generation
  * - Integration with Unthread API for message routing
- * - State-aware conversation management * - Error handling and user feedback
+ * - State-aware conversation management
+ * - Error handling and user feedback
  * 
  * @author Waren Gonzaga, WG Technology Labs
  * @version 1.0.0
@@ -480,7 +476,11 @@ async function processTicketMessage(ticketInfo: any, telegramUserId: number, use
         const attachmentSuccess = await attachmentHandler.processAttachments(
             attachmentFileIds,
             ticketInfo.conversationId || ticketInfo.ticketId,
-            message || 'Customer reply with attachments via Telegram'
+            message || 'Customer reply with attachments via Telegram',
+            {
+                name: userData.name,
+                email: userData.email
+            }
         );
         
         if (!attachmentSuccess) {
@@ -658,7 +658,11 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
                 const attachmentSuccess = await attachmentHandler.processAttachments(
                     attachmentFileIds,
                     agentMessageInfo.conversationId,
-                    message || 'Customer reply with attachments via Telegram'
+                    message || 'Customer reply with attachments via Telegram',
+                    {
+                        name: userData.name,
+                        email: userData.email
+                    }
                 );
                 
                 if (!attachmentSuccess) {
