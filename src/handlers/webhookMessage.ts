@@ -34,10 +34,10 @@ import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 import { escapeMarkdown } from '../utils/markdownEscape.js';
 import { 
   AttachmentErrorHandler, 
-  AttachmentProcessingError,
-  AttachmentErrorType
+  AttachmentErrorType,
+  AttachmentProcessingError
 } from '../utils/errorHandler.js';
-import { recordSuccessfulAttachment, recordFailedAttachment } from '../utils/attachmentMetrics.js';
+import { recordFailedAttachment, recordSuccessfulAttachment } from '../utils/attachmentMetrics.js';
 import { downloadAttachmentFromUnthread } from '../services/unthread.js';
 
 /**
@@ -1137,14 +1137,14 @@ export class TelegramWebhookHandler {
     }
 
     // Document types
-    if (mimeType.includes('pdf')) return '📄';
-    if (mimeType.includes('word') || mimeType.includes('document')) return '📝';
-    if (mimeType.includes('sheet') || mimeType.includes('excel')) return '📊';
-    if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return '📋';
-    if (mimeType.includes('video')) return '🎥';
-    if (mimeType.includes('audio')) return '🎵';
-    if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('archive')) return '🗜️';
-    if (mimeType.includes('text')) return '📄';
+    if (mimeType.includes('pdf')) {return '📄';}
+    if (mimeType.includes('word') || mimeType.includes('document')) {return '📝';}
+    if (mimeType.includes('sheet') || mimeType.includes('excel')) {return '📊';}
+    if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) {return '📋';}
+    if (mimeType.includes('video')) {return '🎥';}
+    if (mimeType.includes('audio')) {return '🎵';}
+    if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('archive')) {return '🗜️';}
+    if (mimeType.includes('text')) {return '📄';}
     
     return '📎'; // Default document emoji
   }
@@ -1158,14 +1158,14 @@ export class TelegramWebhookHandler {
     }
 
     // Specific document types
-    if (mimeType.includes('pdf')) return 'PDF Document';
-    if (mimeType.includes('word') || mimeType.includes('document')) return 'Word Document';
-    if (mimeType.includes('sheet') || mimeType.includes('excel')) return 'Spreadsheet';
-    if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return 'Presentation';
-    if (mimeType.includes('video')) return 'Video File';
-    if (mimeType.includes('audio')) return 'Audio File';
-    if (mimeType.includes('zip') || mimeType.includes('rar')) return 'Archive';
-    if (mimeType.includes('text')) return 'Text File';
+    if (mimeType.includes('pdf')) {return 'PDF Document';}
+    if (mimeType.includes('word') || mimeType.includes('document')) {return 'Word Document';}
+    if (mimeType.includes('sheet') || mimeType.includes('excel')) {return 'Spreadsheet';}
+    if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) {return 'Presentation';}
+    if (mimeType.includes('video')) {return 'Video File';}
+    if (mimeType.includes('audio')) {return 'Audio File';}
+    if (mimeType.includes('zip') || mimeType.includes('rar')) {return 'Archive';}
+    if (mimeType.includes('text')) {return 'Text File';}
     
     // Extract from mime type if possible
     if (mimeType.includes('/')) {
