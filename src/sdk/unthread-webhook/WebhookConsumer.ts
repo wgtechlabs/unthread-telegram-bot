@@ -2,30 +2,22 @@
  * Unthread Telegram Bot - Webhook Consumer
  * 
  * Redis-based queue consumer that processes webhook events from the Unthread
- * platform and routes them to appropriate handlers. Designed for reliable
- * message delivery with comprehensive error handling and retry mechanisms.
+ * platform and routes them to appropriate handlers.
  * 
  * Core Functionality:
  * - Polls Redis queue for incoming webhook events
  * - Validates event structure and content
  * - Routes events to registered handlers based on type and source
- * - Provides reliable delivery guarantees with retry logic
+ * - Provides reliable delivery with retry logic
  * 
  * Supported Events:
  * - message_created: Agent messages from Unthread dashboard
  * - conversation_updated: Ticket status and metadata changes
  * 
  * Features:
- * - Configurable polling intervals for optimal performance
  * - Event validation before processing
- * - Graceful error handling and logging
+ * - Error handling and logging
  * - Connection management with automatic reconnection
- * - Queue monitoring and health checks
- * 
- * Configuration:
- * - Redis connection URL
- * - Custom queue names for different environments
- * - Polling interval adjustment for performance tuning * - Handler registration for different event types
  * 
  * @author Waren Gonzaga, WG Technology Labs
  * @version 1.0.0
@@ -238,7 +230,7 @@ export class WebhookConsumer {
         LogEngine.info('✅ Event parsed successfully', {
           type: eventObj.type,
           sourcePlatform: eventObj.sourcePlatform,
-          conversationId: (eventObj.data as any)?.conversationId || (eventObj.data as any)?.id
+          conversationId: this.extractConversationId(eventObj.data)
         });
       } catch (parseError) {
         LogEngine.error('❌ Failed to parse event JSON', {
@@ -337,5 +329,24 @@ export class WebhookConsumer {
       subscribedEvents: Array.from(this.eventHandlers.keys()),
       queueName: this.queueName
     };
+  }
+
+  /**
+   * Extract conversation ID from event data with proper type safety
+   */
+  private extractConversationId(data: unknown): string {
+    if (data && typeof data === 'object') {
+      const eventData = data as Record<string, unknown>;
+      const conversationId = eventData.conversationId;
+      const id = eventData.id;
+      
+      if (typeof conversationId === 'string' && conversationId.length > 0) {
+        return conversationId;
+      }
+      if (typeof id === 'string' && id.length > 0) {
+        return id;
+      }
+    }
+    return 'unknown';
   }
 }

@@ -1,7 +1,7 @@
 /**
  * Unthread Telegram Bot - Permission Management Utilities
  * 
- * Provides comprehensive permission validation and access control for bot administration.
+ * Provides permission validation and access control for bot administration.
  * This module handles user authorization, admin access validation, and permission-based
  * command execution control.
  * 
@@ -172,7 +172,7 @@ export function logPermissionEvent(
     event: string,
     ctx: BotContext,
     command: string,
-    additionalData: Record<string, any> = {}
+    additionalData: Record<string, unknown> = {}
 ): void {
     const userInfo = getUserPermissionInfo(ctx);
     

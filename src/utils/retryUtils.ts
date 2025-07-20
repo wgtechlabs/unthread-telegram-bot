@@ -1,7 +1,7 @@
 /**
  * Retry Utilities with Exponential Backoff
  * 
- * Provides robust retry mechanisms with exponential backoff
+ * Provides retry mechanisms with exponential backoff
  * to handle transient failures gracefully while preventing
  * resource exhaustion and race conditions.
  * 

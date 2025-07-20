@@ -37,7 +37,6 @@ import {
   AttachmentErrorType,
   AttachmentProcessingError
 } from '../utils/errorHandler.js';
-import { recordFailedAttachment, recordSuccessfulAttachment } from '../utils/attachmentMetrics.js';
 import { downloadAttachmentFromUnthread } from '../services/unthread.js';
 
 /**
@@ -964,19 +963,6 @@ export class TelegramWebhookHandler {
           sendMethod
         });
 
-        // Record successful operation metrics
-        recordSuccessfulAttachment({
-          downloadTimeMs: downloadTime,
-          uploadTimeMs: uploadTime,
-          totalTimeMs: totalTime,
-          fileSize,
-          mimeType,
-          fileName,
-          conversationId,
-          chatId,
-          timestamp: Date.now()
-        });
-
         // Enhanced success notification with processing details
         await this.safeSendMessage(
           chatId,
@@ -1033,23 +1019,6 @@ export class TelegramWebhookHandler {
 
       // Handle AttachmentProcessingError with user notification
       if (error instanceof AttachmentProcessingError) {
-        // Record failed operation metrics
-        recordFailedAttachment(
-          {
-            downloadTimeMs: 0, // May not have completed download
-            uploadTimeMs: 0,
-            totalTimeMs: totalTime,
-            fileSize,
-            mimeType,
-            fileName,
-            conversationId,
-            chatId,
-            timestamp: Date.now()
-          },
-          error.errorType,
-          error.message
-        );
-
         await AttachmentErrorHandler.notifyUser(
           this.bot,
           chatId,
@@ -1060,22 +1029,6 @@ export class TelegramWebhookHandler {
       }
 
       // Handle unexpected errors
-      recordFailedAttachment(
-        {
-          downloadTimeMs: 0,
-          uploadTimeMs: 0,
-          totalTimeMs: totalTime,
-          fileSize,
-          mimeType,
-          fileName,
-          conversationId,
-          chatId,
-          timestamp: Date.now()
-        },
-        'UNEXPECTED_ERROR',
-        error instanceof Error ? error.message : String(error)
-      );
-
       await this.safeSendMessage(
         chatId,
         `❌ **Failed to Forward Attachment**\n\n` +

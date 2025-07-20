@@ -1,23 +1,15 @@
 /**
- * Unthread Telegram Bot - Main Application Entry Point
+ * Unthread Telegram Bot - Main Application
  * 
- * This is the main entry point for the Unthread Telegram Bot application that bridges
- * Telegram conversations with the Unthread customer support platform. The bot enables
- * seamless ticket creation, message routing, and agent response delivery.
+ * Telegram bot that bridges conversations with the Unthread customer support platform.
+ * Enables ticket creation, message routing, and agent response delivery.
  * 
  * Key Features:
- * - Automated ticket creation from Telegram messages
- * - Bidirectional message routing between Telegram and Unthread dashboard
- * - Support form collection with email validation
- * - Multi-chat support (private, group, supergroup)
- * - Persistent conversation state management with Bots Brain SDK
- * - Real-time webhook event processing for agent responses
- * 
- * Architecture:
- * - Bot initialization with Telegraf framework
- * - Database connection with PostgreSQL and Redis caching
- * - Command handlers for user interactions * - Webhook consumer for Unthread agent responses
- * - Unified storage system for state persistence
+ * - Support ticket creation from Telegram messages
+ * - Message routing between Telegram and Unthread
+ * - Email collection for support contacts
+ * - Multi-chat support (private and group chats)
+ * - Real-time webhook event processing
  * 
  * @author Waren Gonzaga, WG Technology Labs
  * @version 1.0.0

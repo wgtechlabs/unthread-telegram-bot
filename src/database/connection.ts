@@ -27,8 +27,8 @@
  * @since 2025
  */
 
-import pkg, { PoolClient, Pool as PoolType, QueryResult } from 'pg';
-const { Pool } = pkg;
+import pg, { type Pool as PgPool, type PoolClient, type QueryResult } from 'pg';
+const { Pool } = pg;
 import { LogEngine } from '@wgtechlabs/log-engine';
 import dotenv from 'dotenv';
 import fs from 'fs';
@@ -47,7 +47,7 @@ const __dirname = path.dirname(__filename);
  * Handles PostgreSQL connections with SSL support and connection pooling
  */
 export class DatabaseConnection {
-    private pool: PoolType;
+    private pool: PgPool;
 
     constructor() {
         // Configure SSL based on environment
@@ -107,7 +107,7 @@ export class DatabaseConnection {
      * Get the database connection pool
      * @returns The PostgreSQL connection pool
      */
-    get connectionPool(): PoolType {
+    get connectionPool(): PgPool {
         return this.pool;
     }
 

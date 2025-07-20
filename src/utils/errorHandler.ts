@@ -1,17 +1,14 @@
 /**
- * Unthread Telegram Bot - Enhanced Error Handler
+ * Unthread Telegram Bot - Error Handler
  * 
- * Comprehensive error handling system for attachment processing with fail-fast
- * approach and detailed user-facing error messages. Provides standardized
- * error classification, logging, and user notification for all attachment
- * operations.
+ * Simple error handling system for attachment processing with clear
+ * user-facing error messages and proper logging.
  * 
  * Core Features:
  * - Attachment-specific error classification
  * - User-friendly error messages for Telegram
- * - Detailed error context logging
- * - Error analytics and monitoring support
- * - Fail-fast approach with transparent error reporting
+ * - Basic error context logging
+ * - Clear error reporting
  * 
  * Error Categories:
  * - Validation Errors: Event structure and attachment validation
@@ -32,6 +29,7 @@
  */
 
 import { LogEngine } from '@wgtechlabs/log-engine';
+import type { Telegraf } from 'telegraf';
 
 /**
  * Attachment processing error types with specific classification
@@ -171,7 +169,7 @@ export class AttachmentErrorHandler {
    * Send error message to Telegram user
    */
   static async notifyUser(
-    bot: any,
+    bot: Telegraf,
     chatId: number,
     error: AttachmentProcessingError,
     originalMessageId?: number

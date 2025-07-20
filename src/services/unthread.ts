@@ -1172,7 +1172,7 @@ export async function downloadAttachmentFromUnthread(
         }
 
         // Construct the download URL
-        const downloadUrl = `${process.env.UNTHREAD_API_URL}/conversations/${conversationId}/files/${fileId}/full`;
+        const downloadUrl = `${API_BASE_URL}/conversations/${conversationId}/files/${fileId}/full`;
         
         LogEngine.debug('Downloading file from Unthread API', {
             url: downloadUrl,

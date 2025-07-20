@@ -74,6 +74,8 @@ export class SupportConversationProcessor implements IConversationProcessor {
             }
 
             if (userState.field === 'summary') {
+                // For summary field, we could pass pre-detected attachments here if available
+                // For now, just pass the existing method call unchanged
                 return await this.handleSummaryInput(ctx, userInput, userState);
             } else if (userState.field === 'email') {
                 return await this.handleEmailInput(ctx, userInput, userState);
@@ -88,7 +90,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
         }
     }
 
-    private async handleSummaryInput(ctx: BotContext, summary: string, userState: any): Promise<boolean> {
+    private async handleSummaryInput(ctx: BotContext, summary: string, userState: any, preDetectedAttachments?: string[]): Promise<boolean> {
         // Defensive check for ctx.from
         if (!ctx.from) {
             LogEngine.warn('Summary input received without sender information');
@@ -126,12 +128,11 @@ export class SupportConversationProcessor implements IConversationProcessor {
             return true;
         }
 
-        // Store the summary and detect any file attachments from message event data
+        // Store the summary and use pre-detected attachment data or extract if not provided
         userState.summary = summary.trim();
         
-        // Detect attachments here - this should be optimized later
-        // to use pre-detected attachment data from the message handler
-        const detectedAttachmentIds = extractFileAttachments(ctx);
+        // Use pre-detected attachment data if available, otherwise extract from context
+        const detectedAttachmentIds = preDetectedAttachments || extractFileAttachments(ctx);
         const detectedHasAttachments = detectedAttachmentIds.length > 0;
         
         // Store attachment information in user state for callback processor

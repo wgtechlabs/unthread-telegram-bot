@@ -1,14 +1,13 @@
 /**
  * Smart Input Validator for Support System
  * 
- * Demonstrates advanced TypeScript patterns, input validation,
- * and educational user feedback systems.
+ * Simple TypeScript input validation with user feedback.
  * 
  * @author Waren Gonzaga, WG Technology Labs
  */
 
 /**
- * Validation result interface with comprehensive feedback
+ * Validation result interface with feedback
  */
 export interface ValidationResult {
     isValid: boolean;
@@ -267,7 +266,7 @@ export class SmartInputValidator {
      * Gets severity icon for UI display
      */
     public static getSeverityIcon(severity: ValidationResult['severity']): string {
-        const icons = {
+        const icons: Record<ValidationResult['severity'], string> = {
             error: '❌',
             warning: '⚠️',
             info: '💡',
@@ -278,7 +277,7 @@ export class SmartInputValidator {
 }
 
 /**
- * Email validation utilities with enhanced feedback
+ * Email validation utilities with feedback
  */
 export class SmartEmailValidator {
     private static readonly PERSONAL_DOMAINS = [
@@ -287,7 +286,7 @@ export class SmartEmailValidator {
     ];
 
     /**
-     * Enhanced email validation with business context
+     * Email validation with business context
      */
     public static validateEmail(email: string): ValidationResult {
         const trimmed = email.trim().toLowerCase();

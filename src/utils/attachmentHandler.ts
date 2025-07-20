@@ -1,46 +1,20 @@
 /**
- * Unthread Telegram Bot - Memory Buffer File Attachment Handler
+ * Unthread Telegram Bot - File Attachment Handler
  * 
  * Handles file attachments from Telegram users to Unthread platform using
- * efficient memory buffers for fast, reliable processing.
+ * memory buffers for reliable processing.
  * 
- * This implementation uses a pure buffer-based approach for optimal performance
- * and reliability. All file processing is done entirely in memory using Node.js
- * Buffer objects, providing predictable performance and simplified error handling.
- * 
- * Core Features:
- * - Memory buffer processing (fast and reliable)
- * - 10MB file size limit for optimal performance
- * - Direct upload to Unthread without temporary files
- * - Enhanced performance monitoring, retry logic, and security hardening
- * - Pure buffer-based implementation with zero dependencies on streaming APIs
- * 
- * Performance Benefits:
- * - Fast processing with memory buffers
- * - Simple, reliable implementation
- * - Low memory footprint with 10MB limit
- * - Predictable memory usage patterns
- * - No complex stream management overhead
- * 
- * File Limits:
- * - Maximum file size: 10MB per file (buffer mode)
- * - Maximum files: 5 files per conversation/message
- * - Supported formats: Common images, documents, and archives
- * 
- * Key Functions:
- * - processAttachments() - Main public interface for attachment processing
- * - processBufferAttachments() - Buffer-based processing pipeline
- * - loadFileToBuffer() - Direct file download to memory buffer
- * - uploadBufferToUnthread() - Buffer-based upload to Unthread
- * - validateFileSize() - Pre-validation before buffer allocation
- * 
- * Enhanced Features:
- * - Performance monitoring with comprehensive metrics
- * - Retry logic with exponential backoff
- * - Memory optimization and automatic cleanup
+ * Features:
+ * - Memory buffer processing (no temporary files)
+ * - 10MB file size limit per file
+ * - Support for common file types (images, documents, archives)
+ * - Direct upload to Unthread API
+ * - Retry logic for failed operations
  * - Security validation and filename sanitization
- * - Enhanced error reporting and classification
- * - Concurrent processing limits (max 3 files)
+ * 
+ * Limits:
+ * - Maximum file size: 10MB per file
+ * - Maximum files: 5 files per operation
  * 
  * @author Waren Gonzaga, WG Technology Labs
  * @version 4.0.0 - Pure Buffer Implementation
@@ -51,7 +25,6 @@ import path from 'path';
 import fetch from 'node-fetch';
 import FormData from 'form-data';
 import { LogEngine } from '@wgtechlabs/log-engine';
-import { AttachmentMetricsService } from './attachmentMetrics';
 
 // Import statements for buffer-based file processing
 // The following imports have been PERMANENTLY REMOVED:
@@ -509,10 +482,23 @@ function sanitizeFileName(fileName: string): SecurityValidationResult {
         sanitizedFileName = sanitizedFileName.replace(dangerousChars, '_');
     }
 
-    // Prevent path traversal
+    // Prevent path traversal while preserving file extension
     if (sanitizedFileName.includes('..') || sanitizedFileName.includes('/') || sanitizedFileName.includes('\\')) {
         issues.push('Removed path traversal attempts');
-        sanitizedFileName = sanitizedFileName.replace(/[.\/\\]/g, '_');
+        
+        // Preserve the last dot for file extension
+        const lastDotIndex = sanitizedFileName.lastIndexOf('.');
+        let extension = '';
+        let baseName = sanitizedFileName;
+        
+        if (lastDotIndex > 0 && lastDotIndex < sanitizedFileName.length - 1) {
+            extension = sanitizedFileName.substring(lastDotIndex);
+            baseName = sanitizedFileName.substring(0, lastDotIndex);
+        }
+        
+        // Clean the base name but preserve extension
+        baseName = baseName.replace(/[.\/\\]/g, '_');
+        sanitizedFileName = baseName + extension;
     }
 
     // Ensure we have a valid filename
@@ -682,33 +668,26 @@ async function withRetry<T>(
  */
 export class AttachmentHandler {
     private memoryMonitoringInterval?: NodeJS.Timeout;
-    private metrics: AttachmentMetricsService;
 
     constructor() {
-        this.metrics = new AttachmentMetricsService();
         this.initializeEnhancedFeatures();
-        LogEngine.info('AttachmentHandler initialized (Enhanced Error Handling v5.0.0)', {
-            version: '5.0.0',
-            implementation: 'Enhanced-Error-Handling',
+        LogEngine.info('AttachmentHandler initialized (Simple Buffer Processing)', {
+            implementation: 'Buffer-Only',
             streamSupport: false,
             maxFileSize: `${BUFFER_ATTACHMENT_CONFIG.maxFileSize / (1024 * 1024)}MB`,
-            maxFiles: BUFFER_ATTACHMENT_CONFIG.maxFiles,
-            enhancedFeatures: true,
-            metricsEnabled: true,
-            errorClassification: true
+            maxFiles: BUFFER_ATTACHMENT_CONFIG.maxFiles
         });
     }
 
     /**
-     * Enhanced initialization with performance monitoring
+     * Initialize basic features
      */
     private initializeEnhancedFeatures(): void {
         if (BUFFER_ATTACHMENT_CONFIG.enablePerformanceMetrics) {
             this.startMemoryOptimization();
         }
 
-        LogEngine.debug('Enhanced features initialized', {
-            performanceMetrics: BUFFER_ATTACHMENT_CONFIG.enablePerformanceMetrics,
+        LogEngine.debug('Basic features initialized', {
             memoryOptimization: true,
             securityHardening: BUFFER_ATTACHMENT_CONFIG.enableContentValidation,
             retryLogic: BUFFER_ATTACHMENT_CONFIG.retryAttempts > 0
@@ -922,22 +901,7 @@ export class AttachmentHandler {
                         LogEngine.info('[AttachmentHandler] File loaded to buffer successfully', {
                             fileName: sanitizedFileName,
                             size: buffer.length,
-                            mimeType,
-                            version: '5.0.0'
-                        });
-
-                        // Phase 5: Track successful download metrics
-                        this.metrics.recordOperation({
-                            fileName: sanitizedFileName,
-                            fileSize: buffer.length,
-                            mimeType,
-                            downloadTimeMs: Date.now() - (operationContext.downloadTimeMs || Date.now()),
-                            uploadTimeMs: 0, // Not uploading in this step
-                            totalTimeMs: Date.now() - (operationContext.downloadTimeMs || Date.now()),
-                            conversationId: operationContext.conversationId || 'telegram_download',
-                            chatId: 0, // Not available at this stage
-                            timestamp: Date.now(),
-                            success: true
+                            mimeType
                         });
 
                         return {
@@ -971,24 +935,7 @@ export class AttachmentHandler {
                 technicalMessage: classifiedError.message,
                 userMessage: classifiedError.userMessage,
                 retryable: classifiedError.retryable,
-                context: classifiedError.context,
-                version: '5.0.0'
-            });
-
-            // Phase 5: Track error metrics
-            this.metrics.recordOperation({
-                fileName: operationContext.fileName || `file_${fileId}`,
-                fileSize: operationContext.fileSize || 0,
-                mimeType: 'unknown',
-                downloadTimeMs: Date.now() - (operationContext.downloadTimeMs || Date.now()),
-                uploadTimeMs: 0,
-                totalTimeMs: Date.now() - (operationContext.downloadTimeMs || Date.now()),
-                conversationId: operationContext.conversationId || 'telegram_download',
-                chatId: 0,
-                timestamp: Date.now(),
-                success: false,
-                errorType: classifiedError.code,
-                errorMessage: classifiedError.userMessage
+                context: classifiedError.context
             });
             
             // Re-throw with enhanced error context
@@ -1238,8 +1185,7 @@ export class AttachmentHandler {
             processedFiles,
             totalFiles: fileIds.length,
             errors: errors.length,
-            processingTime,
-            version: '4.0.0'
+            processingTime
         });
 
         return {
@@ -1252,17 +1198,13 @@ export class AttachmentHandler {
     }
 
     /**
-     * Main public interface - Enhanced Error Handling with Unified Metrics (v5.0.0)
+     * Main public interface - Simple attachment processing
      */
     async processAttachments(fileIds: string[], conversationId: string, message?: string, onBehalfOf?: { name: string; email: string | undefined }): Promise<boolean> {
-        LogEngine.info('[AttachmentHandler] Processing attachments (Enhanced Error Handling v5.0.0)', {
+        LogEngine.info('[AttachmentHandler] Processing attachments', {
             fileCount: fileIds.length,
             conversationId,
-            version: '5.0.0',
-            implementation: 'enhanced-error-handling',
-            streamSupport: false,
-            metricsEnabled: true,
-            errorClassification: true
+            streamSupport: false
         });
 
         // Validation
@@ -1311,16 +1253,14 @@ export class AttachmentHandler {
                     processedFiles: result.processedFiles,
                     totalFiles: result.totalFiles,
                     processingTime: result.processingTime,
-                    memoryEfficient: memoryDelta < (10 * 1024 * 1024), // Less than 10MB growth
-                    version: '4.0.0'
+                    memoryEfficient: memoryDelta < (10 * 1024 * 1024) // Less than 10MB growth
                 });
             } else {
                 LogEngine.error('[AttachmentHandler] Buffer processing failed', {
                     conversationId,
                     errorCount: result.errors.length,
                     errors: result.errors.slice(0, 3), // Limit logged errors to prevent spam
-                    processingTime: result.processingTime,
-                    version: '4.0.0'
+                    processingTime: result.processingTime
                 });
             }
             
@@ -1331,8 +1271,7 @@ export class AttachmentHandler {
                 conversationId,
                 fileCount: fileIds.length,
                 error: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack?.substring(0, 500) : undefined,
-                version: '4.0.0'
+                stack: error instanceof Error ? error.stack?.substring(0, 500) : undefined
             });
             return false;
         } finally {
@@ -1360,13 +1299,10 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 3.1 Enhanced shutdown method for graceful cleanup
+     * Shutdown method for graceful cleanup
      */
     public shutdown(): void {
-        LogEngine.info('AttachmentHandler shutting down (Pure Buffer-Only v4.0.0)', {
-            version: '4.0.0',
-            implementation: 'pure-buffer-only'
-        });
+        LogEngine.info('AttachmentHandler shutting down');
         
         this.stopMemoryOptimization();
         

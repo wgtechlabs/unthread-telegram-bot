@@ -1,9 +1,8 @@
 /**
- * Command System - Complete Rewrite
+ * Command System
  * 
- * This replaces the original 3,031-line monolithic commands/index.ts
- * with a clean, modular, and maintainable architecture following
- * SOLID principles and Clean Code practices.
+ * Clean, modular command architecture for the Unthread Telegram Bot.
+ * Provides basic user commands, support ticket creation, and admin tools.
  * 
  * @author Waren Gonzaga, WG Technology Labs
  */
@@ -49,12 +48,10 @@ import {
 } from './processors/CallbackProcessors.js';
 
 /**
- * Registers all commands, conversation processors, and callback processors with the command system.
- *
- * This function sets up the complete command architecture, including basic, support, and admin commands, as well as conversation and callback processors, preparing the bot for operation.
+ * Initialize all commands and processors for the bot
  */
 export function initializeCommands(): void {
-    LogEngine.info('🚀 Initializing Clean Command Architecture...');
+    LogEngine.info('🚀 Initializing command system...');
 
     // Register basic commands
     commandRegistry.register(new StartCommand());
@@ -84,7 +81,7 @@ export function initializeCommands(): void {
     commandRegistry.registerCallbackProcessor(new AdminCallbackProcessor());
 
     const stats = commandRegistry.getStats();
-    LogEngine.info('✅ Command Architecture Initialized', {
+    LogEngine.info('✅ Command system initialized', {
         totalCommands: stats.totalCommands,
         adminCommands: stats.adminCommands,
         conversationProcessors: stats.conversationProcessors,

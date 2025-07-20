@@ -4,7 +4,7 @@ import type { Pool } from 'pg';
  * Unthread Telegram Bot - SDK Type Definitions
  * 
  * Core TypeScript interfaces and type definitions for the Bots Brain and
- * Unthread Webhook SDKs. Provides comprehensive type safety and IntelliSense
+ * Unthread Webhook SDKs. Provides type safety and IntelliSense
  * support for all SDK components and integrations.
  * 
  * Type Categories:
@@ -23,9 +23,10 @@ import type { Pool } from 'pg';
  * 
  * Features:
  * - Type-safe database operations
- * - Comprehensive webhook event typing
+ * - Webhook event typing
  * - Storage layer abstraction interfaces
- * - User state management types * - Integration with external service types
+ * - User state management types
+ * - Integration with external service types
  * 
  * @author Waren Gonzaga, WG Technology Labs
  * @version 1.0.0
@@ -35,7 +36,7 @@ import type { Pool } from 'pg';
 // Database connection interface
 export interface DatabaseConnection {
   readonly connectionPool: Pool; // PostgreSQL pool accessor
-  query(text: string, params?: any[]): Promise<any>;
+  query(text: string, params?: unknown[]): Promise<unknown>;
 }
 
 // Storage interfaces
@@ -45,8 +46,8 @@ export interface StorageConfig {
 }
 
 export interface Storage {
-  get(key: string): Promise<any>;
-  set(key: string, value: any, ttl?: number): Promise<void>;
+  get(key: string): Promise<unknown>;
+  set(key: string, value: unknown, ttl?: number): Promise<void>;
   delete(key: string): Promise<void>;
   exists(key: string): Promise<boolean>;
   connect(): Promise<void>;
@@ -68,7 +69,7 @@ export interface TicketData {
   platform?: string;
   storedAt?: string;
   version?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface TicketInfo {
