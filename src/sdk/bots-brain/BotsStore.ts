@@ -33,19 +33,18 @@ import { UnifiedStorage } from './UnifiedStorage.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { z } from 'zod';
 import type { 
-  TicketData, 
-  UserState, 
-  CustomerData, 
-  UserData, 
+  AdminProfile, 
   AgentMessageData, 
-  TicketInfo,
-  GroupConfig,
-  SetupState,
-  AdminProfile,
-  SetupSession,
-  DmSetupSession,
+  CustomerData, 
+  DmSetupSession, 
+  GroupConfig, 
   IBotsStore,
-  StorageConfig
+  SetupSession,
+  SetupState,
+  TicketData,
+  TicketInfo,
+  UserData,
+  UserState
 } from '../types.js';
 import type { DatabaseConnection } from '../../database/connection.js';
 
@@ -589,7 +588,7 @@ export class BotsStore implements IBotsStore {
     try {
       // Get ticket data first to know all the keys to delete
       const ticket = await this.getTicketByConversationId(conversationId);
-      if (!ticket) return true;
+      if (!ticket) {return true;}
       
       // UNIFIED APPROACH: Only need to delete conversationId storage since ticketId === conversationId
       const promises = [
@@ -1238,7 +1237,7 @@ export class BotsStore implements IBotsStore {
   async updateAdminProfile(telegramUserId: number, updates: Partial<AdminProfile>): Promise<boolean> {
     try {
       const existing = await this.getAdminProfile(telegramUserId);
-      if (!existing) return false;
+      if (!existing) {return false;}
 
       const updated = {
         ...existing,
@@ -1362,7 +1361,7 @@ export class BotsStore implements IBotsStore {
    */
   async getActiveSetupSessionByAdmin(adminId: number): Promise<SetupSession | null> {
     const sessionId = await this.storage.get(`session:admin:${adminId}`);
-    if (!sessionId) return null;
+    if (!sessionId) {return null;}
 
     return await this.getSetupSession(sessionId);
   }
@@ -1372,7 +1371,7 @@ export class BotsStore implements IBotsStore {
    */
   async getActiveSetupSessionByGroup(groupChatId: number): Promise<SetupSession | null> {
     const sessionId = await this.storage.get(`session:group:${groupChatId}`);
-    if (!sessionId) return null;
+    if (!sessionId) {return null;}
 
     return await this.getSetupSession(sessionId);
   }
@@ -1383,7 +1382,7 @@ export class BotsStore implements IBotsStore {
   async updateSetupSession(sessionId: string, updates: Partial<SetupSession>): Promise<boolean> {
     try {
       const existing = await this.getSetupSession(sessionId);
-      if (!existing) return false;
+      if (!existing) {return false;}
 
       const updated = {
         ...existing,
@@ -1432,7 +1431,7 @@ export class BotsStore implements IBotsStore {
   async cleanupExpiredSessions(): Promise<number> {
     // Note: With TTL in Redis, sessions should auto-expire
     // This method is for manual cleanup if needed
-    let cleanedCount = 0;
+    const cleanedCount = 0;
     try {
       // Implementation would depend on storage backend
       // For now, rely on TTL for automatic cleanup
@@ -1552,7 +1551,7 @@ export class BotsStore implements IBotsStore {
   async getActiveDmSetupSessionByAdmin(adminId: number): Promise<DmSetupSession | null> {
     try {
       const sessionId = await this.storage.get(`dm_session:admin:${adminId}`);
-      if (!sessionId) return null;
+      if (!sessionId) {return null;}
       
       return await this.getDmSetupSession(sessionId);
     } catch (error) {
@@ -1571,7 +1570,7 @@ export class BotsStore implements IBotsStore {
   async updateDmSetupSession(sessionId: string, updates: Partial<DmSetupSession>): Promise<boolean> {
     try {
       const existing = await this.getDmSetupSession(sessionId);
-      if (!existing) return false;
+      if (!existing) {return false;}
 
       const updated: DmSetupSession = {
         ...existing,
@@ -1618,7 +1617,7 @@ export class BotsStore implements IBotsStore {
    * Clean up expired DM sessions (mainly for manual cleanup as TTL handles auto-expiration)
    */
   async cleanupExpiredDmSessions(): Promise<number> {
-    let cleanedCount = 0;
+    const cleanedCount = 0;
     try {
       // Implementation would depend on storage backend
       // For now, rely on TTL for automatic cleanup

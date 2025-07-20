@@ -257,9 +257,9 @@ export class SmartInputValidator {
      * Gets quality indicator emoji and text
      */
     public static getQualityIndicator(score: number): string {
-        if (score >= 0.8) return '🟢 Excellent detail';
-        if (score >= 0.6) return '🟡 Good information';
-        if (score >= 0.4) return '🔵 Basic details';
+        if (score >= 0.8) {return '🟢 Excellent detail';}
+        if (score >= 0.6) {return '🟡 Good information';}
+        if (score >= 0.4) {return '🔵 Basic details';}
         return '🔴 Needs improvement';
     }
 

@@ -29,7 +29,7 @@
 
 import pkg from 'pg';
 const { Pool } = pkg;
-import type { Pool as PoolType, PoolClient, QueryResult } from 'pg';
+import type { PoolClient, Pool as PoolType, QueryResult } from 'pg';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import dotenv from 'dotenv';
 import fs from 'fs';
@@ -275,7 +275,7 @@ export class DatabaseConnection {
         const postgresUrl = process.env.POSTGRES_URL;
           // Railway internal services use 'railway.internal' in their hostnames
         const isRailwayHost = (url: string | undefined): boolean => {
-            if (!url || url.trim() === '') return false;
+            if (!url || url.trim() === '') {return false;}
             try {
                 const parsedUrl = new URL(url);
                 return parsedUrl.hostname.toLowerCase().includes('railway.internal');

@@ -180,7 +180,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         await ctx.answerCbQuery("✅ Continuing support form...");
         
         const userId = ctx.from?.id;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         const userState = await BotsStore.getUserState(userId);
         if (!userState) {
@@ -217,7 +217,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         stepDescription: string;
     }): Promise<boolean> {
         const userId = ctx.from?.id;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         // Clear existing state
         await BotsStore.clearUserState(userId);
@@ -259,7 +259,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         await ctx.answerCbQuery("❌ Support form cancelled");
         
         const userId = ctx.from?.id;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         // Clear user state
         await BotsStore.clearUserState(userId);
@@ -290,7 +290,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         await ctx.answerCbQuery("📧 Setting up email...");
         
         const userId = ctx.from?.id;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         // Set state for email collection
         await BotsStore.setUserState(userId, {
@@ -324,7 +324,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         
         const userId = ctx.from?.id;
         const username = ctx.from?.username;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         try {
             const userState = await BotsStore.getUserState(userId);
@@ -383,7 +383,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         await ctx.answerCbQuery("📧 Upgrading to real email...");
         
         const userId = ctx.from?.id;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         await BotsStore.setUserState(userId, {
             field: 'email_upgrade',
@@ -415,7 +415,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         await ctx.answerCbQuery("▶️ Continuing with temporary email...");
         
         const userId = ctx.from?.id;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         // Start ticket creation flow
         await BotsStore.setUserState(userId, {
@@ -446,7 +446,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         await ctx.answerCbQuery("✅ Processing your request...");
         
         const userId = ctx.from?.id;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         try {
             const userState = await BotsStore.getUserState(userId);
@@ -527,7 +527,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
     private async createTicketDirectly(ctx: BotContext, userState: any): Promise<boolean> {
         try {
             const userId = ctx.from?.id;
-            if (!userId) return false;
+            if (!userId) {return false;}
 
             // Check if we have email - should always have it at this point
             if (!userState.email) {
@@ -806,7 +806,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         await ctx.answerCbQuery("✏️ Edit your summary...");
         
         const userId = ctx.from?.id;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         try {
             const userState = await BotsStore.getUserState(userId);

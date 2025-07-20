@@ -190,7 +190,7 @@ export async function updateUserEmail(
         }
 
         // Ensure user exists before updating email
-        let userData = await BotsStore.getUserByTelegramId(userId);
+        const userData = await BotsStore.getUserByTelegramId(userId);
         
         if (!userData) {
             // Create user if they don't exist

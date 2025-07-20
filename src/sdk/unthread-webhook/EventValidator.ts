@@ -1,5 +1,5 @@
 import { LogEngine } from '@wgtechlabs/log-engine';
-import type { WebhookEvent, MessageCreatedEvent, ConversationUpdatedEvent } from '../types.js';
+import type { WebhookEvent } from '../types.js';
 
 /**
  * Unthread Telegram Bot - Webhook Event Validator

@@ -154,9 +154,9 @@ export function getUserPermissionInfo(ctx: BotContext): {
         telegramUserId: ctx.from.id
     };
     
-    if (ctx.from.username) result.username = ctx.from.username;
-    if (ctx.from.first_name) result.firstName = ctx.from.first_name;
-    if (ctx.from.last_name) result.lastName = ctx.from.last_name;
+    if (ctx.from.username) {result.username = ctx.from.username;}
+    if (ctx.from.first_name) {result.firstName = ctx.from.first_name;}
+    if (ctx.from.last_name) {result.lastName = ctx.from.last_name;}
     
     return result;
 }

@@ -20,8 +20,8 @@
  * @version 1.0.0
  * @since 2025
  */
-import { Context, Telegraf } from 'telegraf';
-import { Message, Update, UserFromGetMe } from 'telegraf/typings/core/types/typegram';
+import { Context } from 'telegraf';
+import { Update, UserFromGetMe } from 'telegraf/typings/core/types/typegram';
 
 // Bot context extensions - extending the base context
 export interface BotContext extends Context<Update> {

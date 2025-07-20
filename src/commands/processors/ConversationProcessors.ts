@@ -10,7 +10,6 @@
 import type { IConversationProcessor } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
 import { BotsStore } from '../../sdk/bots-brain/index.js';
-import { SupportCommand } from '../support/SupportCommandClean.js';
 import { logError } from '../utils/errorHandler.js';
 import * as unthreadService from '../../services/unthread.js';
 import { attachmentHandler } from '../../utils/attachmentHandler.js';
@@ -18,14 +17,10 @@ import { extractFileAttachments } from '../../events/message.js';
 import { getMessageText, hasTextContent } from '../../utils/messageContentExtractor.js';
 import { SetupCallbackProcessor } from './CallbackProcessors.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
-import { 
-    validateEmail, 
-    updateUserEmail, 
-    getUserEmailPreferences,
-    formatEmailForDisplay 
-} from '../../utils/emailManager.js';
-import { escapeMarkdown, truncateText, lightEscapeMarkdown } from '../../utils/markdownEscape.js';
-import { SimpleInputValidator, SimpleValidationResult } from '../../utils/simpleValidators.js';
+
+
+import { escapeMarkdown, lightEscapeMarkdown, truncateText } from '../../utils/markdownEscape.js';
+import { SimpleInputValidator } from '../../utils/simpleValidators.js';
 
 /**
  * Support Form Conversation Processor

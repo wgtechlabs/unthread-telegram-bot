@@ -8,7 +8,6 @@
  */
 
 import type { BotContext } from '../types/index.js';
-import { logError } from '../commands/utils/errorHandler.js';
 
 export interface ValidationCheck {
     name: string;

@@ -10,11 +10,11 @@
 import { BaseCommand, type CommandMetadata } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
 import { 
-    validateEmail, 
-    updateUserEmail, 
+    deliverPendingAgentMessages, 
+    formatEmailForDisplay, 
     getUserEmailPreferences,
-    formatEmailForDisplay,
-    deliverPendingAgentMessages
+    updateUserEmail,
+    validateEmail
 } from '../../utils/emailManager.js';
 import { escapeMarkdown } from '../../utils/markdownEscape.js';
 import { getMessageText } from '../../utils/messageContentExtractor.js';

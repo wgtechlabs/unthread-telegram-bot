@@ -109,9 +109,9 @@ export function getMessageTypeInfo(ctx: BotContext) {
     const isCmd = messageText.startsWith('/');
 
     let type = 'unknown';
-    if (hasPhoto) type = 'photo';
-    else if (hasDocument) type = 'document';
-    else if (hasText) type = 'text';
+    if (hasPhoto) {type = 'photo';}
+    else if (hasDocument) {type = 'document';}
+    else if (hasText) {type = 'text';}
 
     return {
         type,

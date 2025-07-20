@@ -10,7 +10,7 @@
 import { BaseCommand, type CommandMetadata } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
 import { getUserEmailPreferences } from '../../utils/emailManager.js';
-import { escapeMarkdown, formatEmailForDisplay } from '../../utils/markdownEscape.js';
+import { formatEmailForDisplay } from '../../utils/markdownEscape.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 
 export class ViewEmailCommand extends BaseCommand {

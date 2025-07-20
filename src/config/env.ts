@@ -138,7 +138,7 @@ function validateRedisUrls(): void {
     ];
 
     for (const redis of redisUrls) {
-        if (!redis.value) continue; // Already caught by required variable check
+        if (!redis.value) {continue;} // Already caught by required variable check
 
         if (placeholderValues.some(placeholder => 
             redis.value!.toLowerCase().includes(placeholder.toLowerCase())
@@ -180,7 +180,7 @@ function validateRequiredTokens(): void {
     ];
 
     for (const token of tokens) {
-        if (!token.value) continue; // Already caught by required variable check
+        if (!token.value) {continue;} // Already caught by required variable check
 
         if (placeholderValues.some(placeholder => 
             token.value!.toLowerCase().includes(placeholder.toLowerCase())

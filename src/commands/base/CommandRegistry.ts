@@ -7,7 +7,7 @@
  * @author Waren Gonzaga, WG Technology Labs
  */
 
-import type { ICommand, IConversationProcessor, ICallbackProcessor } from './BaseCommand.js';
+import type { ICallbackProcessor, ICommand, IConversationProcessor } from './BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { isAdminUser } from '../../config/env.js';

@@ -32,12 +32,12 @@
  * @version 1.0.0
  * @since 2025
  */
-import { createClient, RedisClientType } from 'redis';
+import { RedisClientType, createClient } from 'redis';
 import pkg from 'pg';
 const { Pool } = pkg;
 import type { Pool as PoolType } from 'pg';
 import { LogEngine } from '@wgtechlabs/log-engine';
-import type { StorageConfig, Storage } from '../types.js';
+import type { Storage, StorageConfig } from '../types.js';
 
 /**
  * UnifiedStorage - Multi-layer storage architecture
@@ -254,7 +254,7 @@ export class UnifiedStorage implements Storage {
       // Check Redis
       if (this.redisClient) {
         const exists = await this.redisClient.exists(key);
-        if (exists) return true;
+        if (exists) {return true;}
       }
       
       // Check PostgreSQL

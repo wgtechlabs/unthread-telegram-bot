@@ -410,11 +410,11 @@ function sanitizeLogData(logData: any): any {
     }
     
     // Remove or mask potentially sensitive additional data
-    if (sanitized.password) sanitized.password = '[REDACTED]';
-    if (sanitized.token) sanitized.token = '[REDACTED]';
-    if (sanitized.apiKey) sanitized.apiKey = '[REDACTED]';
-    if (sanitized.secret) sanitized.secret = '[REDACTED]';
-    if (sanitized.authorization) sanitized.authorization = '[REDACTED]';
+    if (sanitized.password) {sanitized.password = '[REDACTED]';}
+    if (sanitized.token) {sanitized.token = '[REDACTED]';}
+    if (sanitized.apiKey) {sanitized.apiKey = '[REDACTED]';}
+    if (sanitized.secret) {sanitized.secret = '[REDACTED]';}
+    if (sanitized.authorization) {sanitized.authorization = '[REDACTED]';}
     
     // Sanitize any nested objects
     for (const key in sanitized) {

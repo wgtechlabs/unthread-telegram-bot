@@ -20,11 +20,11 @@
  * @version 1.0.0
  * @since 2025
  */
-import { Telegraf, Markup } from 'telegraf';
-import type { ExtraReplyMessage, ExtraEditMessageText } from 'telegraf/typings/telegram-types';
+import { Telegraf } from 'telegraf';
+import type { ExtraEditMessageText, ExtraReplyMessage } from 'telegraf/typings/telegram-types';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from './sdk/bots-brain/index.js';
-import { BotContext, TelegramError, CommandHandler } from './types/index.js';
+import { BotContext, TelegramError } from './types/index.js';
 
 /**
  * Creates and returns a new Telegraf bot instance using the provided Telegram Bot API token.

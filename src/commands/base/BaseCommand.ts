@@ -6,7 +6,7 @@
 
 import type { BotContext } from '../../types/index.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
-import { isAdminUser, getConfiguredBotUsername } from '../../config/env.js';
+import { getConfiguredBotUsername, isAdminUser } from '../../config/env.js';
 import { validateAdminAccess } from '../../utils/permissions.js';
 
 export interface CommandMetadata {
@@ -420,10 +420,10 @@ export abstract class BaseCommand implements ICommand {
         }
 
         const restrictions: string[] = [];
-        if (this.metadata.adminOnly) restrictions.push('Admin only');
-        if (this.metadata.privateOnly) restrictions.push('Private chat only');
-        if (this.metadata.groupOnly) restrictions.push('Group chat only');
-        if (this.metadata.requiresSetup) restrictions.push('Requires group setup');
+        if (this.metadata.adminOnly) {restrictions.push('Admin only');}
+        if (this.metadata.privateOnly) {restrictions.push('Private chat only');}
+        if (this.metadata.groupOnly) {restrictions.push('Group chat only');}
+        if (this.metadata.requiresSetup) {restrictions.push('Requires group setup');}
 
         if (restrictions.length > 0) {
             help += `**Restrictions:** ${restrictions.join(', ')}\n`;

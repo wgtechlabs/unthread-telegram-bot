@@ -15,10 +15,10 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 
 // Basic commands
 import { 
-    StartCommand, 
+    AboutCommand, 
     HelpCommand, 
-    VersionCommand, 
-    AboutCommand 
+    StartCommand, 
+    VersionCommand 
 } from './basic/InfoCommands.js';
 import { 
     CancelCommand, 
@@ -39,13 +39,13 @@ import {
 
 // Processors
 import {
-    SupportConversationProcessor,
-    DmSetupInputProcessor
+    DmSetupInputProcessor,
+    SupportConversationProcessor
 } from './processors/ConversationProcessors.js';
 import { 
-    SupportCallbackProcessor,
+    AdminCallbackProcessor,
     SetupCallbackProcessor,
-    AdminCallbackProcessor
+    SupportCallbackProcessor
 } from './processors/CallbackProcessors.js';
 
 /**
@@ -110,7 +110,7 @@ export async function processConversation(ctx: BotContext): Promise<boolean> {
  */
 export async function processCallback(ctx: BotContext): Promise<boolean> {
     const callbackQuery = ctx.callbackQuery;
-    if (!callbackQuery || !('data' in callbackQuery)) return false;
+    if (!callbackQuery || !('data' in callbackQuery)) {return false;}
 
     return await commandRegistry.processCallback(ctx, callbackQuery.data);
 }

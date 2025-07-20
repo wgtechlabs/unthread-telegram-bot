@@ -31,7 +31,6 @@ import type { Telegraf } from 'telegraf';
 import type { BotContext } from '../types/index.js';
 import type { IBotsStore } from '../sdk/types.js';
 import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
-import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
 import { escapeMarkdown } from '../utils/markdownEscape.js';
 
 /**
@@ -323,7 +322,7 @@ export class TelegramWebhookHandler {
    * @returns Sanitized text
    */
   sanitizeMessageText(text: string): string {
-    if (!text) return '';
+    if (!text) {return '';}
     
     // Use our comprehensive markdown escaping utility
     // This prevents all entity parsing errors

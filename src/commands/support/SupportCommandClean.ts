@@ -6,12 +6,9 @@
 
 import { BaseCommand, type CommandMetadata } from '../base/BaseCommand.js';
 import { BotsStore } from '../../sdk/bots-brain/index.js';
-import * as unthreadService from '../../services/unthread.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotContext } from '../../types/index.js';
 import { UserState } from '../../sdk/types.js';
-import { getUserEmailPreferences } from '../../utils/emailManager.js';
-import { escapeMarkdown } from '../../utils/markdownEscape.js';
 
 export class SupportCommand extends BaseCommand {
     readonly metadata: CommandMetadata = {

@@ -41,8 +41,8 @@ import fs from 'fs';
 import path from 'path';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
-import { TicketData, AgentMessageData, UserData } from '../sdk/types.js';
-import { getDefaultTicketPriority, getCompanyName } from '../config/env.js';
+import { AgentMessageData, TicketData, UserData } from '../sdk/types.js';
+import { getCompanyName, getDefaultTicketPriority } from '../config/env.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -248,7 +248,7 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
  * @returns The formatted company name suitable for API usage
  */
 function capitalizeCompanyName(name: string): string {
-    if (!name) return 'Unknown-Company';
+    if (!name) {return 'Unknown-Company';}
     
     return name
         .toLowerCase()
@@ -270,7 +270,7 @@ function capitalizeCompanyName(name: string): string {
  * @returns The formatted customer name with proper capitalization and spacing
  */
 function formatCustomerNameForDisplay(name: string): string {
-    if (!name) return 'Unknown Company';
+    if (!name) {return 'Unknown Company';}
     
     return name
         .trim()

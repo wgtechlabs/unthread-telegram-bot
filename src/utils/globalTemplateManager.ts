@@ -8,10 +8,10 @@
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import { 
+  DEFAULT_GLOBAL_TEMPLATES, 
   GlobalTemplate, 
-  GlobalTemplateEvent, 
   GlobalTemplateConfig, 
-  DEFAULT_GLOBAL_TEMPLATES,
+  GlobalTemplateEvent,
   TEMPLATE_VARIABLES 
 } from '../config/globalTemplates.js';
 

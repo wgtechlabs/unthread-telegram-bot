@@ -145,7 +145,7 @@ export class TimeoutManager {
      * Clean up old timeouts that may have been orphaned
      */
     static cleanupStaleTimeouts(maxAgeMs: number = 5 * 60 * 1000): number {
-        if (this.isShuttingDown) return 0;
+        if (this.isShuttingDown) {return 0;}
         
         const now = new Date();
         let cleanedUp = 0;

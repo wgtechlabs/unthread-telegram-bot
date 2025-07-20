@@ -31,7 +31,7 @@
  * @version 1.0.0
  * @since 2025
  */
-import { createClient, RedisClientType } from 'redis';
+import { RedisClientType, createClient } from 'redis';
 import { EventValidator } from './EventValidator.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import type { WebhookEvent } from '../types.js';
@@ -170,7 +170,7 @@ export class WebhookConsumer {
    * Schedule the next poll
    */
   private scheduleNextPoll(): void {
-    if (!this.isRunning) return;
+    if (!this.isRunning) {return;}
     
     this.pollTimer = setTimeout(async () => {
       try {

@@ -31,12 +31,12 @@
  */
 
 import { LogEngine } from '@wgtechlabs/log-engine';
-import { processConversation, aboutCommand } from '../commands/index.js';
+import { processConversation } from '../commands/index.js';
 import * as unthreadService from '../services/unthread.js';
-import { safeReply, safeEditMessageText } from '../bot.js';
+import { safeEditMessageText, safeReply } from '../bot.js';
 import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
 import { attachmentHandler } from '../utils/attachmentHandler.js';
-import { getMessageText, isCommand, getCommand, hasTextContent, getMessageTypeInfo } from '../utils/messageContentExtractor.js';
+import { getCommand, getMessageText, getMessageTypeInfo, hasTextContent, isCommand } from '../utils/messageContentExtractor.js';
 import type { BotContext } from '../types/index.js';
 
 /**

@@ -48,10 +48,9 @@
  */
 
 import path from 'path';
-import fetch, { Response } from 'node-fetch';
+import fetch from 'node-fetch';
 import FormData from 'form-data';
 import { LogEngine } from '@wgtechlabs/log-engine';
-import { TimeoutManager } from './timeoutManager.js';
 
 // Import statements for buffer-based file processing
 // The following imports have been PERMANENTLY REMOVED:

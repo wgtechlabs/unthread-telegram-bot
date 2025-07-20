@@ -12,7 +12,7 @@
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { isAdminUser } from '../config/env.js';
 import { BotsStore } from '../sdk/bots-brain/index.js';
-import type { AdminProfile, SetupSession, DmSetupSession } from '../sdk/types.js';
+import type { AdminProfile, DmSetupSession, SetupSession } from '../sdk/types.js';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -410,7 +410,7 @@ export async function updateDmSetupSessionStep(
 export async function addDmSessionMessageId(sessionId: string, messageId: number): Promise<boolean> {
   try {
     const session = await BotsStore.getDmSetupSession(sessionId);
-    if (!session) return false;
+    if (!session) {return false;}
 
     const messageIds = session.messageIds || [];
     messageIds.push(messageId);
@@ -485,7 +485,6 @@ export async function cancelDmSetupSession(sessionId: string): Promise<boolean> 
  * template updates, and other important events.
  */
 
-import { GlobalTemplateManager } from './globalTemplateManager.js';
 
 interface NotificationContext {
   groupId: number;
@@ -723,7 +722,7 @@ export async function reportNotificationFailures(
   changeType: string,
   bot: any
 ): Promise<void> {
-  if (failedCount === 0) return;
+  if (failedCount === 0) {return;}
 
   try {
     const admins = await getActivatedAdmins(groupChatId);

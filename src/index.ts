@@ -41,15 +41,14 @@ LogEngine.configure({
 import { validateEnvironment } from './config/env.js';
 validateEnvironment();
 
-import { createBot, startPolling, safeReply, cleanupBlockedUser } from './bot.js';
+import { cleanupBlockedUser, createBot, startPolling } from './bot.js';
 import { 
+    executeCommand,
     initializeCommands,
-    processConversation,
-    processCallback,
-    executeCommand
+    processCallback
 } from './commands/index.js';
 import { handleMessage } from './events/message.js';
-import { isCommand, getMessageText } from './utils/messageContentExtractor.js';
+import { getMessageText, isCommand } from './utils/messageContentExtractor.js';
 import { db } from './database/connection.js';
 import { BotsStore } from './sdk/bots-brain/index.js';
 import { WebhookConsumer } from './sdk/unthread-webhook/index.js';
@@ -77,14 +76,14 @@ bot.use(async (ctx: BotContext, next) => {
         if (ctx.message) {
             // Determine message type
             let messageType = 'text';
-            if ('photo' in ctx.message) messageType = 'photo';
-            else if ('document' in ctx.message) messageType = 'document';
-            else if ('video' in ctx.message) messageType = 'video';
-            else if ('audio' in ctx.message) messageType = 'audio';
-            else if ('voice' in ctx.message) messageType = 'voice';
-            else if ('video_note' in ctx.message) messageType = 'video_note';
-            else if ('sticker' in ctx.message) messageType = 'sticker';
-            else if (!('text' in ctx.message)) messageType = 'other';
+            if ('photo' in ctx.message) {messageType = 'photo';}
+            else if ('document' in ctx.message) {messageType = 'document';}
+            else if ('video' in ctx.message) {messageType = 'video';}
+            else if ('audio' in ctx.message) {messageType = 'audio';}
+            else if ('voice' in ctx.message) {messageType = 'voice';}
+            else if ('video_note' in ctx.message) {messageType = 'video_note';}
+            else if ('sticker' in ctx.message) {messageType = 'sticker';}
+            else if (!('text' in ctx.message)) {messageType = 'other';}
             
             LogEngine.debug('Message received with enhanced text detection', {
                 chatId: ctx.chat?.id,
