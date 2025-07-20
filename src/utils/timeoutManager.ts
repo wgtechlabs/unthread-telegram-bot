@@ -142,24 +142,6 @@ export class TimeoutManager {
     }
 
     /**
-     * Get information about active timeouts
-     */
-    static getActiveTimeouts(): Array<{
-        key: string;
-        description: string;
-        createdAt: Date;
-        ageMs: number;
-    }> {
-        const now = new Date();
-        return Array.from(this.timeouts.entries()).map(([key, timeout]) => ({
-            key,
-            description: timeout.description,
-            createdAt: timeout.createdAt,
-            ageMs: now.getTime() - timeout.createdAt.getTime()
-        }));
-    }
-
-    /**
      * Clean up old timeouts that may have been orphaned
      */
     static cleanupStaleTimeouts(maxAgeMs: number = 5 * 60 * 1000): number {

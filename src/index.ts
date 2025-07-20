@@ -46,18 +46,7 @@ import {
     initializeCommands,
     processConversation,
     processCallback,
-    executeCommand,
-    // Legacy compatibility imports
-    startCommand, 
-    helpCommand, 
-    versionCommand, 
-    aboutCommand,
-    supportCommand, 
-    cancelCommand, 
-    resetCommand,
-    setupCommand,
-    activateCommand,
-    templatesCommand
+    executeCommand
 } from './commands/index.js';
 import { handleMessage } from './events/message.js';
 import { isCommand, getMessageText } from './utils/messageContentExtractor.js';

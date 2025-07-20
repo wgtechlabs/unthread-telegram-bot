@@ -48,7 +48,6 @@
  */
 
 import path from 'path';
-import { fileURLToPath } from 'url';
 import fetch, { Response } from 'node-fetch';
 import FormData from 'form-data';
 import { LogEngine } from '@wgtechlabs/log-engine';

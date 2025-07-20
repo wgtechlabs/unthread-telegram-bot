@@ -135,15 +135,6 @@ export function generateHelp(ctx: BotContext): string {
     return commandRegistry.generateHelpText(ctx);
 }
 
-/**
- * Retrieves statistics about the registered commands and processors.
- *
- * @returns An object containing counts and details of commands, admin commands, conversation processors, callback processors, and setup-required commands.
- */
-export function getCommandStats() {
-    return commandRegistry.getStats();
-}
-
 // Export the registry for advanced usage
 export { commandRegistry };
 

@@ -39,7 +39,11 @@
     "docker:build:secure": "docker build --no-cache --pull -t unthread-telegram-bot .",
     "docker:build:sbom": "docker build --sbom=true --provenance=mode=max -t unthread-telegram-bot .",
     "docker:run": "docker run --env-file .env unthread-telegram-bot",
-    "sbom:generate": "bash scripts/generate-sbom.sh unthread-telegram-bot:latest"
+    "sbom:generate": "bash scripts/generate-sbom.sh unthread-telegram-bot:latest",
+    "lint": "eslint src/ --ext .ts",
+    "lint:fix": "eslint src/ --ext .ts --fix",
+    "validate:deadcode": "ts-prune && depcheck",
+    "validate:unused": "eslint src/ --ext .ts"
   },
   "dependencies": {
     "@wgtechlabs/log-engine": "2.2.0",
@@ -57,7 +61,11 @@
   "devDependencies": {
     "@types/node": "24.0.3",
     "@types/pg": "8.15.4",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
     "concurrently": "9.2.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-unused-imports": "4.1.4",
     "minimatch": "9.0.5",
     "nodemon": "3.1.10",
     "typescript": "5.8.3"

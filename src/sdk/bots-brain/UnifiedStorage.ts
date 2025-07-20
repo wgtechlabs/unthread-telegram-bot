@@ -395,66 +395,6 @@ export class UnifiedStorage implements Storage {
     return contents;
   }
 
-  getMemoryStats(): {
-    totalKeys: number;
-    activeKeys: number;
-    expiredKeys: number;
-    totalSizeBytes: number;
-    totalSizeKB: number;
-    keyTypes: Record<string, { count: number; size: number }>;
-    memoryTTL: number;
-    connected: boolean;
-    layers: {
-      memory: boolean;
-      redis: boolean;
-      postgres: boolean;
-    };
-  } {
-    const now = Date.now();
-    let totalSize = 0;
-    let expiredCount = 0;
-    let activeCount = 0;
-    const keyTypes: Record<string, { count: number; size: number }> = {};
-    
-    for (const [key, value] of this.memoryCache.entries()) {
-      const expiration = this.memoryCacheTTL.get(key);
-      const isExpired = expiration ? now > expiration : false;
-      const size = JSON.stringify(value).length;
-      
-      totalSize += size;
-      
-      if (isExpired) {
-        expiredCount++;
-      } else {
-        activeCount++;
-      }
-      
-      // Categorize by key prefix
-      const keyType = key.split(':')[0] || 'unknown';
-      if (!keyTypes[keyType]) {
-        keyTypes[keyType] = { count: 0, size: 0 };
-      }
-      keyTypes[keyType].count++;
-      keyTypes[keyType].size += size;
-    }
-    
-    return {
-      totalKeys: this.memoryCache.size,
-      activeKeys: activeCount,
-      expiredKeys: expiredCount,
-      totalSizeBytes: totalSize,
-      totalSizeKB: Math.round(totalSize / 1024 * 100) / 100,
-      keyTypes,
-      memoryTTL: this.memoryTTL,
-      connected: this.connected,
-      layers: {
-        memory: true,
-        redis: !!this.redisClient,
-        postgres: !!this.db
-      }
-    };
-  }
-
   // Clean up expired memory entries manually
   cleanupExpiredMemory(): number {
     const now = Date.now();
