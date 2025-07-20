@@ -51,6 +51,7 @@ import path from 'path';
 import fetch from 'node-fetch';
 import FormData from 'form-data';
 import { LogEngine } from '@wgtechlabs/log-engine';
+import { AttachmentMetricsService } from './attachmentMetrics';
 
 // Import statements for buffer-based file processing
 // The following imports have been PERMANENTLY REMOVED:
@@ -104,18 +105,77 @@ export interface SecurityValidationResult {
 }
 
 /**
- * Enhanced error classification for better handling
+ * Enhanced error classification for better handling - Unified with Dashboard→Telegram flow
  */
+export enum AttachmentProcessingError {
+    // File Access Errors
+    FILE_NOT_FOUND = 'FILE_NOT_FOUND',
+    FILE_TOO_LARGE = 'FILE_TOO_LARGE', 
+    FILE_CORRUPTED = 'FILE_CORRUPTED',
+    INVALID_FILE_TYPE = 'INVALID_FILE_TYPE',
+    
+    // Network Errors
+    DOWNLOAD_FAILED = 'DOWNLOAD_FAILED',
+    UPLOAD_FAILED = 'UPLOAD_FAILED',
+    NETWORK_TIMEOUT = 'NETWORK_TIMEOUT',
+    API_RATE_LIMITED = 'API_RATE_LIMITED',
+    
+    // Processing Errors
+    BUFFER_ALLOCATION_FAILED = 'BUFFER_ALLOCATION_FAILED',
+    MEMORY_LIMIT_EXCEEDED = 'MEMORY_LIMIT_EXCEEDED',
+    PROCESSING_TIMEOUT = 'PROCESSING_TIMEOUT',
+    CONCURRENT_LIMIT_EXCEEDED = 'CONCURRENT_LIMIT_EXCEEDED',
+    
+    // Security Errors
+    SECURITY_SCAN_FAILED = 'SECURITY_SCAN_FAILED',
+    MALICIOUS_CONTENT_DETECTED = 'MALICIOUS_CONTENT_DETECTED',
+    FILENAME_SECURITY_VIOLATION = 'FILENAME_SECURITY_VIOLATION',
+    
+    // API Errors
+    TELEGRAM_API_ERROR = 'TELEGRAM_API_ERROR',
+    UNTHREAD_API_ERROR = 'UNTHREAD_API_ERROR',
+    AUTHENTICATION_FAILED = 'AUTHENTICATION_FAILED',
+    CONVERSATION_NOT_FOUND = 'CONVERSATION_NOT_FOUND',
+    
+    // System Errors
+    SYSTEM_OVERLOADED = 'SYSTEM_OVERLOADED',
+    CONFIGURATION_ERROR = 'CONFIGURATION_ERROR',
+    UNKNOWN_ERROR = 'UNKNOWN_ERROR'
+}
+
 export interface ProcessingError {
-    code: string;
+    code: AttachmentProcessingError;
     message: string;
+    userMessage: string;
     retryable: boolean;
-    context?: any;
+    context?: Record<string, unknown>;
+    timestamp: number;
 }
 
 /**
- * Buffer attachment interface for unified ticket creation
+ * Telegram API Response interface
  */
+interface TelegramFileResponse {
+    ok: boolean;
+    result?: {
+        file_id: string;
+        file_unique_id: string;
+        file_size?: number;
+        file_path?: string;
+    };
+    error_code?: number;
+    description?: string;
+}
+
+/**
+ * Unthread API Response interface
+ */
+interface UnthreadMessageResponse {
+    ts?: string;
+    id?: string;
+    success?: boolean;
+    error?: string;
+}
 export interface BufferAttachment {
     filename: string;
     buffer: Buffer;
@@ -246,10 +306,12 @@ class BufferPool {
 
     acquire(): Buffer {
         if (this.pool.length > 0) {
-            const buffer = this.pool.pop()!;
-            buffer.fill(0); // Zero out for security
-            LogEngine.debug('Reused buffer from pool', { poolSize: this.pool.length });
-            return buffer;
+            const buffer = this.pool.pop();
+            if (buffer) {
+                buffer.fill(0); // Zero out for security
+                LogEngine.debug('Reused buffer from pool', { poolSize: this.pool.length });
+                return buffer;
+            }
         }
         LogEngine.debug('Created new buffer', { size: this.bufferSize });
         return Buffer.alloc(this.bufferSize);
@@ -268,6 +330,148 @@ class BufferPool {
         this.pool.length = 0;
         LogEngine.debug('BufferPool cleaned up', { clearedBuffers: this.pool.length });
     }
+}
+
+/**
+ * Enhanced Error Handling System - Unified with Dashboard→Telegram flow
+ */
+
+/**
+ * Create standardized processing error with user-friendly messaging
+ */
+function createProcessingError(
+    code: AttachmentProcessingError,
+    technicalMessage: string,
+    context?: PerformanceContext
+): ProcessingError {
+    const getUserMessage = (errorCode: AttachmentProcessingError): string => {
+        switch (errorCode) {
+            case AttachmentProcessingError.FILE_NOT_FOUND:
+                return "❌ File not found. The file may have been deleted or is no longer available.";
+            case AttachmentProcessingError.FILE_TOO_LARGE:
+                return "📏 File too large. Please send a file smaller than 10MB.";
+            case AttachmentProcessingError.FILE_CORRUPTED:
+                return "🔧 File appears to be corrupted. Please try sending the file again.";
+            case AttachmentProcessingError.INVALID_FILE_TYPE:
+                return "🚫 File type not supported. Please send a supported file format.";
+            case AttachmentProcessingError.DOWNLOAD_FAILED:
+                return "⬇️ Failed to download file. Please try again in a moment.";
+            case AttachmentProcessingError.UPLOAD_FAILED:
+                return "⬆️ Failed to upload file. Please try again in a moment.";
+            case AttachmentProcessingError.NETWORK_TIMEOUT:
+                return "⏱️ Network timeout. Please check your connection and try again.";
+            case AttachmentProcessingError.API_RATE_LIMITED:
+                return "🚦 Too many requests. Please wait a moment and try again.";
+            case AttachmentProcessingError.BUFFER_ALLOCATION_FAILED:
+                return "💾 Memory allocation failed. Please try again with a smaller file.";
+            case AttachmentProcessingError.MEMORY_LIMIT_EXCEEDED:
+                return "🧠 System memory limit exceeded. Please try again later.";
+            case AttachmentProcessingError.PROCESSING_TIMEOUT:
+                return "⏰ File processing timeout. Please try again with a smaller file.";
+            case AttachmentProcessingError.CONCURRENT_LIMIT_EXCEEDED:
+                return "🔄 Too many files processing. Please wait and try again.";
+            case AttachmentProcessingError.SECURITY_SCAN_FAILED:
+                return "🔒 Security scan failed. Please contact support if this continues.";
+            case AttachmentProcessingError.MALICIOUS_CONTENT_DETECTED:
+                return "⚠️ Security issue detected. File cannot be processed for safety reasons.";
+            case AttachmentProcessingError.FILENAME_SECURITY_VIOLATION:
+                return "📝 Filename contains invalid characters. Please rename the file and try again.";
+            case AttachmentProcessingError.TELEGRAM_API_ERROR:
+                return "📱 Telegram service error. Please try again in a moment.";
+            case AttachmentProcessingError.UNTHREAD_API_ERROR:
+                return "🔧 Service error. Please try again in a moment.";
+            case AttachmentProcessingError.AUTHENTICATION_FAILED:
+                return "🔑 Authentication failed. Please contact support.";
+            case AttachmentProcessingError.CONVERSATION_NOT_FOUND:
+                return "💬 Conversation not found. Please contact support.";
+            case AttachmentProcessingError.SYSTEM_OVERLOADED:
+                return "⚡ System overloaded. Please try again in a few minutes.";
+            case AttachmentProcessingError.CONFIGURATION_ERROR:
+                return "⚙️ System configuration error. Please contact support.";
+            default:
+                return "❓ An unexpected error occurred. Please try again or contact support.";
+        }
+    };
+
+    const retryableErrors = new Set([
+        AttachmentProcessingError.DOWNLOAD_FAILED,
+        AttachmentProcessingError.UPLOAD_FAILED,
+        AttachmentProcessingError.NETWORK_TIMEOUT,
+        AttachmentProcessingError.API_RATE_LIMITED,
+        AttachmentProcessingError.BUFFER_ALLOCATION_FAILED,
+        AttachmentProcessingError.PROCESSING_TIMEOUT,
+        AttachmentProcessingError.CONCURRENT_LIMIT_EXCEEDED,
+        AttachmentProcessingError.TELEGRAM_API_ERROR,
+        AttachmentProcessingError.UNTHREAD_API_ERROR,
+        AttachmentProcessingError.SYSTEM_OVERLOADED
+    ]);
+
+    return {
+        code,
+        message: technicalMessage,
+        userMessage: getUserMessage(code),
+        retryable: retryableErrors.has(code),
+        context: { ...context } as Record<string, unknown>,
+        timestamp: Date.now()
+    };
+}
+
+/**
+ * Enhanced error classification based on error details
+ */
+function classifyError(error: Error, context?: PerformanceContext): ProcessingError {
+    const message = error.message.toLowerCase();
+
+    // File size errors
+    if (message.includes('file too large') || message.includes('size') && message.includes('exceed')) {
+        return createProcessingError(AttachmentProcessingError.FILE_TOO_LARGE, error.message, context);
+    }
+
+    // Network/timeout errors
+    if (message.includes('timeout') || message.includes('etimedout')) {
+        return createProcessingError(AttachmentProcessingError.NETWORK_TIMEOUT, error.message, context);
+    }
+
+    // File not found
+    if (message.includes('not found') || message.includes('404')) {
+        return createProcessingError(AttachmentProcessingError.FILE_NOT_FOUND, error.message, context);
+    }
+
+    // API errors
+    if (message.includes('telegram') && (message.includes('api') || message.includes('401') || message.includes('403'))) {
+        return createProcessingError(AttachmentProcessingError.TELEGRAM_API_ERROR, error.message, context);
+    }
+
+    if (message.includes('unthread') && (message.includes('api') || message.includes('401') || message.includes('403'))) {
+        return createProcessingError(AttachmentProcessingError.UNTHREAD_API_ERROR, error.message, context);
+    }
+
+    // Security errors
+    if (message.includes('unsupported file type') || message.includes('mime') || message.includes('content-type')) {
+        return createProcessingError(AttachmentProcessingError.INVALID_FILE_TYPE, error.message, context);
+    }
+
+    if (message.includes('security') || message.includes('malicious') || message.includes('dangerous')) {
+        return createProcessingError(AttachmentProcessingError.SECURITY_SCAN_FAILED, error.message, context);
+    }
+
+    // Memory errors
+    if (message.includes('memory') || message.includes('allocation') || message.includes('heap')) {
+        return createProcessingError(AttachmentProcessingError.MEMORY_LIMIT_EXCEEDED, error.message, context);
+    }
+
+    // Rate limiting
+    if (message.includes('rate limit') || message.includes('too many requests') || message.includes('429')) {
+        return createProcessingError(AttachmentProcessingError.API_RATE_LIMITED, error.message, context);
+    }
+
+    // Authentication
+    if (message.includes('authentication') || message.includes('unauthorized') || message.includes('api key')) {
+        return createProcessingError(AttachmentProcessingError.AUTHENTICATION_FAILED, error.message, context);
+    }
+
+    // Default to unknown error
+    return createProcessingError(AttachmentProcessingError.UNKNOWN_ERROR, error.message, context);
 }
 
 // Global buffer pool instance
@@ -326,12 +530,52 @@ function sanitizeFileName(fileName: string): SecurityValidationResult {
 }
 
 /**
+ * Context interface for performance monitoring
+ */
+interface PerformanceContext {
+    fileCount?: number;
+    totalSizeMB?: number;
+    downloadTimeMs?: number;
+    uploadTimeMs?: number;
+    retryCount?: number;
+    concurrentFiles?: number;
+    fileId?: string;
+    fileName?: string;
+    fileSize?: number;
+    conversationId?: string;
+    mimeType?: string;
+    issues?: string[];
+    [key: string]: unknown;
+}
+
+/**
+ * Enhanced error class with attachment processing context
+ */
+class AttachmentError extends Error {
+    public readonly code: AttachmentProcessingError;
+    public readonly userMessage: string;
+    public readonly retryable: boolean;
+    public readonly context: Record<string, unknown>;
+    public readonly timestamp: number;
+
+    constructor(processingError: ProcessingError) {
+        super(processingError.message);
+        this.name = 'AttachmentError';
+        this.code = processingError.code;
+        this.userMessage = processingError.userMessage;
+        this.retryable = processingError.retryable;
+        this.context = processingError.context || {};
+        this.timestamp = processingError.timestamp;
+    }
+}
+
+/**
  * Phase 3.1 Performance monitoring wrapper
  */
 async function withPerformanceMonitoring<T>(
     operation: () => Promise<T>,
     operationName: string,
-    context?: any
+    context?: PerformanceContext
 ): Promise<{ result: T; metrics: PerformanceMetrics }> {
     const startTime = Date.now();
     const startMemory = process.memoryUsage();
@@ -381,7 +625,7 @@ async function withPerformanceMonitoring<T>(
 async function withRetry<T>(
     operation: () => Promise<T>,
     operationName: string,
-    context?: any
+    context?: PerformanceContext
 ): Promise<T> {
     let lastError: Error | undefined;
 
@@ -438,16 +682,20 @@ async function withRetry<T>(
  */
 export class AttachmentHandler {
     private memoryMonitoringInterval?: NodeJS.Timeout;
+    private metrics: AttachmentMetricsService;
 
     constructor() {
+        this.metrics = new AttachmentMetricsService();
         this.initializeEnhancedFeatures();
-        LogEngine.info('AttachmentHandler initialized (Pure Buffer-Only v4.0.0)', {
-            version: '4.0.0',
-            implementation: 'Pure Buffer-Only',
+        LogEngine.info('AttachmentHandler initialized (Enhanced Error Handling v5.0.0)', {
+            version: '5.0.0',
+            implementation: 'Enhanced-Error-Handling',
             streamSupport: false,
             maxFileSize: `${BUFFER_ATTACHMENT_CONFIG.maxFileSize / (1024 * 1024)}MB`,
             maxFiles: BUFFER_ATTACHMENT_CONFIG.maxFiles,
-            enhancedFeatures: true
+            enhancedFeatures: true,
+            metricsEnabled: true,
+            errorClassification: true
         });
     }
 
@@ -508,120 +756,244 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 3.1 Enhanced load file to buffer with performance monitoring
+     * Phase 5 Enhanced load file to buffer with unified error handling
      */
     async loadFileToBuffer(fileId: string): Promise<FileBuffer> {
-        const { result } = await withPerformanceMonitoring(async () => {
-            return await withRetry(async () => {
-                LogEngine.debug('[AttachmentHandler] Starting buffer-based file download', {
-                    fileId,
-                    version: '4.0.0',
-                    mode: 'buffer-only'
-                });
+        const operationContext: PerformanceContext = {
+            fileId,
+            fileCount: 1
+        };
 
-                // Get file info from Telegram
-                const fileResponse = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`);
-                if (!fileResponse.ok) {
-                    throw new Error(`Failed to get file info from Telegram: ${fileResponse.statusText}`);
-                }
-
-                const fileData = await fileResponse.json() as any;
-                if (!fileData.ok || !fileData.result?.file_path) {
-                    throw new Error('Invalid file response from Telegram');
-                }
-
-                const telegramFile = fileData.result;
-                const originalFileName = telegramFile.file_path.split('/').pop() || `file_${fileId}`;
-                
-                // Phase 3.1 Security: Sanitize filename
-                const securityValidation = sanitizeFileName(originalFileName);
-                const sanitizedFileName = securityValidation.sanitizedFileName!;
-
-                if (securityValidation.threatLevel === 'HIGH') {
-                    LogEngine.warn('[AttachmentHandler] High security threat in filename', {
-                        originalFileName,
-                        sanitizedFileName,
-                        issues: securityValidation.issues,
-                        threatLevel: securityValidation.threatLevel
+        try {
+            const { result } = await withPerformanceMonitoring(async () => {
+                return await withRetry(async () => {
+                    LogEngine.debug('[AttachmentHandler] Starting buffer-based file download', {
+                        fileId,
+                        version: '5.0.0',
+                        mode: 'buffer-only'
                     });
-                }
 
-                // Validate file size
-                if (telegramFile.file_size && !this.validateFileSize(telegramFile.file_size, sanitizedFileName)) {
-                    throw new Error(`File too large: ${telegramFile.file_size} bytes (max: ${BUFFER_ATTACHMENT_CONFIG.maxFileSize})`);
-                }
-
-                // Download file to buffer
-                const downloadUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${telegramFile.file_path}`;
-
-                const downloadResponse = await fetch(downloadUrl, {
-                    headers: {
-                        'User-Agent': 'UnthreadBot/4.0.0 (Buffer-Only)'
+                    // Get file info from Telegram
+                    const fileResponse = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`);
+                    if (!fileResponse.ok) {
+                        const processingError = createProcessingError(
+                            AttachmentProcessingError.TELEGRAM_API_ERROR,
+                            `Failed to get file info from Telegram: ${fileResponse.statusText}`,
+                            operationContext
+                        );
+                        throw new Error(processingError.message);
                     }
-                });
 
-                if (!downloadResponse.ok) {
-                    throw new Error(`Failed to download file: ${downloadResponse.statusText}`);
-                }
+                    const fileData = await fileResponse.json() as TelegramFileResponse;
+                    if (!fileData.ok || !fileData.result?.file_path) {
+                        const processingError = createProcessingError(
+                            AttachmentProcessingError.FILE_NOT_FOUND,
+                            'Invalid file response from Telegram',
+                            operationContext
+                        );
+                        throw new Error(processingError.message);
+                    }
 
-                // Additional size validation from headers
-                const contentLength = downloadResponse.headers.get('content-length');
-                if (contentLength && !this.validateFileSize(parseInt(contentLength), sanitizedFileName)) {
-                    throw new Error(`File too large based on content-length: ${contentLength} bytes`);
-                }
+                    const telegramFile = fileData.result;
+                    if (!telegramFile?.file_path) {
+                        const processingError = createProcessingError(
+                            AttachmentProcessingError.FILE_NOT_FOUND,
+                            'Invalid file response from Telegram - missing file_path',
+                            operationContext
+                        );
+                        throw new Error(processingError.message);
+                    }
+                    
+                    const originalFileName = telegramFile.file_path.split('/').pop() || `file_${fileId}`;
+                    
+                    // Phase 5 Security: Enhanced filename sanitization with error handling
+                    const securityValidation = sanitizeFileName(originalFileName);
+                    if (!securityValidation.sanitizedFileName) {
+                        const processingError = createProcessingError(
+                            AttachmentProcessingError.FILENAME_SECURITY_VIOLATION,
+                            'Failed to generate safe filename',
+                            { ...operationContext, fileName: originalFileName }
+                        );
+                        throw new Error(processingError.message);
+                    }
+                    const sanitizedFileName = securityValidation.sanitizedFileName;
 
-                // Convert to buffer
-                const buffer = Buffer.from(await downloadResponse.arrayBuffer());
-                
-                // Final size validation
-                if (!this.validateFileSize(buffer.length, sanitizedFileName)) {
-                    throw new Error(`Downloaded file too large: ${buffer.length} bytes`);
-                }
+                    if (securityValidation.threatLevel === 'HIGH') {
+                        LogEngine.warn('[AttachmentHandler] High security threat in filename', {
+                            originalFileName,
+                            sanitizedFileName,
+                            issues: securityValidation.issues,
+                            threatLevel: securityValidation.threatLevel
+                        });
+                        
+                        const processingError = createProcessingError(
+                            AttachmentProcessingError.FILENAME_SECURITY_VIOLATION,
+                            `High security threat detected in filename: ${securityValidation.issues.join(', ')}`,
+                            { ...operationContext, fileName: originalFileName, issues: securityValidation.issues }
+                        );
+                        throw new Error(processingError.message);
+                    }
 
-                // Detect MIME type - prioritize extension-based detection for reliable results
-                const contentTypeMime = downloadResponse.headers.get('content-type');
-                const extensionMime = detectMimeTypeFromExtension(sanitizedFileName);
-                
-                // Use extension-based detection if available, otherwise fall back to content-type header
-                const mimeType = (extensionMime !== 'application/octet-stream') ? extensionMime : contentTypeMime || 'application/octet-stream';
-                
-                LogEngine.debug('[AttachmentHandler] MIME type detection', {
-                    fileName: sanitizedFileName,
-                    contentTypeMime,
-                    extensionMime,
-                    finalMimeType: mimeType,
-                    detectionMethod: (extensionMime !== 'application/octet-stream') ? 'extension' : 'content-type'
-                });
+                    // Enhanced file size validation with proper error handling
+                    if (telegramFile.file_size && !this.validateFileSize(telegramFile.file_size, sanitizedFileName)) {
+                        const processingError = createProcessingError(
+                            AttachmentProcessingError.FILE_TOO_LARGE,
+                            `File too large: ${telegramFile.file_size} bytes (max: ${BUFFER_ATTACHMENT_CONFIG.maxFileSize})`,
+                            { ...operationContext, fileName: sanitizedFileName, fileSize: telegramFile.file_size }
+                        );
+                        throw new Error(processingError.message);
+                    }
 
-                // Phase 3.1 Security: Validate MIME type
-                if (BUFFER_ATTACHMENT_CONFIG.enableContentValidation && 
-                    !BUFFER_ATTACHMENT_CONFIG.allowedMimeTypes.includes(mimeType)) {
-                    LogEngine.warn('[AttachmentHandler] Unsupported MIME type detected', {
-                        fileName: sanitizedFileName,
-                        mimeType,
-                        allowedTypes: BUFFER_ATTACHMENT_CONFIG.allowedMimeTypes
+                    // Download file to buffer with enhanced error handling
+                    const downloadUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${telegramFile.file_path}`;
+
+                    const downloadResponse = await fetch(downloadUrl, {
+                        headers: {
+                            'User-Agent': 'UnthreadBot/5.0.0 (Enhanced-Error-Handling)'
+                        }
                     });
-                    throw new Error(`Unsupported file type: ${mimeType}`);
-                }
 
-                LogEngine.info('[AttachmentHandler] File loaded to buffer successfully', {
-                    fileName: sanitizedFileName,
-                    size: buffer.length,
-                    mimeType,
-                    version: '4.0.0'
-                });
+                    if (!downloadResponse.ok) {
+                        const processingError = createProcessingError(
+                            AttachmentProcessingError.DOWNLOAD_FAILED,
+                            `Failed to download file: ${downloadResponse.statusText}`,
+                            { ...operationContext, fileName: sanitizedFileName }
+                        );
+                        throw new Error(processingError.message);
+                    }
 
-                return {
-                    buffer,
-                    fileName: sanitizedFileName,
-                    mimeType,
-                    size: buffer.length
-                };
+                    // Additional size validation from headers
+                    const contentLength = downloadResponse.headers.get('content-length');
+                    if (contentLength && !this.validateFileSize(parseInt(contentLength), sanitizedFileName)) {
+                        const processingError = createProcessingError(
+                            AttachmentProcessingError.FILE_TOO_LARGE,
+                            `File too large based on content-length: ${contentLength} bytes`,
+                            { ...operationContext, fileName: sanitizedFileName, fileSize: parseInt(contentLength) }
+                        );
+                        throw new Error(processingError.message);
+                    }
 
-            }, `loadFileToBuffer-${fileId}`);
-        }, `loadFileToBuffer-${fileId}`, { fileId });
+                    // Convert to buffer with memory management
+                    try {
+                        const buffer = Buffer.from(await downloadResponse.arrayBuffer());
+                        
+                        // Final size validation
+                        if (!this.validateFileSize(buffer.length, sanitizedFileName)) {
+                            const processingError = createProcessingError(
+                                AttachmentProcessingError.FILE_TOO_LARGE,
+                                `Downloaded file too large: ${buffer.length} bytes`,
+                                { ...operationContext, fileName: sanitizedFileName, fileSize: buffer.length }
+                            );
+                            throw new Error(processingError.message);
+                        }
 
-        return result;
+                        // Enhanced MIME type detection with security validation
+                        const contentTypeMime = downloadResponse.headers.get('content-type');
+                        const extensionMime = detectMimeTypeFromExtension(sanitizedFileName);
+                        
+                        // Use extension-based detection if available, otherwise fall back to content-type header
+                        const mimeType = (extensionMime !== 'application/octet-stream') ? extensionMime : contentTypeMime || 'application/octet-stream';
+                        
+                        LogEngine.debug('[AttachmentHandler] MIME type detection', {
+                            fileName: sanitizedFileName,
+                            contentTypeMime,
+                            extensionMime,
+                            finalMimeType: mimeType,
+                            detectionMethod: (extensionMime !== 'application/octet-stream') ? 'extension' : 'content-type'
+                        });
+
+                        // Phase 5 Security: Enhanced MIME type validation
+                        if (BUFFER_ATTACHMENT_CONFIG.enableContentValidation && 
+                            !BUFFER_ATTACHMENT_CONFIG.allowedMimeTypes.includes(mimeType)) {
+                            LogEngine.warn('[AttachmentHandler] Unsupported MIME type detected', {
+                                fileName: sanitizedFileName,
+                                mimeType,
+                                allowedTypes: BUFFER_ATTACHMENT_CONFIG.allowedMimeTypes
+                            });
+                            
+                            const processingError = createProcessingError(
+                                AttachmentProcessingError.INVALID_FILE_TYPE,
+                                `Unsupported file type: ${mimeType}`,
+                                { ...operationContext, fileName: sanitizedFileName, mimeType }
+                            );
+                            throw new Error(processingError.message);
+                        }
+
+                        LogEngine.info('[AttachmentHandler] File loaded to buffer successfully', {
+                            fileName: sanitizedFileName,
+                            size: buffer.length,
+                            mimeType,
+                            version: '5.0.0'
+                        });
+
+                        // Phase 5: Track successful download metrics
+                        this.metrics.recordOperation({
+                            fileName: sanitizedFileName,
+                            fileSize: buffer.length,
+                            mimeType,
+                            downloadTimeMs: Date.now() - (operationContext.downloadTimeMs || Date.now()),
+                            uploadTimeMs: 0, // Not uploading in this step
+                            totalTimeMs: Date.now() - (operationContext.downloadTimeMs || Date.now()),
+                            conversationId: operationContext.conversationId || 'telegram_download',
+                            chatId: 0, // Not available at this stage
+                            timestamp: Date.now(),
+                            success: true
+                        });
+
+                        return {
+                            buffer,
+                            fileName: sanitizedFileName,
+                            mimeType,
+                            size: buffer.length
+                        };
+                        
+                    } catch (bufferError) {
+                        const processingError = createProcessingError(
+                            AttachmentProcessingError.BUFFER_ALLOCATION_FAILED,
+                            `Buffer allocation failed: ${bufferError instanceof Error ? bufferError.message : String(bufferError)}`,
+                            { ...operationContext, fileName: sanitizedFileName }
+                        );
+                        throw new Error(processingError.message);
+                    }
+
+                }, `loadFileToBuffer-${fileId}`, operationContext);
+            }, `loadFileToBuffer-${fileId}`, operationContext);
+
+            return result;
+            
+        } catch (error) {
+            // Enhanced error logging and classification
+            const classifiedError = classifyError(error instanceof Error ? error : new Error(String(error)), operationContext);
+            
+            LogEngine.error('[AttachmentHandler] Enhanced error in loadFileToBuffer', {
+                fileId,
+                errorCode: classifiedError.code,
+                technicalMessage: classifiedError.message,
+                userMessage: classifiedError.userMessage,
+                retryable: classifiedError.retryable,
+                context: classifiedError.context,
+                version: '5.0.0'
+            });
+
+            // Phase 5: Track error metrics
+            this.metrics.recordOperation({
+                fileName: operationContext.fileName || `file_${fileId}`,
+                fileSize: operationContext.fileSize || 0,
+                mimeType: 'unknown',
+                downloadTimeMs: Date.now() - (operationContext.downloadTimeMs || Date.now()),
+                uploadTimeMs: 0,
+                totalTimeMs: Date.now() - (operationContext.downloadTimeMs || Date.now()),
+                conversationId: operationContext.conversationId || 'telegram_download',
+                chatId: 0,
+                timestamp: Date.now(),
+                success: false,
+                errorType: classifiedError.code,
+                errorMessage: classifiedError.userMessage
+            });
+            
+            // Re-throw with enhanced error context
+            throw new AttachmentError(classifiedError);
+        }
     }
 
     /**
@@ -733,7 +1105,7 @@ export class AttachmentHandler {
 
                 // Use proper Unthread API base URL from the service
                 const API_BASE_URL = 'https://api.unthread.io/api';
-                const UNTHREAD_API_KEY = process.env.UNTHREAD_API_KEY!;
+                const UNTHREAD_API_KEY = process.env.UNTHREAD_API_KEY;
 
                 if (!UNTHREAD_API_KEY) {
                     throw new Error('UNTHREAD_API_KEY environment variable is not set');
@@ -784,13 +1156,13 @@ export class AttachmentHandler {
                     throw new Error(`Upload failed: ${uploadResponse.status} ${uploadResponse.statusText} - ${errorText}`);
                 }
 
-                const responseData = await uploadResponse.json();
+                const responseData = await uploadResponse.json() as UnthreadMessageResponse;
 
                 LogEngine.info('[AttachmentHandler] File uploaded to Unthread successfully', {
                     fileName: fileBuffer.fileName,
                     fileSize: fileBuffer.size,
                     conversationId,
-                    messageId: (responseData as any)?.ts || 'unknown',
+                    messageId: responseData?.ts || responseData?.id || 'unknown',
                     version: '4.0.0'
                 });
 
@@ -880,15 +1252,17 @@ export class AttachmentHandler {
     }
 
     /**
-     * Main public interface - COMPLETELY BUFFER-ONLY (No stream fallback)
+     * Main public interface - Enhanced Error Handling with Unified Metrics (v5.0.0)
      */
     async processAttachments(fileIds: string[], conversationId: string, message?: string, onBehalfOf?: { name: string; email: string | undefined }): Promise<boolean> {
-        LogEngine.info('[AttachmentHandler] Processing attachments (Pure Buffer-Only v4.0.0)', {
+        LogEngine.info('[AttachmentHandler] Processing attachments (Enhanced Error Handling v5.0.0)', {
             fileCount: fileIds.length,
             conversationId,
-            version: '4.0.0',
-            implementation: 'pure-buffer-only',
-            streamSupport: false
+            version: '5.0.0',
+            implementation: 'enhanced-error-handling',
+            streamSupport: false,
+            metricsEnabled: true,
+            errorClassification: true
         });
 
         // Validation

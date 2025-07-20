@@ -34,8 +34,11 @@ import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 import { escapeMarkdown } from '../utils/markdownEscape.js';
 import { 
   AttachmentErrorHandler, 
-  AttachmentProcessingError
+  AttachmentProcessingError,
+  AttachmentErrorType
 } from '../utils/errorHandler.js';
+import { recordSuccessfulAttachment, recordFailedAttachment } from '../utils/attachmentMetrics.js';
+import { downloadAttachmentFromUnthread } from '../services/unthread.js';
 
 /**
  * Handles incoming webhook messages from Unthread agents
@@ -798,20 +801,16 @@ export class TelegramWebhookHandler {
           fileId: attachment.id
         });
 
-        // Phase 1: Send notification that attachment processing will be implemented in Phase 2
-        await this.safeSendMessage(
+        // Phase 2: Download and forward attachment to Telegram
+        await this.downloadAndForwardAttachment({
+          conversationId,
+          fileId: String(attachment.id),
+          fileName: String(attachment.name),
+          fileSize: Number(attachment.size) || 0,
+          mimeType: String(attachment.type),
           chatId,
-          `📎 **Attachment Detected**: ${attachment.name || 'unknown'}\n\n` +
-          `🔄 Attachment forwarding is being implemented and will be available soon.\n\n` +
-          `**File Details:**\n` +
-          `• Name: ${attachment.name || 'unknown'}\n` +
-          `• Size: ${this.formatFileSize((attachment.size as number) || 0)}\n` +
-          `• Type: ${attachment.type || 'unknown'}`,
-          {
-            reply_to_message_id: replyToMessageId,
-            parse_mode: 'Markdown'
-          }
-        );
+          replyToMessageId
+        });
 
       } catch (validationError) {
         LogEngine.error('❌ Attachment validation failed', {
@@ -837,6 +836,376 @@ export class TelegramWebhookHandler {
       processedCount: attachments.length,
       phase: 'Phase1-ValidationOnly'
     });
+  }
+
+  /**
+   * Downloads an attachment from Unthread and forwards it to Telegram
+   * 
+   * Phase 2 implementation that handles the complete attachment processing pipeline:
+   * 1. Downloads file from Unthread using conversation and file IDs
+   * 2. Processes file buffer with existing AttachmentHandler
+   * 3. Uploads to Telegram with proper threading and error handling
+   * 
+   * @param params - Download and forwarding parameters
+   */
+  private async downloadAndForwardAttachment(params: {
+    conversationId: string;
+    fileId: string;
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    chatId: number;
+    replyToMessageId: number;
+  }): Promise<void> {
+    const { conversationId, fileId, fileName, fileSize, mimeType, chatId, replyToMessageId } = params;
+    const startTime = Date.now();
+    
+    try {
+      LogEngine.info('🔄 Starting attachment download and forward', {
+        conversationId,
+        fileId,
+        fileName,
+        fileSize,
+        chatId,
+        mimeType
+      });
+
+      // Step 1: Download attachment from Unthread
+      LogEngine.debug('📥 Downloading attachment from Unthread API', { conversationId, fileId });
+      const downloadStartTime = Date.now();
+      
+      const fileBuffer = await downloadAttachmentFromUnthread(
+        conversationId,
+        fileId,
+        fileName,
+        50 * 1024 * 1024 // 50MB limit for Telegram
+      );
+
+      const downloadTime = Date.now() - downloadStartTime;
+      LogEngine.info('✅ Successfully downloaded attachment from Unthread', {
+        conversationId,
+        fileId,
+        fileName,
+        downloadedSize: fileBuffer.length,
+        downloadTimeMs: downloadTime
+      });
+
+      // Step 2: Upload to Telegram using direct bot API
+      LogEngine.debug('📤 Uploading attachment to Telegram', { chatId, fileName });
+      const uploadStartTime = Date.now();
+      
+      try {
+        // Determine the correct Telegram send method based on file type
+        const sendMethod = this.determineTelegramSendMethod(mimeType, fileName);
+        const fileTypeEmoji = this.getFileTypeEmoji(mimeType, sendMethod);
+        
+        // Enhanced caption with more metadata
+        const caption = this.createAttachmentCaption({
+          fileName,
+          fileSize,
+          mimeType,
+          sendMethod,
+          fileTypeEmoji
+        });
+
+        let telegramResult;
+        if (sendMethod === 'document') {
+          telegramResult = await this.bot.telegram.sendDocument(
+            chatId,
+            {
+              source: fileBuffer,
+              filename: fileName
+            },
+            {
+              reply_parameters: { message_id: replyToMessageId },
+              caption
+            }
+          );
+        } else if (sendMethod === 'photo') {
+          telegramResult = await this.bot.telegram.sendPhoto(
+            chatId,
+            {
+              source: fileBuffer,
+              filename: fileName
+            },
+            {
+              reply_parameters: { message_id: replyToMessageId },
+              caption
+            }
+          );
+        } else {
+          // Default to document
+          telegramResult = await this.bot.telegram.sendDocument(
+            chatId,
+            {
+              source: fileBuffer,
+              filename: fileName
+            },
+            {
+              reply_parameters: { message_id: replyToMessageId },
+              caption
+            }
+          );
+        }
+
+        const uploadTime = Date.now() - uploadStartTime;
+        const totalTime = Date.now() - startTime;
+
+        LogEngine.info('🎉 Successfully forwarded attachment to Telegram', {
+          conversationId,
+          fileId,
+          fileName,
+          chatId,
+          telegramFileId: telegramResult.document?.file_id || telegramResult.photo?.[0]?.file_id,
+          messageId: telegramResult.message_id,
+          downloadTimeMs: downloadTime,
+          uploadTimeMs: uploadTime,
+          totalTimeMs: totalTime,
+          sendMethod
+        });
+
+        // Record successful operation metrics
+        recordSuccessfulAttachment({
+          downloadTimeMs: downloadTime,
+          uploadTimeMs: uploadTime,
+          totalTimeMs: totalTime,
+          fileSize,
+          mimeType,
+          fileName,
+          conversationId,
+          chatId,
+          timestamp: Date.now()
+        });
+
+        // Enhanced success notification with processing details
+        await this.safeSendMessage(
+          chatId,
+          this.createSuccessNotification({
+            fileName,
+            fileSize,
+            mimeType,
+            sendMethod,
+            processingTime: totalTime,
+            downloadTime,
+            uploadTime
+          }),
+          {
+            reply_parameters: { message_id: replyToMessageId },
+            parse_mode: 'Markdown'
+          }
+        );
+
+      } catch (telegramError) {
+        const uploadTime = Date.now() - uploadStartTime;
+        LogEngine.error('Failed to upload attachment to Telegram', {
+          conversationId,
+          fileId,
+          fileName,
+          chatId,
+          uploadTimeMs: uploadTime,
+          error: telegramError instanceof Error ? telegramError.message : String(telegramError)
+        });
+
+        throw new AttachmentProcessingError(
+          AttachmentErrorType.TELEGRAM_UPLOAD_FAILED,
+          `Failed to upload attachment to Telegram: ${telegramError instanceof Error ? telegramError.message : String(telegramError)}`,
+          {
+            conversationId,
+            fileId,
+            fileName,
+            fileSize,
+            chatId,
+            additionalData: { telegramError }
+          }
+        );
+      }
+
+    } catch (error) {
+      const totalTime = Date.now() - startTime;
+      LogEngine.error('❌ Failed to download and forward attachment', {
+        conversationId,
+        fileId,
+        fileName,
+        chatId,
+        totalTimeMs: totalTime,
+        error: error instanceof Error ? error.message : String(error)
+      });
+
+      // Handle AttachmentProcessingError with user notification
+      if (error instanceof AttachmentProcessingError) {
+        // Record failed operation metrics
+        recordFailedAttachment(
+          {
+            downloadTimeMs: 0, // May not have completed download
+            uploadTimeMs: 0,
+            totalTimeMs: totalTime,
+            fileSize,
+            mimeType,
+            fileName,
+            conversationId,
+            chatId,
+            timestamp: Date.now()
+          },
+          error.errorType,
+          error.message
+        );
+
+        await AttachmentErrorHandler.notifyUser(
+          this.bot,
+          chatId,
+          error,
+          replyToMessageId
+        );
+        return;
+      }
+
+      // Handle unexpected errors
+      recordFailedAttachment(
+        {
+          downloadTimeMs: 0,
+          uploadTimeMs: 0,
+          totalTimeMs: totalTime,
+          fileSize,
+          mimeType,
+          fileName,
+          conversationId,
+          chatId,
+          timestamp: Date.now()
+        },
+        'UNEXPECTED_ERROR',
+        error instanceof Error ? error.message : String(error)
+      );
+
+      await this.safeSendMessage(
+        chatId,
+        `❌ **Failed to Forward Attachment**\n\n` +
+        `📎 **${fileName}**\n` +
+        `🚨 An unexpected error occurred while processing your attachment.\n\n` +
+        `Please try again or contact support if the issue persists.`,
+        {
+          reply_parameters: { message_id: replyToMessageId },
+          parse_mode: 'Markdown'
+        }
+      );
+    }
+  }
+
+  /**
+   * Creates an enhanced attachment caption with metadata
+   */
+  private createAttachmentCaption(params: {
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    sendMethod: 'photo' | 'document';
+    fileTypeEmoji: string;
+  }): string {
+    const { fileName, fileSize, mimeType, sendMethod, fileTypeEmoji } = params;
+    
+    return `${fileTypeEmoji} **${fileName}**\n` +
+           `📊 **Size:** ${this.formatFileSize(fileSize)}\n` +
+           `🔖 **Type:** ${this.getReadableFileType(mimeType, sendMethod)}`;
+  }
+
+  /**
+   * Creates a success notification with processing details
+   */
+  private createSuccessNotification(params: {
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    sendMethod: 'photo' | 'document';
+    processingTime: number;
+    downloadTime: number;
+    uploadTime: number;
+  }): string {
+    const { fileName, fileSize, mimeType, sendMethod, processingTime, downloadTime, uploadTime } = params;
+    
+    return `✅ **Attachment Forwarded Successfully**\n\n` +
+           `📎 **${fileName}**\n` +
+           `📊 **Size:** ${this.formatFileSize(fileSize)}\n` +
+           `🔖 **Type:** ${this.getReadableFileType(mimeType, sendMethod)}\n` +
+           `⚡ **Processing:** ${processingTime}ms (↓${downloadTime}ms ↑${uploadTime}ms)`;
+  }
+
+  /**
+   * Gets appropriate emoji for file type
+   */
+  private getFileTypeEmoji(mimeType: string, sendMethod: 'photo' | 'document'): string {
+    if (sendMethod === 'photo') {
+      return '📷';
+    }
+
+    // Document types
+    if (mimeType.includes('pdf')) return '📄';
+    if (mimeType.includes('word') || mimeType.includes('document')) return '📝';
+    if (mimeType.includes('sheet') || mimeType.includes('excel')) return '📊';
+    if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return '📋';
+    if (mimeType.includes('video')) return '🎥';
+    if (mimeType.includes('audio')) return '🎵';
+    if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('archive')) return '🗜️';
+    if (mimeType.includes('text')) return '📄';
+    
+    return '📎'; // Default document emoji
+  }
+
+  /**
+   * Gets human-readable file type description
+   */
+  private getReadableFileType(mimeType: string, sendMethod: 'photo' | 'document'): string {
+    if (sendMethod === 'photo') {
+      return 'Image';
+    }
+
+    // Specific document types
+    if (mimeType.includes('pdf')) return 'PDF Document';
+    if (mimeType.includes('word') || mimeType.includes('document')) return 'Word Document';
+    if (mimeType.includes('sheet') || mimeType.includes('excel')) return 'Spreadsheet';
+    if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return 'Presentation';
+    if (mimeType.includes('video')) return 'Video File';
+    if (mimeType.includes('audio')) return 'Audio File';
+    if (mimeType.includes('zip') || mimeType.includes('rar')) return 'Archive';
+    if (mimeType.includes('text')) return 'Text File';
+    
+    // Extract from mime type if possible
+    if (mimeType.includes('/')) {
+      const parts = mimeType.split('/');
+      if (parts.length >= 2 && parts[1]) {
+        return parts[1].charAt(0).toUpperCase() + parts[1].slice(1) + ' File';
+      }
+    }
+    
+    return 'Document';
+  }
+
+  /**
+   * Determines the appropriate Telegram send method based on file type
+   */
+  private determineTelegramSendMethod(mimeType: string, fileName: string): 'photo' | 'document' {
+    // Image files that should be sent as photos
+    const imageTypes = [
+      'image/jpeg',
+      'image/jpg', 
+      'image/png',
+      'image/gif',
+      'image/webp'
+    ];
+
+    // Check if it's an image type and under 10MB (Telegram photo limit)
+    if (imageTypes.includes(mimeType.toLowerCase())) {
+      return 'photo';
+    }
+
+    // Check file extension as fallback
+    const extension = fileName.toLowerCase().split('.').pop();
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+    
+    if (extension && imageExtensions.includes(extension)) {
+      return 'photo';
+    }
+
+    // Default to document for all other files
+    return 'document';
   }
 
   /**
