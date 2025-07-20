@@ -10,7 +10,7 @@
 import { BaseCommand, type CommandMetadata } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
 import { BotsStore } from '../../sdk/bots-brain/index.js';
-import { checkAndPromptBotAdmin, isBotAdmin } from '../../utils/botPermissions.js';
+import { checkAndPromptBotAdmin, isBotAdmin } from '../../utils/permissions.js';
 import { createUserErrorMessage, logError } from '../utils/errorHandler.js';
 import { getCompanyName } from '../../config/env.js';
 import { GlobalTemplateManager } from '../../utils/globalTemplateManager.js';
