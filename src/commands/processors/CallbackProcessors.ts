@@ -587,6 +587,19 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                             userId
                         });
                         
+                        // Notify user about attachment processing failure
+                        await ctx.editMessageText(
+                            `⚠️ **Attachment Processing Issue**\n\n` +
+                            `We encountered an issue processing your ${attachmentIds.length} attachment${attachmentIds.length > 1 ? 's' : ''}. ` +
+                            `Your ticket will be created without the attachments.\n\n` +
+                            `You can attach files later by replying to the ticket confirmation message.\n\n` +
+                            `🎫 Creating your ticket now...`,
+                            { parse_mode: 'Markdown' }
+                        );
+                        
+                        // Brief delay to let user read the notification
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        
                         // Fallback to standard ticket creation without attachments
                         ticketResponse = await unthreadService.createTicket({
                             groupChatName: 'Telegram Support', // Default group chat name
