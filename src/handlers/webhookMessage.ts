@@ -32,6 +32,10 @@ import type { BotContext } from '../types/index.js';
 import type { IBotsStore } from '../sdk/types.js';
 import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 import { escapeMarkdown } from '../utils/markdownEscape.js';
+import { 
+  AttachmentErrorHandler, 
+  AttachmentProcessingError
+} from '../utils/errorHandler.js';
 
 /**
  * Handles incoming webhook messages from Unthread agents
@@ -167,20 +171,46 @@ export class TelegramWebhookHandler {
 
       // 3. Validate message content - check both 'content' and 'text' fields
       const messageText = event.data.content || event.data.text;
-      if (!messageText || messageText.trim().length === 0) {
-        LogEngine.warn('❌ Empty message text in webhook event', { 
+      
+      // Check for attachments in metadata
+      const metadata = event.data.metadata as Record<string, unknown> | undefined;
+      const eventPayload = metadata?.event_payload as Record<string, unknown> | undefined;
+      const attachments = eventPayload?.attachments as Array<Record<string, unknown>> | undefined;
+      const hasAttachments = !!(attachments && attachments.length > 0);
+      
+      // Message must have either text content OR attachments
+      if ((!messageText || messageText.trim().length === 0) && !hasAttachments) {
+        LogEngine.warn('❌ Empty message with no attachments in webhook event', { 
           conversationId,
           hasContent: !!event.data.content,
-          hasText: !!event.data.text
+          hasText: !!event.data.text,
+          hasAttachments
         });
         return;
       }
 
-      LogEngine.info('✅ Message content validated', { 
-        conversationId, 
-        messageLength: messageText.length,
-        messagePreview: messageText.substring(0, 100) + (messageText.length > 100 ? '...' : '')
-      });
+      if (messageText && messageText.trim().length > 0) {
+        LogEngine.info('✅ Message content validated', { 
+          conversationId, 
+          messageLength: messageText.length,
+          messagePreview: messageText.substring(0, 100) + (messageText.length > 100 ? '...' : '')
+        });
+      }
+
+      // Log attachment detection
+      if (hasAttachments && attachments) {
+        LogEngine.info('📎 Processing message with attachments', {
+          conversationId,
+          attachmentCount: attachments.length,
+          hasTextContent: !!(messageText && messageText.trim().length > 0),
+          attachments: attachments.map((att: Record<string, unknown>) => ({
+            id: att.id,
+            name: att.name,
+            size: att.size,
+            type: att.type
+          }))
+        });
+      }
 
       // 4. Always deliver agent messages - we'll prompt for email when user replies instead
       LogEngine.info('✅ Delivering agent message directly to user', {
@@ -237,6 +267,51 @@ export class TelegramWebhookHandler {
             sentMessageId: sentMessage.message_id,
             friendlyId: ticketData.friendlyId
           });
+
+          // 7. Process attachments if present
+          if (hasAttachments && attachments) {
+            LogEngine.info('🔄 Processing attachments for dashboard message', {
+              conversationId,
+              attachmentCount: attachments.length,
+              chatId: ticketData.chatId,
+              replyToMessageId: sentMessage.message_id
+            });
+
+            try {
+              await this.processAttachmentsFromDashboard(
+                attachments,
+                conversationId,
+                ticketData.chatId,
+                sentMessage.message_id
+              );
+            } catch (attachmentError) {
+              LogEngine.error('❌ Failed to process attachments from dashboard', {
+                conversationId,
+                attachmentCount: attachments.length,
+                error: attachmentError instanceof Error ? attachmentError.message : String(attachmentError)
+              });
+
+              // Send error notification to user
+              if (attachmentError instanceof AttachmentProcessingError) {
+                await AttachmentErrorHandler.notifyUser(
+                  this.bot,
+                  ticketData.chatId,
+                  attachmentError,
+                  sentMessage.message_id
+                );
+              } else {
+                // Generic error notification
+                await this.safeSendMessage(
+                  ticketData.chatId,
+                  '❌ Failed to process attachments. Please contact support if this persists.',
+                  { 
+                    reply_to_message_id: sentMessage.message_id,
+                    parse_mode: 'Markdown'
+                  }
+                );
+              }
+            }
+          }
         } else {
           LogEngine.warn('Message not sent - user may have blocked bot or chat not found', {
             conversationId,
@@ -668,6 +743,119 @@ export class TelegramWebhookHandler {
       });
       // Don't throw - cleanup failure shouldn't crash the bot
     }
+  }
+
+  /**
+   * Process attachments from dashboard messages and forward them to Telegram
+   * Phase 1 implementation: Detection and validation, Phase 2 will add download/upload
+   * 
+   * @param attachments - Array of attachment objects from webhook metadata
+   * @param conversationId - Unthread conversation ID
+   * @param chatId - Telegram chat ID
+   * @param replyToMessageId - Message ID to reply to
+   */
+  private async processAttachmentsFromDashboard(
+    attachments: Array<Record<string, unknown>>,
+    conversationId: string,
+    chatId: number,
+    replyToMessageId: number
+  ): Promise<void> {
+    LogEngine.info('🔄 Starting attachment processing from dashboard', {
+      conversationId,
+      attachmentCount: attachments.length,
+      chatId,
+      replyToMessageId,
+      phase: 'Phase1-ValidationOnly'
+    });
+
+    // Phase 1: Validate attachments and prepare for Phase 2 implementation
+    for (let i = 0; i < attachments.length; i++) {
+      const attachment = attachments[i];
+      
+      // Skip invalid attachments
+      if (!attachment) {
+        LogEngine.warn('⚠️ Skipping undefined attachment', {
+          conversationId,
+          attachmentIndex: i + 1
+        });
+        continue;
+      }
+      
+      try {
+        // Validate attachment structure
+        AttachmentErrorHandler.validateAttachment(attachment, {
+          conversationId,
+          chatId,
+          messageId: replyToMessageId
+        });
+
+        LogEngine.info('✅ Attachment validated successfully', {
+          conversationId,
+          attachmentIndex: i + 1,
+          fileName: attachment.name,
+          fileSize: attachment.size,
+          fileType: attachment.type,
+          fileId: attachment.id
+        });
+
+        // Phase 1: Send notification that attachment processing will be implemented in Phase 2
+        await this.safeSendMessage(
+          chatId,
+          `📎 **Attachment Detected**: ${attachment.name || 'unknown'}\n\n` +
+          `🔄 Attachment forwarding is being implemented and will be available soon.\n\n` +
+          `**File Details:**\n` +
+          `• Name: ${attachment.name || 'unknown'}\n` +
+          `• Size: ${this.formatFileSize((attachment.size as number) || 0)}\n` +
+          `• Type: ${attachment.type || 'unknown'}`,
+          {
+            reply_to_message_id: replyToMessageId,
+            parse_mode: 'Markdown'
+          }
+        );
+
+      } catch (validationError) {
+        LogEngine.error('❌ Attachment validation failed', {
+          conversationId,
+          attachmentIndex: i + 1,
+          fileName: attachment.name || 'unknown',
+          error: validationError instanceof Error ? validationError.message : String(validationError)
+        });
+
+        if (validationError instanceof AttachmentProcessingError) {
+          await AttachmentErrorHandler.notifyUser(
+            this.bot,
+            chatId,
+            validationError,
+            replyToMessageId
+          );
+        }
+      }
+    }
+
+    LogEngine.info('✅ Phase 1 attachment processing completed', {
+      conversationId,
+      processedCount: attachments.length,
+      phase: 'Phase1-ValidationOnly'
+    });
+  }
+
+  /**
+   * Format file size in human-readable format
+   */
+  private formatFileSize(bytes: number): string {
+    if (!bytes || bytes === 0) {
+      return '0 B';
+    }
+    
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    if (i < 0 || i >= sizes.length) {
+      return `${bytes} B`;
+    }
+    
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
   }
 
 }
