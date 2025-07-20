@@ -182,10 +182,10 @@ export class BotsStore implements IBotsStore {
       chatId,
       messageId,
       conversationId,
-      ticketId,
+      ticketId: _ticketId,
       friendlyId,
-      telegramUserId,
-      createdAt
+      telegramUserId: _telegramUserId,
+      createdAt: _createdAt
     } = ticketData;
     
     // Enhanced ticket data with metadata
@@ -410,7 +410,7 @@ export class BotsStore implements IBotsStore {
    * Store user information
    */
   async storeUser(userData: UserData): Promise<boolean> {
-    const { telegramUserId, username, firstName, lastName } = userData;
+    const { telegramUserId, username: _username, firstName, lastName } = userData;
     
     const enrichedUserData: UserData = {
       ...userData,
@@ -637,8 +637,8 @@ export class BotsStore implements IBotsStore {
     const {
       messageId,      // Telegram message ID of the agent message
       conversationId, // Unthread conversation ID
-      chatId,         // Telegram chat ID
-      sentAt          // Timestamp when message was sent
+      chatId: _chatId,         // Telegram chat ID
+      sentAt: _sentAt          // Timestamp when message was sent
     } = agentMessageData;
     
     const enrichedData = {

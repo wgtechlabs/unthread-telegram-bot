@@ -195,10 +195,6 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
             "Please describe your issue:" : 
             "Please provide your email address:";
 
-        const placeholder = userState.field === 'summary' ? 
-            "Describe your issue..." : 
-            "your@email.com";
-
         await ctx.editMessageText(
             `🎫 **Continue Support Ticket**\n\n` +
             `**Step ${userState.step} of ${userState.totalSteps}:** ${stepText}\n\n` +
@@ -1213,7 +1209,7 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             const now = new Date();
             const extendedExpiresAt = new Date(now.getTime() + CALLBACK_CONSTANTS.SESSION.EXPIRY_EXTENSION_MINUTES * 60 * 1000);
             
-            const updateResult = await BotsStore.updateDmSetupSession(sessionId, {
+            const _updateResult = await BotsStore.updateDmSetupSession(sessionId, {
                 expiresAt: extendedExpiresAt.toISOString(),
                 currentStep: 'awaiting_custom_name'
             });
@@ -1298,9 +1294,6 @@ Please type the customer name you'd like to use:
                 currentStep: 'awaiting_customer_id',
                 expiresAt: extendedExpiresAt.toISOString()
             });
-            
-            // Verify the update
-            const verifySession = await BotsStore.getDmSetupSession(sessionId);
             
             // Generate short callback IDs to stay within Telegram's 64-byte limit
             const shortBackId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
@@ -2036,7 +2029,7 @@ Please return to the group and run \`/setup\` again to retry the validation proc
             
             // Get current templates (will be defaults if not set)
             const templateManager = GlobalTemplateManager.getInstance();
-            const templates = await templateManager.getGlobalTemplates();
+            const _templates = await templateManager.getGlobalTemplates();
             
             // Generate short callback ID for this session
             const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);

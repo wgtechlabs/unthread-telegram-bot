@@ -27,9 +27,8 @@
  * @since 2025
  */
 
-import pkg from 'pg';
+import pkg, { PoolClient, Pool as PoolType, QueryResult } from 'pg';
 const { Pool } = pkg;
-import type { PoolClient, Pool as PoolType, QueryResult } from 'pg';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import dotenv from 'dotenv';
 import fs from 'fs';

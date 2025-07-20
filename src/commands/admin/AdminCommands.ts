@@ -19,9 +19,6 @@ import type { AdminProfile, GroupConfig } from '../../sdk/types.js';
 import type { GlobalTemplate } from '../../config/globalTemplates.js';
 import { SetupCallbackProcessor } from '../processors/CallbackProcessors.js';
 
-// Clean Code: Extract magic numbers to named constants
-const SETUP_SESSION_TIMEOUT_MINUTES = 10;
-
 export class ActivateCommand extends BaseCommand {
     readonly metadata: CommandMetadata = {
         name: 'activate',
@@ -259,7 +256,6 @@ export class SetupCommand extends BaseCommand {
     }
 
     private async handleAdminNotActivated(ctx: BotContext, userId: number): Promise<void> {
-        const username = ctx.from?.username ? `@${ctx.from.username}` : 'Admin';
         const firstName = ctx.from?.first_name || 'Admin';
         
         const activationMessage = 

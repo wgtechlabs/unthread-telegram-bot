@@ -384,7 +384,6 @@ async function withRetry<T>(
     context?: any
 ): Promise<T> {
     let lastError: Error | undefined;
-    let retryCount = 0;
 
     for (let attempt = 0; attempt <= BUFFER_ATTACHMENT_CONFIG.retryAttempts; attempt++) {
         try {
@@ -397,7 +396,6 @@ async function withRetry<T>(
                     context
                 });
                 await new Promise(resolve => setTimeout(resolve, delay));
-                retryCount = attempt;
             }
 
             const result = await operation();

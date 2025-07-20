@@ -186,9 +186,6 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
     const lowerTitle = groupChatTitle.toLowerCase().trim();
     const lowerCompanyName = companyName.toLowerCase().trim();
     
-    // Check if the admin's company name appears in the group title
-    let foundCompanyInTitle = false;
-    
     // Regex patterns to match different separators (x, <>, ×, etc.)
     const separatorPatterns = [
         /\s+x\s+/,     // matches " x "
@@ -209,11 +206,9 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
                 
                 if (part1 === lowerCompanyName && part2 !== lowerCompanyName && part2) {
                     // Our company is first, customer is second
-                    foundCompanyInTitle = true;
                     return formatCustomerNameForDisplay(part2);
                 } else if (part2 === lowerCompanyName && part1 !== lowerCompanyName && part1) {
                     // Customer is first, our company is second
-                    foundCompanyInTitle = true;
                     return formatCustomerNameForDisplay(part1);
                 }
             }
@@ -228,7 +223,6 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
         result = result.replace(/^[x<>&×\s]+|[x<>&×\s]+$/g, '').trim();
         
         if (result && result !== lowerTitle) {
-            foundCompanyInTitle = true;
             return formatCustomerNameForDisplay(result);
         }
     }
@@ -237,28 +231,6 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
     // the group title likely represents the partner's name
     // Example: Admin company = "Unthread", Group title = "ACME Global Corp" → suggest "ACME Global Corp"
     return formatCustomerNameForDisplay(groupChatTitle);
-}
-
-/**
- * Normalizes a company name by capitalizing each word, replacing spaces with hyphens, and removing invalid characters.
- *
- * Returns 'Unknown-Company' if the input is empty.
- *
- * @param name - The company name to normalize and format
- * @returns The formatted company name suitable for API usage
- */
-function capitalizeCompanyName(name: string): string {
-    if (!name) {return 'Unknown-Company';}
-    
-    return name
-        .toLowerCase()
-        .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join('-') // Use hyphen instead of space for API compatibility
-        .trim()
-        .replace(/[^a-zA-Z0-9-_]/g, '') // Remove invalid characters, keep only letters, numbers, hyphens, underscores
-        .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
-        .replace(/-{2,}/g, '-'); // Replace multiple consecutive hyphens with single hyphen
 }
 
 /**

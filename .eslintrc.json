@@ -31,7 +31,6 @@
     
     // Code Quality & Best Practices
     "@typescript-eslint/no-explicit-any": "warn",
-    "@typescript-eslint/prefer-const": "error",
     "@typescript-eslint/no-non-null-assertion": "warn",
     "no-console": "warn",
     "no-debugger": "error",

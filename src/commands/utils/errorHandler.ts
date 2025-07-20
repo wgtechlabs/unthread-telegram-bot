@@ -289,7 +289,7 @@ function classifyError(error: unknown, errorDetails: ErrorDetails): {
  * @param context - Optional context string for additional error context
  * @returns An ErrorDetails object containing extracted and classified error information
  */
-export function getErrorDetails(error: unknown, context?: string): ErrorDetails {
+export function getErrorDetails(error: unknown, _context?: string): ErrorDetails {
     const timestamp = new Date().toISOString();
     
     // Handle Error instances (most common case)

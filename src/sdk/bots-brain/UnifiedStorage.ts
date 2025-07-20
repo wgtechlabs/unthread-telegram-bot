@@ -33,9 +33,8 @@
  * @since 2025
  */
 import { RedisClientType, createClient } from 'redis';
-import pkg from 'pg';
+import pkg, { Pool as PoolType } from 'pg';
 const { Pool } = pkg;
-import type { Pool as PoolType } from 'pg';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import type { Storage, StorageConfig } from '../types.js';
 

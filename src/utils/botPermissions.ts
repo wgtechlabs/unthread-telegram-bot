@@ -113,7 +113,6 @@ export async function checkAndPromptBotAdmin(ctx: BotContext): Promise<boolean> 
  * If sending the message with Markdown formatting fails, a plain text fallback is sent instead.
  */
 async function sendBotNotAdminMessage(ctx: BotContext): Promise<void> {
-  const chatType = ctx.chat?.type || 'unknown';
   const chatTitle = getChatTitle(ctx, 'this chat');
   
   const message = `🔐 **Bot Admin Required**

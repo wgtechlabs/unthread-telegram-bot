@@ -128,7 +128,7 @@ export class TimeoutManager {
             this.cleanupInterval = null;
         }
         
-        for (const [key, timeout] of this.timeouts.entries()) {
+        for (const [_key, timeout] of this.timeouts.entries()) {
             clearTimeout(timeout.id);
         }
         
