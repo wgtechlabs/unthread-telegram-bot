@@ -65,8 +65,8 @@ export function validateEmail(email: string): EmailValidationResult {
 
     const trimmedEmail = email.trim().toLowerCase();
     
-    // Comprehensive email regex pattern
-    const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+    // Safe email regex pattern - simplified to prevent ReDoS attacks
+    const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     
     if (!emailRegex.test(trimmedEmail)) {
         return {

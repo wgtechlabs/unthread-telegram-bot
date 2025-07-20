@@ -42,8 +42,8 @@ export class SetEmailCommand extends BaseCommand {
         
         // Extract email from command if provided
         const commandText = getMessageText(ctx);
-        const emailMatch = commandText.match(/\/setemail(?:\s+(.+))?/);
-        const providedEmail = emailMatch?.[1]?.trim();
+        const commandParts = commandText.split(/\s+/);
+        const providedEmail = commandParts.length > 1 ? commandParts.slice(1).join(' ').trim() : undefined;
 
         if (providedEmail) {
             // Direct email setting

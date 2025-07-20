@@ -292,8 +292,8 @@ export class SmartEmailValidator {
     public static validateEmail(email: string): ValidationResult {
         const trimmed = email.trim().toLowerCase();
         
-        // Basic format validation
-        const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+        // Safe email regex pattern - simplified to prevent ReDoS attacks
+        const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
         
         if (!emailRegex.test(trimmed)) {
             let suggestion = 'Please enter a valid email address.';
