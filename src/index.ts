@@ -45,7 +45,7 @@ import { db } from './database/connection.js';
 import { BotsStore } from './sdk/bots-brain/index.js';
 import { WebhookConsumer } from './sdk/unthread-webhook/index.js';
 import { TelegramWebhookHandler } from './handlers/webhookMessage.js';
-import { startSessionCleanupTask, stopSessionCleanupTask } from './utils/sessionTasks.js';
+import { startSessionCleanupTask, stopSessionCleanupTask } from './utils/adminManager.js';
 import packageJSON from '../package.json' with { type: 'json' };
 import type { BotContext } from './types/index.js';
 
