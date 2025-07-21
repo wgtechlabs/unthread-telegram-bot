@@ -1145,6 +1145,27 @@ export { customerCache };
  * }
  * ```
  */
+/**
+ * DISABLED: Downloads an attachment from an Unthread conversation
+ * 
+ * This function has been temporarily disabled due to reliability issues with
+ * the Unthread file download API. The function was failing consistently when
+ * trying to download files from Slack through Unthread's proxy.
+ * 
+ * RE-ENABLEMENT STEPS when Unthread API is fixed:
+ * Step 7: Replace this function body with the original implementation
+ * Step 8: Test the function with known file IDs from Unthread
+ * Step 9: Verify downloads work for various file types and sizes
+ * Step 10: Monitor logs for any remaining download failures
+ * 
+ * @deprecated Temporarily disabled - will be re-enabled when API issues are resolved
+ * @param conversationId - The Unthread conversation ID containing the file
+ * @param fileId - The unique file identifier from the attachment metadata
+ * @param expectedFileName - The expected filename for validation (optional but recommended)
+ * @param maxSizeBytes - Maximum allowed file size in bytes (default: 50MB for Telegram compatibility)
+ * @returns Promise<Buffer> containing the file data
+ * @throws Error indicating the function is disabled
+ */
 export async function downloadAttachmentFromUnthread(
     conversationId: string,
     fileId: string,
@@ -1152,142 +1173,17 @@ export async function downloadAttachmentFromUnthread(
     maxSizeBytes: number = 50 * 1024 * 1024 // 50MB default for Telegram
 ): Promise<Buffer> {
     
-    const { AttachmentProcessingError, AttachmentErrorType } = await import('../utils/errorHandler.js');
+    LogEngine.warn('downloadAttachmentFromUnthread called but function is disabled', {
+        conversationId,
+        fileId,
+        expectedFileName,
+        reason: 'Unthread file download API issues - function temporarily disabled'
+    });
     
-    try {
-        LogEngine.info('Starting attachment download from Unthread', {
-            conversationId,
-            fileId,
-            expectedFileName,
-            maxSizeBytes
-        });
-
-        // Validate input parameters
-        if (!conversationId || !fileId) {
-            throw new AttachmentProcessingError(
-                AttachmentErrorType.ATTACHMENT_VALIDATION_FAILED,
-                'Missing required parameters for file download',
-                { conversationId, fileId }
-            );
-        }
-
-        // Construct the download URL
-        const downloadUrl = `${API_BASE_URL}/conversations/${conversationId}/files/${fileId}/full`;
-        
-        LogEngine.debug('Downloading file from Unthread API', {
-            url: downloadUrl,
-            maxSize: maxSizeBytes
-        });
-
-        // Make the download request
-        const response = await fetch(downloadUrl, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${process.env.UNTHREAD_API_KEY}`,
-                'User-Agent': 'UnthreadTelegramBot/1.0'
-            }
-        });
-
-        // Check response status
-        if (!response.ok) {
-            if (response.status === 404) {
-                throw new AttachmentProcessingError(
-                    AttachmentErrorType.FILE_NOT_FOUND,
-                    `File not found in conversation: ${fileId}`,
-                    { conversationId, fileId, additionalData: { status: response.status } }
-                );
-            } else if (response.status === 403) {
-                throw new AttachmentProcessingError(
-                    AttachmentErrorType.UNTHREAD_AUTH_FAILED,
-                    'Access denied to file download',
-                    { conversationId, fileId, additionalData: { status: response.status } }
-                );
-            } else if (response.status >= 500) {
-                throw new AttachmentProcessingError(
-                    AttachmentErrorType.DOWNLOAD_FAILED,
-                    `Unthread server error during download: ${response.status}`,
-                    { conversationId, fileId, additionalData: { status: response.status } }
-                );
-            } else {
-                throw new AttachmentProcessingError(
-                    AttachmentErrorType.DOWNLOAD_FAILED,
-                    `Download failed with status: ${response.status}`,
-                    { conversationId, fileId, additionalData: { status: response.status } }
-                );
-            }
-        }
-
-        // Check content length if available
-        const contentLength = response.headers.get('content-length');
-        if (contentLength && parseInt(contentLength) > maxSizeBytes) {
-            throw new AttachmentProcessingError(
-                AttachmentErrorType.FILE_SIZE_EXCEEDED,
-                `File size ${contentLength} bytes exceeds maximum allowed ${maxSizeBytes} bytes`,
-                { conversationId, fileId, fileSize: parseInt(contentLength), additionalData: { maxSize: maxSizeBytes } }
-            );
-        }
-
-        // Get the filename from response headers if available
-        const contentDisposition = response.headers.get('content-disposition');
-        let actualFileName: string | undefined;
-        if (contentDisposition) {
-            const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-            if (fileNameMatch && fileNameMatch[1]) {
-                actualFileName = fileNameMatch[1].replace(/['"]/g, '');
-            }
-        }
-
-        // Validate filename if expected
-        if (expectedFileName && actualFileName && actualFileName !== expectedFileName) {
-            LogEngine.warn('Filename mismatch during download', {
-                expected: expectedFileName,
-                actual: actualFileName,
-                conversationId,
-                fileId
-            });
-        }
-
-        // Download the file content
-        const buffer = await response.buffer();
-        
-        // Final size check after download
-        if (buffer.length > maxSizeBytes) {
-            throw new AttachmentProcessingError(
-                AttachmentErrorType.FILE_SIZE_EXCEEDED,
-                `Downloaded file size ${buffer.length} bytes exceeds maximum allowed ${maxSizeBytes} bytes`,
-                { conversationId, fileId, fileSize: buffer.length, additionalData: { maxSize: maxSizeBytes } }
-            );
-        }
-
-        LogEngine.info('Successfully downloaded attachment from Unthread', {
-            conversationId,
-            fileId,
-            fileName: actualFileName || expectedFileName,
-            sizeBytes: buffer.length
-        });
-
-        return buffer;
-
-    } catch (error) {
-        LogEngine.error('Failed to download attachment from Unthread', {
-            conversationId,
-            fileId,
-            expectedFileName,
-            error: error instanceof Error ? error.message : String(error)
-        });
-
-        // Re-throw AttachmentProcessingError as-is
-        if (error instanceof (await import('../utils/errorHandler.js')).AttachmentProcessingError) {
-            throw error;
-        }
-
-        // Wrap other errors
-        throw new AttachmentProcessingError(
-            AttachmentErrorType.DOWNLOAD_FAILED,
-            `Unexpected error during file download: ${error instanceof Error ? error.message : String(error)}`,
-            { conversationId, fileId, additionalData: { originalError: error } }
-        );
-    }
+    throw new Error(
+        'File download from Unthread is temporarily disabled due to API reliability issues. ' +
+        'The Unthread→Telegram attachment flow has been disabled until these issues are resolved.'
+    );
 }
 
 /**

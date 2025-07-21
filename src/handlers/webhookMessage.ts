@@ -5,7 +5,25 @@
  * responses back to Telegram users. This module bridges the communication gap
  * between Unthread agents and Telegram conversations.
  * 
- * Core Functionality:
+           // 7. Attachment processing temporarily disabled
+          // 
+          // 🔄 TO RE-ENABLE ATTACHMENT FORWARDING (when Unthread API is fixed):
+          // 2. Replace this entire if block with the original attachment processing:
+          //    await this.processAttachmentsFromDashboard(
+          //      attachments,
+          //      conversationId,
+          //      ticketData.chatId,
+          //      sentMessage.message_id
+          //    );
+          // 3. Remove the user notification about disabled forwarding
+          //
+          if (hasAttachments && attachments) {
+            LogEngine.info('📎 Dashboard attachments detected but processing disabled', {
+              conversationId,
+              attachmentCount: attachments.length,
+              chatId: ticketData.chatId,
+              reason: 'Unthread file download issues - feature temporarily disabled'
+            });unctionality:
  * - Processes webhook events from Unthread dashboard
  * - Routes agent messages to corresponding Telegram chats
  * - Maintains conversation threading and context
@@ -32,16 +50,30 @@ import type { BotContext } from '../types/index.js';
 import type { IBotsStore } from '../sdk/types.js';
 import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 import { escapeMarkdown } from '../utils/markdownEscape.js';
-import { 
-  AttachmentErrorHandler, 
-  AttachmentErrorType,
-  AttachmentProcessingError
-} from '../utils/errorHandler.js';
-import { downloadAttachmentFromUnthread } from '../services/unthread.js';
+// DISABLED: Attachment-related imports temporarily removed
+// 
+// 🔄 TO RE-ENABLE ATTACHMENT FORWARDING (when Unthread API is fixed):
+// 1. Uncomment the following imports:
+// import { 
+//   AttachmentErrorHandler, 
+//   AttachmentErrorType,
+//   AttachmentProcessingError
+// } from '../utils/errorHandler.js';
+// import { downloadAttachmentFromUnthread } from '../services/unthread.js';
 
 /**
  * Handles incoming webhook messages from Unthread agents
  * Sends agent responses as replies to original ticket messages in Telegram
+ * 
+ * ⚠️  ATTACHMENT FLOW STATUS:
+ * - ✅ Telegram → Unthread: ENABLED (users can send files to agents)
+ * - ❌ Unthread → Telegram: DISABLED (agents' files are not forwarded to users)
+ * 
+ * The Unthread→Telegram attachment flow has been temporarily disabled due to
+ * reliability issues with the Unthread file download API. Users will receive
+ * a notification when agents send attachments, but files won't be forwarded.
+ * 
+ * @since 2025-01-21 Disabled Unthread→Telegram attachment flow
  */
 export class TelegramWebhookHandler {
   private bot: Telegraf<BotContext>;
@@ -270,49 +302,24 @@ export class TelegramWebhookHandler {
             friendlyId: ticketData.friendlyId
           });
 
-          // 7. Process attachments if present
+          // 7. Attachment processing temporarily disabled
           if (hasAttachments && attachments) {
-            LogEngine.info('🔄 Processing attachments for dashboard message', {
+            LogEngine.info('� Dashboard attachments detected but processing disabled', {
               conversationId,
               attachmentCount: attachments.length,
               chatId: ticketData.chatId,
-              replyToMessageId: sentMessage.message_id
+              reason: 'Unthread file download issues - feature temporarily disabled'
             });
-
-            try {
-              await this.processAttachmentsFromDashboard(
-                attachments,
-                conversationId,
-                ticketData.chatId,
-                sentMessage.message_id
-              );
-            } catch (attachmentError) {
-              LogEngine.error('❌ Failed to process attachments from dashboard', {
-                conversationId,
-                attachmentCount: attachments.length,
-                error: attachmentError instanceof Error ? attachmentError.message : String(attachmentError)
-              });
-
-              // Send error notification to user
-              if (attachmentError instanceof AttachmentProcessingError) {
-                await AttachmentErrorHandler.notifyUser(
-                  this.bot,
-                  ticketData.chatId,
-                  attachmentError,
-                  sentMessage.message_id
-                );
-              } else {
-                // Generic error notification
-                await this.safeSendMessage(
-                  ticketData.chatId,
-                  '❌ Failed to process attachments. Please contact support if this persists.',
-                  { 
-                    reply_to_message_id: sentMessage.message_id,
-                    parse_mode: 'Markdown'
-                  }
-                );
+            
+            // Notify user about disabled attachment forwarding
+            await this.safeSendMessage(
+              ticketData.chatId,
+              '📎 **File sent but not forwarded**\n\nReply and ask your agent for a download link.',
+              { 
+                reply_to_message_id: sentMessage.message_id,
+                parse_mode: 'Markdown'
               }
-            }
+            );
           }
         } else {
           LogEngine.warn('Message not sent - user may have blocked bot or chat not found', {
@@ -748,14 +755,20 @@ export class TelegramWebhookHandler {
   }
 
   /**
-   * Process attachments from dashboard messages and forward them to Telegram
-   * Phase 1 implementation: Detection and validation, Phase 2 will add download/upload
+   * DISABLED: Process attachments from dashboard messages and forward them to Telegram
    * 
-   * @param attachments - Array of attachment objects from webhook metadata
-   * @param conversationId - Unthread conversation ID
-   * @param chatId - Telegram chat ID
-   * @param replyToMessageId - Message ID to reply to
+   * This method has been temporarily disabled due to Unthread file download issues.
+   * The Unthread→Telegram attachment flow is disabled while keeping Telegram→Unthread intact.
+   * 
+   * RE-ENABLEMENT STEPS when Unthread API is fixed:
+   * Step 3: Uncomment this entire method by removing the comment wrapper
+   * Step 4: Uncomment all the related helper methods below
+   * Step 5: Test with a small file first to verify Unthread API is working
+   * Step 6: Update the notification in step 2 to call this method instead
+   * 
+   * @deprecated Temporarily disabled - will be re-enabled when Unthread API issues are resolved
    */
+  /*
   private async processAttachmentsFromDashboard(
     attachments: Array<Record<string, unknown>>,
     conversationId: string,
@@ -836,17 +849,17 @@ export class TelegramWebhookHandler {
       phase: 'Phase1-ValidationOnly'
     });
   }
+  */
 
   /**
-   * Downloads an attachment from Unthread and forwards it to Telegram
+   * DISABLED: Downloads an attachment from Unthread and forwards it to Telegram
    * 
-   * Phase 2 implementation that handles the complete attachment processing pipeline:
-   * 1. Downloads file from Unthread using conversation and file IDs
-   * 2. Processes file buffer with existing AttachmentHandler
-   * 3. Uploads to Telegram with proper threading and error handling
+   * This method has been temporarily disabled due to Unthread file download issues.
+   * The downloadAttachmentFromUnthread() function is not working reliably.
    * 
-   * @param params - Download and forwarding parameters
+   * @deprecated Temporarily disabled - will be re-enabled when Unthread API issues are resolved
    */
+  /*
   private async downloadAndForwardAttachment(params: {
     conversationId: string;
     fileId: string;
@@ -856,196 +869,15 @@ export class TelegramWebhookHandler {
     chatId: number;
     replyToMessageId: number;
   }): Promise<void> {
-    const { conversationId, fileId, fileName, fileSize, mimeType, chatId, replyToMessageId } = params;
-    const startTime = Date.now();
-    
-    try {
-      LogEngine.info('🔄 Starting attachment download and forward', {
-        conversationId,
-        fileId,
-        fileName,
-        fileSize,
-        chatId,
-        mimeType
-      });
-
-      // Step 1: Download attachment from Unthread
-      LogEngine.debug('📥 Downloading attachment from Unthread API', { conversationId, fileId });
-      const downloadStartTime = Date.now();
-      
-      const fileBuffer = await downloadAttachmentFromUnthread(
-        conversationId,
-        fileId,
-        fileName,
-        50 * 1024 * 1024 // 50MB limit for Telegram
-      );
-
-      const downloadTime = Date.now() - downloadStartTime;
-      LogEngine.info('✅ Successfully downloaded attachment from Unthread', {
-        conversationId,
-        fileId,
-        fileName,
-        downloadedSize: fileBuffer.length,
-        downloadTimeMs: downloadTime
-      });
-
-      // Step 2: Upload to Telegram using direct bot API
-      LogEngine.debug('📤 Uploading attachment to Telegram', { chatId, fileName });
-      const uploadStartTime = Date.now();
-      
-      try {
-        // Determine the correct Telegram send method based on file type
-        const sendMethod = this.determineTelegramSendMethod(mimeType, fileName);
-        const fileTypeEmoji = this.getFileTypeEmoji(mimeType, sendMethod);
-        
-        // Enhanced caption with more metadata
-        const caption = this.createAttachmentCaption({
-          fileName,
-          fileSize,
-          mimeType,
-          sendMethod,
-          fileTypeEmoji
-        });
-
-        let telegramResult;
-        if (sendMethod === 'document') {
-          telegramResult = await this.bot.telegram.sendDocument(
-            chatId,
-            {
-              source: fileBuffer,
-              filename: fileName
-            },
-            {
-              reply_parameters: { message_id: replyToMessageId },
-              caption
-            }
-          );
-        } else if (sendMethod === 'photo') {
-          telegramResult = await this.bot.telegram.sendPhoto(
-            chatId,
-            {
-              source: fileBuffer,
-              filename: fileName
-            },
-            {
-              reply_parameters: { message_id: replyToMessageId },
-              caption
-            }
-          );
-        } else {
-          // Default to document
-          telegramResult = await this.bot.telegram.sendDocument(
-            chatId,
-            {
-              source: fileBuffer,
-              filename: fileName
-            },
-            {
-              reply_parameters: { message_id: replyToMessageId },
-              caption
-            }
-          );
-        }
-
-        const uploadTime = Date.now() - uploadStartTime;
-        const totalTime = Date.now() - startTime;
-
-        LogEngine.info('🎉 Successfully forwarded attachment to Telegram', {
-          conversationId,
-          fileId,
-          fileName,
-          chatId,
-          telegramFileId: telegramResult.document?.file_id || telegramResult.photo?.[0]?.file_id,
-          messageId: telegramResult.message_id,
-          downloadTimeMs: downloadTime,
-          uploadTimeMs: uploadTime,
-          totalTimeMs: totalTime,
-          sendMethod
-        });
-
-        // Enhanced success notification with processing details
-        await this.safeSendMessage(
-          chatId,
-          this.createSuccessNotification({
-            fileName,
-            fileSize,
-            mimeType,
-            sendMethod,
-            processingTime: totalTime,
-            downloadTime,
-            uploadTime
-          }),
-          {
-            reply_parameters: { message_id: replyToMessageId },
-            parse_mode: 'Markdown'
-          }
-        );
-
-      } catch (telegramError) {
-        const uploadTime = Date.now() - uploadStartTime;
-        LogEngine.error('Failed to upload attachment to Telegram', {
-          conversationId,
-          fileId,
-          fileName,
-          chatId,
-          uploadTimeMs: uploadTime,
-          error: telegramError instanceof Error ? telegramError.message : String(telegramError)
-        });
-
-        throw new AttachmentProcessingError(
-          AttachmentErrorType.TELEGRAM_UPLOAD_FAILED,
-          `Failed to upload attachment to Telegram: ${telegramError instanceof Error ? telegramError.message : String(telegramError)}`,
-          {
-            conversationId,
-            fileId,
-            fileName,
-            fileSize,
-            chatId,
-            additionalData: { telegramError }
-          }
-        );
-      }
-
-    } catch (error) {
-      const totalTime = Date.now() - startTime;
-      LogEngine.error('❌ Failed to download and forward attachment', {
-        conversationId,
-        fileId,
-        fileName,
-        chatId,
-        totalTimeMs: totalTime,
-        error: error instanceof Error ? error.message : String(error)
-      });
-
-      // Handle AttachmentProcessingError with user notification
-      if (error instanceof AttachmentProcessingError) {
-        await AttachmentErrorHandler.notifyUser(
-          this.bot,
-          chatId,
-          error,
-          replyToMessageId
-        );
-        return;
-      }
-
-      // Handle unexpected errors
-      await this.safeSendMessage(
-        chatId,
-        `❌ **Failed to Forward Attachment**\n\n` +
-        `📎 **${fileName}**\n` +
-        `🚨 An unexpected error occurred while processing your attachment.\n\n` +
-        `Please try again or contact support if the issue persists.`,
-        {
-          reply_parameters: { message_id: replyToMessageId },
-          parse_mode: 'Markdown'
-        }
-      );
-    }
+    // Method disabled - see class documentation for details
   }
+  */
 
   /**
-   * Creates an enhanced attachment caption with metadata
+   * DISABLED: Creates an enhanced attachment caption with metadata
+   * @deprecated Temporarily disabled - part of attachment forwarding feature
    */
+  /*
   private createAttachmentCaption(params: {
     fileName: string;
     fileSize: number;
@@ -1053,16 +885,15 @@ export class TelegramWebhookHandler {
     sendMethod: 'photo' | 'document';
     fileTypeEmoji: string;
   }): string {
-    const { fileName, fileSize, mimeType, sendMethod, fileTypeEmoji } = params;
-    
-    return `${fileTypeEmoji} **${fileName}**\n` +
-           `📊 **Size:** ${this.formatFileSize(fileSize)}\n` +
-           `🔖 **Type:** ${this.getReadableFileType(mimeType, sendMethod)}`;
+    // Method disabled - see class documentation for details
   }
+  */
 
   /**
-   * Creates a success notification with processing details
+   * DISABLED: Creates a success notification with processing details
+   * @deprecated Temporarily disabled - part of attachment forwarding feature
    */
+  /*
   private createSuccessNotification(params: {
     fileName: string;
     fileSize: number;
@@ -1072,94 +903,39 @@ export class TelegramWebhookHandler {
     downloadTime: number;
     uploadTime: number;
   }): string {
-    const { fileName, fileSize, mimeType, sendMethod, processingTime, downloadTime, uploadTime } = params;
-    
-    return `✅ **Attachment Forwarded Successfully**\n\n` +
-           `📎 **${fileName}**\n` +
-           `📊 **Size:** ${this.formatFileSize(fileSize)}\n` +
-           `🔖 **Type:** ${this.getReadableFileType(mimeType, sendMethod)}\n` +
-           `⚡ **Processing:** ${processingTime}ms (↓${downloadTime}ms ↑${uploadTime}ms)`;
+    // Method disabled - see class documentation for details
   }
+  */
 
   /**
-   * Gets appropriate emoji for file type
+   * DISABLED: Gets appropriate emoji for file type
+   * @deprecated Temporarily disabled - part of attachment forwarding feature
    */
+  /*
   private getFileTypeEmoji(mimeType: string, sendMethod: 'photo' | 'document'): string {
-    if (sendMethod === 'photo') {
-      return '📷';
-    }
-
-    // Document types
-    if (mimeType.includes('pdf')) {return '📄';}
-    if (mimeType.includes('word') || mimeType.includes('document')) {return '📝';}
-    if (mimeType.includes('sheet') || mimeType.includes('excel')) {return '📊';}
-    if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) {return '📋';}
-    if (mimeType.includes('video')) {return '🎥';}
-    if (mimeType.includes('audio')) {return '🎵';}
-    if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('archive')) {return '🗜️';}
-    if (mimeType.includes('text')) {return '📄';}
-    
-    return '📎'; // Default document emoji
+    // Method disabled - see class documentation for details
   }
+  */
 
   /**
-   * Gets human-readable file type description
+   * DISABLED: Gets human-readable file type description
+   * @deprecated Temporarily disabled - part of attachment forwarding feature
    */
+  /*
   private getReadableFileType(mimeType: string, sendMethod: 'photo' | 'document'): string {
-    if (sendMethod === 'photo') {
-      return 'Image';
-    }
-
-    // Specific document types
-    if (mimeType.includes('pdf')) {return 'PDF Document';}
-    if (mimeType.includes('word') || mimeType.includes('document')) {return 'Word Document';}
-    if (mimeType.includes('sheet') || mimeType.includes('excel')) {return 'Spreadsheet';}
-    if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) {return 'Presentation';}
-    if (mimeType.includes('video')) {return 'Video File';}
-    if (mimeType.includes('audio')) {return 'Audio File';}
-    if (mimeType.includes('zip') || mimeType.includes('rar')) {return 'Archive';}
-    if (mimeType.includes('text')) {return 'Text File';}
-    
-    // Extract from mime type if possible
-    if (mimeType.includes('/')) {
-      const parts = mimeType.split('/');
-      if (parts.length >= 2 && parts[1]) {
-        return parts[1].charAt(0).toUpperCase() + parts[1].slice(1) + ' File';
-      }
-    }
-    
-    return 'Document';
+    // Method disabled - see class documentation for details
   }
+  */
 
   /**
-   * Determines the appropriate Telegram send method based on file type
+   * DISABLED: Determines the appropriate Telegram send method based on file type
+   * @deprecated Temporarily disabled - part of attachment forwarding feature
    */
+  /*
   private determineTelegramSendMethod(mimeType: string, fileName: string): 'photo' | 'document' {
-    // Image files that should be sent as photos
-    const imageTypes = [
-      'image/jpeg',
-      'image/jpg', 
-      'image/png',
-      'image/gif',
-      'image/webp'
-    ];
-
-    // Check if it's an image type and under 10MB (Telegram photo limit)
-    if (imageTypes.includes(mimeType.toLowerCase())) {
-      return 'photo';
-    }
-
-    // Check file extension as fallback
-    const extension = fileName.toLowerCase().split('.').pop();
-    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-    
-    if (extension && imageExtensions.includes(extension)) {
-      return 'photo';
-    }
-
-    // Default to document for all other files
-    return 'document';
+    // Method disabled - see class documentation for details
   }
+  */
 
   /**
    * Format file size in human-readable format
