@@ -1514,7 +1514,7 @@ Choose how you'd like to handle message templates:`;
                     ]
                 }
             });
-        } catch (editError) {
+        } catch (_editError) {
             // If edit fails (e.g., message too old or from text input), send a new message
             await ctx.reply(successMessage, {
                 parse_mode: 'Markdown',
@@ -1563,7 +1563,7 @@ Choose how you'd like to handle message templates:`;
                 await ctx.editMessageText(`❌ **Setup Failed**
 
 Failed to complete customer setup. Please try again.`);
-            } catch (editError) {
+            } catch (_editError) {
                 // If edit fails, send a new message
                 await ctx.reply(`❌ **Setup Failed**
 
@@ -1982,7 +1982,7 @@ This group appears to already be configured. If you're experiencing issues, plea
 Unable to complete validation automatically. Please return to the group and run \`/setup\` again to retry the validation process.`
                     );
                 }
-            } catch (fallbackError) {
+            } catch (_fallbackError) {
                 // Ultimate fallback
                 await ctx.editMessageText(
                     `🔄 **Validation Retry Required**

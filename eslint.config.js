@@ -122,6 +122,20 @@ export default [
     },
   },
   
+  // Files with temporarily disabled features (attachment processing)
+  {
+    files: [
+      '**/attachmentHandler.ts',
+      '**/errorHandler.ts', 
+      '**/types.ts',
+      '**/webhookMessage.ts'
+    ],
+    rules: {
+      '@typescript-eslint/no-unused-vars': 'warn', // Reduce to warning instead of error
+      'no-unused-vars': 'warn',
+    },
+  },
+  
   // Global ignores
   {
     ignores: [

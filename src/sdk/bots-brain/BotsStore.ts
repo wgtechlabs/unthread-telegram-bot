@@ -502,7 +502,7 @@ export class BotsStore implements IBotsStore {
   async getOrCreateCustomer(
     chatId: number, 
     chatTitle: string, 
-    createCustomerFn: (title: string) => Promise<{ id: string }>
+    createCustomerFn: (_title: string) => Promise<{ id: string }>
   ): Promise<CustomerData> {
     try {
       // Step 1: Try to get existing customer (uses cache hierarchy automatically)
@@ -1130,7 +1130,7 @@ export class BotsStore implements IBotsStore {
    */
   private async atomicArrayUpdate<T>(
     key: string, 
-    updater: (currentArray: T[]) => T[]
+    updater: (_currentArray: T[]) => T[]
   ): Promise<void> {
     // Check if there's already an update in progress for this key
     const existingLock = BotsStore.updateLocks.get(key);
@@ -1156,7 +1156,7 @@ export class BotsStore implements IBotsStore {
    */
   private async performAtomicUpdate<T>(
     key: string, 
-    updater: (currentArray: T[]) => T[]
+    updater: (_currentArray: T[]) => T[]
   ): Promise<void> {
     const maxRetries = 3;
     let attempt = 0;

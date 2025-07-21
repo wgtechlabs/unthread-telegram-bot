@@ -75,7 +75,7 @@ export class ValidationService {
                 passed: isBotAdmin,
                 details: isBotAdmin ? "Bot has admin privileges" : "Bot needs admin privileges"
             });
-        } catch (error) {
+        } catch (_error) {
             checks.push({
                 name: "Bot Admin Status",
                 passed: false,
@@ -100,7 +100,7 @@ export class ValidationService {
                 passed: true,
                 details: "Bot can send messages to group"
             });
-        } catch (error) {
+        } catch (_error) {
             checks.push({
                 name: "Message Sending",
                 passed: false,

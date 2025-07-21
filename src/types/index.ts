@@ -29,14 +29,14 @@ export interface BotContext extends Context<Update> {
 }
 
 // Command handler type
-export type CommandHandler = (ctx: BotContext) => Promise<void>;
+export type CommandHandler = (_ctx: BotContext) => Promise<void>;
 
 // Support form types
 export enum SupportField {
-  SUMMARY = 'summary',
-  EMAIL = 'email',
-  COMPLETE = 'complete',
-  PROFILE_EMAIL_UPDATE = 'profile_email_update'
+  _SUMMARY = 'summary',
+  _EMAIL = 'email',
+  _COMPLETE = 'complete',
+  _PROFILE_EMAIL_UPDATE = 'profile_email_update'
 }
 
 export interface SupportFormState {
@@ -51,7 +51,7 @@ export interface SupportFormState {
 
 // Profile update state for managing email updates
 export interface ProfileUpdateState {
-  field: SupportField.PROFILE_EMAIL_UPDATE;
+  field: SupportField._PROFILE_EMAIL_UPDATE;
   initiatedBy: number; // Track who initiated the profile update
   initiatedInChat: number; // Track which chat the update was initiated in
   currentEmail?: string; // Store current email for reference

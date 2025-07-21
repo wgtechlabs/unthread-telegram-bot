@@ -118,7 +118,7 @@ export function hasAdminAccess(ctx: BotContext): boolean {
  *
  * @returns A function that checks admin access and executes the command handler only if access is granted.
  */
-export function requireAdminAccess(commandHandler: (ctx: BotContext) => Promise<void>) {
+export function requireAdminAccess(commandHandler: (_ctx: BotContext) => Promise<void>) {
     return async (ctx: BotContext): Promise<void> => {
         const hasAccess = await validateAdminAccess(ctx);
         

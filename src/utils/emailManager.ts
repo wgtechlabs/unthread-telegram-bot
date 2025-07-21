@@ -242,7 +242,7 @@ export async function updateUserEmail(
         }
 
         return { success: true };
-    } catch (error) {
+    } catch (_error) {
         return {
             success: false,
             error: 'Failed to update email address. Please try again.'

@@ -189,7 +189,7 @@ export async function createSetupSession(
 export async function notifyOtherAdmins(
   initiatingAdminId: number, 
   message: string,
-  sendMessage: (chatId: number, message: string) => Promise<void>
+  sendMessage: (_chatId: number, _message: string) => Promise<void>
 ): Promise<void> {
   try {
     const activatedAdmins = await getActivatedAdmins();

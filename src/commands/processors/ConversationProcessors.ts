@@ -1117,7 +1117,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 // Clean up validation message
                 try {
                     await ctx.deleteMessage(validationMsg.message_id);
-                } catch (deleteError) {
+                } catch (_deleteError) {
                     // Ignore deletion errors
                 }
                 
@@ -1145,7 +1145,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             // Clean up validation message and show success
             try {
                 await ctx.deleteMessage(validationMsg.message_id);
-            } catch (deleteError) {
+            } catch (_deleteError) {
                 // Ignore deletion errors
             }
             
@@ -1162,7 +1162,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                             undefined,
                             { inline_keyboard: [] }
                         );
-                    } catch (editError) {
+                    } catch (_editError) {
                         // If edit fails, ignore - the message might be too old or already deleted
                     }
                 }

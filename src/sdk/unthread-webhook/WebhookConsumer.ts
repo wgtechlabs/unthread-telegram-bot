@@ -40,7 +40,7 @@ export interface WebhookConsumerConfig {
 /**
  * Event handler function type
  */
-export type EventHandler = (event: WebhookEvent) => Promise<void>;
+export type EventHandler = (_event: WebhookEvent) => Promise<void>;
 
 /**
  * WebhookConsumer - Simple Redis queue consumer for Unthread webhook events

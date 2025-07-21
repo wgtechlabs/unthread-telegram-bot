@@ -88,7 +88,7 @@ export class UnifiedStorage implements Storage {
           this.redisClient = createClient({ url: this.redisConfig.url });
           await this.redisClient.connect();
           LogEngine.info('Redis connected for bots-brain');
-        } catch (error) {
+        } catch (_error) {
           LogEngine.warn('Redis not available, using Memory + PostgreSQL only');
           this.redisClient = null;
         }
@@ -298,7 +298,7 @@ export class UnifiedStorage implements Storage {
         [key]
       );
       return result.rows.length > 0 ? JSON.parse(result.rows[0].value) : null;
-    } catch (error) {
+    } catch (_error) {
       // Table might not exist, that's okay for now
       return null;
     }
@@ -313,7 +313,7 @@ export class UnifiedStorage implements Storage {
         ON CONFLICT (key) 
         DO UPDATE SET value = $2, expires_at = $3, updated_at = NOW()
       `, [key, JSON.stringify(value), expiresAt]);
-    } catch (error) {
+    } catch (_error) {
       // Table might not exist, that's okay for now
       LogEngine.debug('storage_cache table not found, using Redis + Memory only');
     }
@@ -322,7 +322,7 @@ export class UnifiedStorage implements Storage {
   private async deleteFromPostgres(key: string): Promise<void> {
     try {
       await this.db!.query('DELETE FROM storage_cache WHERE key = $1', [key]);
-    } catch (error) {
+    } catch (_error) {
       // Table might not exist, that's okay
     }
   }

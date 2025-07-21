@@ -22,18 +22,18 @@ export interface CommandMetadata {
 
 export interface ICommand {
     metadata: CommandMetadata;
-    execute(ctx: BotContext): Promise<void>;
+    execute(_ctx: BotContext): Promise<void>;
     generateHelp(): string;
 }
 
 export interface IConversationProcessor {
-    canHandle(ctx: BotContext): Promise<boolean>;
-    process(ctx: BotContext): Promise<boolean>;
+    canHandle(_ctx: BotContext): Promise<boolean>;
+    process(_ctx: BotContext): Promise<boolean>;
 }
 
 export interface ICallbackProcessor {
-    canHandle(callbackData: string): boolean;
-    process(ctx: BotContext, callbackData: string): Promise<boolean>;
+    canHandle(_callbackData: string): boolean;
+    process(_ctx: BotContext, _callbackData: string): Promise<boolean>;
 }
 
 export abstract class BaseCommand implements ICommand {
@@ -87,7 +87,7 @@ export abstract class BaseCommand implements ICommand {
     /**
      * Command-specific execution logic (implemented by subclasses)
      */
-    protected abstract executeCommand(ctx: BotContext): Promise<void>;
+    protected abstract executeCommand(_ctx: BotContext): Promise<void>;
 
     /**
      * Context validation
