@@ -40,7 +40,6 @@ export class ValidationService {
         let allPassed = true;
 
         // Run essential validation checks
-        // Educational Note: Focus on actionable, verifiable requirements only
         await this.checkBotAdminStatus(ctx, groupChatId, checks);
         await this.checkMessageSendingCapability(ctx, groupChatId, checks);
 
@@ -88,7 +87,6 @@ export class ValidationService {
     /**
      * Check if bot can send messages to the group
      * Clean Code: Clear method purpose and error handling  
-     * Educational Note: This verifies actual functionality rather than theoretical permissions
      */
     private static async checkMessageSendingCapability(
         ctx: BotContext, 
@@ -134,7 +132,7 @@ export class ValidationService {
             message += `   ${check.details}\n\n`;
         }
 
-        // Add final status with educational context
+        // Add final status
         if (allPassed) {
             message += 
                 "🎉 **All Checks Passed!**\n\n" +

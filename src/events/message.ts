@@ -1,32 +1,13 @@
 /**
- * Unthread Telegram Bot - Message Event Handlers Module
+ * Message Event Handlers - Routes Telegram messages based on chat type
  * 
- * Handles incoming message events from Telegram and processes them according to
- * chat type and content. This module serves as the main message router for the
- * Unthread Telegram Bot, directing conversations to appropriate handlers.
- * 
- * Message Processing:
- * - Chat type detection (private, group, supergroup, channel)
- * - Pattern matching for specific message content
- * - Support conversation flow management
- * - Automatic ticket creation for group messages
- * - Smart routing based on user intent and context
- * 
- * Supported Chat Types:
- * - Private chats: Direct support form collection and ticket creation
- * - Group chats: Automatic ticket creation for all messages
- * - Supergroups: Enhanced group message handling with threading
- * - Channels: Read-only message monitoring (if applicable)
- * 
- * Features:
- * - Context-aware message processing
- * - Automatic support ticket generation
- * - Integration with Unthread API for message routing
- * - State-aware conversation management
- * - Error handling and user feedback
+ * Key Features:
+ * - Private chat support form collection
+ * - Group chat automatic ticket creation
+ * - Message routing to Unthread API
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 

@@ -20,7 +20,7 @@
  * - Connection management with automatic reconnection
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 import { RedisClientType, createClient } from 'redis';
@@ -243,7 +243,7 @@ export class WebhookConsumer {
       const eventObj = event as Record<string, unknown>;
       const data = eventObj.data as Record<string, unknown>;
       
-      LogEngine.info('🔍 Processing webhook event', {
+      LogEngine.info('Processing webhook event', {
         type: eventObj.type,
         sourcePlatform: eventObj.sourcePlatform,
         conversationId: data?.conversationId || data?.id,
@@ -252,12 +252,12 @@ export class WebhookConsumer {
       });
 
       // Log full event payload at debug level to avoid log bloat
-      LogEngine.debug('🔍 Complete webhook event payload', {
+      LogEngine.debug('Complete webhook event payload', {
         completeEvent: JSON.stringify(event, null, 2)
       });
 
       // Validate the event
-      LogEngine.info('🔍 Validating event...', {
+      LogEngine.info('Validating event...', {
         eventType: eventObj.type,
         sourcePlatform: eventObj.sourcePlatform,
         hasData: !!eventObj.data,
@@ -278,7 +278,7 @@ export class WebhookConsumer {
       // Find handler for this event
       const validatedEvent = event as WebhookEvent;
       const handlerKey = `${validatedEvent.type}:${validatedEvent.sourcePlatform}`;
-      LogEngine.info('🔍 Looking for handler', { handlerKey });
+      LogEngine.info('Looking for handler', { handlerKey });
       const handler = this.eventHandlers.get(handlerKey);
 
       if (!handler) {

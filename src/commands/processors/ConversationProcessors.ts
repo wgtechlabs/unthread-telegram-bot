@@ -392,7 +392,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
                 telegramUserId: userId
             });
 
-            LogEngine.info('🔍 DEBUG: Ticket stored for bidirectional messaging', {
+            LogEngine.info('Ticket stored for bidirectional messaging', {
                 storedConversationId: ticketResponse.id,
                 friendlyId: ticketResponse.friendlyId,
                 messageId: statusMsg.message_id,

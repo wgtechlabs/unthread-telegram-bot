@@ -673,7 +673,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 telegramUserId: userId
             });
 
-            LogEngine.info('🔍 DEBUG: Ticket registered for bidirectional messaging via callback', {
+            LogEngine.info('Ticket registered for bidirectional messaging via callback', {
                 storedConversationId: ticket.id,
                 friendlyId: ticket.friendlyId,
                 messageId: ctx.callbackQuery?.message?.message_id,

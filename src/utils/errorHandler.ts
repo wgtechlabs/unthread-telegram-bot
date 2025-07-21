@@ -24,7 +24,7 @@
  * - Helpful suggestions for resolving issues
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 

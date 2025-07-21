@@ -32,7 +32,7 @@ import type { WebhookEvent } from '../types.js';
  * - Silent rejection of malicious events
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 
@@ -84,7 +84,7 @@ export class EventValidator {
     
     // Only log detailed validation info in verbose mode or for failures
     if (process.env.LOG_LEVEL === 'debug' || process.env.VERBOSE_LOGGING === 'true') {
-      LogEngine.debug('🔍 Event validation checks passed', {
+      LogEngine.debug('Event validation checks passed', {
         type: eventObj.type,
         sourcePlatform: eventObj.sourcePlatform,
         conversationId: data.conversationId || data.id

@@ -17,7 +17,7 @@
  * - Comprehensive error type definitions * - Integration with Telegraf framework types
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 import { Context } from 'telegraf';

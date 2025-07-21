@@ -12,12 +12,16 @@
  * - Retry logic for failed operations
  * - Security validation and filename sanitization
  * 
+ * Current Status:
+ * - ✅ Telegram → Unthread: ENABLED (users can send files to agents)
+ * - ❌ Unthread → Telegram: DISABLED (agents' files are not forwarded to users)
+ * 
  * Limits:
  * - Maximum file size: 10MB per file
  * - Maximum files: 5 files per operation
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 4.0.0 - Pure Buffer Implementation
+ * @version 1.0.0-rc1 - Pure Buffer Implementation (Unthread→Telegram flow disabled)
  * @since 2025
  */
 

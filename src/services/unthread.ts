@@ -1,37 +1,13 @@
 /**
- * Unthread Telegram Bot - Unthread API Service
+ * Unthread API Service - Customer support ticket management
  * 
- * Provides comprehensive integration with the Unthread platform API for customer
- * support ticket management. This service handles customer creation, ticket
- * management, and message routing between Telegram and Unthread.
- * 
- * Core Features:
+ * Key Features:
  * - Customer profile creation and management
  * - Support ticket creation and status tracking
- * - Message sending and conversation threading
- * - API authentication and error handling
- * - Data persistence with Bots Brain storage integration
- * 
- * API Operations:
- * - Customer creation with Telegram user data
- * - Ticket creation with support form data
- * - Message posting to existing conversations
- * - Ticket status updates and notifications
- * 
- * Integration Points:
- * - Telegram user data mapping to Unthread customers
- * - Support form data collection and validation
- * - Conversation state management and persistence
- * - Error handling and retry mechanisms
- * 
- * Security:
- * - API key authentication
- * - Request signing and validation
- * - Rate limiting compliance 
- * - Data sanitization and validation
+ * - Message routing between Telegram and Unthread
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 
@@ -290,7 +266,6 @@ export async function createCustomer(groupChatName: string): Promise<Customer> {
 
         const result = await response.json() as Customer;
         
-        // Log the extraction for debugging
         LogEngine.info('Customer created with extracted name', {
             originalGroupChatName: groupChatName,
             extractedCustomerName: customerName,
@@ -447,7 +422,7 @@ async function sendMessageJSON(params: SendMessageJSONParams): Promise<any> {
  * @param params - Ticket confirmation data including message and ticket identifiers, chat and user IDs, and related metadata.
  */
 export async function registerTicketConfirmation(params: RegisterTicketConfirmationParams): Promise<void> {
-    LogEngine.info('🔍 DEBUG: Starting registerTicketConfirmation', {
+    LogEngine.info('Starting registerTicketConfirmation', {
         messageId: params.messageId,
         ticketId: params.ticketId,
         friendlyId: params.friendlyId,
@@ -458,7 +433,7 @@ export async function registerTicketConfirmation(params: RegisterTicketConfirmat
     try {
         const { messageId, ticketId, friendlyId, customerId, chatId, telegramUserId } = params;
         
-        LogEngine.info('🔍 DEBUG: About to store ticket with unified approach', {
+        LogEngine.info('About to store ticket with unified approach', {
             conversationId: ticketId,
             messageId,
             friendlyId
@@ -477,7 +452,7 @@ export async function registerTicketConfirmation(params: RegisterTicketConfirmat
             createdAt: Date.now().toString()
         });
         
-        LogEngine.info('🔍 DEBUG: Ticket storage completed', {
+        LogEngine.info('Ticket storage completed', {
             success: storeResult,
             conversationId: ticketId,
             messageId,
@@ -485,9 +460,9 @@ export async function registerTicketConfirmation(params: RegisterTicketConfirmat
         });
         
         // Immediate verification - try to retrieve the ticket we just stored
-        LogEngine.info('🔍 DEBUG: Attempting immediate verification lookup');
+        LogEngine.info('Attempting immediate verification lookup');
         const verificationTicket = await BotsStore.getTicketByConversationId(ticketId);
-        LogEngine.info('🔍 DEBUG: Immediate verification result', {
+        LogEngine.info('Immediate verification result', {
             found: !!verificationTicket,
             lookupKey: `ticket:unthread:${ticketId}`,
             verificationData: verificationTicket ? {
@@ -497,7 +472,7 @@ export async function registerTicketConfirmation(params: RegisterTicketConfirmat
             } : null
         });
         
-        LogEngine.info('🔍 DEBUG: Registered ticket confirmation - unified storage approach', {
+        LogEngine.info('Registered ticket confirmation - unified storage approach', {
             messageId,
             unifiedConversationId: ticketId,    // Now conversationId === ticketId
             ticketId: ticketId,
@@ -583,7 +558,7 @@ export async function getAgentMessageFromReply(replyToMessageId: number): Promis
  */
 export async function getTicketsForChat(chatId: number): Promise<TicketData[]> {
     try {
-        // Note: This would require a new method in BotsStore to search by chatId
+        // This would require a new method in BotsStore to search by chatId
         // For now, we'll return an empty array and implement this if needed
         LogEngine.debug('getTicketsForChat called but not yet implemented with BotsStore', { chatId });
         return [];
@@ -1169,8 +1144,7 @@ export { customerCache };
 export async function downloadAttachmentFromUnthread(
     conversationId: string,
     fileId: string,
-    expectedFileName?: string,
-    maxSizeBytes: number = 50 * 1024 * 1024 // 50MB default for Telegram
+    expectedFileName?: string
 ): Promise<Buffer> {
     
     LogEngine.warn('downloadAttachmentFromUnthread called but function is disabled', {

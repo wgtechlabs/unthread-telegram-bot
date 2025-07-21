@@ -1,47 +1,17 @@
 /**
- * Unthread Telegram Bot - Webhook Message Handler
+ * Webhook Message Handler - Routes Unthread agent responses to Telegram
  * 
- * Handles incoming webhook events from the Unthread platform and delivers agent
- * responses back to Telegram users. This module bridges the communication gap
- * between Unthread agents and Telegram conversations.
+ * Key Features:
+ * - Processes Unthread webhook events
+ * - Routes agent messages to Telegram chats
+ * - Handles user blocking and delivery errors
  * 
-           // 7. Attachment processing temporarily disabled
-          // 
-          // 🔄 TO RE-ENABLE ATTACHMENT FORWARDING (when Unthread API is fixed):
-          // 2. Replace this entire if block with the original attachment processing:
-          //    await this.processAttachmentsFromDashboard(
-          //      attachments,
-          //      conversationId,
-          //      ticketData.chatId,
-          //      sentMessage.message_id
-          //    );
-          // 3. Remove the user notification about disabled forwarding
-          //
-          if (hasAttachments && attachments) {
-            LogEngine.info('📎 Dashboard attachments detected but processing disabled', {
-              conversationId,
-              attachmentCount: attachments.length,
-              chatId: ticketData.chatId,
-              reason: 'Unthread file download issues - feature temporarily disabled'
-            });unctionality:
- * - Processes webhook events from Unthread dashboard
- * - Routes agent messages to corresponding Telegram chats
- * - Maintains conversation threading and context
- * - Handles delivery errors and user blocking scenarios
- * 
- * Features:
- * - Safe message delivery with comprehensive error handling
- * - Automatic user blocking detection and cleanup
- * - Message formatting and threading preservation
- * - Integration with Bots Brain storage for conversation context
- * - Real-time agent response delivery to Telegram users
- * Error Handling:
- * - Graceful handling of blocked users and deleted chats
- * - Rate limiting and API error recovery
- * - Comprehensive logging for debugging and monitoring
+ * Current Status:
+ * - ✅ Telegram → Unthread: ENABLED (users can send files to agents)
+ * - ❌ Unthread → Telegram: DISABLED (agents' files are not forwarded to users)
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 import { LogEngine } from '@wgtechlabs/log-engine';
@@ -62,18 +32,9 @@ import { escapeMarkdown } from '../utils/markdownEscape.js';
 // import { downloadAttachmentFromUnthread } from '../services/unthread.js';
 
 /**
- * Handles incoming webhook messages from Unthread agents
- * Sends agent responses as replies to original ticket messages in Telegram
+ * Webhook message handler for Unthread agent responses
  * 
- * ⚠️  ATTACHMENT FLOW STATUS:
- * - ✅ Telegram → Unthread: ENABLED (users can send files to agents)
- * - ❌ Unthread → Telegram: DISABLED (agents' files are not forwarded to users)
- * 
- * The Unthread→Telegram attachment flow has been temporarily disabled due to
- * reliability issues with the Unthread file download API. Users will receive
- * a notification when agents send attachments, but files won't be forwarded.
- * 
- * @since 2025-01-21 Disabled Unthread→Telegram attachment flow
+ * Status: Unthread→Telegram attachment forwarding disabled
  */
 export class TelegramWebhookHandler {
   private bot: Telegraf<BotContext>;
@@ -87,12 +48,12 @@ export class TelegramWebhookHandler {
   }
 
   /**
-   * Safely send a message with error handling for blocked users and other common errors
+   * Send message with blocked user detection and cleanup
    * 
-   * @param chatId - The chat ID to send the message to
-   * @param text - The message text
-   * @param options - Additional options for sendMessage
-   * @returns The sent message object or null if failed
+   * @param chatId - Target chat ID
+   * @param text - Message text
+   * @param options - Additional send options
+   * @returns Sent message or null if failed
    */
   async safeSendMessage(chatId: number, text: string, options: any = {}): Promise<any | null> {
     try {
@@ -155,10 +116,10 @@ export class TelegramWebhookHandler {
         return;
       }
 
-      LogEngine.info('🔍 Looking up ticket for conversation', { conversationId });
+      LogEngine.info('Looking up ticket for conversation', { conversationId });
 
-      // DEBUG: Log the full event data structure to understand the webhook payload
-      LogEngine.info('🔍 DEBUG: Full webhook event data', {
+      // Log the full event data structure to understand the webhook payload
+      LogEngine.info('Full webhook event data', {
         eventData: JSON.stringify(event.data, null, 2),
         conversationIdFromEvent: conversationId,
         hasConversationId: !!conversationId
@@ -170,14 +131,14 @@ export class TelegramWebhookHandler {
       // We now store all tickets using the webhook conversationId to eliminate ID mismatches.
       // This ensures consistent routing regardless of Unthread's internal ID variations.
       //
-      LogEngine.info('🔍 DEBUG: About to lookup ticket', {
+      LogEngine.info('About to lookup ticket', {
         conversationId,
         lookupKey: `ticket:unthread:${conversationId}`
       });
       
       const ticketData = await this.botsStore.getTicketByConversationId(conversationId);
       
-      LogEngine.info('🔍 DEBUG: Ticket lookup result', {
+      LogEngine.info('Ticket lookup result', {
         conversationId,
         found: !!ticketData,
         ticketData: ticketData ? {
@@ -459,7 +420,7 @@ export class TelegramWebhookHandler {
         return;
       }
 
-      LogEngine.info('🔍 Looking up ticket for status update', { conversationId, newStatus });
+      LogEngine.info('Looking up ticket for status update', { conversationId, newStatus });
 
       // 2. Look up original ticket message using bots-brain
       const ticketData = await this.botsStore.getTicketByConversationId(conversationId);
@@ -737,7 +698,7 @@ export class TelegramWebhookHandler {
       }
       
       // 4. Clean up any user states
-      // Note: User states are keyed by telegram user ID, not chat ID
+      // User states are keyed by telegram user ID, not chat ID
       // So we can't clean them up directly without the user ID
       // They will expire naturally due to TTL
       

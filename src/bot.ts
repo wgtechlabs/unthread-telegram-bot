@@ -1,23 +1,13 @@
 /**
- * Unthread Telegram Bot - Core Bot Utilities Module
+ * Core Bot Utilities - Bot lifecycle and safe message operations
  * 
- * Provides essential utility functions for creating, configuring, and managing
- * the Telegram bot instance using the Telegraf framework. This module handles
- * bot lifecycle management, error handling, and safe message operations.
- * 
- * Core Functions:
+ * Key Features:
  * - Bot instance creation and configuration
- * - Safe message sending with error handling for blocked users
- * - Bot startup and polling management
- * - Command registration and middleware setup
- * - User blocking and cleanup utilities
- * 
- * Error Handling:
- * - Automatic detection and cleanup of blocked users
- * - Graceful handling of rate limits and API errors * - Comprehensive logging for debugging and monitoring
+ * - Safe message sending with blocked user detection
+ * - Error handling and user cleanup
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 import { Telegraf } from 'telegraf';
@@ -27,11 +17,10 @@ import { BotsStore } from './sdk/bots-brain/index.js';
 import { BotContext, TelegramError } from './types/index.js';
 
 /**
- * Creates and returns a new Telegraf bot instance using the provided Telegram Bot API token.
- *
- * @param token - The Telegram Bot API token to authenticate the bot
- * @returns The initialized Telegraf bot instance
- * @throws If the token is missing or empty
+ * Creates a new Telegraf bot instance
+ * 
+ * @param token - Telegram Bot API token
+ * @returns Initialized bot instance
  */
 export function createBot(token: string): Telegraf<BotContext> {
     if (!token) {
@@ -43,9 +32,7 @@ export function createBot(token: string): Telegraf<BotContext> {
 
 
 /**
- * Starts the bot's polling mechanism to receive updates from Telegram.
- *
- * Initiates the process for the bot to listen for and handle incoming messages and events.
+ * Starts bot polling to receive Telegram updates
  */
 export function startPolling(bot: Telegraf<BotContext>): void {
     bot.launch();
@@ -245,7 +232,7 @@ export async function cleanupBlockedUser(chatId: number): Promise<void> {
         }
         
         // 4. Clean up any user states
-        // Note: User states are keyed by telegram user ID, not chat ID
+        // User states are keyed by telegram user ID, not chat ID
         // So we can't clean them up directly without the user ID
         // They will expire naturally due to TTL
         

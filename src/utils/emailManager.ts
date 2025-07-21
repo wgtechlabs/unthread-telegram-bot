@@ -129,7 +129,6 @@ export async function getUserEmailPreferences(userId: number): Promise<UserEmail
     try {
         const userData = await BotsStore.getUserByTelegramId(userId);
         
-        // Log for debugging
         LogEngine.info('Getting user email preferences', {
             userId,
             userExists: !!userData,
@@ -346,8 +345,6 @@ export async function deliverPendingAgentMessages(telegramUserId: number): Promi
         // Search for pending agent messages for this user
         const searchPattern = `pending_agent_message:*`;
         
-        // Note: This is a simplified search - in production, you might want to 
-        // store a user-specific key or use a more efficient search method
         LogEngine.info('Searching for pending agent messages', {
             telegramUserId,
             searchPattern
@@ -356,7 +353,7 @@ export async function deliverPendingAgentMessages(telegramUserId: number): Promi
         // For now, we'll log that this feature is ready but needs storage layer support
         LogEngine.info('Pending agent message delivery ready', {
             telegramUserId,
-            note: 'Storage layer search implementation needed for production'
+            implementation: 'Storage layer search implementation needed for production'
         });
 
         return results;

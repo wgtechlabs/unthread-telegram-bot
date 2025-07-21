@@ -25,7 +25,7 @@
  * - Use checkAndPromptBotAdmin() for automated permission prompting
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 2.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 
@@ -452,7 +452,6 @@ async function safeAnswerCallbackQuery(
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     LogEngine.error(`[BotPermissions] Failed to answer callback query: ${errorMessage}`);
     
-    // Log additional context for debugging
     LogEngine.error('[BotPermissions] Callback query context:', {
       chatId: ctx.chat?.id,
       chatType: ctx.chat?.type,
