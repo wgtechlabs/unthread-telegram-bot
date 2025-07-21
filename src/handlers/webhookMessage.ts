@@ -314,7 +314,7 @@ export class TelegramWebhookHandler {
             // Notify user about disabled attachment forwarding
             await this.safeSendMessage(
               ticketData.chatId,
-              '📎 **File sent but not forwarded**\n\nReply and ask your agent for a download link.',
+              '📎 **File sent but not forwarded**\n\nReply and ask your agent for a download link.\n\n⚠️ **Please reply to the agent\'s message above, not this notification.**',
               { 
                 reply_to_message_id: sentMessage.message_id,
                 parse_mode: 'Markdown'
