@@ -175,7 +175,7 @@ export const BUFFER_ATTACHMENT_CONFIG = {
     retryBackoffMs: 1000,                    // 1 second initial backoff, exponential
     
     // Memory Management
-    memoryThreshold: 50 * 1024 * 1024,      // 50MB memory threshold before GC hint
+    memoryThreshold: 100 * 1024 * 1024,     // 100MB memory threshold before GC hint
     maxConcurrentFiles: 3,                   // Process max 3 files concurrently
     bufferPoolSize: 5,                       // Reuse buffers when possible
     
@@ -303,9 +303,10 @@ class BufferPool {
     }
 
     cleanup(): void {
+        const poolSize = this.pool.length;
         this.pool.forEach(buffer => buffer.fill(0));
         this.pool.length = 0;
-        LogEngine.debug('BufferPool cleaned up', { clearedBuffers: this.pool.length });
+        LogEngine.debug('BufferPool cleaned up', { clearedBuffers: poolSize });
     }
 }
 
@@ -973,8 +974,15 @@ export class AttachmentHandler {
         const conversionResults: BufferAttachment[] = [];
         const conversionErrors: string[] = [];
 
-        // Process files in parallel for better performance
-        const conversionPromises = fileIds.map(async (fileId, index) => {
+        // Process files sequentially to manage memory usage consistently
+        for (let index = 0; index < fileIds.length; index++) {
+            const fileId = fileIds[index];
+            if (!fileId) {
+                LogEngine.warn('[AttachmentHandler] Skipping invalid file ID at index', { index });
+                conversionErrors.push(`File ${index + 1}: Invalid file ID`);
+                continue;
+            }
+            
             try {
                 LogEngine.debug('[AttachmentHandler] Converting file ID to buffer', {
                     fileId,
@@ -1006,7 +1014,7 @@ export class AttachmentHandler {
                     mimeType: fileBuffer.mimeType
                 });
 
-                return bufferAttachment;
+                conversionResults.push(bufferAttachment);
 
             } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1017,17 +1025,6 @@ export class AttachmentHandler {
                 });
                 
                 conversionErrors.push(`File ${index + 1}: ${errorMessage}`);
-                return null;
-            }
-        });
-
-        // Wait for all conversions to complete
-        const results = await Promise.all(conversionPromises);
-        
-        // Filter out failed conversions
-        for (const result of results) {
-            if (result !== null) {
-                conversionResults.push(result);
             }
         }
 

@@ -309,6 +309,12 @@ export class SupportConversationProcessor implements IConversationProcessor {
                             userId
                         });
                         
+                        // Notify user about attachment processing failure
+                        await ctx.editMessageText(
+                            `⚠️ **Attachment Processing Issue**\n\n❌ Unable to process ${attachmentIds.length} file attachment${attachmentIds.length > 1 ? 's' : ''} due to technical issues.\n\n🎫 Creating your ticket without attachments...`,
+                            { parse_mode: 'Markdown' }
+                        );
+                        
                         // Fallback to standard ticket creation without attachments
                         ticketResponse = await unthreadService.createTicket({
                             groupChatName: chatTitle,
