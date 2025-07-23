@@ -223,6 +223,100 @@ For detailed information about Railway's managed PostgreSQL and SSL handling, pl
 
 ## 🕹️ Usage
 
+### **🚀 Getting Started - Admin Setup & Customer Usage**
+
+This bot requires a **one-time admin setup** before customers can create support tickets. Here's the complete process:
+
+### **👨‍💼 Admin Setup (One-Time Configuration)**
+
+### **Step 1: Admin Activation (Private DM)**
+
+1. **Admin only**: Start a **private chat** with the bot (click the bot username)
+2. Send `/activate` command to enable your admin privileges
+3. The bot will confirm your admin access is enabled
+
+```text
+Admin: /activate
+Bot: ✅ Admin privileges activated!
+     You can now configure group chats and manage templates.
+```
+
+### **Step 2: Group Chat Configuration**
+
+1. **Admin**: Add the bot to your **customer/partner group chat**
+2. **Admin**: Make sure the bot has **message permissions** (send messages, read messages)
+3. **Admin**: In the **group chat**, send `/setup` command
+4. **Admin**: The bot will send you a **private DM** to complete the configuration
+
+```text
+# In the group chat:
+Admin: /setup
+Bot: 🔧 Group setup initiated! Check your private messages to complete configuration.
+
+# In private DM:
+Bot: 🔧 Group Setup Configuration
+     
+     Group: "Acme Corp Support"
+     Detected Customer: "Acme Corp"
+     
+     Please confirm this setup:
+     [✅ Confirm] [✏️ Edit Customer Name] [❌ Cancel]
+```
+
+### **Step 3: Setup Completion**
+
+1. **Admin**: Complete the setup process in the private DM
+2. **Admin**: Once confirmed, the group chat is ready for customer support
+3. **Customers**: Can now use `/support` to create tickets
+
+```text
+# Setup completion DM:
+Bot: ✅ Group Setup Complete!
+     
+     Group "Acme Corp Support" is now configured for:
+     • Customer: Acme Corp
+     • Support tickets via /support command
+     • Bidirectional agent communication
+     
+     Your customers can now create tickets using /support in the group chat.
+```
+
+### **👥 Customer Usage (After Admin Setup)**
+
+Once the admin has completed the setup, customers can use the bot naturally:
+
+### **Creating Customer Support Tickets**
+
+1. **Customer**: Use `/support` in the configured group chat
+2. **Customer**: Describe the issue when prompted  
+3. **Customer**: Provide email (first-time users only)
+4. **Customer**: Receive ticket confirmation and agent responses
+
+```text
+Customer: /support
+Bot: Let's create a support ticket. Please describe your issue:
+
+Customer: Unable to access my dashboard
+Bot: Please provide your email address: [Skip] [Enter Email]
+
+Customer: customer@company.com  
+Bot: 🎫 Support Ticket Created Successfully!
+     
+     Ticket #TKT-001 - Open
+     Summary: Unable to access my dashboard
+     
+     Our team will respond shortly. You'll receive updates right here in this chat!
+```
+
+### **Ongoing Customer Experience**
+
+- **Natural replies**: Simply reply to agent messages - no commands needed
+- **Automatic updates**: Receive status notifications when tickets are closed
+- **Profile management**: Use `/profile` to update email preferences
+- **Easy ticket creation**: Use `/support` anytime for new issues
+
+> **💡 Pro Tip**: Only admins need to do the setup process. Once configured, customers can immediately start creating tickets with `/support` - no activation needed on their part!
+
 ### **Bot Commands**
 
 **User Commands:**
