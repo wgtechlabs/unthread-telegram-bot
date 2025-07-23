@@ -181,18 +181,11 @@ export class GlobalTemplateManager {
     }
 
     // Remove null bytes and control characters that could cause issues
+    // eslint-disable-next-line no-control-regex
     let sanitized = value.replace(/[\x00-\x1F\x7F]/g, '');
     
-    // Escape HTML/XML special characters to prevent markup injection
-    sanitized = sanitized
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#x27;')
-      .replace(/\//g, '&#x2F;');
-    
-    // Remove or escape Markdown special characters that could break formatting
+    // Use proper Telegram Markdown escaping instead of HTML entities
+    // Only escape characters that break Telegram message parsing
     sanitized = sanitized
       .replace(/\*/g, '\\*')
       .replace(/_/g, '\\_')
