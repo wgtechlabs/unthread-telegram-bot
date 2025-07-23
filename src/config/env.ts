@@ -143,7 +143,7 @@ function validateRedisUrls(): void {
         if (!redis.value) {continue;} // Already caught by required variable check
 
         if (placeholderValues.some(placeholder => 
-            redis.value?.toLowerCase().includes(placeholder.toLowerCase())
+            redis.value && redis.value.toLowerCase().includes(placeholder.toLowerCase())
         )) {
             throw new Error(
                 `${redis.name} contains placeholder values. Please replace with actual Redis connection string.\n` +
@@ -185,7 +185,7 @@ function validateRequiredTokens(): void {
         if (!token.value) {continue;} // Already caught by required variable check
 
         if (placeholderValues.some(placeholder => 
-            token.value?.toLowerCase().includes(placeholder.toLowerCase())
+            token.value && token.value.toLowerCase().includes(placeholder.toLowerCase())
         )) {
             throw new Error(
                 `${token.name} contains placeholder values. Please replace with actual credentials.\n` +
