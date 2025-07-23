@@ -70,10 +70,15 @@ export class SetEmailCommand extends BaseCommand {
             // Update email
             LogEngine.info('Attempting to update user email', {
                 userId,
-                emailDomain: validation.sanitizedValue!.split('@')[1]
+                emailDomain: validation.sanitizedValue?.split('@')[1]
             });
             
-            const updateResult = await updateUserEmail(userId, validation.sanitizedValue!);
+            if (!validation.sanitizedValue) {
+                await ctx.reply('❌ **Email validation failed**\n\nNo valid email provided.');
+                return;
+            }
+            
+            const updateResult = await updateUserEmail(userId, validation.sanitizedValue);
             
             LogEngine.info('Email update result', {
                 userId,
@@ -97,7 +102,7 @@ export class SetEmailCommand extends BaseCommand {
 
             LogEngine.info('User updated email via direct command', {
                 userId,
-                emailDomain: validation.sanitizedValue!.split('@')[1]
+                emailDomain: validation.sanitizedValue?.split('@')[1] || 'unknown'
             });
 
             // Phase 2: Deliver any pending agent messages now that user has valid email

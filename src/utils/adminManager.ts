@@ -606,8 +606,6 @@ export async function notifyAdminsOfConfigChange(
 <b>Details:</b> ${changeDetails}
 <b>Time:</b> ${context.timestamp}
 
-${context.adminName ? `<b>By:</b> ${context.adminName}` : ''}
-
 Group configuration has been updated.`;
 
     let successCount = 0;
@@ -771,11 +769,11 @@ export async function reportNotificationFailures(
     };
 
     // Simple notification failure message (could be enhanced with global templates later)
-    const messageText = `⚠️ **Admin Notification: Delivery Issues**
+    const messageText = `⚠️ <b>Admin Notification: Delivery Issues</b>
 
-**Group:** Group ${groupChatId}
-**Issue:** Failed to deliver ${context.failedCount} admin notifications
-**Time:** ${context.timestamp}
+<b>Group:</b> Group ${groupChatId}
+<b>Issue:</b> Failed to deliver ${context.failedCount} admin notifications
+<b>Time:</b> ${context.timestamp}
 
 Some administrators may not have received configuration change notifications. This may be due to:
 • Blocked bot access

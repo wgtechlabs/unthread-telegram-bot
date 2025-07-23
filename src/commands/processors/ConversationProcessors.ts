@@ -742,7 +742,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             }
 
             const trimmedCustomerId = customerId.trim();
-            const customerName = validation.customerName!;
+            const customerName = validation.customerName || 'Unknown Customer';
 
             // Update session with the customer ID
             await BotsStore.updateDmSetupSession(session.sessionId, {
@@ -1125,7 +1125,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 // Clean up validation message
                 try {
                     await ctx.deleteMessage(validationMsg.message_id);
-                } catch (_deleteError) {
+                } catch {
                     // Ignore deletion errors
                 }
                 
@@ -1153,7 +1153,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             // Clean up validation message and show success
             try {
                 await ctx.deleteMessage(validationMsg.message_id);
-            } catch (_deleteError) {
+            } catch {
                 // Ignore deletion errors
             }
             
@@ -1164,13 +1164,15 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 for (const messageId of currentSession.messageIds) {
                     try {
                         // Try to edit the message to remove buttons
-                        await ctx.telegram.editMessageReplyMarkup(
-                            ctx.chat!.id,
-                            messageId,
-                            undefined,
-                            { inline_keyboard: [] }
-                        );
-                    } catch (_editError) {
+                        if (ctx.chat?.id) {
+                            await ctx.telegram.editMessageReplyMarkup(
+                                ctx.chat.id,
+                                messageId,
+                                undefined,
+                                { inline_keyboard: [] }
+                            );
+                        }
+                    } catch {
                         // If edit fails, ignore - the message might be too old or already deleted
                     }
                 }

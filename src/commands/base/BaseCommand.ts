@@ -161,7 +161,11 @@ export abstract class BaseCommand implements ICommand {
             return true; // Private chats don't need setup
         }
 
-        const groupConfig = await BotsStore.getGroupConfig(ctx.chat!.id);
+        if (!ctx.chat?.id) {
+            return false; // Cannot validate setup without chat ID
+        }
+
+        const groupConfig = await BotsStore.getGroupConfig(ctx.chat.id);
         return groupConfig?.isConfigured === true;
     }
 

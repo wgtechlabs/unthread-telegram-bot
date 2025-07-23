@@ -32,7 +32,10 @@ export class ActivateCommand extends BaseCommand {
     };
 
     protected async executeCommand(ctx: BotContext): Promise<void> {
-        const userId = ctx.from!.id;
+        if (!ctx.from?.id) {
+            throw new Error('User context required for admin activation');
+        }
+        const userId = ctx.from.id;
         
         try {
             // Check if admin is already activated
@@ -73,11 +76,15 @@ export class ActivateCommand extends BaseCommand {
     private async activateAdmin(ctx: BotContext, userId: number): Promise<void> {
         const companyName = getCompanyName() || 'Support';
         
+        if (!ctx.chat?.id) {
+            throw new Error('Chat context required for admin activation');
+        }
+        
         // Create admin profile
         const adminProfile = {
             telegramUserId: userId,
             isActivated: true,
-            dmChatId: ctx.chat!.id,
+            dmChatId: ctx.chat.id,
             activatedAt: new Date().toISOString(),
             lastActiveAt: new Date().toISOString()
         };
@@ -117,9 +124,16 @@ export class SetupCommand extends BaseCommand {
     };
 
     protected async executeCommand(ctx: BotContext): Promise<void> {
-        const userId = ctx.from!.id;
-        const chatId = ctx.chat!.id;
-        const chatTitle = 'title' in ctx.chat! ? ctx.chat!.title || 'Unknown Group' : 'Unknown Group';
+        if (!ctx.from?.id) {
+            throw new Error('User context required for setup command');
+        }
+        if (!ctx.chat?.id) {
+            throw new Error('Chat context required for setup command');
+        }
+        
+        const userId = ctx.from.id;
+        const chatId = ctx.chat.id;
+        const chatTitle = 'title' in ctx.chat ? ctx.chat.title || 'Unknown Group' : 'Unknown Group';
 
         try {
             // Check if admin has activated their privileges via /activate command
@@ -155,6 +169,12 @@ export class SetupCommand extends BaseCommand {
     private async handleExistingSetup(ctx: BotContext, config: GroupConfig): Promise<void> {
         const setupDate = config.setupAt ? new Date(config.setupAt).toLocaleDateString() : 'Unknown';
         
+        if (!ctx.chat?.id) {
+            throw new Error('Chat context required for setup actions');
+        }
+        
+        const chatId = ctx.chat.id;
+        
         const message = 
             "⚙️ **Group Already Configured**\n\n" +
             "This group is already set up for support tickets!\n\n" +
@@ -170,12 +190,12 @@ export class SetupCommand extends BaseCommand {
             reply_markup: {
                 inline_keyboard: [
                     [
-                        { text: "🔄 Reconfigure", callback_data: `setup_reconfigure_${ctx.chat!.id}` },
-                        { text: "👁️ View Details", callback_data: `setup_details_${ctx.chat!.id}` }
+                        { text: "🔄 Reconfigure", callback_data: `setup_reconfigure_${chatId}` },
+                        { text: "👁️ View Details", callback_data: `setup_details_${chatId}` }
                     ],
                     [
-                        { text: "📝 Edit Templates", callback_data: `setup_templates_${ctx.chat!.id}` },
-                        { text: "❌ Remove Setup", callback_data: `setup_remove_${ctx.chat!.id}` }
+                        { text: "📝 Edit Templates", callback_data: `setup_templates_${chatId}` },
+                        { text: "❌ Remove Setup", callback_data: `setup_remove_${chatId}` }
                     ]
                 ]
             }
@@ -397,7 +417,10 @@ export class TemplatesCommand extends BaseCommand {
     };
 
     protected async executeCommand(ctx: BotContext): Promise<void> {
-        const userId = ctx.from!.id;
+        if (!ctx.from?.id) {
+            throw new Error('User context required for template command');
+        }
+        const userId = ctx.from.id;
 
         try {
             // Check admin activation with enhanced messaging

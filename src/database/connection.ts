@@ -223,7 +223,7 @@ export class DatabaseConnection {
             // Check if schema file exists asynchronously
             try {
                 await fs.promises.access(schemaPath, fs.constants.F_OK);
-            } catch (_accessError) {
+            } catch {
                 throw new Error(`Schema file not found: ${schemaPath}`);
             }
 
