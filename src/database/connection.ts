@@ -23,13 +23,12 @@
  * - Secure connection string handling with validation
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 
-import pkg from 'pg';
-const { Pool } = pkg;
-import type { Pool as PoolType, PoolClient, QueryResult } from 'pg';
+import pg, { type Pool as PgPool, type PoolClient, type QueryResult } from 'pg';
+const { Pool } = pg;
 import { LogEngine } from '@wgtechlabs/log-engine';
 import dotenv from 'dotenv';
 import fs from 'fs';
@@ -48,7 +47,7 @@ const __dirname = path.dirname(__filename);
  * Handles PostgreSQL connections with SSL support and connection pooling
  */
 export class DatabaseConnection {
-    private pool: PoolType;
+    private pool: PgPool;
 
     constructor() {
         // Configure SSL based on environment
@@ -108,7 +107,7 @@ export class DatabaseConnection {
      * Get the database connection pool
      * @returns The PostgreSQL connection pool
      */
-    get connectionPool(): PoolType {
+    get connectionPool(): PgPool {
         return this.pool;
     }
 
@@ -224,7 +223,7 @@ export class DatabaseConnection {
             // Check if schema file exists asynchronously
             try {
                 await fs.promises.access(schemaPath, fs.constants.F_OK);
-            } catch (accessError) {
+            } catch (_accessError) {
                 throw new Error(`Schema file not found: ${schemaPath}`);
             }
 
@@ -275,7 +274,7 @@ export class DatabaseConnection {
         const postgresUrl = process.env.POSTGRES_URL;
           // Railway internal services use 'railway.internal' in their hostnames
         const isRailwayHost = (url: string | undefined): boolean => {
-            if (!url || url.trim() === '') return false;
+            if (!url || url.trim() === '') {return false;}
             try {
                 const parsedUrl = new URL(url);
                 return parsedUrl.hostname.toLowerCase().includes('railway.internal');

@@ -22,11 +22,24 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
         
+      - name: Install validation tools
+        run: npm install -g ts-prune depcheck
+        
       - name: Type checking
         run: yarn type-check
         
       - name: Build TypeScript
         run: yarn build
+        
+      - name: Validate unused code
+        run: |
+          echo "🔍 Checking for unused exports and dependencies..."
+          yarn validate:deadcode || echo "⚠️ Found potential unused code - review recommended"
+        
+      - name: Validate unused imports
+        run: |
+          echo "🔧 Checking for unused imports..."
+          yarn validate:unused || echo "⚠️ Found unused imports - consider cleanup"
         
       - name: Test Docker build (no push)
         run: |

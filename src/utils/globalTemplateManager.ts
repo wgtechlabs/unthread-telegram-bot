@@ -8,10 +8,10 @@
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import { 
+  DEFAULT_GLOBAL_TEMPLATES, 
   GlobalTemplate, 
-  GlobalTemplateEvent, 
   GlobalTemplateConfig, 
-  DEFAULT_GLOBAL_TEMPLATES,
+  GlobalTemplateEvent,
   TEMPLATE_VARIABLES 
 } from '../config/globalTemplates.js';
 
@@ -64,13 +64,30 @@ export class GlobalTemplateManager {
       const currentConfig = await this.getGlobalTemplates();
       
       // Update the specific template
-      currentConfig.templates[event] = {
+      const newTemplate: GlobalTemplate = {
         event,
         content,
         enabled,
         lastModifiedBy: updatedBy || undefined,
         lastModifiedAt: new Date().toISOString()
       };
+      
+      // Since GlobalTemplateEvent is a specific union type, this is safe
+      switch (event) {
+        case 'ticket_created':
+          currentConfig.templates.ticket_created = newTemplate;
+          break;
+        case 'agent_response':
+          currentConfig.templates.agent_response = newTemplate;
+          break;
+        case 'ticket_status':
+          currentConfig.templates.ticket_status = newTemplate;
+          break;
+        default:
+          // This should never happen with the type system, but just in case
+          LogEngine.error('Unknown template event', { event });
+          return { success: false, error: 'Unknown template event' };
+      }
       
       currentConfig.version += 1;
       currentConfig.lastUpdated = new Date().toISOString();
@@ -98,7 +115,18 @@ export class GlobalTemplateManager {
   async getTemplate(event: GlobalTemplateEvent): Promise<GlobalTemplate | null> {
     try {
       const config = await this.getGlobalTemplates();
-      return config.templates[event] || null;
+      // Since GlobalTemplateEvent is a specific union type, this is safe
+      switch (event) {
+        case 'ticket_created':
+          return config.templates.ticket_created || null;
+        case 'agent_response':
+          return config.templates.agent_response || null;
+        case 'ticket_status':
+          return config.templates.ticket_status || null;
+        default:
+          LogEngine.error('Unknown template event', { event });
+          return null;
+      }
     } catch (error) {
       LogEngine.error('Failed to get template', { event, error });
       return null;
@@ -123,14 +151,18 @@ export class GlobalTemplateManager {
       let content = template.content;
       
       // Replace all variables in the format {{variableName}} with sanitized values
+      // Using pre-compiled regex patterns and simple string replacement to prevent ReDoS attacks
       for (const [key, value] of Object.entries(variables)) {
         const placeholder = `{{${key}}}`;
         const sanitizedValue = this.sanitizeTemplateValue(value || '');
-        content = content.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), sanitizedValue);
+        // Use simple string replacement instead of regex to avoid ReDoS vulnerability
+        content = content.split(placeholder).join(sanitizedValue);
       }
       
-      // Clean up any remaining unreplaced variables
-      content = content.replace(/\{\{[^}]+\}\}/g, '[N/A]');
+      // Clean up any remaining unreplaced variables with a safe, non-backtracking pattern
+      // Limit the search to prevent catastrophic backtracking on malicious input
+      const remainingVarsPattern = /\{\{[a-zA-Z0-9_-]{1,50}\}\}/g;
+      content = content.replace(remainingVarsPattern, '[N/A]');
       
       return content;
     } catch (error) {

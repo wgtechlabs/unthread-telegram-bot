@@ -10,13 +10,14 @@
 import { BaseCommand, type CommandMetadata } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
 import { 
-    validateEmail, 
-    updateUserEmail, 
+    deliverPendingAgentMessages, 
+    formatEmailForDisplay, 
     getUserEmailPreferences,
-    formatEmailForDisplay,
-    deliverPendingAgentMessages
+    updateUserEmail,
+    validateEmail
 } from '../../utils/emailManager.js';
 import { escapeMarkdown } from '../../utils/markdownEscape.js';
+import { getMessageText } from '../../utils/messageContentExtractor.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 
 export class SetEmailCommand extends BaseCommand {
@@ -40,9 +41,9 @@ export class SetEmailCommand extends BaseCommand {
         const userId = ctx.from.id;
         
         // Extract email from command if provided
-        const commandText = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
-        const emailMatch = commandText.match(/\/setemail(?:\s+(.+))?/);
-        const providedEmail = emailMatch?.[1]?.trim();
+        const commandText = getMessageText(ctx);
+        const commandParts = commandText.split(/\s+/);
+        const providedEmail = commandParts.length > 1 ? commandParts.slice(1).join(' ').trim() : undefined;
 
         if (providedEmail) {
             // Direct email setting

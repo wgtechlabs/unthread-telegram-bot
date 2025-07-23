@@ -1,5 +1,5 @@
 import { LogEngine } from '@wgtechlabs/log-engine';
-import type { WebhookEvent, MessageCreatedEvent, ConversationUpdatedEvent } from '../types.js';
+import type { WebhookEvent } from '../types.js';
 
 /**
  * Unthread Telegram Bot - Webhook Event Validator
@@ -32,7 +32,7 @@ import type { WebhookEvent, MessageCreatedEvent, ConversationUpdatedEvent } from
  * - Silent rejection of malicious events
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 
@@ -53,7 +53,10 @@ export class EventValidator {
     
     const eventObj = event as Record<string, unknown>;
     const hasCorrectType = ['message_created', 'conversation_updated'].includes(eventObj.type as string);
-    const hasCorrectPlatform = eventObj.sourcePlatform === 'dashboard';
+    
+    // Enhanced platform detection: Accept 'dashboard' or 'unknown' (for dashboard events that couldn't be properly detected)
+    // Based on the logs, some dashboard events come through as 'unknown' due to platform detection issues
+    const hasCorrectPlatform = eventObj.sourcePlatform === 'dashboard' || eventObj.sourcePlatform === 'unknown';
     const hasData = !!eventObj.data && typeof eventObj.data === 'object';
     
     // Early validation failure logging
@@ -81,7 +84,7 @@ export class EventValidator {
     
     // Only log detailed validation info in verbose mode or for failures
     if (process.env.LOG_LEVEL === 'debug' || process.env.VERBOSE_LOGGING === 'true') {
-      LogEngine.debug('🔍 Event validation checks passed', {
+      LogEngine.debug('Event validation checks passed', {
         type: eventObj.type,
         sourcePlatform: eventObj.sourcePlatform,
         conversationId: data.conversationId || data.id
@@ -91,21 +94,41 @@ export class EventValidator {
     // Validate based on event type
     if (eventObj.type === 'message_created') {
       // Check for both 'content' and 'text' fields (webhook server sends 'text')
+      // Also check for attachments directly under data - attachment-only messages might not have text content
       const hasContent = !!(data.content || data.text);
       
-      if (!hasContent) {
-        LogEngine.warn('❌ Message validation failed: Missing content/text', { 
+      // Type-safe attachment detection - attachments are directly under data.attachments
+      const attachments = data.attachments as Array<Record<string, unknown>> | undefined;
+      const hasAttachments = !!(attachments && attachments.length > 0);
+      
+      // Message must have either text content OR attachments
+      if (!hasContent && !hasAttachments) {
+        LogEngine.warn('❌ Message validation failed: Missing content/text and no attachments', { 
           conversationId: data.conversationId || data.id,
-          availableKeys: Object.keys(data || {}) 
+          availableKeys: Object.keys(data || {}),
+          hasAttachments: hasAttachments,
+          attachmentCount: attachments ? attachments.length : 0
         });
         return false;
+      }
+      
+      // Log attachment detection for monitoring
+      if (hasAttachments && attachments) {
+        LogEngine.info('📎 Attachment(s) detected in message event', {
+          conversationId: data.conversationId || data.id,
+          attachmentCount: attachments.length,
+          hasTextContent: hasContent,
+          attachmentNames: attachments.map((att: Record<string, unknown>) => att.name as string || 'unnamed').join(', ')
+        });
       }
       
       // Success - only log in verbose mode
       if (process.env.LOG_LEVEL === 'debug' || process.env.VERBOSE_LOGGING === 'true') {
         LogEngine.debug('✅ Message event validated successfully', {
           conversationId: data.conversationId || data.id,
-          hasContent: true
+          hasContent,
+          hasAttachments,
+          attachmentCount: hasAttachments && attachments ? attachments.length : 0
         });
       }
       return true;

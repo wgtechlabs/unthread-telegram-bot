@@ -10,17 +10,14 @@
 import { BaseCommand, type CommandMetadata } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
 import { BotsStore } from '../../sdk/bots-brain/index.js';
-import { checkAndPromptBotAdmin, isBotAdmin } from '../../utils/botPermissions.js';
-import { logError, createUserErrorMessage } from '../utils/errorHandler.js';
+import { checkAndPromptBotAdmin, isBotAdmin } from '../../utils/permissions.js';
+import { createUserErrorMessage, logError } from '../utils/errorHandler.js';
 import { getCompanyName } from '../../config/env.js';
 import { GlobalTemplateManager } from '../../utils/globalTemplateManager.js';
 import { ValidationService } from '../../services/validationService.js';
 import type { AdminProfile, GroupConfig } from '../../sdk/types.js';
 import type { GlobalTemplate } from '../../config/globalTemplates.js';
 import { SetupCallbackProcessor } from '../processors/CallbackProcessors.js';
-
-// Clean Code: Extract magic numbers to named constants
-const SETUP_SESSION_TIMEOUT_MINUTES = 10;
 
 export class ActivateCommand extends BaseCommand {
     readonly metadata: CommandMetadata = {
@@ -259,7 +256,6 @@ export class SetupCommand extends BaseCommand {
     }
 
     private async handleAdminNotActivated(ctx: BotContext, userId: number): Promise<void> {
-        const username = ctx.from?.username ? `@${ctx.from.username}` : 'Admin';
         const firstName = ctx.from?.first_name || 'Admin';
         
         const activationMessage = 

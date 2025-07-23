@@ -1,26 +1,18 @@
 /**
- * Unthread Telegram Bot - Main Application Entry Point
+ * Unthread Telegram Bot - Main Application
  * 
- * This is the main entry point for the Unthread Telegram Bot application that bridges
- * Telegram conversations with the Unthread customer support platform. The bot enables
- * seamless ticket creation, message routing, and agent response delivery.
+ * Telegram bot that bridges conversations with the Unthread customer support platform.
+ * Enables ticket creation, message routing, and agent response delivery.
  * 
  * Key Features:
- * - Automated ticket creation from Telegram messages
- * - Bidirectional message routing between Telegram and Unthread dashboard
- * - Support form collection with email validation
- * - Multi-chat support (private, group, supergroup)
- * - Persistent conversation state management with Bots Brain SDK
- * - Real-time webhook event processing for agent responses
- * 
- * Architecture:
- * - Bot initialization with Telegraf framework
- * - Database connection with PostgreSQL and Redis caching
- * - Command handlers for user interactions * - Webhook consumer for Unthread agent responses
- * - Unified storage system for state persistence
+ * - Support ticket creation from Telegram messages
+ * - Message routing between Telegram and Unthread
+ * - Email collection for support contacts
+ * - Multi-chat support (private and group chats)
+ * - Real-time webhook event processing
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 import dotenv from 'dotenv';
@@ -41,30 +33,19 @@ LogEngine.configure({
 import { validateEnvironment } from './config/env.js';
 validateEnvironment();
 
-import { createBot, startPolling, safeReply, cleanupBlockedUser } from './bot.js';
+import { cleanupBlockedUser, createBot, startPolling } from './bot.js';
 import { 
-    initializeCommands,
-    processConversation,
-    processCallback,
     executeCommand,
-    // Legacy compatibility imports
-    startCommand, 
-    helpCommand, 
-    versionCommand, 
-    aboutCommand,
-    supportCommand, 
-    cancelCommand, 
-    resetCommand,
-    setupCommand,
-    activateCommand,
-    templatesCommand
+    initializeCommands,
+    processCallback
 } from './commands/index.js';
 import { handleMessage } from './events/message.js';
+import { getMessageText, isCommand } from './utils/messageContentExtractor.js';
 import { db } from './database/connection.js';
 import { BotsStore } from './sdk/bots-brain/index.js';
 import { WebhookConsumer } from './sdk/unthread-webhook/index.js';
 import { TelegramWebhookHandler } from './handlers/webhookMessage.js';
-import { startSessionCleanupTask, stopSessionCleanupTask } from './utils/sessionTasks.js';
+import { startSessionCleanupTask, stopSessionCleanupTask } from './utils/adminManager.js';
 import packageJSON from '../package.json' with { type: 'json' };
 import type { BotContext } from './types/index.js';
 
@@ -87,22 +68,24 @@ bot.use(async (ctx: BotContext, next) => {
         if (ctx.message) {
             // Determine message type
             let messageType = 'text';
-            if ('photo' in ctx.message) messageType = 'photo';
-            else if ('document' in ctx.message) messageType = 'document';
-            else if ('video' in ctx.message) messageType = 'video';
-            else if ('audio' in ctx.message) messageType = 'audio';
-            else if ('voice' in ctx.message) messageType = 'voice';
-            else if ('video_note' in ctx.message) messageType = 'video_note';
-            else if ('sticker' in ctx.message) messageType = 'sticker';
-            else if (!('text' in ctx.message)) messageType = 'other';
+            if ('photo' in ctx.message) {messageType = 'photo';}
+            else if ('document' in ctx.message) {messageType = 'document';}
+            else if ('video' in ctx.message) {messageType = 'video';}
+            else if ('audio' in ctx.message) {messageType = 'audio';}
+            else if ('voice' in ctx.message) {messageType = 'voice';}
+            else if ('video_note' in ctx.message) {messageType = 'video_note';}
+            else if ('sticker' in ctx.message) {messageType = 'sticker';}
+            else if (!('text' in ctx.message)) {messageType = 'other';}
             
-            LogEngine.debug('Message received', {
+            LogEngine.debug('Message received with enhanced text detection', {
                 chatId: ctx.chat?.id,
                 userId: ctx.from?.id,
                 type: messageType,
                 hasText: 'text' in ctx.message && !!ctx.message.text,
-                isCommand: 'text' in ctx.message && ctx.message.text?.startsWith('/'),
-                textPreview: 'text' in ctx.message ? ctx.message.text?.substring(0, 30) : undefined
+                hasCaption: 'caption' in ctx.message && !!ctx.message.caption,
+                isCommand: isCommand(ctx),
+                textPreview: getMessageText(ctx).substring(0, 30),
+                textSource: 'text' in ctx.message ? 'text' : ('caption' in ctx.message ? 'caption' : 'none')
             });
         }
         await next();
@@ -136,7 +119,7 @@ const commandMiddleware = async (ctx: BotContext, next: () => Promise<void>) => 
         LogEngine.error('Error in command middleware', {
             error: err.message,
             chatId: ctx.chat?.id,
-            command: ctx.message && 'text' in ctx.message ? ctx.message.text : undefined
+            command: getMessageText(ctx)
         });
     }
 };
@@ -168,13 +151,23 @@ bot.command('setup', commandMiddleware, wrapCommandHandler('setup'));
 bot.command('activate', commandMiddleware, wrapCommandHandler('activate'));
 bot.command('templates', commandMiddleware, wrapCommandHandler('templates'));
 
-// Register message handlers with middleware
+// Register message handlers with enhanced text detection
 bot.on('text', async (ctx, next) => {
     // Skip commands - let Telegraf handle them with the command handlers
-    if (ctx.message.text?.startsWith('/')) {
+    if (isCommand(ctx)) {
         return;
     }
     
+    await handleMessage(ctx, next);
+});
+
+// Register photo messages (photos with captions) - NEW: Handle /support in photo captions
+bot.on('photo', async (ctx, next) => {
+    await handleMessage(ctx, next);
+});
+
+// Register document messages (documents with captions) - NEW: Handle /support in document captions
+bot.on('document', async (ctx, next) => {
     await handleMessage(ctx, next);
 });
 

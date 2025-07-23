@@ -1,29 +1,17 @@
 /**
- * Unthread Telegram Bot - Webhook Message Handler
+ * Webhook Message Handler - Routes Unthread agent responses to Telegram
  * 
- * Handles incoming webhook events from the Unthread platform and delivers agent
- * responses back to Telegram users. This module bridges the communication gap
- * between Unthread agents and Telegram conversations.
+ * Key Features:
+ * - Processes Unthread webhook events
+ * - Routes agent messages to Telegram chats
+ * - Handles user blocking and delivery errors
  * 
- * Core Functionality:
- * - Processes webhook events from Unthread dashboard
- * - Routes agent messages to corresponding Telegram chats
- * - Maintains conversation threading and context
- * - Handles delivery errors and user blocking scenarios
- * 
- * Features:
- * - Safe message delivery with comprehensive error handling
- * - Automatic user blocking detection and cleanup
- * - Message formatting and threading preservation
- * - Integration with Bots Brain storage for conversation context
- * - Real-time agent response delivery to Telegram users
- * Error Handling:
- * - Graceful handling of blocked users and deleted chats
- * - Rate limiting and API error recovery
- * - Comprehensive logging for debugging and monitoring
+ * Current Status:
+ * - ✅ Telegram → Unthread: ENABLED (users can send files to agents)
+ * - ❌ Unthread → Telegram: DISABLED (agents' files are not forwarded to users)
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 import { LogEngine } from '@wgtechlabs/log-engine';
@@ -31,12 +19,22 @@ import type { Telegraf } from 'telegraf';
 import type { BotContext } from '../types/index.js';
 import type { IBotsStore } from '../sdk/types.js';
 import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
-import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
 import { escapeMarkdown } from '../utils/markdownEscape.js';
+// DISABLED: Attachment-related imports temporarily removed
+// 
+// 🔄 TO RE-ENABLE ATTACHMENT FORWARDING (when Unthread API is fixed):
+// 1. Uncomment the following imports:
+// import { 
+//   AttachmentErrorHandler, 
+//   AttachmentErrorType,
+//   AttachmentProcessingError
+// } from '../utils/errorHandler.js';
+// import { downloadAttachmentFromUnthread } from '../services/unthread.js';
 
 /**
- * Handles incoming webhook messages from Unthread agents
- * Sends agent responses as replies to original ticket messages in Telegram
+ * Webhook message handler for Unthread agent responses
+ * 
+ * Status: Unthread→Telegram attachment forwarding disabled
  */
 export class TelegramWebhookHandler {
   private bot: Telegraf<BotContext>;
@@ -50,12 +48,12 @@ export class TelegramWebhookHandler {
   }
 
   /**
-   * Safely send a message with error handling for blocked users and other common errors
+   * Send message with blocked user detection and cleanup
    * 
-   * @param chatId - The chat ID to send the message to
-   * @param text - The message text
-   * @param options - Additional options for sendMessage
-   * @returns The sent message object or null if failed
+   * @param chatId - Target chat ID
+   * @param text - Message text
+   * @param options - Additional send options
+   * @returns Sent message or null if failed
    */
   async safeSendMessage(chatId: number, text: string, options: any = {}): Promise<any | null> {
     try {
@@ -118,10 +116,10 @@ export class TelegramWebhookHandler {
         return;
       }
 
-      LogEngine.info('🔍 Looking up ticket for conversation', { conversationId });
+      LogEngine.info('Looking up ticket for conversation', { conversationId });
 
-      // DEBUG: Log the full event data structure to understand the webhook payload
-      LogEngine.info('🔍 DEBUG: Full webhook event data', {
+      // Log the full event data structure to understand the webhook payload
+      LogEngine.info('Full webhook event data', {
         eventData: JSON.stringify(event.data, null, 2),
         conversationIdFromEvent: conversationId,
         hasConversationId: !!conversationId
@@ -133,14 +131,14 @@ export class TelegramWebhookHandler {
       // We now store all tickets using the webhook conversationId to eliminate ID mismatches.
       // This ensures consistent routing regardless of Unthread's internal ID variations.
       //
-      LogEngine.info('🔍 DEBUG: About to lookup ticket', {
+      LogEngine.info('About to lookup ticket', {
         conversationId,
         lookupKey: `ticket:unthread:${conversationId}`
       });
       
       const ticketData = await this.botsStore.getTicketByConversationId(conversationId);
       
-      LogEngine.info('🔍 DEBUG: Ticket lookup result', {
+      LogEngine.info('Ticket lookup result', {
         conversationId,
         found: !!ticketData,
         ticketData: ticketData ? {
@@ -168,20 +166,46 @@ export class TelegramWebhookHandler {
 
       // 3. Validate message content - check both 'content' and 'text' fields
       const messageText = event.data.content || event.data.text;
-      if (!messageText || messageText.trim().length === 0) {
-        LogEngine.warn('❌ Empty message text in webhook event', { 
+      
+      // Check for attachments in metadata
+      const metadata = event.data.metadata as Record<string, unknown> | undefined;
+      const eventPayload = metadata?.event_payload as Record<string, unknown> | undefined;
+      const attachments = eventPayload?.attachments as Array<Record<string, unknown>> | undefined;
+      const hasAttachments = !!(attachments && attachments.length > 0);
+      
+      // Message must have either text content OR attachments
+      if ((!messageText || messageText.trim().length === 0) && !hasAttachments) {
+        LogEngine.warn('❌ Empty message with no attachments in webhook event', { 
           conversationId,
           hasContent: !!event.data.content,
-          hasText: !!event.data.text
+          hasText: !!event.data.text,
+          hasAttachments
         });
         return;
       }
 
-      LogEngine.info('✅ Message content validated', { 
-        conversationId, 
-        messageLength: messageText.length,
-        messagePreview: messageText.substring(0, 100) + (messageText.length > 100 ? '...' : '')
-      });
+      if (messageText && messageText.trim().length > 0) {
+        LogEngine.info('✅ Message content validated', { 
+          conversationId, 
+          messageLength: messageText.length,
+          messagePreview: messageText.substring(0, 100) + (messageText.length > 100 ? '...' : '')
+        });
+      }
+
+      // Log attachment detection
+      if (hasAttachments && attachments) {
+        LogEngine.info('📎 Processing message with attachments', {
+          conversationId,
+          attachmentCount: attachments.length,
+          hasTextContent: !!(messageText && messageText.trim().length > 0),
+          attachments: attachments.map((att: Record<string, unknown>) => ({
+            id: att.id,
+            name: att.name,
+            size: att.size,
+            type: att.type
+          }))
+        });
+      }
 
       // 4. Always deliver agent messages - we'll prompt for email when user replies instead
       LogEngine.info('✅ Delivering agent message directly to user', {
@@ -238,6 +262,26 @@ export class TelegramWebhookHandler {
             sentMessageId: sentMessage.message_id,
             friendlyId: ticketData.friendlyId
           });
+
+          // 7. Attachment processing temporarily disabled
+          if (hasAttachments && attachments) {
+            LogEngine.info('� Dashboard attachments detected but processing disabled', {
+              conversationId,
+              attachmentCount: attachments.length,
+              chatId: ticketData.chatId,
+              reason: 'Unthread file download issues - feature temporarily disabled'
+            });
+            
+            // Notify user about disabled attachment forwarding
+            await this.safeSendMessage(
+              ticketData.chatId,
+              '🤖 **SYSTEM NOTIFICATION**\n\n📎 **File sent but not forwarded**\n\nReply and ask your agent for a download link.\n\n⚠️ **Please reply to the agent\'s message above, not this notification.**',
+              { 
+                reply_to_message_id: sentMessage.message_id,
+                parse_mode: 'Markdown'
+              }
+            );
+          }
         } else {
           LogEngine.warn('Message not sent - user may have blocked bot or chat not found', {
             conversationId,
@@ -323,7 +367,7 @@ export class TelegramWebhookHandler {
    * @returns Sanitized text
    */
   sanitizeMessageText(text: string): string {
-    if (!text) return '';
+    if (!text) {return '';}
     
     // Use our comprehensive markdown escaping utility
     // This prevents all entity parsing errors
@@ -376,7 +420,7 @@ export class TelegramWebhookHandler {
         return;
       }
 
-      LogEngine.info('🔍 Looking up ticket for status update', { conversationId, newStatus });
+      LogEngine.info('Looking up ticket for status update', { conversationId, newStatus });
 
       // 2. Look up original ticket message using bots-brain
       const ticketData = await this.botsStore.getTicketByConversationId(conversationId);
@@ -654,7 +698,7 @@ export class TelegramWebhookHandler {
       }
       
       // 4. Clean up any user states
-      // Note: User states are keyed by telegram user ID, not chat ID
+      // User states are keyed by telegram user ID, not chat ID
       // So we can't clean them up directly without the user ID
       // They will expire naturally due to TTL
       
@@ -669,6 +713,213 @@ export class TelegramWebhookHandler {
       });
       // Don't throw - cleanup failure shouldn't crash the bot
     }
+  }
+
+  /**
+   * DISABLED: Process attachments from dashboard messages and forward them to Telegram
+   * 
+   * This method has been temporarily disabled due to Unthread file download issues.
+   * The Unthread→Telegram attachment flow is disabled while keeping Telegram→Unthread intact.
+   * 
+   * RE-ENABLEMENT STEPS when Unthread API is fixed:
+   * Step 3: Uncomment this entire method by removing the comment wrapper
+   * Step 4: Uncomment all the related helper methods below
+   * Step 5: Test with a small file first to verify Unthread API is working
+   * Step 6: Update the notification in step 2 to call this method instead
+   * 
+   * @deprecated Temporarily disabled - will be re-enabled when Unthread API issues are resolved
+   */
+  /*
+  private async processAttachmentsFromDashboard(
+    attachments: Array<Record<string, unknown>>,
+    conversationId: string,
+    chatId: number,
+    replyToMessageId: number
+  ): Promise<void> {
+    LogEngine.info('🔄 Starting attachment processing from dashboard', {
+      conversationId,
+      attachmentCount: attachments.length,
+      chatId,
+      replyToMessageId,
+      phase: 'Phase1-ValidationOnly'
+    });
+
+    // Phase 1: Validate attachments and prepare for Phase 2 implementation
+    for (let i = 0; i < attachments.length; i++) {
+      const attachment = attachments[i];
+      
+      // Skip invalid attachments
+      if (!attachment) {
+        LogEngine.warn('⚠️ Skipping undefined attachment', {
+          conversationId,
+          attachmentIndex: i + 1
+        });
+        continue;
+      }
+      
+      try {
+        // Validate attachment structure
+        AttachmentErrorHandler.validateAttachment(attachment, {
+          conversationId,
+          chatId,
+          messageId: replyToMessageId
+        });
+
+        LogEngine.info('✅ Attachment validated successfully', {
+          conversationId,
+          attachmentIndex: i + 1,
+          fileName: attachment.name,
+          fileSize: attachment.size,
+          fileType: attachment.type,
+          fileId: attachment.id
+        });
+
+        // Phase 2: Download and forward attachment to Telegram
+        await this.downloadAndForwardAttachment({
+          conversationId,
+          fileId: String(attachment.id),
+          fileName: String(attachment.name),
+          fileSize: Number(attachment.size) || 0,
+          mimeType: String(attachment.type),
+          chatId,
+          replyToMessageId
+        });
+
+      } catch (validationError) {
+        LogEngine.error('❌ Attachment validation failed', {
+          conversationId,
+          attachmentIndex: i + 1,
+          fileName: attachment.name || 'unknown',
+          error: validationError instanceof Error ? validationError.message : String(validationError)
+        });
+
+        if (validationError instanceof AttachmentProcessingError) {
+          await AttachmentErrorHandler.notifyUser(
+            this.bot,
+            chatId,
+            validationError,
+            replyToMessageId
+          );
+        }
+      }
+    }
+
+    LogEngine.info('✅ Phase 1 attachment processing completed', {
+      conversationId,
+      processedCount: attachments.length,
+      phase: 'Phase1-ValidationOnly'
+    });
+  }
+  */
+
+  /**
+   * DISABLED: Downloads an attachment from Unthread and forwards it to Telegram
+   * 
+   * This method has been temporarily disabled due to Unthread file download issues.
+   * The downloadAttachmentFromUnthread() function is not working reliably.
+   * 
+   * @deprecated Temporarily disabled - will be re-enabled when Unthread API issues are resolved
+   */
+  /*
+  private async downloadAndForwardAttachment(params: {
+    conversationId: string;
+    fileId: string;
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    chatId: number;
+    replyToMessageId: number;
+  }): Promise<void> {
+    // Method disabled - see class documentation for details
+  }
+  */
+
+  /**
+   * DISABLED: Creates an enhanced attachment caption with metadata
+   * @deprecated Temporarily disabled - part of attachment forwarding feature
+   */
+  /*
+  private createAttachmentCaption(params: {
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    sendMethod: 'photo' | 'document';
+    fileTypeEmoji: string;
+  }): string {
+    // Method disabled - see class documentation for details
+  }
+  */
+
+  /**
+   * DISABLED: Creates a success notification with processing details
+   * @deprecated Temporarily disabled - part of attachment forwarding feature
+   */
+  /*
+  private createSuccessNotification(params: {
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    sendMethod: 'photo' | 'document';
+    processingTime: number;
+    downloadTime: number;
+    uploadTime: number;
+  }): string {
+    // Method disabled - see class documentation for details
+  }
+  */
+
+  /**
+   * DISABLED: Gets appropriate emoji for file type
+   * @deprecated Temporarily disabled - part of attachment forwarding feature
+   */
+  /*
+  private getFileTypeEmoji(mimeType: string, sendMethod: 'photo' | 'document'): string {
+    // Method disabled - see class documentation for details
+  }
+  */
+
+  /**
+   * DISABLED: Gets human-readable file type description
+   * @deprecated Temporarily disabled - part of attachment forwarding feature
+   */
+  /*
+  private getReadableFileType(mimeType: string, sendMethod: 'photo' | 'document'): string {
+    // Method disabled - see class documentation for details
+  }
+  */
+
+  /**
+   * DISABLED: Determines the appropriate Telegram send method based on file type
+   * @deprecated Temporarily disabled - part of attachment forwarding feature
+   */
+  /*
+  private determineTelegramSendMethod(mimeType: string, fileName: string): 'photo' | 'document' {
+    // Method disabled - see class documentation for details
+  }
+  */
+
+  /**
+   * Format file size in human-readable format
+   */
+  private formatFileSize(bytes: number): string {
+    if (!bytes || bytes === 0) {
+      return '0 B';
+    }
+    
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    if (i < 0 || i >= sizes.length) {
+      return `${bytes} B`;
+    }
+    
+    const size = sizes.at(i);
+    if (!size) {
+      return `${bytes} B`;
+    }
+    
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${size}`;
   }
 
 }

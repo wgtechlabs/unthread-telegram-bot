@@ -5,14 +5,14 @@
  * for the Unthread Telegram Bot.
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { isAdminUser } from '../config/env.js';
 import { BotsStore } from '../sdk/bots-brain/index.js';
-import type { AdminProfile, SetupSession, DmSetupSession } from '../sdk/types.js';
+import type { AdminProfile, DmSetupSession, SetupSession } from '../sdk/types.js';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -189,7 +189,7 @@ export async function createSetupSession(
 export async function notifyOtherAdmins(
   initiatingAdminId: number, 
   message: string,
-  sendMessage: (chatId: number, message: string) => Promise<void>
+  sendMessage: (_chatId: number, _message: string) => Promise<void>
 ): Promise<void> {
   try {
     const activatedAdmins = await getActivatedAdmins();
@@ -410,7 +410,7 @@ export async function updateDmSetupSessionStep(
 export async function addDmSessionMessageId(sessionId: string, messageId: number): Promise<boolean> {
   try {
     const session = await BotsStore.getDmSetupSession(sessionId);
-    if (!session) return false;
+    if (!session) {return false;}
 
     const messageIds = session.messageIds || [];
     messageIds.push(messageId);
@@ -485,7 +485,6 @@ export async function cancelDmSetupSession(sessionId: string): Promise<boolean> 
  * template updates, and other important events.
  */
 
-import { GlobalTemplateManager } from './globalTemplateManager.js';
 
 interface NotificationContext {
   groupId: number;
@@ -723,7 +722,7 @@ export async function reportNotificationFailures(
   changeType: string,
   bot: any
 ): Promise<void> {
-  if (failedCount === 0) return;
+  if (failedCount === 0) {return;}
 
   try {
     const admins = await getActivatedAdmins(groupChatId);
@@ -799,4 +798,67 @@ Please check your private chat with the bot.`;
       changeType
     });
   }
+}
+
+/**
+ * Session Management Tasks
+ * 
+ * Background tasks for managing setup sessions, including cleanup of expired sessions
+ * and monitoring of session health.
+ */
+
+/**
+ * Removes expired setup sessions and returns the number of sessions cleaned up.
+ *
+ * This function should be called periodically to maintain session hygiene. If an error occurs during cleanup, zero is returned.
+ *
+ * @returns The number of expired sessions that were removed
+ */
+export async function performSessionCleanup(): Promise<number> {
+  try {
+    const cleanedCount = await cleanupExpiredSessions();
+    
+    if (cleanedCount > 0) {
+      LogEngine.info('Session cleanup completed', {
+        cleanedSessions: cleanedCount,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    return cleanedCount;
+  } catch (error) {
+    LogEngine.error('Session cleanup failed', {
+      error: (error as Error).message,
+      timestamp: new Date().toISOString()
+    });
+    return 0;
+  }
+}
+
+/**
+ * Starts a background task that periodically removes expired setup sessions every minute.
+ *
+ * @returns The interval ID for the scheduled cleanup task
+ */
+export function startSessionCleanupTask(): NodeJS.Timeout {
+  LogEngine.info('Starting session cleanup task', {
+    interval: '60 seconds',
+    timestamp: new Date().toISOString()
+  });
+
+  return setInterval(async () => {
+    await performSessionCleanup();
+  }, 60 * 1000); // Run every minute
+}
+
+/**
+ * Stops the periodic session cleanup task associated with the given interval ID.
+ *
+ * @param intervalId - The interval identifier returned by `setInterval` for the cleanup task
+ */
+export function stopSessionCleanupTask(intervalId: NodeJS.Timeout): void {
+  clearInterval(intervalId);
+  LogEngine.info('Session cleanup task stopped', {
+    timestamp: new Date().toISOString()
+  });
 }

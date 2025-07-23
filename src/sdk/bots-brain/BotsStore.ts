@@ -26,26 +26,25 @@
  * - PostgreSQL for permanent data persistence
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 import { UnifiedStorage } from './UnifiedStorage.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { z } from 'zod';
 import type { 
-  TicketData, 
-  UserState, 
-  CustomerData, 
-  UserData, 
+  AdminProfile, 
   AgentMessageData, 
-  TicketInfo,
-  GroupConfig,
-  SetupState,
-  AdminProfile,
-  SetupSession,
-  DmSetupSession,
+  CustomerData, 
+  DmSetupSession, 
+  GroupConfig, 
   IBotsStore,
-  StorageConfig
+  SetupSession,
+  SetupState,
+  TicketData,
+  TicketInfo,
+  UserData,
+  UserState
 } from '../types.js';
 import type { DatabaseConnection } from '../../database/connection.js';
 
@@ -183,10 +182,10 @@ export class BotsStore implements IBotsStore {
       chatId,
       messageId,
       conversationId,
-      ticketId,
+      ticketId: _ticketId,
       friendlyId,
-      telegramUserId,
-      createdAt
+      telegramUserId: _telegramUserId,
+      createdAt: _createdAt
     } = ticketData;
     
     // Enhanced ticket data with metadata
@@ -411,7 +410,7 @@ export class BotsStore implements IBotsStore {
    * Store user information
    */
   async storeUser(userData: UserData): Promise<boolean> {
-    const { telegramUserId, username, firstName, lastName } = userData;
+    const { telegramUserId, username: _username, firstName, lastName } = userData;
     
     const enrichedUserData: UserData = {
       ...userData,
@@ -503,7 +502,7 @@ export class BotsStore implements IBotsStore {
   async getOrCreateCustomer(
     chatId: number, 
     chatTitle: string, 
-    createCustomerFn: (title: string) => Promise<{ id: string }>
+    createCustomerFn: (_title: string) => Promise<{ id: string }>
   ): Promise<CustomerData> {
     try {
       // Step 1: Try to get existing customer (uses cache hierarchy automatically)
@@ -589,7 +588,7 @@ export class BotsStore implements IBotsStore {
     try {
       // Get ticket data first to know all the keys to delete
       const ticket = await this.getTicketByConversationId(conversationId);
-      if (!ticket) return true;
+      if (!ticket) {return true;}
       
       // UNIFIED APPROACH: Only need to delete conversationId storage since ticketId === conversationId
       const promises = [
@@ -638,8 +637,8 @@ export class BotsStore implements IBotsStore {
     const {
       messageId,      // Telegram message ID of the agent message
       conversationId, // Unthread conversation ID
-      chatId,         // Telegram chat ID
-      sentAt          // Timestamp when message was sent
+      chatId: _chatId,         // Telegram chat ID
+      sentAt: _sentAt          // Timestamp when message was sent
     } = agentMessageData;
     
     const enrichedData = {
@@ -1131,7 +1130,7 @@ export class BotsStore implements IBotsStore {
    */
   private async atomicArrayUpdate<T>(
     key: string, 
-    updater: (currentArray: T[]) => T[]
+    updater: (_currentArray: T[]) => T[]
   ): Promise<void> {
     // Check if there's already an update in progress for this key
     const existingLock = BotsStore.updateLocks.get(key);
@@ -1157,7 +1156,7 @@ export class BotsStore implements IBotsStore {
    */
   private async performAtomicUpdate<T>(
     key: string, 
-    updater: (currentArray: T[]) => T[]
+    updater: (_currentArray: T[]) => T[]
   ): Promise<void> {
     const maxRetries = 3;
     let attempt = 0;
@@ -1238,7 +1237,7 @@ export class BotsStore implements IBotsStore {
   async updateAdminProfile(telegramUserId: number, updates: Partial<AdminProfile>): Promise<boolean> {
     try {
       const existing = await this.getAdminProfile(telegramUserId);
-      if (!existing) return false;
+      if (!existing) {return false;}
 
       const updated = {
         ...existing,
@@ -1362,7 +1361,7 @@ export class BotsStore implements IBotsStore {
    */
   async getActiveSetupSessionByAdmin(adminId: number): Promise<SetupSession | null> {
     const sessionId = await this.storage.get(`session:admin:${adminId}`);
-    if (!sessionId) return null;
+    if (!sessionId) {return null;}
 
     return await this.getSetupSession(sessionId);
   }
@@ -1372,7 +1371,7 @@ export class BotsStore implements IBotsStore {
    */
   async getActiveSetupSessionByGroup(groupChatId: number): Promise<SetupSession | null> {
     const sessionId = await this.storage.get(`session:group:${groupChatId}`);
-    if (!sessionId) return null;
+    if (!sessionId) {return null;}
 
     return await this.getSetupSession(sessionId);
   }
@@ -1383,7 +1382,7 @@ export class BotsStore implements IBotsStore {
   async updateSetupSession(sessionId: string, updates: Partial<SetupSession>): Promise<boolean> {
     try {
       const existing = await this.getSetupSession(sessionId);
-      if (!existing) return false;
+      if (!existing) {return false;}
 
       const updated = {
         ...existing,
@@ -1432,7 +1431,7 @@ export class BotsStore implements IBotsStore {
   async cleanupExpiredSessions(): Promise<number> {
     // Note: With TTL in Redis, sessions should auto-expire
     // This method is for manual cleanup if needed
-    let cleanedCount = 0;
+    const cleanedCount = 0;
     try {
       // Implementation would depend on storage backend
       // For now, rely on TTL for automatic cleanup
@@ -1552,7 +1551,7 @@ export class BotsStore implements IBotsStore {
   async getActiveDmSetupSessionByAdmin(adminId: number): Promise<DmSetupSession | null> {
     try {
       const sessionId = await this.storage.get(`dm_session:admin:${adminId}`);
-      if (!sessionId) return null;
+      if (!sessionId) {return null;}
       
       return await this.getDmSetupSession(sessionId);
     } catch (error) {
@@ -1571,7 +1570,7 @@ export class BotsStore implements IBotsStore {
   async updateDmSetupSession(sessionId: string, updates: Partial<DmSetupSession>): Promise<boolean> {
     try {
       const existing = await this.getDmSetupSession(sessionId);
-      if (!existing) return false;
+      if (!existing) {return false;}
 
       const updated: DmSetupSession = {
         ...existing,
@@ -1618,7 +1617,7 @@ export class BotsStore implements IBotsStore {
    * Clean up expired DM sessions (mainly for manual cleanup as TTL handles auto-expiration)
    */
   async cleanupExpiredDmSessions(): Promise<number> {
-    let cleanedCount = 0;
+    const cleanedCount = 0;
     try {
       // Implementation would depend on storage backend
       // For now, rely on TTL for automatic cleanup
@@ -1768,11 +1767,12 @@ export class BotsStore implements IBotsStore {
     
     // Remove any immutable fields from the updates object
     for (const field of immutableFields) {
-      if (field in safeUpdates) {
-        delete safeUpdates[field];
+      if (Object.prototype.hasOwnProperty.call(safeUpdates, field)) {
+        const fieldValue = safeUpdates[field as keyof typeof safeUpdates];
+        delete safeUpdates[field as keyof typeof safeUpdates];
         LogEngine.warn(`Attempted to update immutable field '${String(field)}' - ignoring`, {
           field: String(field),
-          attemptedValue: updates[field]
+          attemptedValue: fieldValue
         });
       }
     }
@@ -1783,24 +1783,29 @@ export class BotsStore implements IBotsStore {
   /**
    * Validate that critical immutable fields match expected values
    */
+  /* eslint-disable security/detect-object-injection */
   private static validateImmutableFields<T extends Record<string, any>>(
     existingData: T,
     updates: Partial<T>,
     fieldValidations: { field: keyof T; expectedValue: any }[]
   ): boolean {
     for (const { field, expectedValue } of fieldValidations) {
-      if (field in updates && updates[field] !== expectedValue) {
+      const fieldKey = field as keyof T;
+      if (Object.prototype.hasOwnProperty.call(updates, field) && updates[fieldKey] !== expectedValue) {
+        const attemptedValue = updates[fieldKey];
+        const existingValue = existingData[fieldKey];
         LogEngine.error(`Immutable field validation failed for '${String(field)}'`, {
           field: String(field),
           expectedValue,
-          attemptedValue: updates[field],
-          existingValue: existingData[field]
+          attemptedValue,
+          existingValue
         });
         return false;
       }
     }
     return true;
   }
+  /* eslint-enable security/detect-object-injection */
 
   /**
    * Safely retrieve an array from storage, ensuring it's always an array

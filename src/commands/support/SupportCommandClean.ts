@@ -6,12 +6,9 @@
 
 import { BaseCommand, type CommandMetadata } from '../base/BaseCommand.js';
 import { BotsStore } from '../../sdk/bots-brain/index.js';
-import * as unthreadService from '../../services/unthread.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotContext } from '../../types/index.js';
 import { UserState } from '../../sdk/types.js';
-import { getUserEmailPreferences } from '../../utils/emailManager.js';
-import { escapeMarkdown } from '../../utils/markdownEscape.js';
 
 export class SupportCommand extends BaseCommand {
     readonly metadata: CommandMetadata = {
@@ -109,6 +106,7 @@ export class SupportCommand extends BaseCommand {
         
         // Start ticket creation flow
         await BotsStore.setUserState(userId, {
+            processor: 'support',  // 🎯 ADD MISSING PROCESSOR FIELD
             field: 'summary',
             step: 1,
             totalSteps: emailPrefs?.email ? 2 : 3, // If has email: summary + confirmation, else: summary + email + confirmation

@@ -6,7 +6,7 @@
 
 import type { BotContext } from '../../types/index.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
-import { isAdminUser, getConfiguredBotUsername } from '../../config/env.js';
+import { getConfiguredBotUsername, isAdminUser } from '../../config/env.js';
 import { validateAdminAccess } from '../../utils/permissions.js';
 
 export interface CommandMetadata {
@@ -22,18 +22,18 @@ export interface CommandMetadata {
 
 export interface ICommand {
     metadata: CommandMetadata;
-    execute(ctx: BotContext): Promise<void>;
+    execute(_ctx: BotContext): Promise<void>;
     generateHelp(): string;
 }
 
 export interface IConversationProcessor {
-    canHandle(ctx: BotContext): Promise<boolean>;
-    process(ctx: BotContext): Promise<boolean>;
+    canHandle(_ctx: BotContext): Promise<boolean>;
+    process(_ctx: BotContext): Promise<boolean>;
 }
 
 export interface ICallbackProcessor {
-    canHandle(callbackData: string): boolean;
-    process(ctx: BotContext, callbackData: string): Promise<boolean>;
+    canHandle(_callbackData: string): boolean;
+    process(_ctx: BotContext, _callbackData: string): Promise<boolean>;
 }
 
 export abstract class BaseCommand implements ICommand {
@@ -87,7 +87,7 @@ export abstract class BaseCommand implements ICommand {
     /**
      * Command-specific execution logic (implemented by subclasses)
      */
-    protected abstract executeCommand(ctx: BotContext): Promise<void>;
+    protected abstract executeCommand(_ctx: BotContext): Promise<void>;
 
     /**
      * Context validation
@@ -420,10 +420,10 @@ export abstract class BaseCommand implements ICommand {
         }
 
         const restrictions: string[] = [];
-        if (this.metadata.adminOnly) restrictions.push('Admin only');
-        if (this.metadata.privateOnly) restrictions.push('Private chat only');
-        if (this.metadata.groupOnly) restrictions.push('Group chat only');
-        if (this.metadata.requiresSetup) restrictions.push('Requires group setup');
+        if (this.metadata.adminOnly) {restrictions.push('Admin only');}
+        if (this.metadata.privateOnly) {restrictions.push('Private chat only');}
+        if (this.metadata.groupOnly) {restrictions.push('Group chat only');}
+        if (this.metadata.requiresSetup) {restrictions.push('Requires group setup');}
 
         if (restrictions.length > 0) {
             help += `**Restrictions:** ${restrictions.join(', ')}\n`;

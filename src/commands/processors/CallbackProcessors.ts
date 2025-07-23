@@ -12,10 +12,12 @@ import type { BotContext } from '../../types/index.js';
 import type { DmSetupSession } from '../../sdk/types.js';
 import { logError } from '../utils/errorHandler.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
+import { generateStatusMessage } from '../../utils/messageAnalyzer.js';
 import { BotsStore } from '../../sdk/bots-brain/index.js';
 import * as unthreadService from '../../services/unthread.js';
 import { generateDummyEmail, updateUserEmail } from '../../utils/emailManager.js';
 import { escapeMarkdown } from '../../utils/markdownEscape.js';
+import { attachmentHandler } from '../../utils/attachmentHandler.js';
 
 // Clean Code: Extract constants to avoid magic strings and numbers
 const CALLBACK_CONSTANTS = {
@@ -179,7 +181,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         await ctx.answerCbQuery("✅ Continuing support form...");
         
         const userId = ctx.from?.id;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         const userState = await BotsStore.getUserState(userId);
         if (!userState) {
@@ -193,10 +195,6 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         const stepText = userState.field === 'summary' ? 
             "Please describe your issue:" : 
             "Please provide your email address:";
-
-        const placeholder = userState.field === 'summary' ? 
-            "Describe your issue..." : 
-            "your@email.com";
 
         await ctx.editMessageText(
             `🎫 **Continue Support Ticket**\n\n` +
@@ -216,7 +214,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         stepDescription: string;
     }): Promise<boolean> {
         const userId = ctx.from?.id;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         // Clear existing state
         await BotsStore.clearUserState(userId);
@@ -258,7 +256,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         await ctx.answerCbQuery("❌ Support form cancelled");
         
         const userId = ctx.from?.id;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         // Clear user state
         await BotsStore.clearUserState(userId);
@@ -289,7 +287,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         await ctx.answerCbQuery("📧 Setting up email...");
         
         const userId = ctx.from?.id;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         // Set state for email collection
         await BotsStore.setUserState(userId, {
@@ -323,7 +321,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         
         const userId = ctx.from?.id;
         const username = ctx.from?.username;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         try {
             const userState = await BotsStore.getUserState(userId);
@@ -382,7 +380,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         await ctx.answerCbQuery("📧 Upgrading to real email...");
         
         const userId = ctx.from?.id;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         await BotsStore.setUserState(userId, {
             field: 'email_upgrade',
@@ -414,7 +412,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         await ctx.answerCbQuery("▶️ Continuing with temporary email...");
         
         const userId = ctx.from?.id;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         // Start ticket creation flow
         await BotsStore.setUserState(userId, {
@@ -445,7 +443,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         await ctx.answerCbQuery("✅ Processing your request...");
         
         const userId = ctx.from?.id;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         try {
             const userState = await BotsStore.getUserState(userId);
@@ -526,7 +524,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
     private async createTicketDirectly(ctx: BotContext, userState: any): Promise<boolean> {
         try {
             const userId = ctx.from?.id;
-            if (!userId) return false;
+            if (!userId) {return false;}
 
             // Check if we have email - should always have it at this point
             if (!userState.email) {
@@ -539,6 +537,15 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 return false;
             }
 
+            // Detect file attachments from stored user state (not from callback message)
+            const attachmentIds = userState.attachmentIds || [];
+            const hasAttachments = userState.hasAttachments || false;
+
+            // Generate smart status message with attachment awareness
+            const processingText = generateStatusMessage(ctx, 'ticket-creation');
+
+            await ctx.editMessageText(processingText, { parse_mode: 'Markdown' });
+
             // Get user data using the unified function for consistent naming
             const userData = await unthreadService.getOrCreateUser(userId, ctx.from?.username, ctx.from?.first_name, ctx.from?.last_name);
             
@@ -548,12 +555,107 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 email: userState.email // Must exist at this point
             };
 
-            // Create ticket using the unthread service with correct parameters
-            const ticketResponse = await unthreadService.createTicket({
-                groupChatName: 'Telegram Support', // Default group chat name
-                customerId: process.env.UNTHREAD_CUSTOMER_ID!,
-                summary: userState.summary,
-                onBehalfOf
+            // Use unified approach: create ticket with attachments in single API call when attachments exist
+            let ticketResponse;
+            
+            if (hasAttachments) {
+                LogEngine.info('Creating ticket with unified attachment approach via callback', {
+                    userId,
+                    attachmentCount: attachmentIds.length,
+                    method: 'callback_unified_buffer_approach'
+                });
+                
+                try {
+                    // Update status to show unified processing
+                    await ctx.editMessageText(
+                        `🎫 **Creating Unified Ticket**\n\n⚡ Creating ticket with ${attachmentIds.length} attachment${attachmentIds.length > 1 ? 's' : ''} in a single operation...`,
+                        { parse_mode: 'Markdown' }
+                    );
+                    
+                    // Convert file IDs to buffers for unified processing
+                    const attachmentBuffers = await attachmentHandler.convertFileIdsToBuffers(attachmentIds);
+                    
+                    if (attachmentBuffers.length === 0) {
+                        LogEngine.warn('Failed to convert file IDs to buffers via callback, falling back to standard ticket creation', {
+                            originalAttachmentCount: attachmentIds.length,
+                            userId
+                        });
+                        
+                        // Notify user about attachment processing failure
+                        await ctx.editMessageText(
+                            `⚠️ **Attachment Processing Issue**\n\n` +
+                            `We encountered an issue processing your ${attachmentIds.length} attachment${attachmentIds.length > 1 ? 's' : ''}. ` +
+                            `Your ticket will be created without the attachments.\n\n` +
+                            `You can attach files later by replying to the ticket confirmation message.\n\n` +
+                            `🎫 Creating your ticket now...`,
+                            { parse_mode: 'Markdown' }
+                        );
+                        
+                        // Brief delay to let user read the notification
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        
+                        // Fallback to standard ticket creation without attachments
+                        ticketResponse = await unthreadService.createTicket({
+                            groupChatName: 'Telegram Support', // Default group chat name
+                            customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                            summary: userState.summary,
+                            onBehalfOf
+                        });
+                    } else {
+                        // Use unified ticket creation with buffer attachments
+                        ticketResponse = await unthreadService.createTicketWithBufferAttachments({
+                            groupChatName: 'Telegram Support', // Default group chat name
+                            customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                            summary: userState.summary,
+                            onBehalfOf,
+                            attachments: attachmentBuffers
+                        });
+                        
+                        LogEngine.info('Unified ticket with attachments created successfully via callback', {
+                            ticketId: ticketResponse.id,
+                            friendlyId: ticketResponse.friendlyId,
+                            attachmentCount: attachmentBuffers.length,
+                            method: 'callback_unified_buffer_approach'
+                        });
+                    }
+                } catch (unifiedError) {
+                    LogEngine.error('Error in unified ticket creation via callback, falling back to standard approach', {
+                        error: unifiedError instanceof Error ? unifiedError.message : 'Unknown error',
+                        userId,
+                        attachmentCount: attachmentIds.length
+                    });
+                    
+                    // Fallback to standard ticket creation
+                    ticketResponse = await unthreadService.createTicket({
+                        groupChatName: 'Telegram Support', // Default group chat name
+                        customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                        summary: userState.summary,
+                        onBehalfOf
+                    });
+                }
+            } else {
+                // Standard ticket creation without attachments
+                ticketResponse = await unthreadService.createTicket({
+                    groupChatName: 'Telegram Support', // Default group chat name
+                    customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                    summary: userState.summary,
+                    onBehalfOf
+                });
+                
+                LogEngine.info('Standard ticket created successfully via callback', {
+                    ticketId: ticketResponse.id,
+                    friendlyId: ticketResponse.friendlyId,
+                    method: 'callback_standard_no_attachments'
+                });
+            }
+
+            LogEngine.info('Ticket creation completed via callback', {
+                ticketId: ticketResponse.id,
+                friendlyId: ticketResponse.friendlyId,
+                hasAttachments: hasAttachments,
+                attachmentCount: hasAttachments ? attachmentIds.length : 0,
+                attachmentIds: hasAttachments ? attachmentIds : [],
+                method: 'callback_createTicketDirectly'
             });
 
             // The response is just { id, friendlyId }
@@ -569,7 +671,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 telegramUserId: userId
             });
 
-            LogEngine.info('🔍 DEBUG: Ticket registered for bidirectional messaging via callback', {
+            LogEngine.info('Ticket registered for bidirectional messaging via callback', {
                 storedConversationId: ticket.id,
                 friendlyId: ticket.friendlyId,
                 messageId: ctx.callbackQuery?.message?.message_id,
@@ -698,7 +800,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
         await ctx.answerCbQuery("✏️ Edit your summary...");
         
         const userId = ctx.from?.id;
-        if (!userId) return false;
+        if (!userId) {return false;}
 
         try {
             const userState = await BotsStore.getUserState(userId);
@@ -1105,7 +1207,7 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             const now = new Date();
             const extendedExpiresAt = new Date(now.getTime() + CALLBACK_CONSTANTS.SESSION.EXPIRY_EXTENSION_MINUTES * 60 * 1000);
             
-            const updateResult = await BotsStore.updateDmSetupSession(sessionId, {
+            const _updateResult = await BotsStore.updateDmSetupSession(sessionId, {
                 expiresAt: extendedExpiresAt.toISOString(),
                 currentStep: 'awaiting_custom_name'
             });
@@ -1190,9 +1292,6 @@ Please type the customer name you'd like to use:
                 currentStep: 'awaiting_customer_id',
                 expiresAt: extendedExpiresAt.toISOString()
             });
-            
-            // Verify the update
-            const verifySession = await BotsStore.getDmSetupSession(sessionId);
             
             // Generate short callback IDs to stay within Telegram's 64-byte limit
             const shortBackId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
@@ -1413,7 +1512,7 @@ Choose how you'd like to handle message templates:`;
                     ]
                 }
             });
-        } catch (editError) {
+        } catch (_editError) {
             // If edit fails (e.g., message too old or from text input), send a new message
             await ctx.reply(successMessage, {
                 parse_mode: 'Markdown',
@@ -1462,7 +1561,7 @@ Choose how you'd like to handle message templates:`;
                 await ctx.editMessageText(`❌ **Setup Failed**
 
 Failed to complete customer setup. Please try again.`);
-            } catch (editError) {
+            } catch (_editError) {
                 // If edit fails, send a new message
                 await ctx.reply(`❌ **Setup Failed**
 
@@ -1881,7 +1980,7 @@ This group appears to already be configured. If you're experiencing issues, plea
 Unable to complete validation automatically. Please return to the group and run \`/setup\` again to retry the validation process.`
                     );
                 }
-            } catch (fallbackError) {
+            } catch (_fallbackError) {
                 // Ultimate fallback
                 await ctx.editMessageText(
                     `🔄 **Validation Retry Required**
@@ -1928,7 +2027,7 @@ Please return to the group and run \`/setup\` again to retry the validation proc
             
             // Get current templates (will be defaults if not set)
             const templateManager = GlobalTemplateManager.getInstance();
-            const templates = await templateManager.getGlobalTemplates();
+            const _templates = await templateManager.getGlobalTemplates();
             
             // Generate short callback ID for this session
             const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);

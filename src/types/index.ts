@@ -17,11 +17,11 @@
  * - Comprehensive error type definitions * - Integration with Telegraf framework types
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
-import { Context, Telegraf } from 'telegraf';
-import { Message, Update, UserFromGetMe } from 'telegraf/typings/core/types/typegram';
+import { Context } from 'telegraf';
+import { Update, UserFromGetMe } from 'telegraf/typings/core/types/typegram';
 
 // Bot context extensions - extending the base context
 export interface BotContext extends Context<Update> {
@@ -29,14 +29,14 @@ export interface BotContext extends Context<Update> {
 }
 
 // Command handler type
-export type CommandHandler = (ctx: BotContext) => Promise<void>;
+export type CommandHandler = (_ctx: BotContext) => Promise<void>;
 
 // Support form types
 export enum SupportField {
-  SUMMARY = 'summary',
-  EMAIL = 'email',
-  COMPLETE = 'complete',
-  PROFILE_EMAIL_UPDATE = 'profile_email_update'
+  _SUMMARY = 'summary',
+  _EMAIL = 'email',
+  _COMPLETE = 'complete',
+  _PROFILE_EMAIL_UPDATE = 'profile_email_update'
 }
 
 export interface SupportFormState {
@@ -51,7 +51,7 @@ export interface SupportFormState {
 
 // Profile update state for managing email updates
 export interface ProfileUpdateState {
-  field: SupportField.PROFILE_EMAIL_UPDATE;
+  field: SupportField._PROFILE_EMAIL_UPDATE;
   initiatedBy: number; // Track who initiated the profile update
   initiatedInChat: number; // Track which chat the update was initiated in
   currentEmail?: string; // Store current email for reference

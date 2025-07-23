@@ -1,9 +1,8 @@
 /**
- * Command System - Complete Rewrite
+ * Command System
  * 
- * This replaces the original 3,031-line monolithic commands/index.ts
- * with a clean, modular, and maintainable architecture following
- * SOLID principles and Clean Code practices.
+ * Clean, modular command architecture for the Unthread Telegram Bot.
+ * Provides basic user commands, support ticket creation, and admin tools.
  * 
  * @author Waren Gonzaga, WG Technology Labs
  */
@@ -15,10 +14,10 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 
 // Basic commands
 import { 
-    StartCommand, 
+    AboutCommand, 
     HelpCommand, 
-    VersionCommand, 
-    AboutCommand 
+    StartCommand, 
+    VersionCommand 
 } from './basic/InfoCommands.js';
 import { 
     CancelCommand, 
@@ -39,22 +38,20 @@ import {
 
 // Processors
 import {
-    SupportConversationProcessor,
-    DmSetupInputProcessor
+    DmSetupInputProcessor,
+    SupportConversationProcessor
 } from './processors/ConversationProcessors.js';
 import { 
-    SupportCallbackProcessor,
+    AdminCallbackProcessor,
     SetupCallbackProcessor,
-    AdminCallbackProcessor
+    SupportCallbackProcessor
 } from './processors/CallbackProcessors.js';
 
 /**
- * Registers all commands, conversation processors, and callback processors with the command system.
- *
- * This function sets up the complete command architecture, including basic, support, and admin commands, as well as conversation and callback processors, preparing the bot for operation.
+ * Initialize all commands and processors for the bot
  */
 export function initializeCommands(): void {
-    LogEngine.info('🚀 Initializing Clean Command Architecture...');
+    LogEngine.info('🚀 Initializing command system...');
 
     // Register basic commands
     commandRegistry.register(new StartCommand());
@@ -84,7 +81,7 @@ export function initializeCommands(): void {
     commandRegistry.registerCallbackProcessor(new AdminCallbackProcessor());
 
     const stats = commandRegistry.getStats();
-    LogEngine.info('✅ Command Architecture Initialized', {
+    LogEngine.info('✅ Command system initialized', {
         totalCommands: stats.totalCommands,
         adminCommands: stats.adminCommands,
         conversationProcessors: stats.conversationProcessors,
@@ -110,7 +107,7 @@ export async function processConversation(ctx: BotContext): Promise<boolean> {
  */
 export async function processCallback(ctx: BotContext): Promise<boolean> {
     const callbackQuery = ctx.callbackQuery;
-    if (!callbackQuery || !('data' in callbackQuery)) return false;
+    if (!callbackQuery || !('data' in callbackQuery)) {return false;}
 
     return await commandRegistry.processCallback(ctx, callbackQuery.data);
 }
@@ -133,15 +130,6 @@ export async function executeCommand(commandName: string, ctx: BotContext): Prom
  */
 export function generateHelp(ctx: BotContext): string {
     return commandRegistry.generateHelpText(ctx);
-}
-
-/**
- * Retrieves statistics about the registered commands and processors.
- *
- * @returns An object containing counts and details of commands, admin commands, conversation processors, callback processors, and setup-required commands.
- */
-export function getCommandStats() {
-    return commandRegistry.getStats();
 }
 
 // Export the registry for advanced usage

@@ -1,45 +1,24 @@
 /**
- * Unthread Telegram Bot - Unthread API Service
+ * Unthread API Service - Customer support ticket management
  * 
- * Provides comprehensive integration with the Unthread platform API for customer
- * support ticket management. This service handles customer creation, ticket
- * management, and message routing between Telegram and Unthread.
- * 
- * Core Features:
+ * Key Features:
  * - Customer profile creation and management
  * - Support ticket creation and status tracking
- * - Message sending and conversation threading
- * - API authentication and error handling
- * - Data persistence with Bots Brain storage integration
- * 
- * API Operations:
- * - Customer creation with Telegram user data
- * - Ticket creation with support form data
- * - Message posting to existing conversations
- * - Ticket status updates and notifications
- * 
- * Integration Points:
- * - Telegram user data mapping to Unthread customers
- * - Support form data collection and validation
- * - Conversation state management and persistence
- * - Error handling and retry mechanisms
- * 
- * Security:
- * - API key authentication
- * - Request signing and validation
- * - Rate limiting compliance 
- * - Data sanitization and validation
+ * - Message routing between Telegram and Unthread
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 
 import fetch from 'node-fetch';
+import FormData from 'form-data';
+import fs from 'fs';
+import path from 'path';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
-import { TicketData, AgentMessageData, UserData } from '../sdk/types.js';
-import { getDefaultTicketPriority, getCompanyName } from '../config/env.js';
+import { AgentMessageData, TicketData, UserData } from '../sdk/types.js';
+import { getCompanyName, getDefaultTicketPriority } from '../config/env.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -113,6 +92,31 @@ interface SendMessageJSONParams {
 }
 
 /**
+ * Message parameters with file attachments
+ */
+interface SendMessageWithAttachmentsParams {
+  conversationId: string;
+  message: string;
+  onBehalfOf: OnBehalfOfUser;
+  filePaths: string[];
+}
+
+/**
+ * Ticket creation parameters with file attachments using buffers
+ */
+interface CreateTicketWithBufferAttachmentsParams {
+  groupChatName: string;
+  customerId: string;
+  summary: string;
+  onBehalfOf: OnBehalfOfUser;
+  attachments: Array<{
+    filename: string;
+    buffer: Buffer;
+    mimeType: string;
+  }>;
+}
+
+/**
  * Ticket creation response
  */
 interface CreateTicketResponse {
@@ -158,9 +162,6 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
     const lowerTitle = groupChatTitle.toLowerCase().trim();
     const lowerCompanyName = companyName.toLowerCase().trim();
     
-    // Check if the admin's company name appears in the group title
-    let foundCompanyInTitle = false;
-    
     // Regex patterns to match different separators (x, <>, ×, etc.)
     const separatorPatterns = [
         /\s+x\s+/,     // matches " x "
@@ -181,11 +182,9 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
                 
                 if (part1 === lowerCompanyName && part2 !== lowerCompanyName && part2) {
                     // Our company is first, customer is second
-                    foundCompanyInTitle = true;
                     return formatCustomerNameForDisplay(part2);
                 } else if (part2 === lowerCompanyName && part1 !== lowerCompanyName && part1) {
                     // Customer is first, our company is second
-                    foundCompanyInTitle = true;
                     return formatCustomerNameForDisplay(part1);
                 }
             }
@@ -200,7 +199,6 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
         result = result.replace(/^[x<>&×\s]+|[x<>&×\s]+$/g, '').trim();
         
         if (result && result !== lowerTitle) {
-            foundCompanyInTitle = true;
             return formatCustomerNameForDisplay(result);
         }
     }
@@ -212,28 +210,6 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
 }
 
 /**
- * Normalizes a company name by capitalizing each word, replacing spaces with hyphens, and removing invalid characters.
- *
- * Returns 'Unknown-Company' if the input is empty.
- *
- * @param name - The company name to normalize and format
- * @returns The formatted company name suitable for API usage
- */
-function capitalizeCompanyName(name: string): string {
-    if (!name) return 'Unknown-Company';
-    
-    return name
-        .toLowerCase()
-        .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join('-') // Use hyphen instead of space for API compatibility
-        .trim()
-        .replace(/[^a-zA-Z0-9-_]/g, '') // Remove invalid characters, keep only letters, numbers, hyphens, underscores
-        .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
-        .replace(/-{2,}/g, '-'); // Replace multiple consecutive hyphens with single hyphen
-}
-
-/**
  * Formats a customer name for display by normalizing spaces and capitalizing each word.
  *
  * Returns 'Unknown Company' if the input is empty.
@@ -242,7 +218,7 @@ function capitalizeCompanyName(name: string): string {
  * @returns The formatted customer name with proper capitalization and spacing
  */
 function formatCustomerNameForDisplay(name: string): string {
-    if (!name) return 'Unknown Company';
+    if (!name) {return 'Unknown Company';}
     
     return name
         .trim()
@@ -273,7 +249,8 @@ export async function createCustomer(groupChatName: string): Promise<Customer> {
         
         const response = await fetch(`${API_BASE_URL}/customers`, {
             method: 'POST',
-            headers: {
+            headers:
+ {
                 'Content-Type': 'application/json',
                 'X-API-KEY': UNTHREAD_API_KEY!
             },
@@ -289,7 +266,6 @@ export async function createCustomer(groupChatName: string): Promise<Customer> {
 
         const result = await response.json() as Customer;
         
-        // Log the extraction for debugging
         LogEngine.info('Customer created with extracted name', {
             originalGroupChatName: groupChatName,
             extractedCustomerName: customerName,
@@ -446,7 +422,7 @@ async function sendMessageJSON(params: SendMessageJSONParams): Promise<any> {
  * @param params - Ticket confirmation data including message and ticket identifiers, chat and user IDs, and related metadata.
  */
 export async function registerTicketConfirmation(params: RegisterTicketConfirmationParams): Promise<void> {
-    LogEngine.info('🔍 DEBUG: Starting registerTicketConfirmation', {
+    LogEngine.info('Starting registerTicketConfirmation', {
         messageId: params.messageId,
         ticketId: params.ticketId,
         friendlyId: params.friendlyId,
@@ -457,7 +433,7 @@ export async function registerTicketConfirmation(params: RegisterTicketConfirmat
     try {
         const { messageId, ticketId, friendlyId, customerId, chatId, telegramUserId } = params;
         
-        LogEngine.info('🔍 DEBUG: About to store ticket with unified approach', {
+        LogEngine.info('About to store ticket with unified approach', {
             conversationId: ticketId,
             messageId,
             friendlyId
@@ -476,7 +452,7 @@ export async function registerTicketConfirmation(params: RegisterTicketConfirmat
             createdAt: Date.now().toString()
         });
         
-        LogEngine.info('🔍 DEBUG: Ticket storage completed', {
+        LogEngine.info('Ticket storage completed', {
             success: storeResult,
             conversationId: ticketId,
             messageId,
@@ -484,9 +460,9 @@ export async function registerTicketConfirmation(params: RegisterTicketConfirmat
         });
         
         // Immediate verification - try to retrieve the ticket we just stored
-        LogEngine.info('🔍 DEBUG: Attempting immediate verification lookup');
+        LogEngine.info('Attempting immediate verification lookup');
         const verificationTicket = await BotsStore.getTicketByConversationId(ticketId);
-        LogEngine.info('🔍 DEBUG: Immediate verification result', {
+        LogEngine.info('Immediate verification result', {
             found: !!verificationTicket,
             lookupKey: `ticket:unthread:${ticketId}`,
             verificationData: verificationTicket ? {
@@ -496,7 +472,7 @@ export async function registerTicketConfirmation(params: RegisterTicketConfirmat
             } : null
         });
         
-        LogEngine.info('🔍 DEBUG: Registered ticket confirmation - unified storage approach', {
+        LogEngine.info('Registered ticket confirmation - unified storage approach', {
             messageId,
             unifiedConversationId: ticketId,    // Now conversationId === ticketId
             ticketId: ticketId,
@@ -582,7 +558,7 @@ export async function getAgentMessageFromReply(replyToMessageId: number): Promis
  */
 export async function getTicketsForChat(chatId: number): Promise<TicketData[]> {
     try {
-        // Note: This would require a new method in BotsStore to search by chatId
+        // This would require a new method in BotsStore to search by chatId
         // For now, we'll return an empty array and implement this if needed
         LogEngine.debug('getTicketsForChat called but not yet implemented with BotsStore', { chatId });
         return [];
@@ -1113,3 +1089,339 @@ export function handleUnthreadApiError(error: any, operation: string): string {
 
 // Export the customer cache for potential use in other modules
 export { customerCache };
+
+/**
+ * Downloads an attachment file from Unthread using the file download API.
+ * 
+ * This function handles downloading files from Unthread conversations with comprehensive
+ * error handling, file validation, and memory management for safe processing.
+ * 
+ * @param conversationId - The Unthread conversation ID containing the file
+ * @param fileId - The unique file identifier from the attachment metadata
+ * @param expectedFileName - The expected filename for validation (optional but recommended)
+ * @param maxSizeBytes - Maximum allowed file size in bytes (default: 50MB for Telegram compatibility)
+ * @returns Promise<Buffer> containing the file data
+ * @throws AttachmentProcessingError with specific error types for different failure scenarios
+ * 
+ * @example
+ * ```typescript
+ * try {
+ *   const fileBuffer = await downloadAttachmentFromUnthread(
+ *     'conv_123', 
+ *     'file_456', 
+ *     'document.pdf',
+ *     50 * 1024 * 1024 // 50MB
+ *   );
+ *   // Process the file buffer...
+ * } catch (error) {
+ *   if (error instanceof AttachmentProcessingError) {
+ *     // Handle specific attachment errors
+ *   }
+ * }
+ * ```
+ */
+/**
+ * DISABLED: Downloads an attachment from an Unthread conversation
+ * 
+ * This function has been temporarily disabled due to reliability issues with
+ * the Unthread file download API. The function was failing consistently when
+ * trying to download files from Slack through Unthread's proxy.
+ * 
+ * RE-ENABLEMENT STEPS when Unthread API is fixed:
+ * Step 7: Replace this function body with the original implementation
+ * Step 8: Test the function with known file IDs from Unthread
+ * Step 9: Verify downloads work for various file types and sizes
+ * Step 10: Monitor logs for any remaining download failures
+ * 
+ * @deprecated Temporarily disabled - will be re-enabled when API issues are resolved
+ * @param conversationId - The Unthread conversation ID containing the file
+ * @param fileId - The unique file identifier from the attachment metadata
+ * @param expectedFileName - The expected filename for validation (optional but recommended)
+ * @param maxSizeBytes - Maximum allowed file size in bytes (default: 50MB for Telegram compatibility)
+ * @returns Promise<Buffer> containing the file data
+ * @throws Error indicating the function is disabled
+ */
+export async function downloadAttachmentFromUnthread(
+    conversationId: string,
+    fileId: string,
+    expectedFileName?: string
+): Promise<Buffer> {
+    
+    LogEngine.warn('downloadAttachmentFromUnthread called but function is disabled', {
+        conversationId,
+        fileId,
+        expectedFileName,
+        reason: 'Unthread file download API issues - function temporarily disabled'
+    });
+    
+    throw new Error(
+        'File download from Unthread is temporarily disabled due to API reliability issues. ' +
+        'The Unthread→Telegram attachment flow has been disabled until these issues are resolved.'
+    );
+}
+
+/**
+ * Sends a message with file attachments to an existing Unthread conversation using multipart/form-data.
+ *
+ * @param params - Contains the conversation ID, message content, user information, and file paths.
+ * @returns The API response for the sent message with attachments.
+ * @throws If the API request fails or file paths are invalid.
+ */
+export async function sendMessageWithAttachments(params: SendMessageWithAttachmentsParams): Promise<any> {
+    try {
+        LogEngine.info('Sending message with attachments to Unthread', {
+            conversationId: params.conversationId,
+            fileCount: params.filePaths.length,
+            onBehalfOf: params.onBehalfOf.name
+        });
+
+        return await sendMessageMultipart(params);
+    } catch (error) {
+        LogEngine.error('Error sending message with attachments', {
+            error: (error as Error).message,
+            conversationId: params.conversationId,
+            fileCount: params.filePaths.length
+        });
+        throw error;
+    }
+}
+
+/**
+ * Creates a ticket with file attachments using memory buffers and multipart/form-data.
+ * This version accepts file buffers directly instead of file paths, making it ideal
+ * for integration with the AttachmentHandler's buffer-based approach.
+ *
+ * @param params - Contains ticket data and file buffers for attachments.
+ * @returns The ticket creation response with ID and friendly ID.
+ * @throws If the API request fails or buffer processing fails.
+ */
+export async function createTicketWithBufferAttachments(params: CreateTicketWithBufferAttachmentsParams): Promise<CreateTicketResponse> {
+    try {
+        LogEngine.info('Creating ticket with buffer attachments in Unthread', {
+            groupChatName: params.groupChatName,
+            customerId: params.customerId,
+            fileCount: params.attachments.length,
+            onBehalfOf: params.onBehalfOf.name,
+            implementation: 'buffer-based'
+        });
+
+        return await createTicketMultipartBuffer(params);
+    } catch (error) {
+        LogEngine.error('Error creating ticket with buffer attachments', {
+            error: (error as Error).message,
+            groupChatName: params.groupChatName,
+            customerId: params.customerId,
+            fileCount: params.attachments.length
+        });
+        throw error;
+    }
+}
+
+/**
+ * Internal method to send a message with attachments using multipart/form-data.
+ *
+ * @param params - Message parameters with file paths.
+ * @returns The response data from the Unthread API.
+ * @throws If the API request fails or files cannot be read.
+ */
+async function sendMessageMultipart(params: SendMessageWithAttachmentsParams): Promise<any> {
+    const { conversationId, message, onBehalfOf, filePaths } = params;
+
+    // Create form data
+    const form = new FormData();
+
+    // Add the message payload as JSON
+    const messagePayload = {
+        body: {
+            type: "markdown",
+            value: message
+        },
+        onBehalfOf: onBehalfOf
+    };
+
+    form.append('json', JSON.stringify(messagePayload));
+
+    // Add each file to the form using buffer-based approach
+    for (const filePath of filePaths) {
+        if (!fs.existsSync(filePath)) {
+            LogEngine.warn('File not found, skipping attachment', { filePath });
+            continue;
+        }
+
+        const fileName = path.basename(filePath);
+        const fileBuffer = fs.readFileSync(filePath);
+        form.append('attachments', fileBuffer, fileName);
+        
+        LogEngine.debug('Added file to multipart form', { fileName, filePath, size: fileBuffer.length });
+    }
+
+    // Send request to Unthread
+    const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: {
+            'X-API-KEY': UNTHREAD_API_KEY!,
+            ...form.getHeaders()
+        },
+        body: form
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to send message with attachments: ${response.status} ${errorText}`);
+    }
+
+    const result = await response.json() as any;
+    
+    LogEngine.info('Message with attachments sent successfully', {
+        conversationId,
+        messageId: result.ts || 'unknown',
+        fileCount: filePaths.length
+    });
+
+    return result;
+}
+
+/**
+ * Internal method to create a ticket with buffer attachments using the proven two-step approach.
+ * Step 1: Create ticket using JSON (reliable)
+ * Step 2: Send attachment as message to the created conversation (reliable)
+ * This ensures attachments are always visible in the Unthread dashboard.
+ *
+ * @param params - Ticket creation parameters with file buffers.
+ * @returns The ticket creation response.
+ * @throws If the API request fails or buffer processing fails.
+ */
+async function createTicketMultipartBuffer(params: CreateTicketWithBufferAttachmentsParams): Promise<CreateTicketResponse> {
+    const { groupChatName, summary, customerId, onBehalfOf, attachments } = params;
+
+    LogEngine.info('Creating ticket with buffer attachments using two-step approach', {
+        groupChatName,
+        customerId,
+        fileCount: attachments.length,
+        onBehalfOf: onBehalfOf.name,
+        implementation: 'two-step-approach'
+    });
+
+    try {
+        // STEP 1: Create the ticket using proven JSON approach
+        const customerCompanyName = extractCustomerCompanyName(groupChatName);
+        const title = `[Telegram Ticket] ${customerCompanyName}`;
+        
+        // Ensure summary is not empty
+        const ticketSummary = summary && summary.trim() ? summary.trim() : 'File attachment submitted via Telegram';
+        
+        LogEngine.debug('Step 1: Creating ticket with JSON approach', {
+            title,
+            summary: ticketSummary,
+            customerId,
+            attachmentCount: attachments.length
+        });
+
+        // Create ticket using the working JSON method
+        const ticket = await createTicketJSON({ 
+            title, 
+            summary: ticketSummary, 
+            customerId, 
+            onBehalfOf 
+        });
+
+        LogEngine.info('Step 1 completed: Ticket created successfully', {
+            ticketId: ticket.id,
+            friendlyId: ticket.friendlyId
+        });
+
+        // STEP 2: Send attachments as message to the created conversation
+        if (attachments.length > 0) {
+            LogEngine.debug('Step 2: Sending attachments as message to conversation', {
+                conversationId: ticket.id,
+                attachmentCount: attachments.length
+            });
+
+            // Create FormData for message with attachments
+            const form = new FormData();
+
+            // Add message payload - make it appear as a natural customer message
+            const attachmentNames = attachments.map(att => att.filename).join(', ');
+            const messagePayload = {
+                body: {
+                    type: "markdown",
+                    value: `*Attachment${attachments.length > 1 ? 's' : ''} shared:* ${attachmentNames}`
+                },
+                onBehalfOf: onBehalfOf
+            };
+
+            LogEngine.debug('Step 2: Message payload for attachment', {
+                conversationId: ticket.id,
+                onBehalfOfName: onBehalfOf.name,
+                onBehalfOfEmail: onBehalfOf.email,
+                messageContent: messagePayload.body.value
+            });
+
+            // Use correct field names per API documentation
+            form.append('json', JSON.stringify(messagePayload));
+
+            // Add each attachment buffer
+            for (const attachment of attachments) {
+                form.append('attachments', attachment.buffer, attachment.filename);
+                
+                LogEngine.debug('Added attachment to message form', { 
+                    fileName: attachment.filename, 
+                    size: attachment.buffer.length,
+                    mimeType: attachment.mimeType 
+                });
+            }
+
+            // Send message with attachments to the conversation
+            const messageResponse = await fetch(`${API_BASE_URL}/conversations/${ticket.id}/messages`, {
+                method: 'POST',
+                headers: {
+                    'X-API-KEY': UNTHREAD_API_KEY!,
+                    ...form.getHeaders()
+                },
+                body: form
+            });
+
+            if (!messageResponse.ok) {
+                const errorText = await messageResponse.text();
+                LogEngine.error('Step 2 failed: Could not send attachments as message', {
+                    status: messageResponse.status,
+                    statusText: messageResponse.statusText,
+                    errorText,
+                    conversationId: ticket.id,
+                    attachmentCount: attachments.length
+                });
+                // Don't throw here - ticket was created successfully, just log the attachment failure
+                LogEngine.warn('Ticket created but attachments could not be sent as follow-up message', {
+                    ticketId: ticket.id,
+                    friendlyId: ticket.friendlyId
+                });
+            } else {
+                const messageResult = await messageResponse.json() as any;
+                LogEngine.info('Step 2 completed: Attachments sent successfully as message', {
+                    conversationId: ticket.id,
+                    messageId: messageResult.ts || messageResult.id || 'unknown',
+                    attachmentCount: attachments.length
+                });
+            }
+        }
+
+        LogEngine.info('Two-step ticket creation with buffer attachments completed successfully', {
+            ticketId: ticket.id,
+            friendlyId: ticket.friendlyId,
+            fileCount: attachments.length,
+            implementation: 'two-step-approach-success'
+        });
+
+        return ticket;
+
+    } catch (error) {
+        LogEngine.error('Failed to create ticket with buffer attachments using two-step approach', {
+            error: (error as Error).message,
+            groupChatName,
+            customerId,
+            attachmentCount: attachments.length,
+            implementation: 'two-step-approach-error'
+        });
+        throw error;
+    }
+}

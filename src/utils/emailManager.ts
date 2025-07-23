@@ -22,6 +22,15 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 import type { UserData } from '../sdk/types.js';
 
 /**
+ * Configuration for email domain generation
+ * Made configurable to support different environments and testing scenarios
+ */
+const EMAIL_CONFIG = {
+    // Default domain for dummy emails - can be overridden via environment variable
+    dummyEmailDomain: process.env.DUMMY_EMAIL_DOMAIN || 'telegram.user'
+};
+
+/**
  * Email validation result interface
  */
 export interface EmailValidationResult {
@@ -56,8 +65,8 @@ export function validateEmail(email: string): EmailValidationResult {
 
     const trimmedEmail = email.trim().toLowerCase();
     
-    // Comprehensive email regex pattern
-    const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+    // Safe email regex pattern - simplified to prevent ReDoS attacks
+    const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     
     if (!emailRegex.test(trimmedEmail)) {
         return {
@@ -106,8 +115,8 @@ export function generateDummyEmail(userId: number, username?: string): string {
         .replace(/[^a-z0-9]/g, '')
         .substring(0, 20); // Limit length
     
-    // Generate email in same format as auto-generated ones
-    return `${cleanIdentifier}_${userId}@telegram.user`;
+    // Generate email using configurable domain for better testing and environment flexibility
+    return `${cleanIdentifier}_${userId}@${EMAIL_CONFIG.dummyEmailDomain}`;
 }
 
 /**
@@ -120,7 +129,6 @@ export async function getUserEmailPreferences(userId: number): Promise<UserEmail
     try {
         const userData = await BotsStore.getUserByTelegramId(userId);
         
-        // Log for debugging
         LogEngine.info('Getting user email preferences', {
             userId,
             userExists: !!userData,
@@ -181,7 +189,7 @@ export async function updateUserEmail(
         }
 
         // Ensure user exists before updating email
-        let userData = await BotsStore.getUserByTelegramId(userId);
+        const userData = await BotsStore.getUserByTelegramId(userId);
         
         if (!userData) {
             // Create user if they don't exist
@@ -234,7 +242,7 @@ export async function updateUserEmail(
         }
 
         return { success: true };
-    } catch (error) {
+    } catch (_error) {
         return {
             success: false,
             error: 'Failed to update email address. Please try again.'
@@ -337,8 +345,6 @@ export async function deliverPendingAgentMessages(telegramUserId: number): Promi
         // Search for pending agent messages for this user
         const searchPattern = `pending_agent_message:*`;
         
-        // Note: This is a simplified search - in production, you might want to 
-        // store a user-specific key or use a more efficient search method
         LogEngine.info('Searching for pending agent messages', {
             telegramUserId,
             searchPattern
@@ -347,7 +353,7 @@ export async function deliverPendingAgentMessages(telegramUserId: number): Promi
         // For now, we'll log that this feature is ready but needs storage layer support
         LogEngine.info('Pending agent message delivery ready', {
             telegramUserId,
-            note: 'Storage layer search implementation needed for production'
+            implementation: 'Storage layer search implementation needed for production'
         });
 
         return results;

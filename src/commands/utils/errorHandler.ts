@@ -289,7 +289,7 @@ function classifyError(error: unknown, errorDetails: ErrorDetails): {
  * @param context - Optional context string for additional error context
  * @returns An ErrorDetails object containing extracted and classified error information
  */
-export function getErrorDetails(error: unknown, context?: string): ErrorDetails {
+export function getErrorDetails(error: unknown, _context?: string): ErrorDetails {
     const timestamp = new Date().toISOString();
     
     // Handle Error instances (most common case)
@@ -398,7 +398,8 @@ export function getErrorDetails(error: unknown, context?: string): ErrorDetails 
  *
  * @returns The sanitized log data with sensitive information masked or removed.
  */
-function sanitizeLogData(logData: any): any {
+/* eslint-disable security/detect-object-injection */
+function sanitizeLogData(logData: any): any { // eslint-disable-line security/detect-object-injection
     const sanitized = { ...logData };
     
     // Sanitize stack traces in production to remove file paths
@@ -410,24 +411,25 @@ function sanitizeLogData(logData: any): any {
     }
     
     // Remove or mask potentially sensitive additional data
-    if (sanitized.password) sanitized.password = '[REDACTED]';
-    if (sanitized.token) sanitized.token = '[REDACTED]';
-    if (sanitized.apiKey) sanitized.apiKey = '[REDACTED]';
-    if (sanitized.secret) sanitized.secret = '[REDACTED]';
-    if (sanitized.authorization) sanitized.authorization = '[REDACTED]';
+    if (sanitized.password) {sanitized.password = '[REDACTED]';}
+    if (sanitized.token) {sanitized.token = '[REDACTED]';}
+    if (sanitized.apiKey) {sanitized.apiKey = '[REDACTED]';}
+    if (sanitized.secret) {sanitized.secret = '[REDACTED]';}
+    if (sanitized.authorization) {sanitized.authorization = '[REDACTED]';}
     
     // Sanitize any nested objects
     for (const key in sanitized) {
-        if (sanitized[key] && typeof sanitized[key] === 'object') {
+        if (Object.prototype.hasOwnProperty.call(sanitized, key) && sanitized[key] && typeof sanitized[key] === 'object') {
             // Recursively sanitize nested objects
             if (typeof sanitized[key] === 'object' && !Array.isArray(sanitized[key])) {
-                sanitized[key] = sanitizeLogData(sanitized[key]);
+                sanitized[key] = sanitizeLogData(sanitized[key] as Record<string, unknown>);
             }
         }
     }
     
     return sanitized;
 }
+/* eslint-enable security/detect-object-injection */
 
 /**
  * Logs an error with detailed classification, sanitization, and contextual information.
