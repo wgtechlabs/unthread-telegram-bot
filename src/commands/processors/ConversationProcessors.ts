@@ -17,8 +17,6 @@ import { extractFileAttachments } from '../../events/message.js';
 import { getMessageText, hasTextContent } from '../../utils/messageContentExtractor.js';
 import { SetupCallbackProcessor } from './CallbackProcessors.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
-
-
 import { escapeMarkdown, lightEscapeMarkdown, truncateText } from '../../utils/markdownEscape.js';
 import { SimpleInputValidator } from '../../utils/simpleValidators.js';
 

@@ -3,8 +3,10 @@
  * 
  * Key Features:
  * - Private chat support form collection
- * - Group chat automatic ticket creation
+ * - Group chat automatic ticket creation  
  * - Message routing to Unthread API
+ * - Media group batch processing with proper notifications
+ * - Unified attachment handling for single and multiple files
  * 
  * @author Waren Gonzaga, WG Technology Labs
  * @version 1.0.0-rc1
@@ -30,7 +32,7 @@ interface MediaGroupItem {
     timestamp: number;
     userId: number;
     chatId: number;
-    replyToMessageId?: number; // Made optional to match usage
+    replyToMessageId?: number;
 }
 
 /**
@@ -42,10 +44,34 @@ interface MediaGroupCollection {
     firstMessageTimestamp: number;
     timeoutId: NodeJS.Timeout;
     isReply: boolean;
-    replyToMessageId?: number; // Made optional to match usage
+    replyToMessageId?: number;
     userId: number;
     chatId: number;
-    ctx?: BotContext; // Store context for notifications
+    ctx?: BotContext;
+}
+
+/**
+ * Ticket information interface
+ */
+interface TicketInfo {
+    ticketId: string;
+    friendlyId: string;
+    conversationId?: string;
+}
+
+/**
+ * Agent message information interface
+ */
+interface AgentMessageInfo {
+    conversationId: string;
+    friendlyId: string;
+}
+
+/**
+ * Status message interface for Telegram responses
+ */
+interface StatusMessage {
+    message_id: number;
 }
 
 /**
@@ -222,8 +248,7 @@ async function processMediaGroupCollection(mediaGroupId: string): Promise<void> 
                 userId: collection.userId
             });
             
-            // Import BotsStore to check user state
-            const { BotsStore } = await import('../sdk/bots-brain/index.js');
+            // Check user state for active support conversation
             const userState = await BotsStore.getUserState(collection.userId);
             
             LogEngine.info('🔍 Media group user state check results', {
@@ -389,8 +414,7 @@ async function processMediaGroupTicketCreation(collection: MediaGroupCollection,
             messageText: message?.substring(0, 100) || '[no text]'
         });
         
-        // Import dependencies
-        const { BotsStore } = await import('../sdk/bots-brain/index.js');
+        // Import SupportConversationProcessor dependency
         const { SupportConversationProcessor } = await import('../commands/processors/ConversationProcessors.js');
         
         // Check if user has an active support conversation state
@@ -498,8 +522,8 @@ async function processMediaGroupTicketCreation(collection: MediaGroupCollection,
 /**
  * Process media group reply to ticket confirmation with status notifications
  */
-async function processMediaGroupTicketReply(collection: MediaGroupCollection, ticketInfo: any, fileIds: string[], message: string): Promise<void> {
-    let statusMsg: any = null;
+async function processMediaGroupTicketReply(collection: MediaGroupCollection, ticketInfo: TicketInfo, fileIds: string[], message: string): Promise<void> {
+    let statusMsg: StatusMessage | null = null;
     const ctx = collection.ctx;
     
     try {
@@ -565,7 +589,7 @@ async function processMediaGroupTicketReply(collection: MediaGroupCollection, ti
             
             // Delete status message after 3 seconds
             setTimeout(() => {
-                if (ctx.chat) {
+                if (ctx.chat && statusMsg) {
                     ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
                 }
             }, 3000);
@@ -599,7 +623,7 @@ async function processMediaGroupTicketReply(collection: MediaGroupCollection, ti
             
             // Delete error message after 5 seconds
             setTimeout(() => {
-                if (ctx.chat) {
+                if (ctx.chat && statusMsg) {
                     ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
                 }
             }, 5000);
@@ -620,8 +644,8 @@ async function processMediaGroupTicketReply(collection: MediaGroupCollection, ti
 /**
  * Process media group reply to agent message with status notifications
  */
-async function processMediaGroupAgentReply(collection: MediaGroupCollection, agentMessageInfo: any, fileIds: string[], message: string): Promise<void> {
-    let statusMsg: any = null;
+async function processMediaGroupAgentReply(collection: MediaGroupCollection, agentMessageInfo: AgentMessageInfo, fileIds: string[], message: string): Promise<void> {
+    let statusMsg: StatusMessage | null = null;
     const ctx = collection.ctx;
     
     try {
@@ -686,7 +710,7 @@ async function processMediaGroupAgentReply(collection: MediaGroupCollection, age
             
             // Delete status message after 3 seconds
             setTimeout(() => {
-                if (ctx.chat) {
+                if (ctx.chat && statusMsg) {
                     ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
                 }
             }, 3000);
@@ -719,7 +743,7 @@ async function processMediaGroupAgentReply(collection: MediaGroupCollection, age
             
             // Delete error message after 5 seconds
             setTimeout(() => {
-                if (ctx.chat) {
+                if (ctx.chat && statusMsg) {
                     ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
                 }
             }, 5000);
@@ -1092,7 +1116,7 @@ async function handleTicketReply(ctx: BotContext): Promise<boolean> {
  * @param ticketInfo - Information about the ticket to which the reply is associated
  * @returns True if the reply was processed (successfully or with an error status message), or false if validation failed or an unexpected error occurred
  */
-async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): Promise<boolean> {
+async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: TicketInfo): Promise<boolean> {
     try {
         // Validate the reply context and ticket information
         const validation = await validateTicketReply(ctx, ticketInfo);
@@ -1166,7 +1190,7 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
  *
  * @returns An object indicating whether the reply is valid. If valid, includes the sender's Telegram user ID, username, first name, last name, and message text.
  */
-async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ isValid: false } | { isValid: true; telegramUserId: number; username: string | undefined; firstName: string | undefined; lastName: string | undefined; message: string }> {
+async function validateTicketReply(ctx: BotContext, ticketInfo: TicketInfo): Promise<{ isValid: false } | { isValid: true; telegramUserId: number; username: string | undefined; firstName: string | undefined; lastName: string | undefined; message: string }> {
     // Only require basic message and sender info - allow attachment-only messages
     if (!ctx.from || !ctx.message) {
         LogEngine.warn('❌ Ticket reply validation failed - missing basic context', {
@@ -1215,7 +1239,7 @@ async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ 
  *
  * Retrieves or creates user data based on the Telegram user ID and username, then sends the provided message to the ticket conversation identified by the ticket information. Supports file attachments.
  */
-async function processTicketMessage(ticketInfo: any, telegramUserId: number, username: string | undefined, message: string, firstName?: string, lastName?: string, attachmentFileIds?: string[]): Promise<void> {
+async function processTicketMessage(ticketInfo: TicketInfo, telegramUserId: number, username: string | undefined, message: string, firstName?: string, lastName?: string, attachmentFileIds?: string[]): Promise<void> {
     // Get user information from database
     const userData = await unthreadService.getOrCreateUser(telegramUserId, username, firstName, lastName);
     
@@ -1279,7 +1303,7 @@ async function processTicketMessage(ticketInfo: any, telegramUserId: number, use
  *
  * The message is updated to show a checkmark for success or an error icon for failure, and is automatically removed after 3 seconds (success) or 5 seconds (error).
  */
-async function updateStatusMessage(ctx: BotContext, statusMsg: any, isSuccess: boolean, hasAttachments?: boolean): Promise<void> {
+async function updateStatusMessage(ctx: BotContext, statusMsg: StatusMessage, isSuccess: boolean, hasAttachments?: boolean): Promise<void> {
     if (isSuccess) {
         // Update status message to success
         const successMessage = hasAttachments ? '✅ Files uploaded and added!' : '✅ Added!';
@@ -1320,7 +1344,7 @@ async function updateStatusMessage(ctx: BotContext, statusMsg: any, isSuccess: b
  *
  * @returns True if the reply was handled (successfully sent or error occurred), false if the context was invalid.
  */
-async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): Promise<boolean> {
+async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: AgentMessageInfo): Promise<boolean> {
     try {
         if (!ctx.from || !ctx.message) {
             return false;
