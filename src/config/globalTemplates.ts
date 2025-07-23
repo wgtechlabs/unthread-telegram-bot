@@ -34,10 +34,11 @@ export const DEFAULT_GLOBAL_TEMPLATES: GlobalTemplateConfig = {
     ticket_created: {
       event: 'ticket_created',
       content: '✅ **Support Ticket Created!**\n\n' +
-               '**Ticket #{{ticketNumber}}**\n\n' +
+               '**Ticket #{{ticketNumber}}**\n' +
+               '**Issue:** {{summary}}\n\n' +
                ' **Next Steps:**\n' +
                '• Our support team will review your ticket\n' +
-               '• You\'ll receive updates via Telegram\n\n' +
+               '• Reply to this message to add more details or updates to your ticket\n\n' +
                '*Thank you for contacting support!*',
       enabled: true
     },
