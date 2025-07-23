@@ -204,8 +204,12 @@ export function logPermissionEvent(
  * @param chat - The chat object to evaluate
  * @returns True if the chat has a string `title` property, indicating it is a group or supergroup
  */
-function chatHasTitle(chat: any): chat is { title: string } {
-  return chat && typeof chat === 'object' && 'title' in chat && typeof chat.title === 'string';
+function chatHasTitle(chat: unknown): chat is { title: string } {
+  return chat !== null && 
+         chat !== undefined && 
+         typeof chat === 'object' && 
+         'title' in chat && 
+         typeof (chat as { title?: unknown }).title === 'string';
 }
 
 /**

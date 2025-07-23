@@ -74,7 +74,6 @@ export class SupportConversationProcessor implements IConversationProcessor {
 
             if (userState.field === 'summary') {
                 // Detect attachments in the current message for proper summary confirmation
-                const { extractFileAttachments } = await import('../../events/message.js');
                 const messageAttachments = extractFileAttachments(ctx);
                 
                 LogEngine.info('Processing summary input with attachment detection', {
