@@ -12,6 +12,7 @@ import type { BotContext } from '../../types/index.js';
 import type { DmSetupSession } from '../../sdk/types.js';
 import { logError } from '../utils/errorHandler.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
+import { generateStatusMessage } from '../../utils/messageAnalyzer.js';
 import { BotsStore } from '../../sdk/bots-brain/index.js';
 import * as unthreadService from '../../services/unthread.js';
 import { generateDummyEmail, updateUserEmail } from '../../utils/emailManager.js';
@@ -540,11 +541,8 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
             const attachmentIds = userState.attachmentIds || [];
             const hasAttachments = userState.hasAttachments || false;
 
-            // Show processing message with attachment awareness
-            let processingText = "🎫 **Creating Your Ticket**\n\n⏳ Please wait while I create your support ticket...";
-            if (hasAttachments) {
-                processingText = `🎫 **Creating Your Ticket**\n\n⏳ Processing ${attachmentIds.length} file attachment${attachmentIds.length > 1 ? 's' : ''} and creating your support ticket...`;
-            }
+            // Generate smart status message with attachment awareness
+            const processingText = generateStatusMessage(ctx, 'ticket-creation');
 
             await ctx.editMessageText(processingText, { parse_mode: 'Markdown' });
 

@@ -15,6 +15,7 @@ import * as unthreadService from '../../services/unthread.js';
 import { attachmentHandler } from '../../utils/attachmentHandler.js';
 import { extractFileAttachments } from '../../events/message.js';
 import { getMessageText, hasTextContent } from '../../utils/messageContentExtractor.js';
+import { generateStatusMessage } from '../../utils/messageAnalyzer.js';
 import { SetupCallbackProcessor } from './CallbackProcessors.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { escapeMarkdown, lightEscapeMarkdown, truncateText } from '../../utils/markdownEscape.js';
@@ -249,11 +250,8 @@ export class SupportConversationProcessor implements IConversationProcessor {
             const attachmentIds = userState.attachmentIds || extractFileAttachments(ctx);
             const hasAttachments = userState.hasAttachments ?? (attachmentIds.length > 0);
             
-            // Show processing message with attachment awareness
-            let processingText = "🎫 **Creating Your Ticket**\n\n⏳ Please wait while I create your support ticket...";
-            if (hasAttachments) {
-                processingText = `🎫 **Creating Your Ticket**\n\n⏳ Processing ${attachmentIds.length} file attachment${attachmentIds.length > 1 ? 's' : ''} and creating your support ticket...`;
-            }
+            // Generate smart status message with attachment awareness
+            const processingText = generateStatusMessage(ctx, 'ticket-creation');
             
             const statusMsg = await ctx.reply(processingText, { parse_mode: 'Markdown' });
 

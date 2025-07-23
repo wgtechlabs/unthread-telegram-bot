@@ -20,6 +20,7 @@ import { safeEditMessageText, safeReply } from '../bot.js';
 import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
 import { attachmentHandler } from '../utils/attachmentHandler.js';
 import { getCommand, getMessageText, getMessageTypeInfo, isCommand } from '../utils/messageContentExtractor.js';
+import { generateStatusMessage } from '../utils/messageAnalyzer.js';
 import type { BotContext } from '../types/index.js';
 
 /**
@@ -532,7 +533,8 @@ async function processMediaGroupTicketReply(collection: MediaGroupCollection, ti
             // Get the first message in the collection for reply context
             const firstItem = collection.items[0];
             if (firstItem) {
-                statusMsg = await safeReply(ctx, `⏳ Processing ${fileIds.length} files and adding to ticket...`, {
+                const statusMessage = generateStatusMessage(ctx, 'ticket-reply', fileIds.length);
+                statusMsg = await safeReply(ctx, statusMessage, {
                     reply_parameters: { message_id: firstItem.messageId }
                 });
                 
@@ -654,7 +656,8 @@ async function processMediaGroupAgentReply(collection: MediaGroupCollection, age
             // Get the first message in the collection for reply context
             const firstItem = collection.items[0];
             if (firstItem) {
-                statusMsg = await safeReply(ctx, `⏳ Processing ${fileIds.length} files and sending...`, {
+                const statusMessage = generateStatusMessage(ctx, 'agent-reply', fileIds.length);
+                statusMsg = await safeReply(ctx, statusMessage, {
                     reply_parameters: { message_id: firstItem.messageId }
                 });
                 
@@ -1137,9 +1140,10 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: Ticket
             attachmentCount: attachmentFileIds.length
         });
         
-        // Send a minimal status message
-        const statusMsg = await safeReply(ctx, hasAttachments ? '⏳ Processing files and adding to ticket...' : '⏳ Adding to ticket...', {
-            reply_parameters: { message_id: ctx.message!.message_id }
+        // Send a minimal status message with smart content detection
+        const statusMessage = generateStatusMessage(ctx, 'ticket-reply');
+        const statusMsg = await safeReply(ctx, statusMessage, {
+            reply_parameters: { message_id: ctx.message?.message_id || 0 }
         });
 
         if (!statusMsg) {
@@ -1366,8 +1370,9 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: AgentM
             attachmentCount: attachmentFileIds.length
         });
         
-        // Send a minimal status message
-        const statusMsg = await safeReply(ctx, hasAttachments ? '⏳ Processing files and sending...' : '⏳ Sending...', {
+        // Send a minimal status message with smart content detection
+        const statusMessage = generateStatusMessage(ctx, 'agent-reply');
+        const statusMsg = await safeReply(ctx, statusMessage, {
             reply_parameters: { message_id: ctx.message.message_id }
         });
 
