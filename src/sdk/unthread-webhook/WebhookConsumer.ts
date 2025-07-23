@@ -106,11 +106,11 @@ export class WebhookConsumer {
       }
       
       // Disconnect both Redis clients
-      if (this.redisClient && this.redisClient.isOpen) {
+      if (this.redisClient?.isOpen) {
         await this.redisClient.disconnect();
       }
       
-      if (this.blockingRedisClient && this.blockingRedisClient.isOpen) {
+      if (this.blockingRedisClient?.isOpen) {
         await this.blockingRedisClient.disconnect();
       }
       
@@ -189,7 +189,7 @@ export class WebhookConsumer {
       LogEngine.debug(`Polling Redis queue: ${this.queueName}`);
       
       // Check queue length first for debugging
-      if (this.redisClient && this.redisClient.isOpen) {
+      if (this.redisClient?.isOpen) {
         const queueLength = await this.redisClient.lLen(this.queueName);
         if (queueLength > 0) {
           LogEngine.info(`Found ${queueLength} events in queue ${this.queueName}`);
@@ -324,8 +324,8 @@ export class WebhookConsumer {
   } {
     return {
       isRunning: this.isRunning,
-      isConnected: this.redisClient !== null && this.redisClient.isOpen,
-      isBlockingClientConnected: this.blockingRedisClient !== null && this.blockingRedisClient.isOpen,
+      isConnected: this.redisClient?.isOpen ?? false,
+      isBlockingClientConnected: this.blockingRedisClient?.isOpen ?? false,
       subscribedEvents: Array.from(this.eventHandlers.keys()),
       queueName: this.queueName
     };

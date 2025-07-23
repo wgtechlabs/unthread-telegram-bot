@@ -737,12 +737,12 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             
             // Validate customer ID and check existence
             const validation = await this.validateCustomerId(ctx, customerId, session);
-            if (!validation.isValid) {
+            if (!validation.isValid || !validation.customerName) {
                 return true; // Error already handled in validation method
             }
 
             const trimmedCustomerId = customerId.trim();
-            const customerName = validation.customerName || 'Unknown Customer';
+            const customerName = validation.customerName;
 
             // Update session with the customer ID
             await BotsStore.updateDmSetupSession(session.sessionId, {

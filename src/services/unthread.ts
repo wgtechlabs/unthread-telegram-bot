@@ -261,7 +261,7 @@ export async function createCustomer(groupChatName: string): Promise<Customer> {
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`Failed to create customer: ${response.status} ${errorText}`);
+            throw new Error(`Failed to create customer: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
         const result = await response.json() as Customer;
@@ -347,7 +347,7 @@ async function createTicketJSON(params: CreateTicketJSONParams): Promise<CreateT
 
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to create ticket: ${response.status} ${errorText}`);
+        throw new Error(`Failed to create ticket: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const result = await response.json() as CreateTicketResponse;
@@ -410,7 +410,7 @@ async function sendMessageJSON(params: SendMessageJSONParams): Promise<any> {
 
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to send message: ${response.status} ${errorText}`);
+        throw new Error(`Failed to send message: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     return await response.json();
@@ -586,7 +586,7 @@ export async function getOrCreateCustomer(groupChatName: string, chatId: number)
         // Check if group is configured first
         const groupConfig = await BotsStore.getGroupConfig(chatId);
         
-        if (groupConfig && groupConfig.isConfigured && groupConfig.customerId) {
+        if (groupConfig?.isConfigured && groupConfig.customerId) {
             // Group is configured - use the configured customer
             LogEngine.info('Using configured customer for group', {
                 customerId: groupConfig.customerId,
@@ -903,11 +903,12 @@ export async function validateCustomerExists(customerId: string): Promise<{
             LogEngine.error('Error validating customer', {
                 customerId,
                 status: response.status,
+                statusText: response.statusText,
                 error: errorText
             });
             return {
                 exists: false,
-                error: `API error: ${response.status} ${errorText}`
+                error: `API error: ${response.status} ${response.statusText} - ${errorText}`
             };
         }
 
@@ -991,7 +992,7 @@ export async function createCustomerWithName(customerName: string): Promise<Cust
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`Failed to create customer: ${response.status} ${errorText}`);
+            throw new Error(`Failed to create customer: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
         const result = await response.json() as Customer;
@@ -1267,7 +1268,7 @@ async function sendMessageMultipart(params: SendMessageWithAttachmentsParams): P
 
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to send message with attachments: ${response.status} ${errorText}`);
+        throw new Error(`Failed to send message with attachments: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const result = await response.json() as any;

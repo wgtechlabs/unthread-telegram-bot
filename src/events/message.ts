@@ -493,7 +493,7 @@ async function processMediaGroupTicketCreation(collection: MediaGroupCollection,
             }
             
             // Send status notification if we have context
-            if (collection.ctx && collection.ctx.telegram && collection.ctx.chat) {
+            if (collection.ctx?.telegram && collection.ctx.chat) {
                 const statusMsg = await collection.ctx.reply(
                     `📎 ${fileIds.length} files received! Use \`/support\` to create a ticket with these attachments.`,
                     { 
@@ -505,7 +505,7 @@ async function processMediaGroupTicketCreation(collection: MediaGroupCollection,
                 // Auto-delete after 10 seconds
                 if (statusMsg) {
                     setTimeout(() => {
-                        if (collection.ctx && collection.ctx.chat) {
+                        if (collection.ctx?.chat) {
                             collection.ctx.telegram.deleteMessage(collection.ctx.chat.id, statusMsg.message_id).catch(() => {});
                         }
                     }, 10000);
@@ -522,7 +522,7 @@ async function processMediaGroupTicketCreation(collection: MediaGroupCollection,
         });
         
         // Send error notification if we have context
-        if (collection.ctx && collection.ctx.telegram && collection.ctx.chat) {
+        if (collection.ctx?.telegram && collection.ctx.chat) {
             await collection.ctx.reply(
                 `❌ Error processing ${fileIds.length} files. Please try again or create ticket without attachments.`
             ).catch(() => {});
@@ -539,7 +539,7 @@ async function processMediaGroupTicketReply(collection: MediaGroupCollection, ti
     
     try {
         // Send initial status notification if context is available
-        if (ctx && ctx.telegram && ctx.chat) {
+        if (ctx?.telegram && ctx.chat) {
             // Get the first message in the collection for reply context
             const firstItem = collection.items[0];
             if (firstItem) {
