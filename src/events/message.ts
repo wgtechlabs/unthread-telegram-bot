@@ -794,8 +794,23 @@ function cleanupOldMediaGroups(): void {
     }
 }
 
+// Store the cleanup interval ID for proper cleanup during shutdown
+let mediaGroupCleanupInterval: NodeJS.Timeout | null = null;
+
 // Set up periodic cleanup
-setInterval(cleanupOldMediaGroups, MEDIA_GROUP_CONFIG.cleanupIntervalMs);
+mediaGroupCleanupInterval = setInterval(cleanupOldMediaGroups, MEDIA_GROUP_CONFIG.cleanupIntervalMs);
+
+/**
+ * Cleanup function to clear the media group cleanup interval.
+ * Should be called during application shutdown to prevent memory leaks.
+ */
+export function cleanupMessageEventHandlers(): void {
+    if (mediaGroupCleanupInterval) {
+        clearInterval(mediaGroupCleanupInterval);
+        mediaGroupCleanupInterval = null;
+        LogEngine.info('Media group cleanup interval cleared');
+    }
+}
 
 /**
  * Returns true if the message originates from a group or supergroup chat.

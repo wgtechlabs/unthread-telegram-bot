@@ -22,9 +22,6 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
         
-      - name: Install validation tools
-        run: npm install -g ts-prune depcheck
-        
       - name: Type checking
         run: yarn type-check
         

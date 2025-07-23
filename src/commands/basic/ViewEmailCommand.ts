@@ -9,7 +9,7 @@
 
 import { BaseCommand, type CommandMetadata } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
-import { getUserEmailPreferences } from '../../utils/emailManager.js';
+import { type UserEmailPreferences, getUserEmailPreferences } from '../../utils/emailManager.js';
 import { formatEmailForDisplay } from '../../utils/markdownEscape.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 
@@ -89,7 +89,7 @@ export class ViewEmailCommand extends BaseCommand {
         LogEngine.info('Showed no email message to user', { userId: ctx.from?.id });
     }
 
-    private async showEmailSettings(ctx: BotContext, emailPrefs: any): Promise<void> {
+    private async showEmailSettings(ctx: BotContext, emailPrefs: UserEmailPreferences): Promise<void> {
         const setDate = new Date(emailPrefs.setAt).toLocaleDateString();
         
         let message = "📧 **Email Settings**\n\n";

@@ -217,8 +217,7 @@ export class TelegramWebhookHandler {
       // 5. Format agent message using template system
       const formattedMessage = await this.formatAgentMessageWithTemplate(
         messageText, 
-        ticketData, 
-        event.data
+        ticketData
       );
       
       LogEngine.info('✅ Message formatted for Telegram', { 
@@ -440,8 +439,7 @@ export class TelegramWebhookHandler {
       // 3. Format status update message using template system
       const statusMessage = await this.formatStatusUpdateWithTemplate(
         ticketData, 
-        newStatus, 
-        event.data
+        newStatus
       );
       
       LogEngine.info('✅ Status message formatted for Telegram', { 
@@ -573,10 +571,9 @@ export class TelegramWebhookHandler {
    * Format agent message using template system
    * @param text - The agent message text
    * @param ticketData - The ticket data from storage
-   * @param eventData - The webhook event data
    * @returns Formatted message
    */
-  async formatAgentMessageWithTemplate(text: string, ticketData: any, eventData: any): Promise<string> {
+  async formatAgentMessageWithTemplate(text: string, ticketData: any): Promise<string> {
     try {
       // Build template variables for global template system
       const variables = {
@@ -610,10 +607,9 @@ export class TelegramWebhookHandler {
    * Format ticket status update using template system
    * @param ticketData - The ticket data from storage
    * @param status - The new status
-   * @param eventData - The webhook event data
    * @returns Formatted message
    */
-  async formatStatusUpdateWithTemplate(ticketData: any, status: string, eventData: any): Promise<string> {
+  async formatStatusUpdateWithTemplate(ticketData: any, status: string): Promise<string> {
     try {
       // Build template variables for global template system
       const variables = {

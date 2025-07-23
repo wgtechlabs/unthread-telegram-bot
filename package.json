@@ -42,7 +42,7 @@
     "sbom:generate": "bash scripts/generate-sbom.sh unthread-telegram-bot:latest",
     "lint": "eslint src/ --ext .ts",
     "lint:fix": "eslint src/ --ext .ts --fix",
-    "validate:deadcode": "ts-prune && depcheck",
+    "validate:deadcode": "npx ts-prune && npx depcheck",
     "validate:unused": "eslint src/ --ext .ts --rule 'unused-imports/no-unused-imports: error' --rule 'unused-imports/no-unused-vars: error'"
   },
   "dependencies": {

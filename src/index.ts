@@ -34,12 +34,11 @@ import { validateEnvironment } from './config/env.js';
 validateEnvironment();
 
 import { cleanupBlockedUser, createBot, startPolling } from './bot.js';
-import { 
-    executeCommand,
+import { executeCommand,
     initializeCommands,
     processCallback
 } from './commands/index.js';
-import { handleMessage } from './events/message.js';
+import { cleanupMessageEventHandlers, handleMessage } from './events/message.js';
 import { getMessageText, isCommand } from './utils/messageContentExtractor.js';
 import { db } from './database/connection.js';
 import { BotsStore } from './sdk/bots-brain/index.js';
@@ -474,6 +473,9 @@ async function gracefulShutdown(): Promise<void> {
         // Stop session cleanup task
         stopSessionCleanupTask(sessionCleanupTask);
         LogEngine.info('Session cleanup task stopped');
+        
+        // Cleanup message event handlers (timers, intervals)
+        cleanupMessageEventHandlers();
         
         if (webhookConsumer) {
             await webhookConsumer.stop();

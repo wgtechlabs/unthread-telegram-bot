@@ -10,15 +10,43 @@
 import { BaseCommand, type CommandMetadata } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
 import { getCompanyName, isAdminUser } from '../../config/env.js';
+import { LogEngine } from '@wgtechlabs/log-engine';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
-// Read package.json in a compatible way
+// Read package.json with proper error handling
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const packageJSONPath = join(__dirname, '../../../package.json');
-const packageJSON = JSON.parse(readFileSync(packageJSONPath, 'utf-8'));
+
+// Fallback package information in case of read/parse errors
+const fallbackPackageInfo = {
+    name: 'unthread-telegram-bot',
+    version: '1.0.0-rc1',
+    description: 'Official Unthread integration for Telegram',
+    author: 'Waren Gonzaga, WG Technology Labs',
+    license: 'GPL-3.0'
+};
+
+let packageJSON = fallbackPackageInfo;
+
+try {
+    const packageJSONContent = readFileSync(packageJSONPath, 'utf-8');
+    packageJSON = JSON.parse(packageJSONContent);
+    LogEngine.debug('Package.json loaded successfully', { 
+        name: packageJSON.name, 
+        version: packageJSON.version 
+    });
+} catch (error) {
+    const err = error as Error;
+    LogEngine.error('Failed to load package.json, using fallback values', {
+        error: err.message,
+        path: packageJSONPath,
+        fallback: fallbackPackageInfo
+    });
+    // packageJSON remains set to fallbackPackageInfo
+}
 
 export class StartCommand extends BaseCommand {
     readonly metadata: CommandMetadata = {

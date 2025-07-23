@@ -76,6 +76,43 @@ export const ERROR_CODES = {
 } as const;
 
 /**
+ * Type for ERROR_CODES values - ensures type safety
+ */
+type ErrorCodeValue = typeof ERROR_CODES[keyof typeof ERROR_CODES];
+
+/**
+ * Error code classifications - explicit collections for robust categorization
+ * These sets provide order-independent error classification
+ */
+const SYSTEM_ERROR_CODES = new Set<ErrorCodeValue>([
+    ERROR_CODES.SYSTEM_ERROR,
+    ERROR_CODES.DATABASE_ERROR,
+    ERROR_CODES.FILE_SYSTEM_ERROR,
+    ERROR_CODES.MEMORY_ERROR
+]);
+
+const OPERATIONAL_ERROR_CODES = new Set<ErrorCodeValue>([
+    ERROR_CODES.VALIDATION_FAILED,
+    ERROR_CODES.BUSINESS_RULE_VIOLATION,
+    ERROR_CODES.RESOURCE_NOT_FOUND,
+    ERROR_CODES.OPERATION_TIMEOUT
+]);
+
+const NETWORK_ERROR_CODES = new Set<ErrorCodeValue>([
+    ERROR_CODES.NETWORK_TIMEOUT,
+    ERROR_CODES.CONNECTION_REFUSED,
+    ERROR_CODES.API_ERROR,
+    ERROR_CODES.RATE_LIMITED
+]);
+
+const AUTHENTICATION_ERROR_CODES = new Set<ErrorCodeValue>([
+    ERROR_CODES.UNAUTHORIZED,
+    ERROR_CODES.FORBIDDEN,
+    ERROR_CODES.TOKEN_EXPIRED,
+    ERROR_CODES.INVALID_CREDENTIALS
+]);
+
+/**
  * Determines whether the given error object has a valid `errorCategory` property.
  *
  * @returns `true` if the error has an `errorCategory` property matching a value in `ErrorCategory`; otherwise, `false`.
@@ -212,27 +249,23 @@ function classifyError(error: unknown, errorDetails: ErrorDetails): {
     if (errorDetails.code) {
         const code = String(errorDetails.code);
         
-        // System error codes
-        if (code.startsWith('SYS_') || 
-            Object.values(ERROR_CODES).slice(0, 4).includes(code as any)) {
+        // System error codes - robust classification using explicit sets
+        if (code.startsWith('SYS_') || SYSTEM_ERROR_CODES.has(code as ErrorCodeValue)) {
             return { category: ErrorCategory.SYSTEM, severity: ErrorSeverity.CRITICAL };
         }
         
-        // Operational error codes
-        if (code.startsWith('OP_') || 
-            Object.values(ERROR_CODES).slice(4, 8).includes(code as any)) {
+        // Operational error codes - order-independent classification
+        if (code.startsWith('OP_') || OPERATIONAL_ERROR_CODES.has(code as ErrorCodeValue)) {
             return { category: ErrorCategory.OPERATIONAL, severity: ErrorSeverity.MEDIUM };
         }
         
-        // Network error codes
-        if (code.startsWith('NET_') || 
-            Object.values(ERROR_CODES).slice(8, 12).includes(code as any)) {
+        // Network error codes - maintainable classification
+        if (code.startsWith('NET_') || NETWORK_ERROR_CODES.has(code as ErrorCodeValue)) {
             return { category: ErrorCategory.NETWORK, severity: ErrorSeverity.HIGH };
         }
         
-        // Authentication error codes
-        if (code.startsWith('AUTH_') || 
-            Object.values(ERROR_CODES).slice(12, 16).includes(code as any)) {
+        // Authentication error codes - explicit membership check
+        if (code.startsWith('AUTH_') || AUTHENTICATION_ERROR_CODES.has(code as ErrorCodeValue)) {
             return { category: ErrorCategory.AUTHENTICATION, severity: ErrorSeverity.HIGH };
         }
     }
