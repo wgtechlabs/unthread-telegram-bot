@@ -982,7 +982,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             const variableMatches = templateContent.match(/\{\{[^}]+\}\}/g);
             if (variableMatches) {
                 const invalidVars: string[] = [];
-                const validVars = ['ticketId', 'summary', 'customerName', 'status', 'agentName', 'response', 'createdAt', 'updatedAt'];
+                const validVars = ['ticketId', 'summary', 'customerName', 'status', 'response', 'createdAt', 'updatedAt'];
                 
                 for (const match of variableMatches) {
                     const varName = match.replace(/[{}]/g, '').trim();
@@ -993,7 +993,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 
                 if (invalidVars.length > 0) {
                     await ctx.reply(
-                        `❌ **Invalid Variables**\n\nThe following variables are not recognized:\n• ${invalidVars.join('\n• ')}\n\n**Valid variables:**\n• ticketId, summary, customerName, status\n• agentName, response, createdAt, updatedAt\n\nPlease fix your template:`,
+                        `❌ **Invalid Variables**\n\nThe following variables are not recognized:\n• ${invalidVars.join('\n• ')}\n\n**Valid variables:**\n• ticketId, summary, customerName, status\n• response, createdAt, updatedAt\n\nPlease fix your template:`,
                         {
                             parse_mode: 'Markdown',
                             reply_markup: {

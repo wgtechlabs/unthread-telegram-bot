@@ -1707,7 +1707,6 @@ Templates control how the bot communicates with users and admins.
 Templates use dynamic placeholders like:
 • \`{{ticketNumber}}\` - User-friendly ticket number (TKT-445)
 • \`{{customerName}}\` - Customer name
-• \`{{agentName}}\` - Support agent name
 • \`{{summary}}\` - Ticket description
 • \`{{status}}\` - Current ticket status
 
@@ -2177,7 +2176,6 @@ ${timeVars}
 💡 **Usage Examples:**
 • \`{{ticketNumber}}\` → TKT-445
 • \`{{customerName}}\` → John Doe
-• \`{{agentName}}\` → Sarah Johnson
 
 **Ready to customize? Click "Edit Template" to start!**`;
 
@@ -2287,7 +2285,7 @@ ${currentTemplate?.content || 'Loading...'}
 
 **Instructions:**
 • Type your new template content below
-• Use variables like \`{{ticketNumber}}\`, \`{{customerName}}\`, \`{{agentName}}\`
+• Use variables like \`{{ticketNumber}}\`, \`{{customerName}}\`, \`{{summary}}\`
 • Keep it clear and professional
 • You can use multiple lines
 
@@ -2296,7 +2294,6 @@ ${currentTemplate?.content || 'Loading...'}
 • \`{{summary}}\` - Ticket summary/title  
 • \`{{customerName}}\` - Customer name
 • \`{{status}}\` - Ticket status
-• \`{{agentName}}\` - Agent name (for responses)
 • \`{{response}}\` - Agent response content
 • \`{{createdAt}}\` - Creation time
 • \`{{updatedAt}}\` - Last update time
@@ -2838,7 +2835,6 @@ ${timeVars}
 💡 **Usage Examples:**
 • \`{{ticketNumber}}\` → TKT-445
 • \`{{customerName}}\` → John Doe
-• \`{{agentName}}\` → Sarah Johnson
 
 **To edit this template, type your new content below:**`;
 

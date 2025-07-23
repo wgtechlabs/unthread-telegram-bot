@@ -586,7 +586,6 @@ export class TelegramWebhookHandler {
         summary: eventData.subject || 'Support Request',
         customerName: ticketData.userName || 'Customer',
         status: 'Open',
-        agentName: eventData.userName || eventData.agentName || 'Support Agent',
         response: text,
         createdAt: new Date().toLocaleString(),
         updatedAt: new Date().toLocaleString()
@@ -624,7 +623,6 @@ export class TelegramWebhookHandler {
         summary: eventData.subject || 'Support Request',
         customerName: ticketData.userName || 'Customer',
         status: status === 'closed' ? 'Closed' : 'Updated',
-        agentName: eventData.userName || eventData.agentName || 'Support Agent',
         response: '', // For status updates, response might be empty
         createdAt: new Date().toLocaleString(),
         updatedAt: new Date().toLocaleString()

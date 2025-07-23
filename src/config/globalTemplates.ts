@@ -36,29 +36,24 @@ export const DEFAULT_GLOBAL_TEMPLATES: GlobalTemplateConfig = {
       content: '✅ **Support Ticket Created!**\n\n' +
                '**Ticket #{{ticketNumber}}**\n' +
                '**Issue:** {{summary}}\n\n' +
-               ' **Next Steps:**\n' +
-               '• Our support team will review your ticket\n' +
-               '• Reply to this message to add more details or updates to your ticket\n\n' +
-               '*Thank you for contacting support!*',
+               '*Reply to this message to add more details or updates to your ticket.*',
       enabled: true
     },
     agent_response: {
       event: 'agent_response',
-      content: '💬 **Response from {{agentName}}**\n\n' +
-               '{{response}}\n\n' +
-               '**Ticket #{{ticketNumber}}**\n' +
-               '**Status:** {{status}}\n\n' +
-               'Please reply here to reply to the ticket number **{{ticketNumber}}**.',
+      content: '💬 **New Response**\n\n' +
+               '**Ticket #{{ticketNumber}}**\n\n' +
+               'Message: {{response}}\n\n' +
+               '*Reply to this message to continue the conversation.*',
       enabled: true
     },
     ticket_status: {
       event: 'ticket_status',
       content: '📋 **Ticket Status Update**\n\n' +
                '**Ticket #{{ticketNumber}}**\n' +
-               '**Summary:** {{summary}}\n' +
-               '**Status:** {{status}}\n' +
-               '**Updated by:** {{agentName}}\n\n' +
-               'Your ticket status has been updated. We\'ll keep you informed of any further changes.',
+               '**Status:** {{status}}\n\n' +
+               '**Summary:** {{summary}}\n\n' +
+               '*Reply to your original ticket confirmation to reopen this ticket, or use /support for a new ticket.*',
       enabled: true
     }
   },
@@ -79,7 +74,6 @@ export const TEMPLATE_VARIABLES = {
   ],
   // Agent-specific variables
   agent: [
-    { name: 'agentName', description: 'Name of the responding agent', example: 'Sarah Johnson' },
     { name: 'response', description: 'Agent response content', example: 'Thanks for reaching out...' }
   ],
   // Time variables
