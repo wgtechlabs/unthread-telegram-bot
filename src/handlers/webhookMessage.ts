@@ -583,7 +583,7 @@ export class TelegramWebhookHandler {
         ticketNumber: ticketData.friendlyId,        // Primary: "TKT-001" format (user-friendly)
         friendlyId: ticketData.friendlyId,          // Explicit: "TKT-001" format (backward compatibility)
         conversationId: ticketData.conversationId,  // UUID from Unthread webhook events (consistent across all events)
-        summary: eventData.subject || 'Support Request',
+        summary: ticketData.summary || 'Support Request',  // Use stored summary from ticket data
         customerName: ticketData.userName || 'Customer',
         status: 'Open',
         response: text,
@@ -620,9 +620,9 @@ export class TelegramWebhookHandler {
         ticketNumber: ticketData.friendlyId,        // Primary: "TKT-001" format (user-friendly)
         friendlyId: ticketData.friendlyId,          // Explicit: "TKT-001" format (backward compatibility)
         conversationId: ticketData.conversationId,  // UUID from Unthread webhook events (consistent across all events)
-        summary: eventData.subject || 'Support Request',
+        summary: ticketData.summary || 'Support Request',  // Use stored summary from ticket data
         customerName: ticketData.userName || 'Customer',
-        status: status === 'closed' ? 'Closed' : 'Updated',
+        status: status === 'closed' ? 'Closed' : 'Open',
         response: '', // For status updates, response might be empty
         createdAt: new Date().toLocaleString(),
         updatedAt: new Date().toLocaleString()
@@ -649,7 +649,7 @@ export class TelegramWebhookHandler {
   private getFallbackStatusMessage(ticketData: any, status: string): string {
     // Fallback to simple status message
     const statusIcon = status === 'closed' ? '✅' : '📝';
-    const statusText = status === 'closed' ? 'Closed' : 'Updated';
+    const statusText = status === 'closed' ? 'Closed' : 'Open';
     return `${statusIcon} *Ticket ${statusText}*\n\nTicket #${ticketData.friendlyId} has been ${status}.`;
   }
 

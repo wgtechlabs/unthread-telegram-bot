@@ -469,7 +469,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
             try {
                 successMessage = templates.templates.ticket_created.content
                     .replace(/\{\{ticketId\}\}/g, escapeMarkdown(String(ticketResponse.friendlyId)))
-                    .replace(/\{\{summary\}\}/g, escapeMarkdown(templateData.ticket.summary))
+                    .replace(/\{\{summary\}\}/g, templateData.ticket.summary)  // Don't escape - summary is raw text
                     .replace(/\{\{customerName\}\}/g, escapeMarkdown(templateData.customer.name));
             } catch (templateRenderError) {
                 LogEngine.error('Template rendering failed - failing ticket creation message', {
@@ -506,7 +506,8 @@ export class SupportConversationProcessor implements IConversationProcessor {
                 friendlyId: ticketResponse.friendlyId,
                 customerId: customer.id,
                 chatId: chatId,
-                telegramUserId: userId
+                telegramUserId: userId,
+                summary: userState.summary
             });
 
             LogEngine.info('Ticket stored for bidirectional messaging after final message display', {

@@ -70,6 +70,7 @@ interface RegisterTicketConfirmationParams {
   customerId: string;
   chatId: number;
   telegramUserId: number;
+  summary: string;
 }
 
 /**
@@ -431,12 +432,13 @@ export async function registerTicketConfirmation(params: RegisterTicketConfirmat
     });
     
     try {
-        const { messageId, ticketId, friendlyId, customerId, chatId, telegramUserId } = params;
+        const { messageId, ticketId, friendlyId, customerId, chatId, telegramUserId, summary } = params;
         
         LogEngine.info('About to store ticket with unified approach', {
             conversationId: ticketId,
             messageId,
-            friendlyId
+            friendlyId,
+            summary: summary.substring(0, 100) + (summary.length > 100 ? '...' : '')
         });
         
         // UNIFIED APPROACH: Store ticket using the ticketId as conversationId
@@ -449,6 +451,7 @@ export async function registerTicketConfirmation(params: RegisterTicketConfirmat
             chatId: chatId,
             telegramUserId: telegramUserId,
             ticketId: ticketId,                 // Keep for backward compatibility
+            summary: summary,                   // Store the actual ticket summary for template usage
             createdAt: Date.now().toString()
         });
         
@@ -480,6 +483,7 @@ export async function registerTicketConfirmation(params: RegisterTicketConfirmat
             customerId,
             chatId,
             telegramUserId,
+            summary: summary.substring(0, 100) + (summary.length > 100 ? '...' : ''),
             approach: 'unified_conversationId',
             storageKeys: [
                 `ticket:unthread:${ticketId}`,  // Primary storage key

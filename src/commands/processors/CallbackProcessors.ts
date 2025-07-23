@@ -668,7 +668,8 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 friendlyId: ticket.friendlyId,
                 customerId: process.env.UNTHREAD_CUSTOMER_ID!,
                 chatId: ctx.chat?.id || 0,
-                telegramUserId: userId
+                telegramUserId: userId,
+                summary: userState.summary
             });
 
             LogEngine.info('Ticket registered for bidirectional messaging via callback', {
@@ -755,7 +756,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                     .replace(/\{\{ticketNumber\}\}/g, escapeMarkdown(String(ticket.friendlyId)))
                     .replace(/\{\{friendlyId\}\}/g, escapeMarkdown(String(ticket.friendlyId)))
                     .replace(/\{\{ticketId\}\}/g, escapeMarkdown(String(ticket.friendlyId))) // Legacy support
-                    .replace(/\{\{summary\}\}/g, escapeMarkdown(templateData.ticket.summary))
+                    .replace(/\{\{summary\}\}/g, templateData.ticket.summary)  // Don't escape - summary is raw text
                     .replace(/\{\{customerName\}\}/g, escapeMarkdown(templateData.customer.name));
             } catch (templateRenderError) {
                 LogEngine.error('Template rendering failed - failing ticket creation', {
