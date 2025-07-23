@@ -74,9 +74,20 @@ export class SupportConversationProcessor implements IConversationProcessor {
             }
 
             if (userState.field === 'summary') {
-                // For summary field, we could pass pre-detected attachments here if available
-                // For now, just pass the existing method call unchanged
-                return await this.handleSummaryInput(ctx, userInput, userState);
+                // Detect attachments in the current message for proper summary confirmation
+                const { extractFileAttachments } = await import('../../events/message.js');
+                const messageAttachments = extractFileAttachments(ctx);
+                
+                LogEngine.info('Processing summary input with attachment detection', {
+                    userId,
+                    userInput: userInput.substring(0, 100),
+                    attachmentCount: messageAttachments.length,
+                    attachmentIds: messageAttachments,
+                    source: 'regular_message_processor'
+                });
+                
+                // Pass detected attachments to handleSummaryInput for proper confirmation flow
+                return await this.handleSummaryInput(ctx, userInput, userState, messageAttachments);
             } else if (userState.field === 'email') {
                 return await this.handleEmailInput(ctx, userInput, userState);
             }
@@ -388,22 +399,6 @@ export class SupportConversationProcessor implements IConversationProcessor {
                 hasAttachments: hasAttachments,
                 attachmentCount: hasAttachments ? attachmentIds.length : 0
             });
-            // Register ticket confirmation for bidirectional messaging
-            await unthreadService.registerTicketConfirmation({
-                messageId: statusMsg.message_id,
-                ticketId: ticketResponse.id,
-                friendlyId: ticketResponse.friendlyId,
-                customerId: customer.id,
-                chatId: chatId,
-                telegramUserId: userId
-            });
-
-            LogEngine.info('Ticket stored for bidirectional messaging', {
-                storedConversationId: ticketResponse.id,
-                friendlyId: ticketResponse.friendlyId,
-                messageId: statusMsg.message_id,
-                chatId: chatId
-            });
 
             // Clear user state
             await BotsStore.clearUserState(userId);
@@ -508,6 +503,24 @@ export class SupportConversationProcessor implements IConversationProcessor {
                 
                 await ctx.reply(successMessage, { parse_mode: 'Markdown' });
             }
+
+            // Register ticket confirmation for bidirectional messaging AFTER final success message is displayed
+            await unthreadService.registerTicketConfirmation({
+                messageId: statusMsg.message_id,
+                ticketId: ticketResponse.id,
+                friendlyId: ticketResponse.friendlyId,
+                customerId: customer.id,
+                chatId: chatId,
+                telegramUserId: userId
+            });
+
+            LogEngine.info('Ticket stored for bidirectional messaging after final message display', {
+                storedConversationId: ticketResponse.id,
+                friendlyId: ticketResponse.friendlyId,
+                messageId: statusMsg.message_id,
+                chatId: chatId,
+                registrationTiming: 'after_template_rendering'
+            });
 
             LogEngine.info('Support ticket created successfully', {
                 ticketId: ticketResponse.id,

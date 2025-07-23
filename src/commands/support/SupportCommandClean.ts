@@ -106,6 +106,7 @@ export class SupportCommand extends BaseCommand {
         
         // Start ticket creation flow
         await BotsStore.setUserState(userId, {
+            processor: 'support',  // 🎯 ADD MISSING PROCESSOR FIELD
             field: 'summary',
             step: 1,
             totalSteps: emailPrefs?.email ? 2 : 3, // If has email: summary + confirmation, else: summary + email + confirmation

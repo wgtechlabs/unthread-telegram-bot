@@ -215,8 +215,55 @@ async function processMediaGroupCollection(mediaGroupId: string): Promise<void> 
             .join('\n\n') || 'Media group attachments';
         
         if (collection.isReply && collection.replyToMessageId) {
-            // Handle as reply to ticket/agent message
-            LogEngine.info('🎯 Media group identified as reply - processing for ticket/agent', {
+            // First check if this is a reply during active support conversation (ticket creation)
+            LogEngine.info('🔍 Checking if reply is during active support conversation', {
+                mediaGroupId,
+                replyToMessageId: collection.replyToMessageId,
+                userId: collection.userId
+            });
+            
+            // Import BotsStore to check user state
+            const { BotsStore } = await import('../sdk/bots-brain/index.js');
+            const userState = await BotsStore.getUserState(collection.userId);
+            
+            LogEngine.info('🔍 Media group user state check results', {
+                mediaGroupId,
+                replyToMessageId: collection.replyToMessageId,
+                userId: collection.userId,
+                hasUserState: !!userState,
+                userStateField: userState?.field || 'none',
+                userStateProcessor: userState?.processor || 'none',
+                userStateStep: userState?.step || 'none',
+                isExpectedSummaryState: !!(userState && userState.field === 'summary' && userState.processor === 'support')
+            });
+            
+            if (userState && userState.field === 'summary' && userState.processor === 'support') {
+                // User is in active support conversation - this is a reply to summary request, not ticket confirmation
+                LogEngine.info('🎯 Media group is reply during ticket creation - processing as summary input', {
+                    mediaGroupId,
+                    replyToMessageId: collection.replyToMessageId,
+                    userStateField: userState.field,
+                    userStateProcessor: userState.processor
+                });
+                
+                // Process as ticket creation, not ticket reply
+                await processMediaGroupTicketCreation(collection, allFileIds, combinedMessage);
+                return;
+            } else {
+                LogEngine.warn('❌ Media group user state does not match expected summary state', {
+                    mediaGroupId,
+                    replyToMessageId: collection.replyToMessageId,
+                    userId: collection.userId,
+                    userStateField: userState?.field || 'none',
+                    userStateProcessor: userState?.processor || 'none',
+                    expectedField: 'summary',
+                    expectedProcessor: 'support',
+                    reason: 'proceeding_with_ticket_agent_lookup'
+                });
+            }
+            
+            // Handle as reply to existing ticket/agent message
+            LogEngine.info('🎯 Media group identified as reply to existing ticket/agent', {
                 mediaGroupId,
                 replyToMessageId: collection.replyToMessageId,
                 itemCount: collection.items.length
@@ -247,56 +294,234 @@ async function processMediaGroupCollection(mediaGroupId: string): Promise<void> 
  * Handle media group as reply to ticket/agent message
  */
 async function handleMediaGroupReply(collection: MediaGroupCollection, fileIds: string[], message: string): Promise<void> {
-    if (!collection.replyToMessageId) {
+    // Check if this is a reply to an existing ticket/agent message
+    if (collection.replyToMessageId) {
+        LogEngine.info('🎯 Processing media group as ticket/agent reply', {
+            mediaGroupId: collection.groupId,
+            replyToMessageId: collection.replyToMessageId,
+            fileCount: fileIds.length,
+            userId: collection.userId
+        });
+        
+        // Check if this is a reply to a ticket confirmation
+        LogEngine.info('🔍 Looking up ticket for reply', {
+            mediaGroupId: collection.groupId,
+            replyToMessageId: collection.replyToMessageId,
+            fileCount: fileIds.length
+        });
+        
+        const ticketInfo = await unthreadService.getTicketFromReply(collection.replyToMessageId);
+        if (ticketInfo) {
+            LogEngine.info('📋 Media group reply to ticket confirmation', {
+                ticketId: ticketInfo.ticketId,
+                friendlyId: ticketInfo.friendlyId,
+                mediaGroupId: collection.groupId,
+                fileCount: fileIds.length
+            });
+            
+            await processMediaGroupTicketReply(collection, ticketInfo, fileIds, message);
+            return;
+        } else {
+            LogEngine.warn('❌ No ticket found for media group reply', {
+                mediaGroupId: collection.groupId,
+                replyToMessageId: collection.replyToMessageId,
+                fileCount: fileIds.length,
+                message: 'Media group reply to unknown message - not a registered ticket confirmation'
+            });
+        }
+        
+        // Check if this is a reply to an agent message
+        LogEngine.info('🔍 Looking up agent message for reply', {
+            mediaGroupId: collection.groupId,
+            replyToMessageId: collection.replyToMessageId,
+            fileCount: fileIds.length
+        });
+        
+        const agentMessageInfo = await unthreadService.getAgentMessageFromReply(collection.replyToMessageId);
+        if (agentMessageInfo) {
+            LogEngine.info('💬 Media group reply to agent message', {
+                conversationId: agentMessageInfo.conversationId,
+                friendlyId: agentMessageInfo.friendlyId,
+                mediaGroupId: collection.groupId,
+                fileCount: fileIds.length
+            });
+            
+            await processMediaGroupAgentReply(collection, agentMessageInfo, fileIds, message);
+            return;
+        } else {
+            LogEngine.warn('❌ No agent message found for media group reply', {
+                mediaGroupId: collection.groupId,
+                replyToMessageId: collection.replyToMessageId,
+                fileCount: fileIds.length,
+                message: 'Media group reply to unknown message - not a registered agent message'
+            });
+        }
+        
+        LogEngine.debug('ℹ️ Media group reply not related to ticket/agent message', {
+            mediaGroupId: collection.groupId,
+            replyToMessageId: collection.replyToMessageId
+        });
         return;
     }
     
-    LogEngine.info('🎯 Processing media group as ticket/agent reply', {
+    // Check if this is initial ticket creation with attachments
+    LogEngine.info('🎫 Processing media group for potential initial ticket creation', {
         mediaGroupId: collection.groupId,
-        replyToMessageId: collection.replyToMessageId,
         fileCount: fileIds.length,
-        userId: collection.userId
+        userId: collection.userId,
+        hasReplyTo: !!collection.replyToMessageId
     });
     
-    // Check if this is a reply to a ticket confirmation
-    const ticketInfo = await unthreadService.getTicketFromReply(collection.replyToMessageId);
-    if (ticketInfo) {
-        LogEngine.info('📋 Media group reply to ticket confirmation', {
-            ticketId: ticketInfo.ticketId,
-            friendlyId: ticketInfo.friendlyId,
-            mediaGroupId: collection.groupId,
-            fileCount: fileIds.length
-        });
-        
-        await processMediaGroupTicketReply(collection, ticketInfo, fileIds, message);
-        return;
-    }
-    
-    // Check if this is a reply to an agent message
-    const agentMessageInfo = await unthreadService.getAgentMessageFromReply(collection.replyToMessageId);
-    if (agentMessageInfo) {
-        LogEngine.info('💬 Media group reply to agent message', {
-            conversationId: agentMessageInfo.conversationId,
-            friendlyId: agentMessageInfo.friendlyId,
-            mediaGroupId: collection.groupId,
-            fileCount: fileIds.length
-        });
-        
-        await processMediaGroupAgentReply(collection, agentMessageInfo, fileIds, message);
-        return;
-    }
-    
-    LogEngine.debug('ℹ️ Media group reply not related to ticket/agent message', {
-        mediaGroupId: collection.groupId,
-        replyToMessageId: collection.replyToMessageId
-    });
+    // Store the media group files for the support conversation processor to use
+    await processMediaGroupTicketCreation(collection, fileIds, message);
 }
 
 /**
- * Process media group reply to ticket confirmation
+ * Process media group for initial ticket creation (not a reply)
+ * This triggers the proper confirmation flow when media groups are used with captions
+ */
+async function processMediaGroupTicketCreation(collection: MediaGroupCollection, fileIds: string[], message: string): Promise<void> {
+    try {
+        LogEngine.info('🎫 Processing media group for initial ticket creation', {
+            mediaGroupId: collection.groupId,
+            fileCount: fileIds.length,
+            userId: collection.userId,
+            messageText: message?.substring(0, 100) || '[no text]'
+        });
+        
+        // Import dependencies
+        const { BotsStore } = await import('../sdk/bots-brain/index.js');
+        const { SupportConversationProcessor } = await import('../commands/processors/ConversationProcessors.js');
+        
+        // Check if user has an active support conversation state
+        const userState = await BotsStore.getUserState(collection.userId);
+        if (userState && userState.field === 'summary' && userState.processor === 'support') {
+            // User is actively in support flow - process media group as summary + attachments
+            LogEngine.info('🎯 Media group with caption triggers confirmation flow', {
+                userId: collection.userId,
+                fileCount: fileIds.length,
+                messageLength: message.length,
+                userStateField: userState.field,
+                currentProcessor: userState.processor
+            });
+            
+            // Ensure we have a meaningful summary from the media group caption
+            const summaryText = message && message.trim() ? message.trim() : 'Media group attachments';
+            
+            if (!collection.ctx) {
+                LogEngine.error('❌ No context available for media group summary processing', {
+                    mediaGroupId: collection.groupId,
+                    userId: collection.userId
+                });
+                return;
+            }
+            
+            // Create instance of SupportConversationProcessor and trigger summary handling
+            const supportProcessor = new SupportConversationProcessor();
+            
+            // Call handleSummaryInput with the media group caption as summary and pre-detected attachments
+            await supportProcessor['handleSummaryInput'](
+                collection.ctx, 
+                summaryText, 
+                userState, 
+                fileIds  // Pre-detected attachments from media group
+            );
+            
+            LogEngine.info('✅ Media group processed through confirmation flow', {
+                mediaGroupId: collection.groupId,
+                userId: collection.userId,
+                summaryText: summaryText.substring(0, 100),
+                attachmentCount: fileIds.length,
+                triggeredConfirmationFlow: true
+            });
+            
+        } else {
+            // No active support conversation - store files and prompt user to continue
+            LogEngine.info('📂 No active support conversation, storing media group for later use', {
+                userId: collection.userId,
+                fileCount: fileIds.length,
+                userStateField: userState?.field || 'none',
+                userStateProcessor: userState?.processor || 'none'
+            });
+            
+            if (userState) {
+                userState.attachmentIds = fileIds;
+                userState.hasAttachments = fileIds.length > 0;
+                userState.mediaGroupMessage = message;
+                
+                LogEngine.info('📂 Stored media group files for future ticket creation', {
+                    userId: collection.userId,
+                    fileCount: fileIds.length,
+                    conversationField: userState.field,
+                    processor: userState.processor
+                });
+            }
+            
+            // Send status notification if we have context
+            if (collection.ctx && collection.ctx.telegram && collection.ctx.chat) {
+                const statusMsg = await collection.ctx.reply(
+                    `📎 ${fileIds.length} files received! Use \`/support\` to create a ticket with these attachments.`,
+                    { 
+                        parse_mode: 'Markdown',
+                        reply_parameters: { message_id: collection.ctx.message?.message_id || 0 } 
+                    }
+                ).catch(() => null);
+                
+                // Auto-delete after 10 seconds
+                if (statusMsg) {
+                    setTimeout(() => {
+                        if (collection.ctx && collection.ctx.chat) {
+                            collection.ctx.telegram.deleteMessage(collection.ctx.chat.id, statusMsg.message_id).catch(() => {});
+                        }
+                    }, 10000);
+                }
+            }
+        }
+        
+    } catch (error) {
+        LogEngine.error('❌ Error processing media group for ticket creation', {
+            mediaGroupId: collection.groupId,
+            userId: collection.userId,
+            error: error instanceof Error ? error.message : String(error),
+            fileCount: fileIds.length
+        });
+        
+        // Send error notification if we have context
+        if (collection.ctx && collection.ctx.telegram && collection.ctx.chat) {
+            await collection.ctx.reply(
+                `❌ Error processing ${fileIds.length} files. Please try again or create ticket without attachments.`
+            ).catch(() => {});
+        }
+    }
+}
+
+/**
+ * Process media group reply to ticket confirmation with status notifications
  */
 async function processMediaGroupTicketReply(collection: MediaGroupCollection, ticketInfo: any, fileIds: string[], message: string): Promise<void> {
+    let statusMsg: any = null;
+    const ctx = collection.ctx;
+    
     try {
+        // Send initial status notification if context is available
+        if (ctx && ctx.telegram && ctx.chat) {
+            // Get the first message in the collection for reply context
+            const firstItem = collection.items[0];
+            if (firstItem) {
+                statusMsg = await safeReply(ctx, `⏳ Processing ${fileIds.length} files and adding to ticket...`, {
+                    reply_parameters: { message_id: firstItem.messageId }
+                });
+                
+                LogEngine.info('📱 Media group ticket reply status notification sent', {
+                    mediaGroupId: collection.groupId,
+                    statusMessageId: statusMsg?.message_id,
+                    fileCount: fileIds.length,
+                    ticketId: ticketInfo.ticketId,
+                    chatId: ctx.chat.id
+                });
+            }
+        }
+        
         // Get user information
         const userData = await unthreadService.getOrCreateUser(
             collection.userId, 
@@ -328,6 +553,31 @@ async function processMediaGroupTicketReply(collection: MediaGroupCollection, ti
             throw new Error('Failed to process media group attachments');
         }
         
+        // Update status message to success
+        if (statusMsg && ctx && ctx.telegram && ctx.chat) {
+            await safeEditMessageText(
+                ctx,
+                ctx.chat.id,
+                statusMsg.message_id,
+                undefined,
+                `✅ ${fileIds.length} files uploaded and added to ticket!`
+            );
+            
+            // Delete status message after 3 seconds
+            setTimeout(() => {
+                if (ctx.chat) {
+                    ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+                }
+            }, 3000);
+            
+            LogEngine.info('📱 Media group ticket reply success notification updated', {
+                mediaGroupId: collection.groupId,
+                statusMessageId: statusMsg.message_id,
+                fileCount: fileIds.length,
+                ticketId: ticketInfo.ticketId
+            });
+        }
+        
         LogEngine.info('✅ Media group attachments processed successfully for ticket', {
             ticketId: ticketInfo.ticketId,
             friendlyId: ticketInfo.friendlyId,
@@ -337,12 +587,33 @@ async function processMediaGroupTicketReply(collection: MediaGroupCollection, ti
         });
         
     } catch (error) {
+        // Update status message to error
+        if (statusMsg && ctx && ctx.telegram && ctx.chat) {
+            await safeEditMessageText(
+                ctx,
+                ctx.chat.id,
+                statusMsg.message_id,
+                undefined,
+                `❌ Error uploading ${fileIds.length} files to ticket!`
+            ).catch(() => {}); // Ignore errors in error handling
+            
+            // Delete error message after 5 seconds
+            setTimeout(() => {
+                if (ctx.chat) {
+                    ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+                }
+            }, 5000);
+        }
+        
         LogEngine.error('❌ Error processing media group ticket reply', {
             ticketId: ticketInfo.ticketId,
             mediaGroupId: collection.groupId,
             error: error instanceof Error ? error.message : String(error),
-            fileCount: fileIds.length
+            fileCount: fileIds.length,
+            hasStatusMessage: !!statusMsg
         });
+        
+        throw error; // Re-throw to handle upstream
     }
 }
 
