@@ -81,6 +81,8 @@ export interface SecurityValidationResult {
     threatLevel: 'LOW' | 'MEDIUM' | 'HIGH';
 }
 
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 /**
  * Enhanced error classification for better handling - Unified with Dashboard→Telegram flow
  */
@@ -757,176 +759,245 @@ export class AttachmentHandler {
                         mode: 'buffer-only'
                     });
 
-                    // Get file info from Telegram
-                    const fileResponse = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`);
-                    if (!fileResponse.ok) {
-                        const processingError = createProcessingError(
-                            AttachmentProcessingError.TELEGRAM_API_ERROR,
-                            `Failed to get file info from Telegram: ${fileResponse.statusText}`,
-                            operationContext
-                        );
-                        throw new Error(processingError.message);
-                    }
-
-                    const fileData = await fileResponse.json() as TelegramFileResponse;
-                    if (!fileData.ok || !fileData.result?.file_path) {
-                        const processingError = createProcessingError(
-                            AttachmentProcessingError.FILE_NOT_FOUND,
-                            'Invalid file response from Telegram',
-                            operationContext
-                        );
-                        throw new Error(processingError.message);
-                    }
-
-                    const telegramFile = fileData.result;
-                    if (!telegramFile?.file_path) {
-                        const processingError = createProcessingError(
-                            AttachmentProcessingError.FILE_NOT_FOUND,
-                            'Invalid file response from Telegram - missing file_path',
-                            operationContext
-                        );
-                        throw new Error(processingError.message);
-                    }
+                    // Get file info from Telegram with enhanced error handling
+                    const telegramApiUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`;
                     
-                    const originalFileName = telegramFile.file_path.split('/').pop() || `file_${fileId}`;
-                    
-                    // Phase 5 Security: Enhanced filename sanitization with error handling
-                    const securityValidation = sanitizeFileName(originalFileName);
-                    if (!securityValidation.sanitizedFileName) {
-                        const processingError = createProcessingError(
-                            AttachmentProcessingError.FILENAME_SECURITY_VIOLATION,
-                            'Failed to generate safe filename',
-                            { ...operationContext, fileName: originalFileName }
-                        );
-                        throw new Error(processingError.message);
-                    }
-                    const sanitizedFileName = securityValidation.sanitizedFileName;
-
-                    if (securityValidation.threatLevel === 'HIGH') {
-                        LogEngine.warn('[AttachmentHandler] High security threat in filename', {
-                            originalFileName,
-                            sanitizedFileName,
-                            issues: securityValidation.issues,
-                            threatLevel: securityValidation.threatLevel
-                        });
-                        
-                        const processingError = createProcessingError(
-                            AttachmentProcessingError.FILENAME_SECURITY_VIOLATION,
-                            `High security threat detected in filename: ${securityValidation.issues.join(', ')}`,
-                            { ...operationContext, fileName: originalFileName, issues: securityValidation.issues }
-                        );
-                        throw new Error(processingError.message);
-                    }
-
-                    // Enhanced file size validation with proper error handling
-                    if (telegramFile.file_size && !this.validateFileSize(telegramFile.file_size, sanitizedFileName)) {
-                        const processingError = createProcessingError(
-                            AttachmentProcessingError.FILE_TOO_LARGE,
-                            `File too large: ${telegramFile.file_size} bytes (max: ${BUFFER_ATTACHMENT_CONFIG.maxFileSize})`,
-                            { ...operationContext, fileName: sanitizedFileName, fileSize: telegramFile.file_size }
-                        );
-                        throw new Error(processingError.message);
-                    }
-
-                    // Download file to buffer with enhanced error handling
-                    const downloadUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${telegramFile.file_path}`;
-
-                    const downloadResponse = await fetch(downloadUrl, {
-                        headers: {
-                            'User-Agent': 'UnthreadBot/5.0.0 (Enhanced-Error-Handling)'
-                        }
+                    LogEngine.debug('[AttachmentHandler] Making Telegram API request', {
+                        fileId,
+                        url: telegramApiUrl.replace(process.env.TELEGRAM_BOT_TOKEN || '', '[TOKEN]'),
+                        hasToken: !!process.env.TELEGRAM_BOT_TOKEN
                     });
 
-                    if (!downloadResponse.ok) {
-                        const processingError = createProcessingError(
-                            AttachmentProcessingError.DOWNLOAD_FAILED,
-                            `Failed to download file: ${downloadResponse.statusText}`,
-                            { ...operationContext, fileName: sanitizedFileName }
-                        );
-                        throw new Error(processingError.message);
-                    }
-
-                    // Additional size validation from headers
-                    const contentLength = downloadResponse.headers.get('content-length');
-                    if (contentLength && !this.validateFileSize(parseInt(contentLength), sanitizedFileName)) {
-                        const processingError = createProcessingError(
-                            AttachmentProcessingError.FILE_TOO_LARGE,
-                            `File too large based on content-length: ${contentLength} bytes`,
-                            { ...operationContext, fileName: sanitizedFileName, fileSize: parseInt(contentLength) }
-                        );
-                        throw new Error(processingError.message);
-                    }
-
-                    // Convert to buffer with memory management
                     try {
-                        const buffer = Buffer.from(await downloadResponse.arrayBuffer());
+                        const fileResponse = await fetch(telegramApiUrl, {
+                            method: 'GET',
+                            headers: {
+                                'User-Agent': 'unthread-telegram-bot/1.0'
+                            }
+                        });
                         
-                        // Final size validation
-                        if (!this.validateFileSize(buffer.length, sanitizedFileName)) {
+                        LogEngine.debug('[AttachmentHandler] Received Telegram API response', {
+                            fileId,
+                            status: fileResponse.status,
+                            statusText: fileResponse.statusText,
+                            headers: Object.fromEntries(fileResponse.headers.entries()),
+                            ok: fileResponse.ok
+                        });
+
+                        if (!fileResponse.ok) {
+                            // Get more detailed error information
+                            let errorDetails = '';
+                            try {
+                                const errorText = await fileResponse.text();
+                                errorDetails = errorText;
+                                LogEngine.error('[AttachmentHandler] Telegram API error details', {
+                                    fileId,
+                                    status: fileResponse.status,
+                                    statusText: fileResponse.statusText,
+                                    errorBody: errorText
+                                });
+                            } catch (textError) {
+                                LogEngine.warn('[AttachmentHandler] Could not read error response body', {
+                                    fileId,
+                                    textError: textError instanceof Error ? textError.message : String(textError)
+                                });
+                            }
+
                             const processingError = createProcessingError(
-                                AttachmentProcessingError.FILE_TOO_LARGE,
-                                `Downloaded file too large: ${buffer.length} bytes`,
-                                { ...operationContext, fileName: sanitizedFileName, fileSize: buffer.length }
+                                AttachmentProcessingError.TELEGRAM_API_ERROR,
+                                `Failed to get file info from Telegram: ${fileResponse.status} ${fileResponse.statusText} - ${errorDetails}`,
+                                operationContext
                             );
                             throw new Error(processingError.message);
                         }
 
-                        // Enhanced MIME type detection with security validation
-                        const contentTypeMime = downloadResponse.headers.get('content-type');
-                        const extensionMime = detectMimeTypeFromExtension(sanitizedFileName);
+                        const fileData = await fileResponse.json() as TelegramFileResponse;
                         
-                        // Use extension-based detection if available, otherwise fall back to content-type header
-                        const mimeType = (extensionMime !== 'application/octet-stream') ? extensionMime : contentTypeMime || 'application/octet-stream';
-                        
-                        LogEngine.debug('[AttachmentHandler] MIME type detection', {
-                            fileName: sanitizedFileName,
-                            contentTypeMime,
-                            extensionMime,
-                            finalMimeType: mimeType,
-                            detectionMethod: (extensionMime !== 'application/octet-stream') ? 'extension' : 'content-type'
+                        LogEngine.debug('[AttachmentHandler] Parsed Telegram API response', {
+                            fileId,
+                            responseOk: fileData.ok,
+                            hasResult: !!fileData.result,
+                            hasFilePath: !!(fileData.result?.file_path),
+                            fileSize: fileData.result?.file_size,
+                            errorCode: fileData.error_code,
+                            description: fileData.description
                         });
 
-                        // Phase 5 Security: Enhanced MIME type validation
-                        if (BUFFER_ATTACHMENT_CONFIG.enableContentValidation && 
-                            !BUFFER_ATTACHMENT_CONFIG.allowedMimeTypes.includes(mimeType)) {
-                            LogEngine.warn('[AttachmentHandler] Unsupported MIME type detected', {
-                                fileName: sanitizedFileName,
-                                mimeType,
-                                allowedTypes: BUFFER_ATTACHMENT_CONFIG.allowedMimeTypes
+                        if (!fileData.ok || !fileData.result?.file_path) {
+                            const processingError = createProcessingError(
+                                AttachmentProcessingError.FILE_NOT_FOUND,
+                                `Invalid file response from Telegram: ${fileData.description || 'Unknown error'}`,
+                                operationContext
+                            );
+                            throw new Error(processingError.message);
+                        }
+
+                        const telegramFile = fileData.result;
+                        
+                        if (!telegramFile?.file_path) {
+                            const processingError = createProcessingError(
+                                AttachmentProcessingError.FILE_NOT_FOUND,
+                                'Invalid file response from Telegram - missing file_path',
+                                operationContext
+                            );
+                            throw new Error(processingError.message);
+                        }
+                        
+                        const originalFileName = telegramFile.file_path.split('/').pop() || `file_${fileId}`;
+                        
+                        // Phase 5 Security: Enhanced filename sanitization with error handling
+                        const securityValidation = sanitizeFileName(originalFileName);
+                        if (!securityValidation.sanitizedFileName) {
+                            const processingError = createProcessingError(
+                                AttachmentProcessingError.FILENAME_SECURITY_VIOLATION,
+                                'Failed to generate safe filename',
+                                { ...operationContext, fileName: originalFileName }
+                            );
+                            throw new Error(processingError.message);
+                        }
+                        const sanitizedFileName = securityValidation.sanitizedFileName;
+
+                        if (securityValidation.threatLevel === 'HIGH') {
+                            LogEngine.warn('[AttachmentHandler] High security threat in filename', {
+                                originalFileName,
+                                sanitizedFileName,
+                                issues: securityValidation.issues,
+                                threatLevel: securityValidation.threatLevel
                             });
                             
                             const processingError = createProcessingError(
-                                AttachmentProcessingError.INVALID_FILE_TYPE,
-                                `Unsupported file type: ${mimeType}`,
-                                { ...operationContext, fileName: sanitizedFileName, mimeType }
+                                AttachmentProcessingError.FILENAME_SECURITY_VIOLATION,
+                                `High security threat detected in filename: ${securityValidation.issues.join(', ')}`,
+                                { ...operationContext, fileName: originalFileName, issues: securityValidation.issues }
                             );
                             throw new Error(processingError.message);
                         }
 
-                        LogEngine.info('[AttachmentHandler] File loaded to buffer successfully', {
-                            fileName: sanitizedFileName,
-                            size: buffer.length,
-                            mimeType
+                        // Enhanced file size validation with proper error handling
+                        if (telegramFile.file_size && !this.validateFileSize(telegramFile.file_size, sanitizedFileName)) {
+                            const processingError = createProcessingError(
+                                AttachmentProcessingError.FILE_TOO_LARGE,
+                                `File too large: ${telegramFile.file_size} bytes (max: ${BUFFER_ATTACHMENT_CONFIG.maxFileSize})`,
+                                { ...operationContext, fileName: sanitizedFileName, fileSize: telegramFile.file_size }
+                            );
+                            throw new Error(processingError.message);
+                        }
+
+                        // Download file to buffer with enhanced error handling
+                        const downloadUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${telegramFile.file_path}`;
+
+                        const downloadResponse = await fetch(downloadUrl, {
+                            headers: {
+                                'User-Agent': 'UnthreadBot/5.0.0 (Enhanced-Error-Handling)'
+                            }
                         });
 
-                        return {
-                            buffer,
-                            fileName: sanitizedFileName,
-                            mimeType,
-                            size: buffer.length
-                        };
+                        if (!downloadResponse.ok) {
+                            const processingError = createProcessingError(
+                                AttachmentProcessingError.DOWNLOAD_FAILED,
+                                `Failed to download file: ${downloadResponse.statusText}`,
+                                { ...operationContext, fileName: sanitizedFileName }
+                            );
+                            throw new Error(processingError.message);
+                        }
+
+                        // Additional size validation from headers
+                        const contentLength = downloadResponse.headers.get('content-length');
+                        if (contentLength && !this.validateFileSize(parseInt(contentLength), sanitizedFileName)) {
+                            const processingError = createProcessingError(
+                                AttachmentProcessingError.FILE_TOO_LARGE,
+                                `File too large based on content-length: ${contentLength} bytes`,
+                                { ...operationContext, fileName: sanitizedFileName, fileSize: parseInt(contentLength) }
+                            );
+                            throw new Error(processingError.message);
+                        }
+
+                        // Convert to buffer with memory management
+                        try {
+                            const buffer = Buffer.from(await downloadResponse.arrayBuffer());
+                            
+                            // Final size validation
+                            if (!this.validateFileSize(buffer.length, sanitizedFileName)) {
+                                const processingError = createProcessingError(
+                                    AttachmentProcessingError.FILE_TOO_LARGE,
+                                    `Downloaded file too large: ${buffer.length} bytes`,
+                                    { ...operationContext, fileName: sanitizedFileName, fileSize: buffer.length }
+                                );
+                                throw new Error(processingError.message);
+                            }
+
+                            // Enhanced MIME type detection with security validation
+                            const contentTypeMime = downloadResponse.headers.get('content-type');
+                            const extensionMime = detectMimeTypeFromExtension(sanitizedFileName);
+                            
+                            // Use extension-based detection if available, otherwise fall back to content-type header
+                            const mimeType = (extensionMime !== 'application/octet-stream') ? extensionMime : contentTypeMime || 'application/octet-stream';
+                            
+                            LogEngine.debug('[AttachmentHandler] MIME type detection', {
+                                fileName: sanitizedFileName,
+                                contentTypeMime,
+                                extensionMime,
+                                finalMimeType: mimeType,
+                                detectionMethod: (extensionMime !== 'application/octet-stream') ? 'extension' : 'content-type'
+                            });
+
+                            // Phase 5 Security: Enhanced MIME type validation
+                            if (BUFFER_ATTACHMENT_CONFIG.enableContentValidation && 
+                                !BUFFER_ATTACHMENT_CONFIG.allowedMimeTypes.includes(mimeType)) {
+                                LogEngine.warn('[AttachmentHandler] Unsupported MIME type detected', {
+                                    fileName: sanitizedFileName,
+                                    mimeType,
+                                    allowedTypes: BUFFER_ATTACHMENT_CONFIG.allowedMimeTypes
+                                });
+                                
+                                const processingError = createProcessingError(
+                                    AttachmentProcessingError.INVALID_FILE_TYPE,
+                                    `Unsupported file type: ${mimeType}`,
+                                    { ...operationContext, fileName: sanitizedFileName, mimeType }
+                                );
+                                throw new Error(processingError.message);
+                            }
+
+                            LogEngine.info('[AttachmentHandler] File loaded to buffer successfully', {
+                                fileName: sanitizedFileName,
+                                size: buffer.length,
+                                mimeType
+                            });
+
+                            return {
+                                buffer,
+                                fileName: sanitizedFileName,
+                                mimeType,
+                                size: buffer.length
+                            };
+                            
+                        } catch (bufferError) {
+                            const processingError = createProcessingError(
+                                AttachmentProcessingError.BUFFER_ALLOCATION_FAILED,
+                                `Buffer allocation failed: ${bufferError instanceof Error ? bufferError.message : String(bufferError)}`,
+                                { ...operationContext, fileName: sanitizedFileName }
+                            );
+                            throw new Error(processingError.message);
+                        }
                         
-                    } catch (bufferError) {
+                    } catch (fetchError) {
+                        LogEngine.error('[AttachmentHandler] Network error during Telegram API call', {
+                            fileId,
+                            error: fetchError instanceof Error ? fetchError.message : String(fetchError),
+                            stack: fetchError instanceof Error ? fetchError.stack : undefined,
+                            errorType: fetchError instanceof Error ? fetchError.constructor.name : typeof fetchError
+                        });
+
                         const processingError = createProcessingError(
-                            AttachmentProcessingError.BUFFER_ALLOCATION_FAILED,
-                            `Buffer allocation failed: ${bufferError instanceof Error ? bufferError.message : String(bufferError)}`,
-                            { ...operationContext, fileName: sanitizedFileName }
+                            AttachmentProcessingError.NETWORK_TIMEOUT,
+                            `Network error accessing Telegram API: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`,
+                            operationContext
                         );
                         throw new Error(processingError.message);
                     }
 
                 }, `loadFileToBuffer-${fileId}`, operationContext);
-            }, `loadFileToBuffer-${fileId}`, operationContext);
+            }, `loadFileToBuffer-withPerformanceMonitoring-${fileId}`, operationContext);
 
             return result;
             
@@ -938,13 +1009,11 @@ export class AttachmentHandler {
                 fileId,
                 errorCode: classifiedError.code,
                 technicalMessage: classifiedError.message,
-                userMessage: classifiedError.userMessage,
                 retryable: classifiedError.retryable,
-                context: classifiedError.context
+                context: operationContext
             });
-            
-            // Re-throw with enhanced error context
-            throw new AttachmentError(classifiedError);
+
+            throw error;
         }
     }
 
@@ -1130,7 +1199,101 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 3.1 Enhanced main buffer processing pipeline
+     * Upload multiple file buffers to Unthread as a batch (grouped attachments)
+     * @param conversationId - The conversation ID
+     * @param fileBuffers - Array of file buffers to upload
+     * @param message - Optional message to include with the uploads
+     * @param onBehalfOf - The user information on behalf of whom the upload is being done
+     * @returns Boolean indicating success
+     */
+    private async uploadMultipleBuffersToUnthread(
+        conversationId: string, 
+        fileBuffers: FileBuffer[],
+        message: string,
+        onBehalfOf?: { name: string; email: string | undefined }
+    ): Promise<boolean> {
+        const totalSize = fileBuffers.reduce((sum, buffer) => sum + buffer.size, 0);
+        
+        try {
+            LogEngine.info(`Starting batch upload of ${fileBuffers.length} files to Unthread for conversation ${conversationId}`);
+
+            const API_BASE_URL = 'https://api.unthread.io/api';
+            const UNTHREAD_API_KEY = process.env.UNTHREAD_API_KEY;
+
+            if (!UNTHREAD_API_KEY) {
+                throw new Error('UNTHREAD_API_KEY environment variable is not set');
+            }
+            
+            // Create FormData with proper structure for Unthread API
+            const formData = new FormData();
+            
+            // Create a combined message body for the batch
+            const attachmentNames = fileBuffers.map(buffer => buffer.fileName).join(', ');
+            const batchMessage = message || `📎 Files uploaded: ${attachmentNames} (Total: ${fileBuffers.length} files, ${(totalSize / 1024 / 1024).toFixed(2)} MB)`;
+            
+            const messagePayload = {
+                body: {
+                    type: "markdown",
+                    value: batchMessage
+                },
+                onBehalfOf: onBehalfOf || {
+                    name: "Telegram Bot",
+                    email: "bot@telegram.local"
+                }
+            };
+
+            // Use 'json' field for message payload
+            formData.append('json', JSON.stringify(messagePayload));
+
+            // Add all files to the same FormData using 'attachments' field
+            fileBuffers.forEach((fileBuffer, index) => {
+                formData.append('attachments', fileBuffer.buffer, fileBuffer.fileName);
+                LogEngine.debug(`Added file ${index + 1}/${fileBuffers.length}: ${fileBuffer.fileName} (${fileBuffer.size} bytes)`);
+            });
+
+            LogEngine.info(`Sending batch upload request to Unthread with ${fileBuffers.length} files`);
+
+            // Upload to Unthread API
+            const uploadResponse = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
+                method: 'POST',
+                headers: {
+                    'X-API-KEY': UNTHREAD_API_KEY,
+                    'X-Request-ID': `telegram-bot-batch-${conversationId}-${Date.now()}`,
+                    ...formData.getHeaders()
+                },
+                body: formData
+            });
+
+            if (!uploadResponse.ok) {
+                const errorText = await uploadResponse.text().catch(() => 'Unknown error');
+                LogEngine.error(`Unthread batch upload failed: ${uploadResponse.status} ${uploadResponse.statusText} - ${errorText}`);
+                throw new Error(`Unthread batch upload failed: ${uploadResponse.status} ${uploadResponse.statusText}`);
+            }
+
+            const responseData = await uploadResponse.json() as UnthreadMessageResponse;
+
+            LogEngine.info(`Batch upload successful to Unthread: messageId=${responseData?.ts || responseData?.id || 'unknown'}, attachments=${fileBuffers.length}`);
+
+            // Security: Zero out buffers after upload
+            fileBuffers.forEach(fileBuffer => {
+                fileBuffer.buffer.fill(0);
+            });
+
+            return true;
+
+        } catch (error) {
+            LogEngine.error(`Error during batch upload to Unthread for conversation ${conversationId}:`, {
+                error: error instanceof Error ? error.message : String(error),
+                fileCount: fileBuffers.length,
+                totalSize: totalSize,
+                conversationId
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Phase 3.1 Enhanced main buffer processing pipeline with batch upload support
      */
     async processBufferAttachments(fileIds: string[], conversationId: string, message?: string, onBehalfOf?: { name: string; email: string | undefined }): Promise<BufferProcessingResult> {
         const startTime = Date.now();
@@ -1144,6 +1307,52 @@ export class AttachmentHandler {
         const errors: string[] = [];
         let processedFiles = 0;
 
+        // Check if this is a media group (multiple files) that should be sent as batch
+        if (fileIds.length > 1) {
+            LogEngine.info('[AttachmentHandler] Multiple files detected - using batch upload', {
+                fileCount: fileIds.length,
+                conversationId
+            });
+            
+            try {
+                // First, load all files to buffers
+                const fileBuffers: FileBuffer[] = [];
+                for (const fileId of fileIds) {
+                    const fileBuffer = await this.loadFileToBuffer(fileId);
+                    fileBuffers.push(fileBuffer);
+                }
+                
+                // Upload all files as a batch
+                const success = await this.uploadMultipleBuffersToUnthread(conversationId, fileBuffers, message || "", onBehalfOf);
+                const processingTime = Date.now() - startTime;
+                
+                return {
+                    success,
+                    processedFiles: success ? fileIds.length : 0,
+                    totalFiles: fileIds.length,
+                    errors: success ? [] : ['Batch upload failed'],
+                    processingTime
+                };
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                LogEngine.error('[AttachmentHandler] Batch upload failed', {
+                    error: errorMessage,
+                    fileCount: fileIds.length,
+                    conversationId
+                });
+                
+                const processingTime = Date.now() - startTime;
+                return {
+                    success: false,
+                    processedFiles: 0,
+                    totalFiles: fileIds.length,
+                    errors: [errorMessage],
+                    processingTime
+                };
+            }
+        }
+
+        // Single file processing (existing logic)
         for (const fileId of fileIds) {
             try {
                 // Sequential processing to manage memory usage

@@ -21,6 +21,475 @@ import { getCommand, getMessageText, getMessageTypeInfo, isCommand } from '../ut
 import type { BotContext } from '../types/index.js';
 
 /**
+ * Media group item interface for batch processing
+ */
+interface MediaGroupItem {
+    fileId: string;
+    messageId: number;
+    caption?: string;
+    timestamp: number;
+    userId: number;
+    chatId: number;
+    replyToMessageId?: number; // Made optional to match usage
+}
+
+/**
+ * Media group collection for batch processing
+ */
+interface MediaGroupCollection {
+    groupId: string;
+    items: MediaGroupItem[];
+    firstMessageTimestamp: number;
+    timeoutId: NodeJS.Timeout;
+    isReply: boolean;
+    replyToMessageId?: number; // Made optional to match usage
+    userId: number;
+    chatId: number;
+    ctx?: BotContext; // Store context for notifications
+}
+
+/**
+ * Global media group collector
+ * Stores media groups temporarily for batch processing
+ */
+const mediaGroupCollector = new Map<string, MediaGroupCollection>();
+
+/**
+ * Configuration for media group handling
+ */
+const MEDIA_GROUP_CONFIG = {
+    collectionTimeoutMs: 2000, // 2 seconds to collect all items in group
+    maxItemsPerGroup: 10,       // Maximum items per media group
+    cleanupIntervalMs: 60000    // Clean up old entries every minute
+};
+
+/**
+ * Extract media group ID from Telegram message
+ */
+function getMediaGroupId(ctx: BotContext): string | undefined {
+    if (!ctx.message) {
+        return undefined;
+    }
+    
+    // Check if message has media_group_id
+    if ('media_group_id' in ctx.message && ctx.message.media_group_id) {
+        return ctx.message.media_group_id;
+    }
+    
+    return undefined;
+}
+
+/**
+ * Process media group item and either add to collection or process immediately
+ */
+async function handleMediaGroupMessage(ctx: BotContext): Promise<boolean> {
+    const mediaGroupId = getMediaGroupId(ctx);
+    
+    // If no media group ID, process as individual file
+    if (!mediaGroupId) {
+        return false; // Let normal processing handle it
+    }
+    
+    if (!ctx.message || !ctx.from || !ctx.chat) {
+        return false;
+    }
+    
+    const fileIds = extractFileAttachments(ctx);
+    if (fileIds.length === 0) {
+        return false; // No attachments to process
+    }
+    
+    LogEngine.info('📎 Media group message detected', {
+        mediaGroupId,
+        fileCount: fileIds.length,
+        messageId: ctx.message.message_id,
+        userId: ctx.from.id,
+        chatId: ctx.chat.id,
+        isReply: 'reply_to_message' in ctx.message && !!ctx.message.reply_to_message,
+        replyToMessageId: 'reply_to_message' in ctx.message && ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined
+    });
+    
+    // Create media group item
+    const replyToId = 'reply_to_message' in ctx.message && ctx.message.reply_to_message 
+        ? ctx.message.reply_to_message.message_id 
+        : undefined;
+        
+    const item: MediaGroupItem = {
+        fileId: fileIds[0] || '', // Each message in media group has one file - ensure not undefined
+        messageId: ctx.message.message_id,
+        caption: getMessageText(ctx),
+        timestamp: Date.now(),
+        userId: ctx.from.id,
+        chatId: ctx.chat.id,
+        ...(replyToId !== undefined && { replyToMessageId: replyToId })
+    };
+    
+    // Check if collection already exists for this group
+    const collection = mediaGroupCollector.get(mediaGroupId);
+    
+    if (!collection) {
+        // Create new collection
+        const newCollection: MediaGroupCollection = {
+            groupId: mediaGroupId,
+            items: [item],
+            firstMessageTimestamp: item.timestamp,
+            timeoutId: setTimeout(() => processMediaGroupCollection(mediaGroupId), MEDIA_GROUP_CONFIG.collectionTimeoutMs),
+            isReply: !!item.replyToMessageId,
+            userId: item.userId,
+            chatId: item.chatId,
+            ctx: ctx, // Store context for notifications
+            ...(item.replyToMessageId !== undefined && { replyToMessageId: item.replyToMessageId })
+        };
+        
+        mediaGroupCollector.set(mediaGroupId, newCollection);
+        
+        LogEngine.info('📦 Created new media group collection', {
+            mediaGroupId,
+            timeoutMs: MEDIA_GROUP_CONFIG.collectionTimeoutMs,
+            isReply: newCollection.isReply,
+            replyToMessageId: newCollection.replyToMessageId
+        });
+    } else {
+        // Add to existing collection
+        collection.items.push(item);
+        
+        // Update reply information if this item has reply info and collection doesn't
+        if (item.replyToMessageId && !collection.replyToMessageId) {
+            collection.isReply = true;
+            collection.replyToMessageId = item.replyToMessageId;
+            LogEngine.info('📝 Updated media group collection with reply information', {
+                mediaGroupId,
+                replyToMessageId: item.replyToMessageId,
+                fromMessageId: item.messageId
+            });
+        }
+        
+        LogEngine.info('➕ Added item to existing media group collection', {
+            mediaGroupId,
+            currentItemCount: collection.items.length,
+            maxItems: MEDIA_GROUP_CONFIG.maxItemsPerGroup,
+            isReply: collection.isReply,
+            replyToMessageId: collection.replyToMessageId
+        });
+        
+        // If we've reached max items, process immediately
+        if (collection.items.length >= MEDIA_GROUP_CONFIG.maxItemsPerGroup) {
+            clearTimeout(collection.timeoutId);
+            await processMediaGroupCollection(mediaGroupId);
+        }
+    }
+    
+    return true; // Handled by media group processor
+}
+
+/**
+ * Process collected media group items as a batch
+ */
+async function processMediaGroupCollection(mediaGroupId: string): Promise<void> {
+    const collection = mediaGroupCollector.get(mediaGroupId);
+    if (!collection) {
+        LogEngine.warn('⚠️ Media group collection not found for processing', { mediaGroupId });
+        return;
+    }
+    
+    // Clean up the collection
+    mediaGroupCollector.delete(mediaGroupId);
+    clearTimeout(collection.timeoutId);
+    
+    LogEngine.info('🔄 Processing media group collection as batch', {
+        mediaGroupId,
+        itemCount: collection.items.length,
+        isReply: collection.isReply,
+        replyToMessageId: collection.replyToMessageId,
+        collectionTimeMs: Date.now() - collection.firstMessageTimestamp
+    });
+    
+    try {
+        // Combine all file IDs from the collection
+        const allFileIds = collection.items.map(item => item.fileId);
+        
+        // Combine all captions with line breaks
+        const combinedMessage = collection.items
+            .map(item => item.caption)
+            .filter(caption => caption && caption.trim())
+            .join('\n\n') || 'Media group attachments';
+        
+        if (collection.isReply && collection.replyToMessageId) {
+            // Handle as reply to ticket/agent message
+            LogEngine.info('🎯 Media group identified as reply - processing for ticket/agent', {
+                mediaGroupId,
+                replyToMessageId: collection.replyToMessageId,
+                itemCount: collection.items.length
+            });
+            await handleMediaGroupReply(collection, allFileIds, combinedMessage);
+        } else {
+            // Handle as regular group message (if needed in future)
+            LogEngine.warn('📋 Media group in non-reply context - no action taken', {
+                mediaGroupId,
+                itemCount: collection.items.length,
+                isReply: collection.isReply,
+                replyToMessageId: collection.replyToMessageId,
+                itemsWithReply: collection.items.filter(item => item.replyToMessageId).length,
+                firstItemReplyId: collection.items[0]?.replyToMessageId,
+                allItemReplyIds: collection.items.map(item => item.replyToMessageId)
+            });
+        }
+    } catch (error) {
+        LogEngine.error('❌ Error processing media group collection', {
+            mediaGroupId,
+            error: error instanceof Error ? error.message : String(error),
+            itemCount: collection.items.length
+        });
+    }
+}
+
+/**
+ * Handle media group as reply to ticket/agent message
+ */
+async function handleMediaGroupReply(collection: MediaGroupCollection, fileIds: string[], message: string): Promise<void> {
+    if (!collection.replyToMessageId) {
+        return;
+    }
+    
+    LogEngine.info('🎯 Processing media group as ticket/agent reply', {
+        mediaGroupId: collection.groupId,
+        replyToMessageId: collection.replyToMessageId,
+        fileCount: fileIds.length,
+        userId: collection.userId
+    });
+    
+    // Check if this is a reply to a ticket confirmation
+    const ticketInfo = await unthreadService.getTicketFromReply(collection.replyToMessageId);
+    if (ticketInfo) {
+        LogEngine.info('📋 Media group reply to ticket confirmation', {
+            ticketId: ticketInfo.ticketId,
+            friendlyId: ticketInfo.friendlyId,
+            mediaGroupId: collection.groupId,
+            fileCount: fileIds.length
+        });
+        
+        await processMediaGroupTicketReply(collection, ticketInfo, fileIds, message);
+        return;
+    }
+    
+    // Check if this is a reply to an agent message
+    const agentMessageInfo = await unthreadService.getAgentMessageFromReply(collection.replyToMessageId);
+    if (agentMessageInfo) {
+        LogEngine.info('💬 Media group reply to agent message', {
+            conversationId: agentMessageInfo.conversationId,
+            friendlyId: agentMessageInfo.friendlyId,
+            mediaGroupId: collection.groupId,
+            fileCount: fileIds.length
+        });
+        
+        await processMediaGroupAgentReply(collection, agentMessageInfo, fileIds, message);
+        return;
+    }
+    
+    LogEngine.debug('ℹ️ Media group reply not related to ticket/agent message', {
+        mediaGroupId: collection.groupId,
+        replyToMessageId: collection.replyToMessageId
+    });
+}
+
+/**
+ * Process media group reply to ticket confirmation
+ */
+async function processMediaGroupTicketReply(collection: MediaGroupCollection, ticketInfo: any, fileIds: string[], message: string): Promise<void> {
+    try {
+        // Get user information
+        const userData = await unthreadService.getOrCreateUser(
+            collection.userId, 
+            undefined, // username not available in collection
+            undefined, // firstName not available
+            undefined  // lastName not available
+        );
+        
+        LogEngine.info('🔄 Processing media group attachments for ticket reply', {
+            ticketId: ticketInfo.ticketId,
+            friendlyId: ticketInfo.friendlyId,
+            mediaGroupId: collection.groupId,
+            fileCount: fileIds.length,
+            messageLength: message.length
+        });
+        
+        // Process all attachments as a batch
+        const attachmentSuccess = await attachmentHandler.processAttachments(
+            fileIds,
+            ticketInfo.conversationId || ticketInfo.ticketId,
+            message || 'Media group attachments via Telegram',
+            {
+                name: userData.name,
+                email: userData.email
+            }
+        );
+        
+        if (!attachmentSuccess) {
+            throw new Error('Failed to process media group attachments');
+        }
+        
+        LogEngine.info('✅ Media group attachments processed successfully for ticket', {
+            ticketId: ticketInfo.ticketId,
+            friendlyId: ticketInfo.friendlyId,
+            mediaGroupId: collection.groupId,
+            fileCount: fileIds.length,
+            processingMethod: 'media_group_batch'
+        });
+        
+    } catch (error) {
+        LogEngine.error('❌ Error processing media group ticket reply', {
+            ticketId: ticketInfo.ticketId,
+            mediaGroupId: collection.groupId,
+            error: error instanceof Error ? error.message : String(error),
+            fileCount: fileIds.length
+        });
+    }
+}
+
+/**
+ * Process media group reply to agent message with status notifications
+ */
+async function processMediaGroupAgentReply(collection: MediaGroupCollection, agentMessageInfo: any, fileIds: string[], message: string): Promise<void> {
+    let statusMsg: any = null;
+    const ctx = collection.ctx;
+    
+    try {
+        // Send initial status notification if context is available
+        if (ctx && ctx.telegram && ctx.chat) {
+            // Get the first message in the collection for reply context
+            const firstItem = collection.items[0];
+            if (firstItem) {
+                statusMsg = await safeReply(ctx, `⏳ Processing ${fileIds.length} files and sending...`, {
+                    reply_parameters: { message_id: firstItem.messageId }
+                });
+                
+                LogEngine.info('📱 Media group status notification sent', {
+                    mediaGroupId: collection.groupId,
+                    statusMessageId: statusMsg?.message_id,
+                    fileCount: fileIds.length,
+                    chatId: ctx.chat.id
+                });
+            }
+        }
+        
+        // Get user information
+        const userData = await unthreadService.getOrCreateUser(
+            collection.userId,
+            undefined, // username not available in collection
+            undefined, // firstName not available
+            undefined  // lastName not available
+        );
+        
+        LogEngine.info('🔄 Processing media group attachments for agent reply', {
+            conversationId: agentMessageInfo.conversationId,
+            friendlyId: agentMessageInfo.friendlyId,
+            mediaGroupId: collection.groupId,
+            fileCount: fileIds.length,
+            messageLength: message.length
+        });
+        
+        // Process all attachments as a batch
+        const attachmentSuccess = await attachmentHandler.processAttachments(
+            fileIds,
+            agentMessageInfo.conversationId,
+            message || 'Media group attachments via Telegram',
+            {
+                name: userData.name,
+                email: userData.email
+            }
+        );
+        
+        if (!attachmentSuccess) {
+            throw new Error('Failed to process media group attachments');
+        }
+        
+        // Update status message to success
+        if (statusMsg && ctx && ctx.telegram && ctx.chat) {
+            await safeEditMessageText(
+                ctx,
+                ctx.chat.id,
+                statusMsg.message_id,
+                undefined,
+                `✅ ${fileIds.length} files uploaded and sent!`
+            );
+            
+            // Delete status message after 3 seconds
+            setTimeout(() => {
+                if (ctx.chat) {
+                    ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+                }
+            }, 3000);
+            
+            LogEngine.info('📱 Media group success notification updated', {
+                mediaGroupId: collection.groupId,
+                statusMessageId: statusMsg.message_id,
+                fileCount: fileIds.length
+            });
+        }
+        
+        LogEngine.info('✅ Media group attachments processed successfully for agent reply', {
+            conversationId: agentMessageInfo.conversationId,
+            friendlyId: agentMessageInfo.friendlyId,
+            mediaGroupId: collection.groupId,
+            fileCount: fileIds.length,
+            processingMethod: 'media_group_batch'
+        });
+        
+    } catch (error) {
+        // Update status message to error
+        if (statusMsg && ctx && ctx.telegram && ctx.chat) {
+            await safeEditMessageText(
+                ctx,
+                ctx.chat.id,
+                statusMsg.message_id,
+                undefined,
+                `❌ Error uploading ${fileIds.length} files!`
+            ).catch(() => {}); // Ignore errors in error handling
+            
+            // Delete error message after 5 seconds
+            setTimeout(() => {
+                if (ctx.chat) {
+                    ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+                }
+            }, 5000);
+        }
+        
+        LogEngine.error('❌ Error processing media group agent reply', {
+            conversationId: agentMessageInfo.conversationId,
+            mediaGroupId: collection.groupId,
+            error: error instanceof Error ? error.message : String(error),
+            fileCount: fileIds.length,
+            hasStatusMessage: !!statusMsg
+        });
+        
+        throw error; // Re-throw to handle upstream
+    }
+}
+
+/**
+ * Cleanup old media group collections
+ */
+function cleanupOldMediaGroups(): void {
+    const now = Date.now();
+    const cutoff = now - MEDIA_GROUP_CONFIG.cleanupIntervalMs;
+    
+    for (const [groupId, collection] of mediaGroupCollector.entries()) {
+        if (collection.firstMessageTimestamp < cutoff) {
+            LogEngine.debug('🧹 Cleaning up old media group collection', {
+                mediaGroupId: groupId,
+                age: now - collection.firstMessageTimestamp
+            });
+            
+            clearTimeout(collection.timeoutId);
+            mediaGroupCollector.delete(groupId);
+        }
+    }
+}
+
+// Set up periodic cleanup
+setInterval(cleanupOldMediaGroups, MEDIA_GROUP_CONFIG.cleanupIntervalMs);
+
+/**
  * Returns true if the message originates from a group or supergroup chat.
  *
  * @returns True if the chat type is 'group' or 'supergroup'; otherwise, false.
@@ -202,6 +671,18 @@ export async function handleMessage(ctx: BotContext, next: () => Promise<void>):
                 attachmentCount: attachmentFileIds.length,
                 fileIds: attachmentFileIds
             });
+        }
+        
+        // Check for media group messages and handle them specially
+        if (hasAttachments) {
+            const handledAsMediaGroup = await handleMediaGroupMessage(ctx);
+            if (handledAsMediaGroup) {
+                LogEngine.info('✅ Message handled by media group processor - stopping further processing', {
+                    mediaGroupId: getMediaGroupId(ctx),
+                    attachmentCount: attachmentFileIds.length
+                });
+                return; // Don't call next() - media group processor handles everything
+            }
         }
         
         // If this is a command, let Telegraf handle it and don't process further
