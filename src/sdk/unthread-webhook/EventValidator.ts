@@ -94,13 +94,11 @@ export class EventValidator {
     // Validate based on event type
     if (eventObj.type === 'message_created') {
       // Check for both 'content' and 'text' fields (webhook server sends 'text')
-      // Also check for attachments in metadata - attachment-only messages might not have text content
+      // Also check for attachments directly under data - attachment-only messages might not have text content
       const hasContent = !!(data.content || data.text);
       
-      // Type-safe attachment detection
-      const metadata = data.metadata as Record<string, unknown> | undefined;
-      const eventPayload = metadata?.event_payload as Record<string, unknown> | undefined;
-      const attachments = eventPayload?.attachments as Array<Record<string, unknown>> | undefined;
+      // Type-safe attachment detection - attachments are directly under data.attachments
+      const attachments = data.attachments as Array<Record<string, unknown>> | undefined;
       const hasAttachments = !!(attachments && attachments.length > 0);
       
       // Message must have either text content OR attachments
@@ -108,8 +106,8 @@ export class EventValidator {
         LogEngine.warn('❌ Message validation failed: Missing content/text and no attachments', { 
           conversationId: data.conversationId || data.id,
           availableKeys: Object.keys(data || {}),
-          hasMetadata: !!metadata,
-          metadataKeys: metadata ? Object.keys(metadata) : []
+          hasAttachments: hasAttachments,
+          attachmentCount: attachments ? attachments.length : 0
         });
         return false;
       }

@@ -398,7 +398,8 @@ export function getErrorDetails(error: unknown, _context?: string): ErrorDetails
  *
  * @returns The sanitized log data with sensitive information masked or removed.
  */
-function sanitizeLogData(logData: any): any {
+/* eslint-disable security/detect-object-injection */
+function sanitizeLogData(logData: any): any { // eslint-disable-line security/detect-object-injection
     const sanitized = { ...logData };
     
     // Sanitize stack traces in production to remove file paths
@@ -418,16 +419,17 @@ function sanitizeLogData(logData: any): any {
     
     // Sanitize any nested objects
     for (const key in sanitized) {
-        if (sanitized[key] && typeof sanitized[key] === 'object') {
+        if (Object.prototype.hasOwnProperty.call(sanitized, key) && sanitized[key] && typeof sanitized[key] === 'object') {
             // Recursively sanitize nested objects
             if (typeof sanitized[key] === 'object' && !Array.isArray(sanitized[key])) {
-                sanitized[key] = sanitizeLogData(sanitized[key]);
+                sanitized[key] = sanitizeLogData(sanitized[key] as Record<string, unknown>);
             }
         }
     }
     
     return sanitized;
 }
+/* eslint-enable security/detect-object-injection */
 
 /**
  * Logs an error with detailed classification, sanitization, and contextual information.

@@ -73,7 +73,7 @@ export function validateEnvironment(): void {
     const missingVars: string[] = [];
     
     for (const varName of REQUIRED_ENV_VARS) {
-        if (!process.env[varName]) {
+        if (!process.env[varName as keyof NodeJS.ProcessEnv]) {
             missingVars.push(varName);
         }
     }
@@ -86,7 +86,9 @@ export function validateEnvironment(): void {
         
         LogEngine.error('\n📋 Required environment variables:');
         missingVars.forEach(varName => {
-            const help = ENV_VAR_HELP[varName] || 'See documentation for setup instructions';
+            const help = Object.prototype.hasOwnProperty.call(ENV_VAR_HELP, varName) 
+                ? ENV_VAR_HELP[varName as keyof typeof ENV_VAR_HELP] 
+                : 'See documentation for setup instructions';
             LogEngine.error(`   ❌ ${varName}`);
             LogEngine.error(`      How to get: ${help}`);
         });
@@ -213,7 +215,7 @@ function validateRequiredTokens(): void {
  * Get environment variable with fallback
  */
 export function getEnvVar(key: string, defaultValue: string = ''): string {
-    return process.env[key] || defaultValue;
+    return process.env[key as keyof NodeJS.ProcessEnv] || defaultValue;
 }
 
 /**

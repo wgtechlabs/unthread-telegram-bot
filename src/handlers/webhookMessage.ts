@@ -914,7 +914,12 @@ export class TelegramWebhookHandler {
       return `${bytes} B`;
     }
     
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+    const size = sizes.at(i);
+    if (!size) {
+      return `${bytes} B`;
+    }
+    
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${size}`;
   }
 
 }

@@ -94,7 +94,7 @@ export default [
       ],
       
       // Security Rules (make them warnings instead of errors for now)
-      'security/detect-object-injection': 'warn',
+      'security/detect-object-injection': 'error',
       'security/detect-non-literal-regexp': 'warn',
       'security/detect-unsafe-regex': 'error',
       'security/detect-buffer-noassert': 'error',

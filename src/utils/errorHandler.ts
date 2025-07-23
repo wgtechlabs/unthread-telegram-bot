@@ -104,7 +104,8 @@ export class AttachmentProcessingError extends Error {
    * Get user-friendly error message based on error type
    */
   private getDefaultUserMessage(errorType: AttachmentErrorType): string {
-    return ATTACHMENT_ERROR_MESSAGES[errorType] || ATTACHMENT_ERROR_MESSAGES[AttachmentErrorType.UNEXPECTED_ERROR];
+    const message = ATTACHMENT_ERROR_MESSAGES[errorType as keyof typeof ATTACHMENT_ERROR_MESSAGES];
+    return message || ATTACHMENT_ERROR_MESSAGES[AttachmentErrorType.UNEXPECTED_ERROR];
   }
 }
 

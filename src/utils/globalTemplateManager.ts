@@ -64,13 +64,30 @@ export class GlobalTemplateManager {
       const currentConfig = await this.getGlobalTemplates();
       
       // Update the specific template
-      currentConfig.templates[event] = {
+      const newTemplate: GlobalTemplate = {
         event,
         content,
         enabled,
         lastModifiedBy: updatedBy || undefined,
         lastModifiedAt: new Date().toISOString()
       };
+      
+      // Since GlobalTemplateEvent is a specific union type, this is safe
+      switch (event) {
+        case 'ticket_created':
+          currentConfig.templates.ticket_created = newTemplate;
+          break;
+        case 'agent_response':
+          currentConfig.templates.agent_response = newTemplate;
+          break;
+        case 'ticket_status':
+          currentConfig.templates.ticket_status = newTemplate;
+          break;
+        default:
+          // This should never happen with the type system, but just in case
+          LogEngine.error('Unknown template event', { event });
+          return { success: false, error: 'Unknown template event' };
+      }
       
       currentConfig.version += 1;
       currentConfig.lastUpdated = new Date().toISOString();
@@ -98,7 +115,18 @@ export class GlobalTemplateManager {
   async getTemplate(event: GlobalTemplateEvent): Promise<GlobalTemplate | null> {
     try {
       const config = await this.getGlobalTemplates();
-      return config.templates[event] || null;
+      // Since GlobalTemplateEvent is a specific union type, this is safe
+      switch (event) {
+        case 'ticket_created':
+          return config.templates.ticket_created || null;
+        case 'agent_response':
+          return config.templates.agent_response || null;
+        case 'ticket_status':
+          return config.templates.ticket_status || null;
+        default:
+          LogEngine.error('Unknown template event', { event });
+          return null;
+      }
     } catch (error) {
       LogEngine.error('Failed to get template', { event, error });
       return null;

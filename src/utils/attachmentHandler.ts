@@ -1045,7 +1045,7 @@ export class AttachmentHandler {
 
         // Process files sequentially to manage memory usage consistently
         for (let index = 0; index < fileIds.length; index++) {
-            const fileId = fileIds[index];
+            const fileId = fileIds.at(index);
             if (!fileId) {
                 LogEngine.warn('[AttachmentHandler] Skipping invalid file ID at index', { index });
                 conversionErrors.push(`File ${index + 1}: Invalid file ID`);

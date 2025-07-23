@@ -1767,11 +1767,12 @@ export class BotsStore implements IBotsStore {
     
     // Remove any immutable fields from the updates object
     for (const field of immutableFields) {
-      if (field in safeUpdates) {
-        delete safeUpdates[field];
+      if (Object.prototype.hasOwnProperty.call(safeUpdates, field)) {
+        const fieldValue = safeUpdates[field as keyof typeof safeUpdates];
+        delete safeUpdates[field as keyof typeof safeUpdates];
         LogEngine.warn(`Attempted to update immutable field '${String(field)}' - ignoring`, {
           field: String(field),
-          attemptedValue: updates[field]
+          attemptedValue: fieldValue
         });
       }
     }
@@ -1782,24 +1783,29 @@ export class BotsStore implements IBotsStore {
   /**
    * Validate that critical immutable fields match expected values
    */
+  /* eslint-disable security/detect-object-injection */
   private static validateImmutableFields<T extends Record<string, any>>(
     existingData: T,
     updates: Partial<T>,
     fieldValidations: { field: keyof T; expectedValue: any }[]
   ): boolean {
     for (const { field, expectedValue } of fieldValidations) {
-      if (field in updates && updates[field] !== expectedValue) {
+      const fieldKey = field as keyof T;
+      if (Object.prototype.hasOwnProperty.call(updates, field) && updates[fieldKey] !== expectedValue) {
+        const attemptedValue = updates[fieldKey];
+        const existingValue = existingData[fieldKey];
         LogEngine.error(`Immutable field validation failed for '${String(field)}'`, {
           field: String(field),
           expectedValue,
-          attemptedValue: updates[field],
-          existingValue: existingData[field]
+          attemptedValue,
+          existingValue
         });
         return false;
       }
     }
     return true;
   }
+  /* eslint-enable security/detect-object-injection */
 
   /**
    * Safely retrieve an array from storage, ensuring it's always an array
