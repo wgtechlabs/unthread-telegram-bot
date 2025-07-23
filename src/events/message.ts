@@ -17,7 +17,7 @@ import * as unthreadService from '../services/unthread.js';
 import { safeEditMessageText, safeReply } from '../bot.js';
 import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
 import { attachmentHandler } from '../utils/attachmentHandler.js';
-import { getCommand, getMessageText, getMessageTypeInfo, hasTextContent, isCommand } from '../utils/messageContentExtractor.js';
+import { getCommand, getMessageText, getMessageTypeInfo, isCommand } from '../utils/messageContentExtractor.js';
 import type { BotContext } from '../types/index.js';
 
 /**
@@ -224,13 +224,29 @@ export async function handleMessage(ctx: BotContext, next: () => Promise<void>):
             return;  // Don't call next() for conversation messages, we're done
         }
         
-        // Check if this is a reply to a ticket confirmation - Enhanced with unified text detection
-        if ('reply_to_message' in ctx.message && ctx.message.reply_to_message && hasTextContent(ctx)) {
+        // Check if this is a reply to a ticket confirmation - Support attachment-only replies
+        if ('reply_to_message' in ctx.message && ctx.message.reply_to_message) {
+            LogEngine.info('Reply message detected - checking for ticket/agent context', {
+                replyToMessageId: ctx.message.reply_to_message.message_id,
+                hasText: !!getMessageText(ctx),
+                hasAttachments: extractFileAttachments(ctx).length > 0,
+                attachmentCount: extractFileAttachments(ctx).length,
+                chatId: ctx.chat?.id,
+                userId: ctx.from?.id
+            });
+            
             const handled = await handleTicketReply(ctx);
             if (handled) {
                 // Skip other handlers if this was a ticket reply
-                LogEngine.debug('Message processed as ticket reply');
+                LogEngine.info('✅ Message processed as ticket/agent reply successfully', {
+                    replyToMessageId: ctx.message.reply_to_message.message_id,
+                    hasAttachments: extractFileAttachments(ctx).length > 0
+                });
                 return;  // Don't call next() for ticket replies, we're done
+            } else {
+                LogEngine.debug('Reply not handled as ticket/agent reply - continuing with normal processing', {
+                    replyToMessageId: ctx.message.reply_to_message.message_id
+                });
             }
         }
 
@@ -393,11 +409,20 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
 
 /**
  * Validates that the reply message and sender information are present and extracts user and message details for ticket processing.
+ * 
+ * Updated to support attachment-only messages without requiring text content.
  *
  * @returns An object indicating whether the reply is valid. If valid, includes the sender's Telegram user ID, username, first name, last name, and message text.
  */
 async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ isValid: false } | { isValid: true; telegramUserId: number; username: string | undefined; firstName: string | undefined; lastName: string | undefined; message: string }> {
-    if (!ctx.from || !ctx.message || !('text' in ctx.message)) {
+    // Only require basic message and sender info - allow attachment-only messages
+    if (!ctx.from || !ctx.message) {
+        LogEngine.warn('❌ Ticket reply validation failed - missing basic context', {
+            hasFrom: !!ctx.from,
+            hasMessage: !!ctx.message,
+            ticketId: ticketInfo?.ticketId,
+            friendlyId: ticketInfo?.friendlyId
+        });
         return { isValid: false };
     }
     
@@ -405,9 +430,10 @@ async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ 
     const username = ctx.from.username;
     const firstName = ctx.from.first_name;
     const lastName = ctx.from.last_name;
-    const message = getMessageText(ctx);
+    const message = getMessageText(ctx); // This handles both text and caption
+    const hasAttachments = extractFileAttachments(ctx).length > 0;
     
-    LogEngine.info('Processing ticket confirmation reply', {
+    LogEngine.info('✅ Ticket reply validation successful - processing reply', {
         conversationId: ticketInfo.conversationId,
         ticketId: ticketInfo.ticketId,
         friendlyId: ticketInfo.friendlyId,
@@ -415,7 +441,11 @@ async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ 
         username,
         firstName,
         lastName,
-        messageLength: message?.length
+        messageLength: message?.length || 0,
+        hasText: !!message,
+        hasAttachments,
+        attachmentCount: extractFileAttachments(ctx).length,
+        validationType: 'supports_attachment_only_messages'
     });
     
     return {
