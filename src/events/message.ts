@@ -445,7 +445,7 @@ async function processMediaGroupTicketCreation(collection: MediaGroupCollection,
             const supportProcessor = new SupportConversationProcessor();
             
             // Call handleSummaryInput with the media group caption as summary and pre-detected attachments
-            await supportProcessor['handleSummaryInput'](
+            await supportProcessor.handleSummaryInput(
                 collection.ctx, 
                 summaryText, 
                 userState, 

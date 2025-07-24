@@ -99,7 +99,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
         }
     }
 
-    private async handleSummaryInput(ctx: BotContext, summary: string, userState: any, preDetectedAttachments?: string[]): Promise<boolean> {
+    public async handleSummaryInput(ctx: BotContext, summary: string, userState: any, preDetectedAttachments?: string[]): Promise<boolean> {
         // Defensive check for ctx.from
         if (!ctx.from) {
             LogEngine.warn('Summary input received without sender information');
