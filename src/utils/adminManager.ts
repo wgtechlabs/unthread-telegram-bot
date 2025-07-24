@@ -16,6 +16,11 @@ import type { AdminProfile, DmSetupSession, SetupSession } from '../sdk/types.js
 import { v4 as uuidv4 } from 'uuid';
 
 /**
+ * Type alias for a function that sends a message to a specific chat ID
+ */
+export type SendMessageFunction = (_chatId: number, _message: string) => Promise<void>;
+
+/**
  * Determines whether the specified Telegram user ID is listed as an admin in the environment configuration.
  *
  * @param telegramUserId - The Telegram user ID to check
@@ -189,7 +194,7 @@ export async function createSetupSession(
 export async function notifyOtherAdmins(
   initiatingAdminId: number, 
   message: string,
-  sendMessage: (_chatId: number, _message: string) => Promise<void>
+  sendMessage: SendMessageFunction
 ): Promise<void> {
   try {
     const activatedAdmins = await getActivatedAdmins();
