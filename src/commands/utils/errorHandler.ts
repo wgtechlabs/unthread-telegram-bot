@@ -432,7 +432,7 @@ export function getErrorDetails(error: unknown, _context?: string): ErrorDetails
  * @returns The sanitized log data with sensitive information masked or removed.
  */
 /* eslint-disable security/detect-object-injection */
-function sanitizeLogData(logData: any): any { // eslint-disable-line security/detect-object-injection
+function sanitizeLogData(logData: any): any {  
     const sanitized = { ...logData };
     
     // Sanitize stack traces in production to remove file paths
