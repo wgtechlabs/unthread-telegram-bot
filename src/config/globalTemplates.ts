@@ -52,7 +52,7 @@ export const DEFAULT_GLOBAL_TEMPLATES: GlobalTemplateConfig = {
                '**Ticket #{{ticketNumber}}**\n' +
                '**Status:** {{status}}\n\n' +
                '**Summary:** {{summary}}\n\n' +
-               '*Reply to your original ticket confirmation to reopen this ticket, or use /support for a new ticket.*',
+               '*Reply to your original ticket confirmation to continue this conversation, or use /support for a new ticket.*',
       enabled: true
     }
   },
