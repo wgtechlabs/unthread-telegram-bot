@@ -133,12 +133,19 @@ export default [
       '**/webhookMessage.ts'
     ],
     rules: {
+      // TODO: Re-enable after attachment processing refactoring is complete (Target: v1.1.0)
       '@typescript-eslint/no-unused-vars': 'off', // Completely off for disabled features
+      // TODO: Re-enable after attachment processing refactoring is complete (Target: v1.1.0)
       'no-unused-vars': 'off', // Completely off for disabled features
+      // TODO: Re-enable after attachment processing refactoring is complete (Target: v1.1.0)
       'unused-imports/no-unused-vars': 'off', // Completely off for disabled features
+      // TODO: Re-enable after attachment processing refactoring is complete (Target: v1.1.0)
       '@typescript-eslint/no-explicit-any': 'off', // Allow any in disabled features
+      // TODO: Re-enable after attachment processing security review is complete (Target: v1.1.0)
       'security/detect-non-literal-fs-filename': 'off', // Allow filesystem operations
+      // TODO: Re-enable after attachment processing regex cleanup is complete (Target: v1.1.0)
       'no-control-regex': 'off', // Allow control characters in regex
+      // TODO: Re-enable after attachment processing string handling cleanup is complete (Target: v1.1.0)
       'no-useless-escape': 'off', // Allow escape characters
     },
   },
