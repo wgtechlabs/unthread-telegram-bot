@@ -50,7 +50,7 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
 
 - **🎫 Seamless Ticket Management** - Create support tickets directly from Telegram with `/support` command
 - **👤 One-Time Email Setup** - Collect email once, automatically use for all future tickets
-- **📧 Profile Management** - View and update email preferences with `/profile` command
+- **📧 Email Management** - View and update email preferences with `/viewemail` and `/setemail` commands
 - **💬 Real-Time Communication** - Bidirectional messaging between agents and customers
 - **🏢 Smart Customer Detection** - Automatically extracts customer names from group chat titles
 - **💬 Natural Conversation Flow** - Customers reply normally, no special commands needed
@@ -328,7 +328,7 @@ Bot: 🎫 Support Ticket Created Successfully!
 
 - **Natural replies**: Simply reply to agent messages - no commands needed
 - **Automatic updates**: Receive status notifications when tickets are closed
-- **Profile management**: Use `/profile` to update email preferences
+- **Email management**: Use `/viewemail` to view settings and `/setemail` to update your email
 - **Easy ticket creation**: Use `/support` anytime for new issues
 
 > **💡 Pro Tip**: Only admins need to do the setup process. Once configured, customers can immediately start creating tickets with `/support` - no activation needed on their part!
@@ -340,7 +340,8 @@ Bot: 🎫 Support Ticket Created Successfully!
 - `/start` - Welcome message and bot introduction
 - `/help` - Display available commands and usage instructions  
 - `/support` - Create a new support ticket (customer/partner group chats only)
-- `/profile` - View and update your email preferences
+- `/viewemail` - View your current email settings
+- `/setemail` - Set or update your email address for support tickets
 - `/version` - Show current bot version
 - `/cancel` - Cancel current operation
 - `/reset` - Reset conversation state
@@ -371,32 +372,32 @@ Bot: 🎫 Support Ticket Created Successfully!
      Your issue has been submitted and our team will be in touch soon.
 ```
 
-**Note**: After your first ticket, the bot remembers your email and skips the email prompt for future tickets. You can update your email anytime using the `/profile` command.
+**Note**: After your first ticket, the bot remembers your email and skips the email prompt for future tickets. You can update your email anytime using the `/setemail` command or view your settings with `/viewemail`.
 
-### **Managing Your Profile**
+### **Managing Your Email Settings**
 
-Use the `/profile` command to view and update your email preferences:
+Use the `/viewemail` command to view your current email settings and `/setemail` to update them:
 
 ```text
-User: /profile
-Bot: 👤 Your Profile
-     Email: john@example.com
+User: /viewemail
+Bot: � Email Settings
+     
+     ✅ Email address: john@example.com
+     📅 Set on: 7/23/2025
+     🏷️ Type: Personal email
      
      What would you like to do?
-     [📧 Update Email] [ℹ️ About]
+     [� Update Email] [ℹ️ About]
 
-User: [clicks Update Email]
-Bot: Please enter your new email address:
-
-User: john.doe@company.com
+User: /setemail john.doe@company.com
 Bot: ✅ Email Updated Successfully!
      Your email has been updated to: john.doe@company.com
      This email will be used for all future support tickets.
 ```
 
-**Profile Features:**
+**Email Management Features:**
 
-- **View current email** - See the email associated with your profile
+- **View current email** - See the email associated with your account
 - **Update email** - Change your email for future support tickets
 - **Auto-generated email detection** - Get notified if you're using an auto-generated email
 - **Seamless integration** - Email updates apply to all future support tickets

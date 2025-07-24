@@ -2,7 +2,15 @@
  * Admin Commands - Complete Implementation
  * 
  * Handles admin-specific commands including activation, setup, and templates
- * following Clean Code principles and SOLID design.
+ * following Clean Code principles and SOLID                 "🎯 **Ready to Use:**\n" +
+            "• Users can create tickets with `/support`\n" +
+            "• Templates are active and working\n" +
+            "• All notifications are enabled\n\n" +
+            "💡 *Use `/templates` to customize messages or contact an admin for configuration changes.*";   "🎯 **Ready to Use:**\n" +
+            "• Users can create tickets with `/support`\n" +
+            "• Templates are active and working\n" +
+            "• All notifications are enabled\n\n" +
+            "💡 *Use `/templates` to customize messages or contact an admin for configuration changes.*";n.
  * 
  * @author Waren Gonzaga, WG Technology Labs
  */
@@ -166,39 +174,13 @@ export class SetupCommand extends BaseCommand {
         }
     }
 
-    private async handleExistingSetup(ctx: BotContext, config: GroupConfig): Promise<void> {
-        const setupDate = config.setupAt ? new Date(config.setupAt).toLocaleDateString() : 'Unknown';
-        
-        if (!ctx.chat?.id) {
-            throw new Error('Chat context required for setup actions');
-        }
-        
-        const chatId = ctx.chat.id;
-        
+    private async handleExistingSetup(ctx: BotContext, _config: GroupConfig): Promise<void> {
         const message = 
-            "⚙️ **Group Already Configured**\n\n" +
-            "This group is already set up for support tickets!\n\n" +
-            `**Current Configuration:**\n` +
-            `• Customer: ${config.customerName}\n` +
-            `• Customer ID: ${config.customerId}\n` +
-            `• Configured: ${setupDate}\n` +
-            `• Setup By: Admin #${config.setupBy}\n\n` +
-            "**Available Actions:**";
+            "✅ **Group Already Configured**\n\n" +
+            "This group is ready for support tickets! Users can create tickets with `/support`.";
 
         await ctx.reply(message, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: "🔄 Reconfigure", callback_data: `setup_reconfigure_${chatId}` },
-                        { text: "👁️ View Details", callback_data: `setup_details_${chatId}` }
-                    ],
-                    [
-                        { text: "📝 Edit Templates", callback_data: `setup_templates_${chatId}` },
-                        { text: "❌ Remove Setup", callback_data: `setup_remove_${chatId}` }
-                    ]
-                ]
-            }
+            parse_mode: 'Markdown'
         });
     }
 
