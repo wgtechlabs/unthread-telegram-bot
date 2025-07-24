@@ -2,15 +2,7 @@
  * Admin Commands - Complete Implementation
  * 
  * Handles admin-specific commands including activation, setup, and templates
- * following Clean Code principles and SOLID                 "🎯 **Ready to Use:**\n" +
-            "• Users can create tickets with `/support`\n" +
-            "• Templates are active and working\n" +
-            "• All notifications are enabled\n\n" +
-            "💡 *Use `/templates` to customize messages or contact an admin for configuration changes.*";   "🎯 **Ready to Use:**\n" +
-            "• Users can create tickets with `/support`\n" +
-            "• Templates are active and working\n" +
-            "• All notifications are enabled\n\n" +
-            "💡 *Use `/templates` to customize messages or contact an admin for configuration changes.*";n.
+ * following Clean Code principles and SOLID design patterns.
  * 
  * @author Waren Gonzaga, WG Technology Labs
  */
