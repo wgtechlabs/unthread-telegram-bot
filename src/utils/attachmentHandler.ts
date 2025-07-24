@@ -543,27 +543,6 @@ interface PerformanceContext {
 }
 
 /**
- * Enhanced error class with attachment processing context
- */
-class AttachmentError extends Error {
-    public readonly code: AttachmentProcessingError;
-    public readonly userMessage: string;
-    public readonly retryable: boolean;
-    public readonly context: Record<string, unknown>;
-    public readonly timestamp: number;
-
-    constructor(processingError: ProcessingError) {
-        super(processingError.message);
-        this.name = 'AttachmentError';
-        this.code = processingError.code;
-        this.userMessage = processingError.userMessage;
-        this.retryable = processingError.retryable;
-        this.context = processingError.context || {};
-        this.timestamp = processingError.timestamp;
-    }
-}
-
-/**
  * Phase 3.1 Performance monitoring wrapper
  */
 async function withPerformanceMonitoring<T>(
