@@ -18,6 +18,7 @@
  */
 
 import type { BotContext } from '../types/index.js';
+import { LogEngine } from '@wgtechlabs/log-engine';
 
 /**
  * Standard error context interface for consistent logging
@@ -156,6 +157,33 @@ export class ErrorContextBuilder {
     }
 
     /**
+     * Validates a key to prevent prototype pollution
+     * 
+     * @param key - The key to validate
+     * @returns True if the key is safe to use, false otherwise
+     */
+    private isSafeKey(key: string): boolean {
+        // List of dangerous prototype-related keys
+        const dangerousKeys = [
+            '__proto__',
+            'constructor',
+            'prototype',
+            'toString',
+            'valueOf',
+            'hasOwnProperty',
+            'isPrototypeOf',
+            'propertyIsEnumerable'
+        ];
+        
+        // Check if key is a string and not a dangerous prototype property
+        return typeof key === 'string' && 
+               key.length > 0 && 
+               !dangerousKeys.includes(key) &&
+               !key.startsWith('__') && 
+               !key.endsWith('__');
+    }
+
+    /**
      * Adds custom context properties
      * 
      * @param key - Property key
@@ -163,6 +191,17 @@ export class ErrorContextBuilder {
      * @returns This builder instance for method chaining
      */
     withCustom(key: string, value: unknown): this {
+        // Validate key to prevent prototype pollution
+        if (!this.isSafeKey(key)) {
+            LogEngine.warn('Attempted to set unsafe key in error context', {
+                attemptedKey: key,
+                keyType: typeof key,
+                reason: 'prototype_pollution_prevention'
+            });
+            return this;
+        }
+        
+        // Safe to assign after validation
         // eslint-disable-next-line security/detect-object-injection
         this.context[key] = value;
         return this;
@@ -175,7 +214,19 @@ export class ErrorContextBuilder {
      * @returns This builder instance for method chaining
      */
     withProperties(properties: Record<string, unknown>): this {
-        Object.assign(this.context, properties);
+        // Validate each key to prevent prototype pollution
+        for (const [key, value] of Object.entries(properties)) {
+            if (this.isSafeKey(key)) {
+                // eslint-disable-next-line security/detect-object-injection
+                this.context[key] = value;
+            } else {
+                LogEngine.warn('Skipped unsafe key in error context properties', {
+                    skippedKey: key,
+                    keyType: typeof key,
+                    reason: 'prototype_pollution_prevention'
+                });
+            }
+        }
         return this;
     }
 
