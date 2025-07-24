@@ -122,7 +122,7 @@ async function handleMediaGroupMessage(ctx: BotContext): Promise<boolean> {
     }
     
     const fileIds = extractFileAttachments(ctx);
-    if (fileIds.length === 0) {
+    if (fileIds.length === 0 || !fileIds[0]) {
         return false; // No attachments to process
     }
     
@@ -140,19 +140,9 @@ async function handleMediaGroupMessage(ctx: BotContext): Promise<boolean> {
     const replyToId = 'reply_to_message' in ctx.message && ctx.message.reply_to_message 
         ? ctx.message.reply_to_message.message_id 
         : undefined;
-    
-    // Additional validation to ensure we have a valid file ID
-    if (fileIds.length === 0 || !fileIds[0]) {
-        LogEngine.error('❌ No valid file IDs found for media group item', {
-            mediaGroupId,
-            messageId: ctx.message.message_id,
-            fileIdsLength: fileIds.length
-        });
-        return false;
-    }
         
     const item: MediaGroupItem = {
-        fileId: fileIds[0], // Each message in media group has one file - validated above
+        fileId: fileIds[0], // Safe: validated above that array has valid first element
         messageId: ctx.message.message_id,
         caption: getMessageText(ctx),
         timestamp: Date.now(),
