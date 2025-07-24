@@ -1,40 +1,7 @@
 /**
  * Unthread Telegram Bot - Database Connection Module
  * 
- * Provides secure Postgr        // Handle        // Handle pool errors
-        this.pool.on('error', (err: Error) => {
-            LogEngine.error('Unexpected error on idle client', {
-                error: err.message,
-                stack: err.stack
-            });
-        });
-        
-        StartupLogger.logDatabaseConnection({
-            maxConnections: 10,
-            sslEnabled: sslConfig !== false,
-            environment: isProduction ? 'production' : 'development',
-        });   
-        StartupLogger.logDatabaseConnection({
-            maxConnections: 10,
-            sslEnabled: sslConfig !== false,
-            environment: isProduction ? 'production' : 'development',
-        });        this.pool.on('error', (err: Error) => {
-            LogEngine.error('Unexpected error on idle client', {
-                error: err.message,
-                stack: err.stack
-            });
-        });
-        
-        StartupLogger.logDatabaseConnection({
-            maxConnections: 10,
-            sslEnabled: sslConfig !== false,
-            environment: isProduction ? 'production' : 'development',
-        }); StartupLogger.logDatabaseConnection({
-            maxConnections: 10,
-            sslEnabled: sslConfig !== false,
-            environment: isProduction ? 'production' : 'development',
-            provider: this.isRailwayEnvironment() ? 'Railway' : 'Unknown'
-        });connection with comprehensive SSL support 
+ * Provides secure PostgreSQL connection with comprehensive SSL support 
  * for the Unthread Telegram Bot project. Designed for cloud deployment on Railway
  * and other cloud providers requiring secure database connections.
  * 
@@ -52,7 +19,8 @@
  * 
  * Security Features:
  * - SSL certificate validation enabled by default in production
- * - Configurable SSL validation for development environments   * - Environment-aware SSL configuration to prevent MITM attacks
+ * - Configurable SSL validation for development environments
+ * - Environment-aware SSL configuration to prevent MITM attacks
  * - Secure connection string handling with validation
  * 
  * @author Waren Gonzaga, WG Technology Labs

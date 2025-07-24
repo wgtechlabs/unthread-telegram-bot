@@ -94,11 +94,38 @@ export function initializeLogConfig(): LogConfig {
   const env = process.env.NODE_ENV || 'development';
   const logLevel = process.env.LOG_LEVEL;
   
-  // Use LOG_LEVEL if specified and valid, otherwise use environment default
-  if (logLevel === 'development' || logLevel === 'production' || logLevel === 'debug') {
-    currentConfig = LOG_CONFIGS[logLevel];
-  } else if (env === 'development' || env === 'production' || env === 'debug') {
-    currentConfig = LOG_CONFIGS[env];
+  // Determine configuration safely
+  if (logLevel) {
+    // Handle standard log levels
+    if (logLevel === 'info') {
+      currentConfig = LOG_CONFIGS.development;
+    } else if (logLevel === 'warn' || logLevel === 'error') {
+      currentConfig = LOG_CONFIGS.production;
+    } else if (logLevel === 'debug') {
+      currentConfig = LOG_CONFIGS.debug;
+    }
+    // Handle direct config names
+    else if (logLevel === 'development') {
+      currentConfig = LOG_CONFIGS.development;
+    } else if (logLevel === 'production') {
+      currentConfig = LOG_CONFIGS.production;
+    }
+    // Fall back to environment
+    else if (env === 'development') {
+      currentConfig = LOG_CONFIGS.development;
+    } else if (env === 'production') {
+      currentConfig = LOG_CONFIGS.production;
+    } else if (env === 'debug') {
+      currentConfig = LOG_CONFIGS.debug;
+    } else {
+      currentConfig = LOG_CONFIGS.development;
+    }
+  } else if (env === 'development') {
+    currentConfig = LOG_CONFIGS.development;
+  } else if (env === 'production') {
+    currentConfig = LOG_CONFIGS.production;
+  } else if (env === 'debug') {
+    currentConfig = LOG_CONFIGS.debug;
   } else {
     currentConfig = LOG_CONFIGS.development;
   }

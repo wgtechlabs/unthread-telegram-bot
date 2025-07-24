@@ -155,10 +155,10 @@ export const setupCommand = createCommandExecutor('setup');
 export const templatesCommand = createCommandExecutor('templates');
 
 // Legacy processor functions that now use the clean architecture
-export const processSupportConversation = createProcessorExecutor('processConversation', 'Support conversation processing');
+export const processSupportConversation = createProcessorExecutor('processSupportConversation', 'Support conversation processing');
 export const handleCallbackQuery = createProcessorExecutor('processCallback', 'Callback query handling');
-export const processSetupTextInput = createProcessorExecutor('processConversation', 'Setup text input processing');
-export const processTemplateEditInput = createProcessorExecutor('processConversation', 'Template edit input processing');
+export const processSetupTextInput = createProcessorExecutor('processSetupTextInput', 'Setup text input processing');
+export const processTemplateEditInput = createProcessorExecutor('processTemplateEditInput', 'Template edit input processing');
 
 // Additional legacy compatibility functions with void return type
 export const handleTemplateEditCallback = createCommandExecutor('processCallback', {
