@@ -833,30 +833,79 @@ export async function performSessionCleanup(): Promise<number> {
   }
 }
 
+// Module-level variable to track the active session cleanup interval
+let activeCleanupInterval: NodeJS.Timeout | undefined = undefined;
+
 /**
  * Starts a background task that periodically removes expired setup sessions every minute.
+ * 
+ * Prevents multiple intervals by checking for existing cleanup tasks before creating new ones.
+ * If an interval is already running, it will be cleared before starting a new one.
  *
  * @returns The interval ID for the scheduled cleanup task
  */
 export function startSessionCleanupTask(): NodeJS.Timeout {
+  // Check if cleanup interval is already running
+  if (activeCleanupInterval) {
+    LogEngine.warn('Session cleanup task already running, clearing existing interval before starting new one', {
+      existingInterval: 'cleared',
+      timestamp: new Date().toISOString()
+    });
+    clearInterval(activeCleanupInterval);
+    activeCleanupInterval = undefined;
+  }
+
   LogEngine.info('Starting session cleanup task', {
     interval: '60 seconds',
     timestamp: new Date().toISOString()
   });
 
-  return setInterval(async () => {
+  activeCleanupInterval = setInterval(async () => {
     await performSessionCleanup();
   }, 60 * 1000); // Run every minute
+
+  return activeCleanupInterval;
 }
 
 /**
  * Stops the periodic session cleanup task associated with the given interval ID.
+ * 
+ * Also resets the module-level interval tracking to prevent resource leaks.
  *
  * @param intervalId - The interval identifier returned by `setInterval` for the cleanup task
  */
 export function stopSessionCleanupTask(intervalId: NodeJS.Timeout): void {
   clearInterval(intervalId);
+  
+  // Reset the module-level interval tracking if this matches the active interval
+  if (activeCleanupInterval === intervalId) {
+    activeCleanupInterval = undefined;
+  }
+  
   LogEngine.info('Session cleanup task stopped', {
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    intervalCleared: true
   });
+}
+
+/**
+ * Force stops any active session cleanup interval and resets the module state.
+ * 
+ * Useful for cleanup scenarios where the interval ID might not be available.
+ * This is a safety function to prevent resource leaks.
+ */
+export function forceStopSessionCleanupTask(): void {
+  if (activeCleanupInterval) {
+    clearInterval(activeCleanupInterval);
+    activeCleanupInterval = undefined;
+    
+    LogEngine.info('Active session cleanup task force stopped', {
+      timestamp: new Date().toISOString(),
+      reason: 'force cleanup'
+    });
+  } else {
+    LogEngine.debug('No active session cleanup task to stop', {
+      timestamp: new Date().toISOString()
+    });
+  }
 }
