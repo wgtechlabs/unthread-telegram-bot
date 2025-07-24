@@ -1323,12 +1323,17 @@ async function processTicketMessage(ticketInfo: TicketInfo, telegramUserId: numb
  * The message is updated to show a checkmark for success or an error icon for failure, and is automatically removed after 3 seconds (success) or 5 seconds (error).
  */
 async function updateStatusMessage(ctx: BotContext, statusMsg: StatusMessage, isSuccess: boolean, hasAttachments?: boolean): Promise<void> {
+    if (!ctx.chat) {
+        LogEngine.error('Chat context is null during status message update');
+        return;
+    }
+    
     if (isSuccess) {
         // Update status message to success
         const successMessage = hasAttachments ? '✅ Files uploaded and added!' : '✅ Added!';
         await safeEditMessageText(
             ctx,
-            ctx.chat!.id,
+            ctx.chat.id,
             statusMsg.message_id,
             undefined,
             successMessage
@@ -1336,14 +1341,16 @@ async function updateStatusMessage(ctx: BotContext, statusMsg: StatusMessage, is
 
         // Delete status message after 3 seconds
         setTimeout(() => {
-            ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+            if (ctx.chat) {
+                ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+            }
         }, 3000);
     } else {
         // Update status message to error
         const errorMessage = hasAttachments ? '❌ Error uploading files!' : '❌ Error!';
         await safeEditMessageText(
             ctx,
-            ctx.chat!.id,
+            ctx.chat.id,
             statusMsg.message_id,
             undefined,
             errorMessage
@@ -1351,7 +1358,9 @@ async function updateStatusMessage(ctx: BotContext, statusMsg: StatusMessage, is
 
         // Delete status message after 5 seconds
         setTimeout(() => {
-            ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+            if (ctx.chat) {
+                ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+            }
         }, 5000);
     }
 }
@@ -1410,9 +1419,13 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: AgentM
                 });
                 
                 // Update status message to prompt for email
+                if (!ctx.chat) {
+                    LogEngine.error('Chat context is null during email required message update');
+                    return true;
+                }
                 await safeEditMessageText(
                     ctx,
-                    ctx.chat!.id,
+                    ctx.chat.id,
                     statusMsg.message_id,
                     undefined,
                     '📧 **Email Required**\n\n' +
@@ -1491,10 +1504,14 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: AgentM
             }
             
             // Update status message to success
+            if (!ctx.chat) {
+                LogEngine.error('Chat context is null during success message update');
+                return true;
+            }
             const successMessage = hasAttachments ? '✅ Files uploaded and sent!' : '✅ Sent!';
             await safeEditMessageText(
                 ctx,
-                ctx.chat!.id,
+                ctx.chat.id,
                 statusMsg.message_id,
                 undefined,
                 successMessage
@@ -1502,7 +1519,9 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: AgentM
 
             // Delete status message after 3 seconds
             setTimeout(() => {
-                ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+                if (ctx.chat) {
+                    ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+                }
             }, 3000);
 
             LogEngine.info('Sent reply to agent', {
@@ -1528,10 +1547,14 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: AgentM
             });
             
             // Update status message to error
+            if (!ctx.chat) {
+                LogEngine.error('Chat context is null during error message update');
+                return true;
+            }
             const errorMessage = hasAttachments ? '❌ Error uploading files!' : '❌ Error!';
             await safeEditMessageText(
                 ctx,
-                ctx.chat!.id,
+                ctx.chat.id,
                 statusMsg.message_id,
                 undefined,
                 errorMessage
@@ -1539,7 +1562,9 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: AgentM
 
             // Delete status message after 5 seconds
             setTimeout(() => {
-                ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+                if (ctx.chat) {
+                    ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+                }
             }, 5000);
             
             return true;
