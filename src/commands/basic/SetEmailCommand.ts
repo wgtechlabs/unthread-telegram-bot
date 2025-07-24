@@ -24,10 +24,10 @@ export class SetEmailCommand extends BaseCommand {
     readonly metadata: CommandMetadata = {
         name: 'setemail',
         description: 'Set or update your email address for support tickets',
-        usage: '/setemail [email]',
+        usage: '/setemail <email>',
         examples: [
-            '/setemail - Start interactive email setup',
-            '/setemail user@example.com - Set email directly'
+            '/setemail waren@wgtechlabs.com - Set your email address',
+            '/setemail opensource@warengonzaga.com - Update your email address'
         ],
         requiresSetup: false
     };
@@ -49,8 +49,8 @@ export class SetEmailCommand extends BaseCommand {
             // Direct email setting
             await this.setEmailDirectly(ctx, userId, providedEmail);
         } else {
-            // Interactive email setup
-            await this.startInteractiveSetup(ctx, userId);
+            // Show usage instructions
+            await this.showUsageInstructions(ctx, userId);
         }
     }
 
@@ -61,7 +61,7 @@ export class SetEmailCommand extends BaseCommand {
             
             if (!validation.isValid) {
                 await ctx.reply(
-                    `❌ **Invalid Email Format**\n\n${escapeMarkdown(validation.error || 'Please provide a valid email address.')}\n\n**Usage:** \`/setemail user@example.com\``,
+                    `❌ **Invalid Email Format**\n\n${escapeMarkdown(validation.error || 'Please provide a valid email address.')}\n\n**Usage:** \`/setemail waren@wgtechlabs.com\``,
                     { parse_mode: 'Markdown' }
                 );
                 return;
@@ -152,12 +152,12 @@ export class SetEmailCommand extends BaseCommand {
         }
     }
 
-    private async startInteractiveSetup(ctx: BotContext, userId: number): Promise<void> {
+    private async showUsageInstructions(ctx: BotContext, userId: number): Promise<void> {
         try {
-            // Get current email preferences
+            // Get current email preferences to show context
             const currentPrefs = await getUserEmailPreferences(userId);
             
-            let message = "📧 **Email Address Setup**\n\n";
+            let message = "📧 **Set Email Address**\n\n";
             
             if (currentPrefs) {
                 const displayEmail = formatEmailForDisplay(currentPrefs.email, currentPrefs.isDummy);
@@ -166,35 +166,29 @@ export class SetEmailCommand extends BaseCommand {
                 if (currentPrefs.isDummy) {
                     message += "💡 You're currently using a temporary email. Setting a real email will help our support team contact you directly.\n\n";
                 }
-                
-                message += "**To update your email:**\n";
-            } else {
-                message += "**To set your email address:**\n";
             }
             
-            message += "• Reply with your email address\n";
-            message += "• Use `/setemail user@example.com` for quick setup\n";
-            message += "• Use `/viewemail` to see current settings\n\n";
-            message += "*Please enter your email address:*";
+            message += "**Usage:**\n";
+            message += "`/setemail your@email.com`\n\n";
+            message += "**Examples:**\n";
+            message += "• `/setemail waren@wgtechlabs.com`\n";
+            message += "• `/setemail opensource@warengonzaga.com`\n\n";
+            message += "💡 *Use `/viewemail` to see your current email settings.*";
 
             await ctx.reply(message, {
-                parse_mode: 'Markdown',
-                reply_markup: {
-                    force_reply: true,
-                    input_field_placeholder: "your@email.com"
-                }
+                parse_mode: 'Markdown'
             });
 
-            LogEngine.info('User started interactive email setup', { userId });
+            LogEngine.info('User viewed email setup instructions', { userId });
 
         } catch (error) {
-            LogEngine.error('Error in interactive email setup', {
+            LogEngine.error('Error showing email setup instructions', {
                 error: error instanceof Error ? error.message : 'Unknown error',
                 userId
             });
             
             await ctx.reply(
-                "❌ **Error starting email setup**\n\nPlease try again later or contact an administrator.",
+                "❌ **Error showing instructions**\n\nPlease try again later or contact an administrator.",
                 { parse_mode: 'Markdown' }
             );
         }

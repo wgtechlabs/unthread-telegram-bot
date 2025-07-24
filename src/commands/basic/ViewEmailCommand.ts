@@ -71,19 +71,12 @@ export class ViewEmailCommand extends BaseCommand {
             "You haven't set an email address yet. When you create support tickets, a temporary email will be generated automatically.\n\n" +
             "**Available actions:**\n" +
             "• `/setemail` - Start interactive email setup\n" +
-            "• `/setemail user@example.com` - Set email directly\n" +
+            "• `/setemail waren@wgtechlabs.com` - Set email directly\n" +
             "• `/support` - Create a ticket (will prompt for email if needed)\n\n" +
             "💡 *Setting a real email helps our support team contact you directly and improves your support experience.*";
 
         await ctx.reply(message, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: "📧 Set Email Now", callback_data: "email_setup_start" }
-                    ]
-                ]
-            }
+            parse_mode: 'Markdown'
         });
         
         LogEngine.info('Showed no email message to user', { userId: ctx.from?.id });
@@ -104,7 +97,7 @@ export class ViewEmailCommand extends BaseCommand {
             message += "• Our support team can still help you\n";
             message += "• You can upgrade to a real email anytime\n\n";
             message += "**Recommended actions:**\n";
-            message += "• `/setemail user@example.com` - Set real email\n";
+            message += "• `/setemail opensource@warengonzaga.com` - Set real email\n";
             message += "• Keep temporary email if you prefer privacy\n";
         } else {
             message += `🏷️ **Type:** Personal email\n\n`;
@@ -113,24 +106,12 @@ export class ViewEmailCommand extends BaseCommand {
             message += "• Ticket updates and notifications\n";
             message += "• Better support experience\n\n";
             message += "**Available actions:**\n";
-            message += "• `/setemail newuser@example.com` - Update email\n";
+            message += "• `/setemail waren@wgtechlabs.com` - Update email\n";
             message += "• Email is automatically used in new tickets\n";
         }
 
-        const buttons = emailPrefs.isDummy 
-            ? [
-                [{ text: "📧 Set Real Email", callback_data: "email_setup_real" }],
-                [{ text: "🔄 Generate New Temporary", callback_data: "email_setup_new_temp" }]
-              ]
-            : [
-                [{ text: "📝 Update Email", callback_data: "email_setup_update" }]
-              ];
-
         await ctx.reply(message, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: buttons
-            }
+            parse_mode: 'Markdown'
         });
 
         LogEngine.info('User viewed email settings', {
