@@ -410,7 +410,15 @@ export async function updateDmSetupSessionStep(
 export async function addDmSessionMessageId(sessionId: string, messageId: number): Promise<boolean> {
   try {
     const session = await BotsStore.getDmSetupSession(sessionId);
-    if (!session) {return false;}
+    if (!session) {
+      LogEngine.warn('DM setup session not found when adding message ID', {
+        sessionId,
+        messageId,
+        operation: 'addDmSessionMessageId',
+        reason: 'session_not_found'
+      });
+      return false;
+    }
 
     const messageIds = session.messageIds || [];
     messageIds.push(messageId);
