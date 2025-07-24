@@ -71,6 +71,17 @@ export function truncateText(text: string, maxLength: number = 100): string {
 }
 
 /**
+ * Escapes special RegExp characters in template keys to prevent RegExp injection
+ * 
+ * @param key - The template key to escape for safe RegExp construction
+ * @returns Key with RegExp special characters escaped
+ */
+function escapeRegExpKey(key: string): string {
+    // Escape special RegExp characters: . * + ? ^ $ { } ( ) | [ ] \
+    return key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
  * Creates a safe Markdown message with escaped user content
  * 
  * @param template - The message template with placeholders
@@ -93,7 +104,8 @@ export function createSafeMarkdownMessage(
     
     for (const [key, value] of Object.entries(replacements)) {
         const escapedValue = escapeMarkdown(value || '');
-        message = message.replace(new RegExp(`\\{${key}\\}`, 'g'), escapedValue);
+        const escapedKey = escapeRegExpKey(key);
+        message = message.replace(new RegExp(`\\{${escapedKey}\\}`, 'g'), escapedValue);
     }
     
     return message;
