@@ -14,6 +14,8 @@ import { isAdminUser } from '../config/env.js';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import type { AdminProfile, DmSetupSession, SetupSession } from '../sdk/types.js';
 import { v4 as uuidv4 } from 'uuid';
+import type { Telegraf } from 'telegraf';
+import type { BotContext } from '../types/index.js';
 
 /**
  * Type alias for a function that sends a message to a specific chat ID
@@ -546,7 +548,7 @@ export async function getActivatedAdmins(groupChatId?: number): Promise<AdminPro
 async function sendNotificationToAdmin(
   adminProfile: AdminProfile, 
   messageText: string,
-  bot: any
+  bot: Telegraf<BotContext>
 ): Promise<boolean> {
   try {
     if (!adminProfile.dmChatId) {
@@ -556,9 +558,9 @@ async function sendNotificationToAdmin(
       return false;
     }
 
-    await bot.sendMessage(adminProfile.dmChatId, messageText, { 
+    await bot.telegram.sendMessage(adminProfile.dmChatId, messageText, { 
       parse_mode: 'HTML',
-      disable_web_page_preview: true 
+      link_preview_options: { is_disabled: true }
     });
     
     LogEngine.info('Notification sent to admin', {
@@ -594,7 +596,7 @@ export async function notifyAdminsOfConfigChange(
   initiatingAdminId: number,
   changeType: string,
   changeDetails: string,
-  bot: any,
+  bot: Telegraf<BotContext>,
   groupTitle?: string
 ): Promise<{ success: number; failed: number; skipped: number }> {
   try {
@@ -687,7 +689,7 @@ export async function notifyAdminsOfTemplateChange(
   templateType: string,
   action: 'created' | 'updated' | 'deleted' | 'activated',
   templateName: string,
-  bot: any,
+  bot: Telegraf<BotContext>,
   groupTitle?: string
 ): Promise<{ success: number; failed: number; skipped: number }> {
   const changeDetails = `Template "${templateName}" (${templateType}) was ${action}`;
@@ -714,7 +716,7 @@ export async function notifyAdminsOfTemplateChange(
 export async function notifyAdminsOfSetupCompletion(
   groupChatId: number,
   completingAdminId: number,
-  bot: any,
+  bot: Telegraf<BotContext>,
   groupTitle?: string
 ): Promise<{ success: number; failed: number; skipped: number }> {
   const changeDetails = 'Group setup and configuration completed';
@@ -738,7 +740,7 @@ export async function reportNotificationFailures(
   groupChatId: number,
   failedCount: number,
   changeType: string,
-  bot: any
+  bot: Telegraf<BotContext>
 ): Promise<void> {
   if (failedCount === 0) {return;}
 
@@ -751,11 +753,12 @@ export async function reportNotificationFailures(
       if (admin.dmChatId) {
         try {
           // Non-intrusive check: verify chat accessibility without sending visible messages
-          await bot.api.getChat(admin.dmChatId);
+          await bot.telegram.getChat(admin.dmChatId);
           
           // Additional check: verify bot can send messages by checking chat permissions
           // This doesn't send a message but checks if the chat allows messaging
-          const chatMember = await bot.api.getChatMember(admin.dmChatId, bot.botInfo.id);
+          const botInfo = await bot.telegram.getMe();
+          const chatMember = await bot.telegram.getChatMember(admin.dmChatId, botInfo.id);
           const canSendMessages = chatMember.status !== 'kicked' && chatMember.status !== 'left';
           
           if (canSendMessages) {
