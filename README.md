@@ -1,217 +1,16 @@
 # Unthread Telegram Bot 🎫🤖 [![made by](https://img.shields.io/badge/made%20by-WG%20Tech%20Labs-0060a0.svg?logo=github&longCache=true&labelColor=181717&style=flat-square)](https://github.com/wgtechlabs) [![official](https://img.shields.io/badge/official-Unthread%20Extension-FF5241.svg?logo=telegram&logoColor=white&labelColor=181717&style=flat-square)](https://unthread.com)
 
-[![release workflow](https://img.shields.io/github/actions/workflow/status/wgtechlabs/**Technical Reference:** [Webhook Server Platform Detection Logic](https://github.com/wgtechlabs/unthread-webhook-server/blob/main/src/services/webhookService.ts#L118-L144)
+[![release workflow](https://img.shields.io/github/actions/workflow/status/wgtechlabs/unthread-telegram-bot/release.yml?style=flat-square&logo=github&label=release&labelColor=181717)](https://github.com/wgtechlabs/unthread-telegram-bot/actions/workflows/release.yml) [![build workflow](https://img.shields.io/github/actions/workflow/status/wgtechlabs/unthread-telegram-bot/build.yml?branch=dev&style=flat-square&logo=github&labelColor=181717&label=build)](https://github.com/wgtechlabs/unthread-telegram-bot/actions/workflows/build.yml) [![sponsors](https://img.shields.io/badge/sponsor-%E2%9D%A4-%23db61a2.svg?&logo=github&logoColor=white&labelColor=181717&style=flat-square)](https://github.com/sponsors/wgtechlabs) [![version](https://img.shields.io/github/release/wgtechlabs/unthread-telegram-bot.svg?logo=github&labelColor=181717&color=default&style=flat-square&label=version)](https://github.com/wgtechlabs/unthread-telegram-bot/releases) [![star](https://img.shields.io/github/stars/wgtechlabs/unthread-telegram-bot.svg?&logo=github&labelColor=181717&color=yellow&style=flat-square)](https://github.com/wgtechlabs/unthread-telegram-bot/stargazers) [![license](https://img.shields.io/github/license/wgtechlabs/unthread-telegram-bot.svg?&logo=github&labelColor=181717&style=flat-square)](https://github.com/wgtechlabs/unthread-telegram-bot/blob/main/license)
 
-## 🔄 Migration Guide
+[![banner](https://raw.githubusercontent.com/wgtechlabs/unthread-telegram-bot/main/.github/assets/repo_banner.jpg)](https://github.com/wgtechlabs/unthread-telegram-bot)
 
-### Upgrading from v1.0.0-beta.x to v1.0.0-rc1
+**Official Unthread Extension** - The Unthread Telegram Bot is the official integration that connects your customer and partner Telegram chats with Unthread's comprehensive ticket management system. Create and manage support tickets directly within dedicated Telegram groups, with real-time bidirectional communication between your team and clients.
 
-If you're upgrading from an earlier version (main branch), there are **important breaking changes** that require environment configuration updates. This guide will help you migrate smoothly.
+This bot is designed for businesses managing customer support through private Telegram groups or dedicated partner channels - optimized for professional support workflows rather than public community groups.
 
-#### ⚠️ Breaking Changes Summary
+> **🔄 Upgrading from v1.0.0-beta.x?** Check our comprehensive [Migration Guide](./MIGRATION.md) for step-by-step instructions on breaking changes and new features.
 
-**New Required Environment Variables:**
-
-- `ADMIN_USERS` - Telegram user IDs for bot administration (CRITICAL)
-- `WEBHOOK_REDIS_URL` - Now required for agent responses (was optional)
-
-**Variable Changes:**
-
-- `COMPANY_NAME` → `MY_COMPANY_NAME` (renamed)
-- Enhanced validation prevents placeholder values
-
-#### 📋 Pre-Migration Checklist
-
-Before starting the migration, gather these details:
-
-1. **Get Your Telegram User ID** *(NEW REQUIREMENT)*
-   - Message [@userinfobot](https://t.me/userinfobot) on Telegram
-   - Copy your numeric user ID (e.g., `123456789`)
-   - **CRITICAL**: Without this, you cannot configure bot groups!
-
-2. **Get Your Bot Username** *(OPTIONAL - Performance Boost)*
-   - Check your bot's profile or @BotFather settings
-   - Copy the username without @ symbol (e.g., `mycompanybot`)
-   - **BENEFIT**: Eliminates 200+ API calls, makes deep links instant
-
-3. **Backup Current Configuration**
-
-   ```bash
-   # Backup your current .env file
-   cp .env .env.backup
-   ```
-
-#### 🚀 Migration Steps
-
-##### Step 1: Update Environment Variables
-
-Add these **required** variables to your existing `.env` file:
-
-```bash
-# 🚨 CRITICAL - Add these NEW REQUIRED variables:
-ADMIN_USERS=123456789,987654321  # Your Telegram user ID(s) from @userinfobot
-WEBHOOK_REDIS_URL=redis://redis-webhook:6379  # Ensure this is properly set
-
-# 🚀 OPTIONAL - Performance optimization:
-BOT_USERNAME=your_bot_username  # Your bot's username (without @)
-
-# 🔄 RENAME - Update existing variable:
-MY_COMPANY_NAME=Your Company Name  # Was previously COMPANY_NAME
-
-# ✨ NEW OPTIONAL - Email domain configuration:
-DUMMY_EMAIL_DOMAIN=telegram.user  # Default email domain for auto-generated emails
-```
-
-##### Step 2: Remove Old Variables
-
-```bash
-# Remove this old variable (now renamed):
-# COMPANY_NAME=...  # Remove this line
-```
-
-##### Step 3: Validate Configuration
-
-The new version includes enhanced validation. Ensure no placeholder values remain:
-
-```bash
-# ❌ These will be REJECTED:
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
-ADMIN_USERS=your_telegram_user_id_here
-MY_COMPANY_NAME=your_company_name_here
-
-# ✅ Use actual values:
-TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
-ADMIN_USERS=123456789,987654321
-MY_COMPANY_NAME=Acme Corporation
-```
-
-#### 🐳 Docker & Railway Specific Migration
-
-**For Docker Users:**
-
-```bash
-# Ensure both Redis services are running:
-PLATFORM_REDIS_URL=redis://redis-platform:6379
-WEBHOOK_REDIS_URL=redis://redis-webhook:6379  # Now REQUIRED
-
-# Update docker-compose if needed
-docker-compose down
-docker-compose up -d
-```
-
-**For Railway Users:**
-
-```bash
-# Update Railway environment variables:
-ADMIN_USERS=123456789,987654321
-BOT_USERNAME=your_bot_username
-MY_COMPANY_NAME=Your Company Name
-WEBHOOK_REDIS_URL="${{Redis.REDIS_URL}}"  # If using Railway Redis
-```
-
-#### 🧪 Testing Your Migration
-
-##### Step 1: Test Bot Startup
-
-```bash
-# Check if bot starts without errors:
-yarn start
-
-# Look for these success messages:
-# ✅ Environment configuration validated successfully
-# ✅ Configured 1 bot administrator(s)
-# 🚀 Running in production mode
-```
-
-##### Step 2: Test Admin Access
-
-1. Start a private chat with your bot
-2. Send `/activate` command
-3. Should receive: "✅ Admin privileges activated!"
-
-##### Step 3: Test Group Setup
-
-1. Add bot to a test group
-2. Run `/setup` command in the group
-3. Complete setup in private DM
-
-##### Step 4: Test Support Flow
-
-1. Create a test ticket with `/support`
-2. Verify email collection works
-3. Check agent response delivery
-
-#### ❌ Common Migration Issues
-
-##### Issue 1: Bot Won't Start
-
-```bash
-Error: Missing required environment variables: ADMIN_USERS
-```
-
-**Solution**: Add your Telegram user ID to `ADMIN_USERS`
-
-##### Issue 2: Placeholder Values Detected
-
-```bash
-Error: ADMIN_USERS contains placeholder values
-```
-
-**Solution**: Replace with actual numeric user IDs
-
-##### Issue 3: Agent Responses Not Working
-
-```bash
-Error: WEBHOOK_REDIS_URL connection failed
-```
-
-**Solution**: Ensure Redis is running and URL is correct
-
-##### Issue 4: Admin Commands Not Working
-
-```bash
-Error: Insufficient permissions
-```
-
-**Solution**: Use `/activate` command in private chat first
-
-#### 🔧 Rollback Plan
-
-If migration fails, you can quickly rollback:
-
-```bash
-# Restore backup configuration:
-cp .env.backup .env
-
-# Or use git to revert:
-git checkout main  # Switch back to main branch
-```
-
-#### ✨ New Features After Migration
-
-Once successfully migrated, you'll have access to:
-
-- **🛡️ Enhanced Security**: Admin-only bot configuration
-- **⚡ Performance Boost**: 200x faster with BOT_USERNAME
-- **📧 Profile Management**: User email preferences with `/profile`
-- **🎨 Template System**: Customizable message templates
-- **📊 Advanced Logging**: Enterprise-grade logging with PII redaction
-- **🔍 Better Diagnostics**: Comprehensive error handling and troubleshooting
-
-#### 📞 Migration Support
-
-Need help with migration?
-
-- 📖 **Documentation**: Check our [Contributing Guide](./CONTRIBUTING.md)
-- 💬 **Community**: Join [GitHub Discussions](https://github.com/wgtechlabs/unthread-telegram-bot/discussions)
-- 🐛 **Issues**: Report problems via [GitHub Issues](https://github.com/wgtechlabs/unthread-telegram-bot/issues)
-
-**Migration Verification:**
-After successful migration, your bot will have enhanced security, better performance, and new enterprise features while maintaining full backward compatibility for your users.
-
-## 💬 Community Discussions
-
-Join our community discussions to get help, share ideas, and connect with other users:
+## 🤗 Special Thanks
 
 ### 🤝 Partner Organizations
 
@@ -357,19 +156,21 @@ yarn docker:build:sbom
    **Option C: Manual Installation**
 
    ```bash
+   # Prerequisites: Node.js >=20.0.0 and Yarn >=1.22.22
+   node --version  # Should be v20.0.0 or higher
+   yarn --version  # Should be 1.22.22 or higher
+
    # Clone and setup
    git clone https://github.com/wgtechlabs/unthread-telegram-bot.git
    cd unthread-telegram-bot
    yarn install
    cp .env.example .env
-   
+
    # Edit .env with ALL required values including ADMIN_USERS
    # ADMIN_USERS supports multiple user IDs: ADMIN_USERS=123456789,987654321
    # Then start the bot
    yarn start
-   ```
-
-5. **Test Your Bot**
+   ```5. **Test Your Bot**
    - Add your bot to a Telegram group
    - Send `/start` to see if it responds
    - Try creating a ticket with `/support`
@@ -393,6 +194,9 @@ Edit your `.env` file with these required values:
 # Required - Get from BotFather
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 
+# Required - Admin Users (CRITICAL for bot configuration)
+ADMIN_USERS=123456789,987654321  # Your Telegram user ID(s) from @userinfobot
+
 # Optional but HIGHLY RECOMMENDED - Your bot's username for 200x performance boost
 BOT_USERNAME=your_bot_username  # Eliminates API calls for deep links and commands
 
@@ -408,10 +212,19 @@ POSTGRES_URL=postgresql://postgres:postgres@postgres-platform:5432/unthread_tele
 WEBHOOK_REDIS_URL=redis://redis-webhook:6379  # Critical for agent response delivery
 PLATFORM_REDIS_URL=redis://redis-platform:6379  # Required for bot state management
 
+# Optional - Company and email configuration
+MY_COMPANY_NAME=Your Company Name  # Company name for ticket attribution
+DUMMY_EMAIL_DOMAIN=telegram.user  # Default email domain for auto-generated emails
+
 # Optional - Debug and logging configuration
 LOG_LEVEL=info  # Set to 'debug' for detailed troubleshooting
 VERBOSE_LOGGING=false  # Set to 'true' for verbose webhook logging
+
+# Optional - Database SSL validation (set to false for local development)
+DATABASE_SSL_VALIDATE=true  # Set to false for local PostgreSQL connections
 ```
+
+> **⚠️ CRITICAL**: The `ADMIN_USERS` variable is required for bot configuration. Without it, no one can set up group chats or manage the bot. Get your Telegram user ID from [@userinfobot](https://t.me/userinfobot).
 
 > **💡 Pro Tip**: The Docker setup includes PostgreSQL and Redis automatically - no separate installation needed!
 
@@ -654,9 +467,9 @@ The bot implements a sophisticated username format that ensures seamless integra
 
 ```typescript
 // Format Priority for Unthread Dashboard Display:
-"Emily (@emilynatividad)"  // ✅ Best UX - detected as Telegram platform
-"@emilynatividad"          // ✅ Minimal - detected as Telegram platform  
-"Emily Smith"              // ✅ Fallback - detected as Dashboard origin
+"Waren (@warengonzaga)"    // ✅ Best UX - detected as Telegram platform
+"@warengonzaga"            // ✅ Minimal - detected as Telegram platform  
+"Waren Gonzaga"            // ✅ Fallback - detected as Dashboard origin
 "User 784879963"           // ✅ Legacy - detected as Dashboard origin
 ```
 
@@ -668,196 +481,6 @@ The bot implements a sophisticated username format that ensures seamless integra
 - ✅ **Event Routing**: Accurate downstream processing and workflow automation
 
 **Technical Reference:** [Webhook Server Platform Detection Logic](https://github.com/wgtechlabs/unthread-webhook-server/blob/main/src/services/webhookService.ts#L118-L144)
-
-## 🚀 Migration Guide
-
-### **Upgrading from v1.0.0-beta.x to v1.0.0-rc1**
-
-If you're upgrading from an earlier version (main branch), there are **important breaking changes** that require environment configuration updates. This guide will help you migrate smoothly.
-
-#### **⚠️ Breaking Changes Summary**
-
-**New Required Environment Variables:**
-- `ADMIN_USERS` - Telegram user IDs for bot administration (CRITICAL)
-- `WEBHOOK_REDIS_URL` - Now required for agent responses (was optional)
-
-**Variable Changes:**
-- `COMPANY_NAME` → `MY_COMPANY_NAME` (renamed)
-- Enhanced validation prevents placeholder values
-
-#### **📋 Pre-Migration Checklist**
-
-Before starting the migration, gather these details:
-
-1. **Get Your Telegram User ID** *(NEW REQUIREMENT)*
-   - Message [@userinfobot](https://t.me/userinfobot) on Telegram
-   - Copy your numeric user ID (e.g., `123456789`)
-   - **CRITICAL**: Without this, you cannot configure bot groups!
-
-2. **Get Your Bot Username** *(OPTIONAL - Performance Boost)*
-   - Check your bot's profile or @BotFather settings
-   - Copy the username without @ symbol (e.g., `mycompanybot`)
-   - **BENEFIT**: Eliminates 200+ API calls, makes deep links instant
-
-3. **Backup Current Configuration**
-   ```bash
-   # Backup your current .env file
-   cp .env .env.backup
-   ```
-
-#### **🚀 Migration Steps**
-
-**Step 1: Update Environment Variables**
-
-Add these **required** variables to your existing `.env` file:
-
-```bash
-# 🚨 CRITICAL - Add these NEW REQUIRED variables:
-ADMIN_USERS=123456789,987654321  # Your Telegram user ID(s) from @userinfobot
-WEBHOOK_REDIS_URL=redis://redis-webhook:6379  # Ensure this is properly set
-
-# 🚀 OPTIONAL - Performance optimization:
-BOT_USERNAME=your_bot_username  # Your bot's username (without @)
-
-# 🔄 RENAME - Update existing variable:
-MY_COMPANY_NAME=Your Company Name  # Was previously COMPANY_NAME
-
-# ✨ NEW OPTIONAL - Email domain configuration:
-DUMMY_EMAIL_DOMAIN=telegram.user  # Default email domain for auto-generated emails
-```
-
-**Step 2: Remove Old Variables**
-
-```bash
-# Remove this old variable (now renamed):
-# COMPANY_NAME=...  # Remove this line
-```
-
-**Step 3: Validate Configuration**
-
-The new version includes enhanced validation. Ensure no placeholder values remain:
-
-```bash
-# ❌ These will be REJECTED:
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
-ADMIN_USERS=your_telegram_user_id_here
-MY_COMPANY_NAME=your_company_name_here
-
-# ✅ Use actual values:
-TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
-ADMIN_USERS=123456789,987654321
-MY_COMPANY_NAME=Acme Corporation
-```
-
-#### **🐳 Docker & Railway Specific Migration**
-
-**For Docker Users:**
-```bash
-# Ensure both Redis services are running:
-PLATFORM_REDIS_URL=redis://redis-platform:6379
-WEBHOOK_REDIS_URL=redis://redis-webhook:6379  # Now REQUIRED
-
-# Update docker-compose if needed
-docker-compose down
-docker-compose up -d
-```
-
-**For Railway Users:**
-```bash
-# Update Railway environment variables:
-ADMIN_USERS=123456789,987654321
-BOT_USERNAME=your_bot_username
-MY_COMPANY_NAME=Your Company Name
-WEBHOOK_REDIS_URL="${{Redis.REDIS_URL}}"  # If using Railway Redis
-```
-
-#### **🧪 Testing Your Migration**
-
-**Step 1: Test Bot Startup**
-```bash
-# Check if bot starts without errors:
-yarn start
-
-# Look for these success messages:
-# ✅ Environment configuration validated successfully
-# ✅ Configured 1 bot administrator(s)
-# 🚀 Running in production mode
-```
-
-**Step 2: Test Admin Access**
-1. Start a private chat with your bot
-2. Send `/activate` command
-3. Should receive: "✅ Admin privileges activated!"
-
-**Step 3: Test Group Setup**
-1. Add bot to a test group
-2. Run `/setup` command in the group
-3. Complete setup in private DM
-
-**Step 4: Test Support Flow**
-1. Create a test ticket with `/support`
-2. Verify email collection works
-3. Check agent response delivery
-
-#### **❌ Common Migration Issues**
-
-**Issue 1: Bot Won't Start**
-```bash
-Error: Missing required environment variables: ADMIN_USERS
-```
-**Solution**: Add your Telegram user ID to `ADMIN_USERS`
-
-**Issue 2: Placeholder Values Detected**
-```bash
-Error: ADMIN_USERS contains placeholder values
-```
-**Solution**: Replace with actual numeric user IDs
-
-**Issue 3: Agent Responses Not Working**
-```bash
-Error: WEBHOOK_REDIS_URL connection failed
-```
-**Solution**: Ensure Redis is running and URL is correct
-
-**Issue 4: Admin Commands Not Working**
-```bash
-Error: Insufficient permissions
-```
-**Solution**: Use `/activate` command in private chat first
-
-#### **🔧 Rollback Plan**
-
-If migration fails, you can quickly rollback:
-
-```bash
-# Restore backup configuration:
-cp .env.backup .env
-
-# Or use git to revert:
-git checkout main  # Switch back to main branch
-```
-
-#### **✨ New Features After Migration**
-
-Once successfully migrated, you'll have access to:
-
-- **🛡️ Enhanced Security**: Admin-only bot configuration
-- **⚡ Performance Boost**: 200x faster with BOT_USERNAME
-- **📧 Profile Management**: User email preferences with `/profile`
-- **🎨 Template System**: Customizable message templates
-- **📊 Advanced Logging**: Enterprise-grade logging with PII redaction
-- **🔍 Better Diagnostics**: Comprehensive error handling and troubleshooting
-
-#### **📞 Migration Support**
-
-Need help with migration? 
-
-- 📖 **Documentation**: Check our [Contributing Guide](./CONTRIBUTING.md)
-- 💬 **Community**: Join [GitHub Discussions](https://github.com/wgtechlabs/unthread-telegram-bot/discussions)
-- 🐛 **Issues**: Report problems via [GitHub Issues](https://github.com/wgtechlabs/unthread-telegram-bot/issues)
-
-**Migration Verification:**
-After successful migration, your bot will have enhanced security, better performance, and new enterprise features while maintaining full backward compatibility for your users.
 
 ## 💬 Community Discussions
 
