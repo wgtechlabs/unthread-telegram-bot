@@ -402,22 +402,12 @@ function createProcessingError(
 function classifyError(error: Error, context?: PerformanceContext): ProcessingError {
     const message = error.message.toLowerCase();
 
-    // File size errors
-    if (message.includes('file too large') || message.includes('size') && message.includes('exceed')) {
-        return createProcessingError(AttachmentProcessingError.FILE_TOO_LARGE, error.message, context);
+    // Authentication errors (HIGHEST PRIORITY - most specific)
+    if (message.includes('authentication') || message.includes('unauthorized') || message.includes('api key')) {
+        return createProcessingError(AttachmentProcessingError.AUTHENTICATION_FAILED, error.message, context);
     }
 
-    // Network/timeout errors
-    if (message.includes('timeout') || message.includes('etimedout')) {
-        return createProcessingError(AttachmentProcessingError.NETWORK_TIMEOUT, error.message, context);
-    }
-
-    // File not found
-    if (message.includes('not found') || message.includes('404')) {
-        return createProcessingError(AttachmentProcessingError.FILE_NOT_FOUND, error.message, context);
-    }
-
-    // API errors
+    // API errors (HIGH PRIORITY - specific to service)
     if (message.includes('telegram') && (message.includes('api') || message.includes('401') || message.includes('403'))) {
         return createProcessingError(AttachmentProcessingError.TELEGRAM_API_ERROR, error.message, context);
     }
@@ -426,28 +416,38 @@ function classifyError(error: Error, context?: PerformanceContext): ProcessingEr
         return createProcessingError(AttachmentProcessingError.UNTHREAD_API_ERROR, error.message, context);
     }
 
-    // Security errors
-    if (message.includes('unsupported file type') || message.includes('mime') || message.includes('content-type')) {
-        return createProcessingError(AttachmentProcessingError.INVALID_FILE_TYPE, error.message, context);
-    }
-
+    // Security errors (HIGH PRIORITY - specific to security)
     if (message.includes('security') || message.includes('malicious') || message.includes('dangerous')) {
         return createProcessingError(AttachmentProcessingError.SECURITY_SCAN_FAILED, error.message, context);
     }
 
-    // Memory errors
-    if (message.includes('memory') || message.includes('allocation') || message.includes('heap')) {
-        return createProcessingError(AttachmentProcessingError.MEMORY_LIMIT_EXCEEDED, error.message, context);
+    if (message.includes('unsupported file type') || message.includes('mime') || message.includes('content-type')) {
+        return createProcessingError(AttachmentProcessingError.INVALID_FILE_TYPE, error.message, context);
     }
 
-    // Rate limiting
+    // Rate limiting (HIGH PRIORITY - specific error type)
     if (message.includes('rate limit') || message.includes('too many requests') || message.includes('429')) {
         return createProcessingError(AttachmentProcessingError.API_RATE_LIMITED, error.message, context);
     }
 
-    // Authentication
-    if (message.includes('authentication') || message.includes('unauthorized') || message.includes('api key')) {
-        return createProcessingError(AttachmentProcessingError.AUTHENTICATION_FAILED, error.message, context);
+    // File size errors (MEDIUM PRIORITY - specific to file handling)
+    if (message.includes('file too large') || message.includes('size') && message.includes('exceed')) {
+        return createProcessingError(AttachmentProcessingError.FILE_TOO_LARGE, error.message, context);
+    }
+
+    // File not found (MEDIUM PRIORITY - specific error type)
+    if (message.includes('not found') || message.includes('404')) {
+        return createProcessingError(AttachmentProcessingError.FILE_NOT_FOUND, error.message, context);
+    }
+
+    // Memory errors (MEDIUM PRIORITY - specific to resources)
+    if (message.includes('memory') || message.includes('allocation') || message.includes('heap')) {
+        return createProcessingError(AttachmentProcessingError.MEMORY_LIMIT_EXCEEDED, error.message, context);
+    }
+
+    // Network/timeout errors (LOWER PRIORITY - more general)
+    if (message.includes('timeout') || message.includes('etimedout')) {
+        return createProcessingError(AttachmentProcessingError.NETWORK_TIMEOUT, error.message, context);
     }
 
     // Default to unknown error
