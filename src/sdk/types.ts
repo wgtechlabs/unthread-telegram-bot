@@ -162,8 +162,17 @@ export interface DmSetupSession {
 // User state for conversations
 export interface UserState {
   currentField?: string;
-  field?: string;
-  ticket?: any;
+  field?: 'summary' | 'email' | string;
+  summary?: string;
+  email?: string;
+  attachmentIds?: string[];
+  hasAttachments?: boolean;
+  ticket?: {
+    id?: string;
+    status?: string;
+    customerId?: string;
+    [key: string]: any;
+  };
   [key: string]: any;
 }
 

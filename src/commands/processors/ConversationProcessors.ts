@@ -9,6 +9,7 @@
 
 import type { IConversationProcessor } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
+import type { UserState } from '../../sdk/types.js';
 import { BotsStore } from '../../sdk/bots-brain/index.js';
 import { logError } from '../utils/errorHandler.js';
 import * as unthreadService from '../../services/unthread.js';
@@ -99,7 +100,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
         }
     }
 
-    public async handleSummaryInput(ctx: BotContext, summary: string, userState: any, preDetectedAttachments?: string[]): Promise<boolean> {
+    public async handleSummaryInput(ctx: BotContext, summary: string, userState: UserState, preDetectedAttachments?: string[]): Promise<boolean> {
         // Defensive check for ctx.from
         if (!ctx.from) {
             LogEngine.warn('Summary input received without sender information');
@@ -204,7 +205,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
         return true;
     }
 
-    private async handleEmailInput(ctx: BotContext, email: string, userState: any): Promise<boolean> {
+    private async handleEmailInput(ctx: BotContext, email: string, userState: UserState): Promise<boolean> {
         // Use robust email validation from utility function
         const emailValidation = await import('../utils/validation.js').then(module => module.validateEmail(email.trim()));
         
@@ -229,7 +230,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
         return await this.createTicket(ctx, userState);
     }
 
-    private async createTicket(ctx: BotContext, userState: any): Promise<boolean> {
+    private async createTicket(ctx: BotContext, userState: UserState): Promise<boolean> {
         // Defensive checks for required context
         if (!ctx.from) {
             LogEngine.warn('Ticket creation attempted without sender information');
@@ -238,6 +239,11 @@ export class SupportConversationProcessor implements IConversationProcessor {
 
         if (!ctx.chat) {
             LogEngine.warn('Ticket creation attempted without chat information');
+            return false;
+        }
+
+        if (!userState.summary) {
+            LogEngine.warn('Ticket creation attempted without summary');
             return false;
         }
 
