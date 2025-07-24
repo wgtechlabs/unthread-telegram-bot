@@ -10,6 +10,7 @@
 import type { IConversationProcessor } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
 import type { DmSetupSession, UserState } from '../../sdk/types.js';
+import type { GlobalTemplateEvent } from '../../config/globalTemplates.js';
 import { BotsStore } from '../../sdk/bots-brain/index.js';
 import { logError } from '../utils/errorHandler.js';
 import * as unthreadService from '../../services/unthread.js';
@@ -36,7 +37,8 @@ export class SupportConversationProcessor implements IConversationProcessor {
         try {
             const userState = await BotsStore.getUserState(userId);
             const canHandle = userState?.field === 'summary' || 
-                              userState?.field === 'email';
+                              userState?.field === 'email' ||
+                              userState?.field === 'template_content';
                               
             LogEngine.debug('SupportConversationProcessor.canHandle evaluation', {
                 userId,
@@ -89,6 +91,8 @@ export class SupportConversationProcessor implements IConversationProcessor {
                 return await this.handleSummaryInput(ctx, userInput, userState, messageAttachments);
             } else if (userState.field === 'email') {
                 return await this.handleEmailInput(ctx, userInput, userState);
+            } else if (userState.field === 'template_content') {
+                return await this.handleTemplateContentInput(ctx, userInput, userState);
             }
 
             return false;
@@ -228,6 +232,175 @@ export class SupportConversationProcessor implements IConversationProcessor {
         // Store email and create ticket
         userState.email = emailValidation.sanitizedValue || email.trim();
         return await this.createTicket(ctx, userState);
+    }
+
+    /**
+     * Handle template content input for standalone template editing
+     */
+    private async handleTemplateContentInput(ctx: BotContext, templateContent: string, userState: UserState): Promise<boolean> {
+        const userId = ctx.from?.id;
+        if (!userId) {
+            LogEngine.warn('Template content input received without sender information');
+            return false;
+        }
+
+        const templateType = userState.templateType;
+        if (!templateType) {
+            LogEngine.error('Template content input without template type', { userId });
+            await ctx.reply("❌ **Template editing session invalid**\n\nPlease start over with `/templates`.");
+            await BotsStore.clearUserState(userId);
+            return true;
+        }
+
+        try {
+            // Validate template content length
+            if (templateContent.trim().length === 0) {
+                await ctx.reply(
+                    "❌ **Empty Template**\n\nTemplate content cannot be empty. Please type your template content:",
+                    {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "❌ Cancel Editing", callback_data: "template_cancel_edit" }
+                                ]
+                            ]
+                        }
+                    }
+                );
+                return true;
+            }
+
+            if (templateContent.length > 4000) {
+                await ctx.reply(
+                    "❌ **Template Too Long**\n\nTemplate content is too long (max 4000 characters). Please shorten your template:",
+                    {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "❌ Cancel Editing", callback_data: "template_cancel_edit" }
+                                ]
+                            ]
+                        }
+                    }
+                );
+                return true;
+            }
+
+            // Basic variable validation
+            const variableMatches = templateContent.match(/\{\{[^}]+\}\}/g);
+            if (variableMatches) {
+                const invalidVars: string[] = [];
+                const validVars = ['ticketId', 'ticketNumber', 'summary', 'customerName', 'status', 'response', 'createdAt', 'updatedAt'];
+                
+                for (const match of variableMatches) {
+                    const varName = match.replace(/[{}]/g, '').trim();
+                    if (!validVars.includes(varName)) {
+                        invalidVars.push(varName);
+                    }
+                }
+                
+                if (invalidVars.length > 0) {
+                    await ctx.reply(
+                        `❌ **Invalid Variables**\n\nThe following variables are not recognized:\n• ${invalidVars.join('\n• ')}\n\n**Valid variables:**\n• ticketId, ticketNumber, summary, customerName\n• status, response, createdAt, updatedAt\n\nPlease fix your template:`,
+                        {
+                            parse_mode: 'Markdown',
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [
+                                        { text: "❌ Cancel Editing", callback_data: "template_cancel_edit" }
+                                    ]
+                                ]
+                            }
+                        }
+                    );
+                    return true;
+                }
+            }
+
+            // Update the template
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            const templateManager = GlobalTemplateManager.getInstance();
+            
+            const updateResult = await templateManager.updateTemplate(
+                templateType as GlobalTemplateEvent,
+                templateContent,
+                true,
+                userId
+            );
+
+            if (!updateResult.success) {
+                await ctx.reply(
+                    `❌ **Template Update Failed**\n\n${updateResult.error || 'Unknown error occurred'}\n\nPlease try again:`,
+                    {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "❌ Cancel Editing", callback_data: "template_cancel_edit" }
+                                ]
+                            ]
+                        }
+                    }
+                );
+                return true;
+            }
+
+            // Success! Show confirmation and clear state
+            const templateDisplayName = templateType.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
+            
+            await ctx.reply("✅ **Template Updated Successfully!**\n\nYour template has been saved and is now active.");
+
+            // Clear user state
+            await BotsStore.clearUserState(userId);
+
+            // Show updated template manager
+            const successMessage = `✅ **${templateDisplayName} Template Updated**
+
+Your template has been successfully saved and is now being used for notifications.
+
+**Updated Content:**
+\`\`\`
+${templateContent}
+\`\`\`
+
+Your customization is now active across all support interactions.`;
+
+            await ctx.reply(successMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "📝 Open Template Manager", callback_data: "template_back_to_manager" }
+                        ]
+                    ]
+                }
+            });
+
+            return true;
+
+        } catch (error) {
+            logError(error, 'SupportConversationProcessor.handleTemplateContentInput', { 
+                userId, 
+                templateType,
+                templateContent: templateContent.substring(0, 100)
+            });
+            await ctx.reply(
+                "❌ **Template Update Error**\n\nFailed to update the template. Please try again or cancel the edit.",
+                {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "❌ Cancel Editing", callback_data: "template_cancel_edit" }
+                            ]
+                        ]
+                    }
+                }
+            );
+            return true;
+        }
     }
 
     private async createTicket(ctx: BotContext, userState: UserState): Promise<boolean> {
@@ -1019,7 +1192,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             // Update the global template
             const templateType = session.stepData?.editingTemplateType;
             const updateResult = await templateManager.updateTemplate(
-                templateType as any,
+                templateType as GlobalTemplateEvent,
                 templateContent,
                 true,
                 session.adminId

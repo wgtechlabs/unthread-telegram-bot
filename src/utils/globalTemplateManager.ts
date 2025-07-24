@@ -235,21 +235,38 @@ export class GlobalTemplateManager {
    */
   async resetToDefaults(updatedBy?: number): Promise<{ success: boolean; error?: string }> {
     try {
-      const defaultConfig = { ...DEFAULT_GLOBAL_TEMPLATES };
-      defaultConfig.lastUpdated = new Date().toISOString();
-      defaultConfig.version = 1;
-      
-      // Mark who reset it
-      if (updatedBy) {
-        Object.values(defaultConfig.templates).forEach(template => {
-          template.lastModifiedBy = updatedBy;
-          template.lastModifiedAt = new Date().toISOString();
-        });
-      }
+      // Create a fresh copy of defaults without any modification metadata
+      const defaultConfig: GlobalTemplateConfig = {
+        templates: {
+          ticket_created: {
+            event: 'ticket_created',
+            content: DEFAULT_GLOBAL_TEMPLATES.templates.ticket_created.content,
+            enabled: true
+            // Explicitly NOT setting lastModifiedBy/lastModifiedAt to indicate pristine defaults
+          },
+          agent_response: {
+            event: 'agent_response',
+            content: DEFAULT_GLOBAL_TEMPLATES.templates.agent_response.content,
+            enabled: true
+            // Explicitly NOT setting lastModifiedBy/lastModifiedAt to indicate pristine defaults
+          },
+          ticket_status: {
+            event: 'ticket_status',
+            content: DEFAULT_GLOBAL_TEMPLATES.templates.ticket_status.content,
+            enabled: true
+            // Explicitly NOT setting lastModifiedBy/lastModifiedAt to indicate pristine defaults
+          }
+        },
+        version: 1,
+        lastUpdated: new Date().toISOString()
+      };
 
       await BotsStore.setGlobalConfig('templates', defaultConfig);
       
-      LogEngine.info('Global templates reset to defaults', { updatedBy });
+      LogEngine.info('Global templates reset to pristine defaults', { 
+        updatedBy,
+        clearedModifications: true 
+      });
       
       return { success: true };
     } catch (error) {

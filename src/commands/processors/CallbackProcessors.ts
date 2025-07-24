@@ -2456,7 +2456,8 @@ export class AdminCallbackProcessor implements ICallbackProcessor {
                callbackData.startsWith('template_edit_ticket_') ||
                callbackData.startsWith('template_edit_agent_') ||
                callbackData.startsWith('template_edit_status') ||
-               callbackData === 'template_back_to_manager';
+               callbackData === 'template_back_to_manager' ||
+               callbackData === 'template_cancel_edit';
     }
 
     async process(ctx: BotContext, callbackData: string): Promise<boolean> {
@@ -2485,6 +2486,11 @@ export class AdminCallbackProcessor implements ICallbackProcessor {
             
             if (callbackData === 'template_back_to_manager') {
                 return await this.handleBackToManager(ctx);
+            }
+            
+            // Handle cancel template editing
+            if (callbackData === 'template_cancel_edit') {
+                return await this.handleCancelTemplateEdit(ctx);
             }
             
             // Handle standalone template editing (outside setup flow)
@@ -2834,6 +2840,17 @@ export class AdminCallbackProcessor implements ICallbackProcessor {
             const agentVars = availableVariables.agent.map(v => `• \`{{${v.name}}}\` - ${v.description}`).join('\n');
             const timeVars = availableVariables.time.map(v => `• \`{{${v.name}}}\` - ${v.description}`).join('\n');
 
+            // Set user state to enable template content detection
+            const userId = ctx.from?.id;
+            if (userId) {
+                await BotsStore.setUserState(userId, {
+                    currentField: 'template_content',
+                    field: 'template_content',
+                    templateType: templateType,
+                    editMode: 'standalone'
+                });
+            }
+
             const editMessage = `✏️ **Template Editor: ${templateDisplayName}**
 
 **Purpose:** ${templateDescription}
@@ -2865,6 +2882,9 @@ ${timeVars}
                 reply_markup: {
                     inline_keyboard: [
                         [
+                            { text: "❌ Cancel Editing", callback_data: "template_cancel_edit" }
+                        ],
+                        [
                             { text: "📊 Preview All Templates", callback_data: "template_preview_all" }
                         ],
                         [
@@ -2878,6 +2898,38 @@ ${timeVars}
         } catch (error) {
             logError(error, 'AdminCallbackProcessor.handleStandaloneTemplateEdit', { templateType });
             await ctx.answerCbQuery("❌ Failed to open template editor. Please try again.");
+            return true;
+        }
+    }
+
+    /**
+     * Handle cancel template editing - clear user state and return to manager
+     */
+    private async handleCancelTemplateEdit(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("❌ Template editing canceled...");
+        
+        try {
+            const userId = ctx.from?.id;
+            if (userId) {
+                // Clear template editing state
+                await BotsStore.clearUserState(userId);
+            }
+
+            await ctx.editMessageText("❌ **Template Editing Canceled**\n\nNo changes were made to your templates.", {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "📝 Open Template Manager", callback_data: "template_back_to_manager" }
+                        ]
+                    ]
+                }
+            });
+            
+            return true;
+        } catch (error) {
+            logError(error, 'AdminCallbackProcessor.handleCancelTemplateEdit');
+            await ctx.answerCbQuery("❌ Failed to cancel editing. Please try again.");
             return true;
         }
     }
