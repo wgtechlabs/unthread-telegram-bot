@@ -1,26 +1,18 @@
 /**
- * Unthread Telegram Bot - Main Application Entry Point
+ * Unthread Telegram Bot - Main Application
  * 
- * This is the main entry point for the Unthread Telegram Bot application that bridges
- * Telegram conversations with the Unthread customer support platform. The bot enables
- * seamless ticket creation, message routing, and agent response delivery.
+ * Telegram bot that bridges conversations with the Unthread customer support platform.
+ * Enables ticket creation, message routing, and agent response delivery.
  * 
  * Key Features:
- * - Automated ticket creation from Telegram messages
- * - Bidirectional message routing between Telegram and Unthread dashboard
- * - Support form collection with email validation
- * - Multi-chat support (private, group, supergroup)
- * - Persistent conversation state management with Bots Brain SDK
- * - Real-time webhook event processing for agent responses
- * 
- * Architecture:
- * - Bot initialization with Telegraf framework
- * - Database connection with PostgreSQL and Redis caching
- * - Command handlers for user interactions * - Webhook consumer for Unthread agent responses
- * - Unified storage system for state persistence
+ * - Support ticket creation from Telegram messages
+ * - Message routing between Telegram and Unthread
+ * - Email collection for support contacts
+ * - Multi-chat support (private and group chats)
+ * - Real-time webhook event processing
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 import dotenv from 'dotenv';
@@ -28,28 +20,28 @@ import dotenv from 'dotenv';
 // Load environment variables from .env file
 dotenv.config();
 
+// Configure LogEngine early (moved to config/logging.ts)
+// This ensures all imports use consistent log formatting
+import './config/logging.js';
+import { LogEngine } from '@wgtechlabs/log-engine';
+
 // Validate environment configuration before proceeding
 import { validateEnvironment } from './config/env.js';
 validateEnvironment();
 
-import { createBot, startPolling, safeReply, cleanupBlockedUser } from './bot.js';
-import { 
-    startCommand, 
-    helpCommand, 
-    versionCommand, 
-    aboutCommand,
-    supportCommand, 
-    cancelCommand, 
-    resetCommand, 
-    processSupportConversation 
+import { cleanupBlockedUser, createBot, startPolling } from './bot.js';
+import { executeCommand,
+    initializeCommands,
+    processCallback
 } from './commands/index.js';
-import { handleMessage } from './events/message.js';
+import { cleanupMessageEventHandlers, handleMessage } from './events/message.js';
+import { getMessageText, isCommand } from './utils/messageContentExtractor.js';
 import { db } from './database/connection.js';
 import { BotsStore } from './sdk/bots-brain/index.js';
 import { WebhookConsumer } from './sdk/unthread-webhook/index.js';
 import { TelegramWebhookHandler } from './handlers/webhookMessage.js';
+import { startSessionCleanupTask, stopSessionCleanupTask } from './utils/adminManager.js';
 import packageJSON from '../package.json' with { type: 'json' };
-import { LogEngine } from '@wgtechlabs/log-engine';
 import type { BotContext } from './types/index.js';
 
 /**
@@ -59,6 +51,11 @@ const telegramToken = process.env.TELEGRAM_BOT_TOKEN!;
 const bot = createBot(telegramToken);
 
 /**
+ * Initialize the clean command architecture
+ */
+initializeCommands();
+
+/**
  * Global middleware for logging incoming messages
  */
 bot.use(async (ctx: BotContext, next) => {
@@ -66,22 +63,24 @@ bot.use(async (ctx: BotContext, next) => {
         if (ctx.message) {
             // Determine message type
             let messageType = 'text';
-            if ('photo' in ctx.message) messageType = 'photo';
-            else if ('document' in ctx.message) messageType = 'document';
-            else if ('video' in ctx.message) messageType = 'video';
-            else if ('audio' in ctx.message) messageType = 'audio';
-            else if ('voice' in ctx.message) messageType = 'voice';
-            else if ('video_note' in ctx.message) messageType = 'video_note';
-            else if ('sticker' in ctx.message) messageType = 'sticker';
-            else if (!('text' in ctx.message)) messageType = 'other';
+            if ('photo' in ctx.message) {messageType = 'photo';}
+            else if ('document' in ctx.message) {messageType = 'document';}
+            else if ('video' in ctx.message) {messageType = 'video';}
+            else if ('audio' in ctx.message) {messageType = 'audio';}
+            else if ('voice' in ctx.message) {messageType = 'voice';}
+            else if ('video_note' in ctx.message) {messageType = 'video_note';}
+            else if ('sticker' in ctx.message) {messageType = 'sticker';}
+            else if (!('text' in ctx.message)) {messageType = 'other';}
             
-            LogEngine.debug('Message received', {
+            LogEngine.debug('Message received with enhanced text detection', {
                 chatId: ctx.chat?.id,
                 userId: ctx.from?.id,
                 type: messageType,
                 hasText: 'text' in ctx.message && !!ctx.message.text,
-                isCommand: 'text' in ctx.message && ctx.message.text?.startsWith('/'),
-                textPreview: 'text' in ctx.message ? ctx.message.text?.substring(0, 30) : undefined
+                hasCaption: 'caption' in ctx.message && !!ctx.message.caption,
+                isCommand: isCommand(ctx),
+                textPreview: getMessageText(ctx).substring(0, 30),
+                textSource: 'text' in ctx.message ? 'text' : ('caption' in ctx.message ? 'caption' : 'none')
             });
         }
         await next();
@@ -100,75 +99,70 @@ bot.use(async (ctx: BotContext, next) => {
 });
 
 /**
- * Command handler registration
+ * Command handler registration with clean architecture
  * 
- * Commands are restricted to private chats only to prevent spam in group chats
+ * The new command system handles authorization, validation, and error handling
+ * internally through the BaseCommand and CommandRegistry architecture.
  */
 
-// Middleware for command handling with proper chat type support
+// Simple command middleware for logging
 const commandMiddleware = async (ctx: BotContext, next: () => Promise<void>) => {
     try {
-        // Allow all commands in both private and group chats
-        // The individual command handlers will determine the appropriate response
         return await next();
     } catch (error) {
         const err = error as Error;
         LogEngine.error('Error in command middleware', {
             error: err.message,
             chatId: ctx.chat?.id,
-            command: ctx.message && 'text' in ctx.message ? ctx.message.text : undefined
+            command: getMessageText(ctx)
         });
     }
 };
 
-// Wrap command handlers with error handling
-const wrapCommandHandler = (handler: (ctx: BotContext) => Promise<void>, commandName: string) => {
+// Clean command handler - delegates to the architecture
+const wrapCommandHandler = (commandName: string) => {
     return async (ctx: BotContext) => {
-        try {
-            LogEngine.debug(`Executing ${commandName} command`, {
-                chatId: ctx.chat?.id,
-                chatType: ctx.chat?.type,
-                userId: ctx.from?.id
-            });
-            await handler(ctx);
-        } catch (error) {
-            const err = error as Error;
-            LogEngine.error(`Error in ${commandName} command`, {
-                error: err.message,
-                stack: err.stack,
-                chatId: ctx.chat?.id,
-                userId: ctx.from?.id
-            });
-            
-            // Try to send error message safely
-            try {
-                await safeReply(ctx, `Sorry, there was an error processing the ${commandName} command.`);
-            } catch (replyError) {
-                const replyErr = replyError as Error;
-                LogEngine.error(`Failed to send error reply for ${commandName}`, {
-                    error: replyErr.message,
-                    chatId: ctx.chat?.id
-                });
-            }
-        }
+        LogEngine.debug(`Executing ${commandName} command`, {
+            chatId: ctx.chat?.id,
+            chatType: ctx.chat?.type,
+            userId: ctx.from?.id
+        });
+        
+        // Execute through the clean architecture (handles all error management internally)
+        await executeCommand(commandName, ctx);
     };
 };
 
-bot.start(commandMiddleware, wrapCommandHandler(startCommand, 'start'));
-bot.help(commandMiddleware, wrapCommandHandler(helpCommand, 'help'));
-bot.command('version', commandMiddleware, wrapCommandHandler(versionCommand, 'version'));
-bot.command('about', commandMiddleware, wrapCommandHandler(aboutCommand, 'about'));
-bot.command('support', commandMiddleware, wrapCommandHandler(supportCommand, 'support'));
-bot.command('cancel', commandMiddleware, wrapCommandHandler(cancelCommand, 'cancel'));
-bot.command('reset', commandMiddleware, wrapCommandHandler(resetCommand, 'reset'));
+bot.start(commandMiddleware, wrapCommandHandler('start'));
+bot.help(commandMiddleware, wrapCommandHandler('help'));
+bot.command('version', commandMiddleware, wrapCommandHandler('version'));
+bot.command('about', commandMiddleware, wrapCommandHandler('about'));
+bot.command('support', commandMiddleware, wrapCommandHandler('support'));
+bot.command('cancel', commandMiddleware, wrapCommandHandler('cancel'));
+bot.command('reset', commandMiddleware, wrapCommandHandler('reset'));
+bot.command('setemail', commandMiddleware, wrapCommandHandler('setemail'));
+bot.command('viewemail', commandMiddleware, wrapCommandHandler('viewemail'));
+bot.command('setup', commandMiddleware, wrapCommandHandler('setup'));
+bot.command('activate', commandMiddleware, wrapCommandHandler('activate'));
+bot.command('templates', commandMiddleware, wrapCommandHandler('templates'));
 
-// Register message handlers with middleware
+// Register message handlers with enhanced text detection
 bot.on('text', async (ctx, next) => {
     // Skip commands - let Telegraf handle them with the command handlers
-    if (ctx.message.text?.startsWith('/')) {
+    if (isCommand(ctx)) {
         return;
     }
     
+    await handleMessage(ctx, next);
+});
+
+// Register photo messages (photos with captions) - NEW: Handle /support in photo captions
+bot.on('photo', async (ctx, next) => {
+    await handleMessage(ctx, next);
+});
+
+// Register document messages (documents with captions) - NEW: Handle /support in document captions
+bot.on('document', async (ctx, next) => {
     await handleMessage(ctx, next);
 });
 
@@ -185,8 +179,8 @@ bot.on('message', async (ctx, next) => {
 // Register callback query handler for buttons
 bot.on('callback_query', async (ctx) => {
     try {
-        // Route callback queries through the processSupportConversation function
-        await processSupportConversation(ctx);
+        // Route callback queries through the new clean architecture
+        await processCallback(ctx);
     } catch (error) {
         const err = error as Error;
         LogEngine.error('Error handling callback query', {
@@ -378,7 +372,8 @@ await bot.telegram.setMyCommands([
     { command: 'about', description: 'Show comprehensive bot information' },
     { command: 'support', description: 'Create a support ticket (group chats only)' },
     { command: 'cancel', description: 'Cancel ongoing support ticket creation' },
-    { command: 'reset', description: 'Reset your support conversation state' }
+    { command: 'reset', description: 'Reset your support conversation state' },
+    { command: 'setup', description: 'Configure group for support (admin only)' }
 ]);
 
 LogEngine.info('Bot initialized successfully', {
@@ -395,6 +390,11 @@ LogEngine.info('Bot is running and listening for messages...');
  * Start polling for updates
  */
 startPolling(bot);
+
+/**
+ * Start session cleanup task
+ */
+const sessionCleanupTask = startSessionCleanupTask();
 
 /**
  * Global error handling middleware for Telegram API errors
@@ -460,12 +460,19 @@ bot.catch(async (error: any, ctx?: BotContext) => {
 });
 
 /**
- * Shuts down all services and resources used by the bot, ensuring a clean exit.
+ * Performs a graceful shutdown of the bot, stopping all background tasks and closing resources before exiting the process.
  *
- * Stops the webhook consumer if running, shuts down the BotsStore, closes database connections, and exits the process. Logs each shutdown step and exits with an error code if any shutdown operation fails.
+ * Stops the session cleanup task, webhook consumer (if running), BotsStore, and database connections. Exits the process with code 0 on success or 1 if an error occurs during shutdown.
  */
 async function gracefulShutdown(): Promise<void> {
     try {
+        // Stop session cleanup task
+        stopSessionCleanupTask(sessionCleanupTask);
+        LogEngine.info('Session cleanup task stopped');
+        
+        // Cleanup message event handlers (timers, intervals)
+        cleanupMessageEventHandlers();
+        
         if (webhookConsumer) {
             await webhookConsumer.stop();
             LogEngine.info('Webhook consumer stopped');

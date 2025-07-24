@@ -29,15 +29,14 @@
  * - Data consistency guarantees across all layers
  * - Comprehensive error handling and logging 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
-import { createClient, RedisClientType } from 'redis';
-import pkg from 'pg';
+import { RedisClientType, createClient } from 'redis';
+import pkg, { Pool as PoolType } from 'pg';
 const { Pool } = pkg;
-import type { Pool as PoolType } from 'pg';
 import { LogEngine } from '@wgtechlabs/log-engine';
-import type { StorageConfig, Storage } from '../types.js';
+import type { Storage, StorageConfig } from '../types.js';
 
 /**
  * UnifiedStorage - Multi-layer storage architecture
@@ -89,7 +88,7 @@ export class UnifiedStorage implements Storage {
           this.redisClient = createClient({ url: this.redisConfig.url });
           await this.redisClient.connect();
           LogEngine.info('Redis connected for bots-brain');
-        } catch (error) {
+        } catch {
           LogEngine.warn('Redis not available, using Memory + PostgreSQL only');
           this.redisClient = null;
         }
@@ -254,7 +253,7 @@ export class UnifiedStorage implements Storage {
       // Check Redis
       if (this.redisClient) {
         const exists = await this.redisClient.exists(key);
-        if (exists) return true;
+        if (exists) {return true;}
       }
       
       // Check PostgreSQL
@@ -299,7 +298,7 @@ export class UnifiedStorage implements Storage {
         [key]
       );
       return result.rows.length > 0 ? JSON.parse(result.rows[0].value) : null;
-    } catch (error) {
+    } catch {
       // Table might not exist, that's okay for now
       return null;
     }
@@ -314,7 +313,7 @@ export class UnifiedStorage implements Storage {
         ON CONFLICT (key) 
         DO UPDATE SET value = $2, expires_at = $3, updated_at = NOW()
       `, [key, JSON.stringify(value), expiresAt]);
-    } catch (error) {
+    } catch {
       // Table might not exist, that's okay for now
       LogEngine.debug('storage_cache table not found, using Redis + Memory only');
     }
@@ -323,7 +322,7 @@ export class UnifiedStorage implements Storage {
   private async deleteFromPostgres(key: string): Promise<void> {
     try {
       await this.db!.query('DELETE FROM storage_cache WHERE key = $1', [key]);
-    } catch (error) {
+    } catch {
       // Table might not exist, that's okay
     }
   }
@@ -393,66 +392,6 @@ export class UnifiedStorage implements Storage {
     }
     
     return contents;
-  }
-
-  getMemoryStats(): {
-    totalKeys: number;
-    activeKeys: number;
-    expiredKeys: number;
-    totalSizeBytes: number;
-    totalSizeKB: number;
-    keyTypes: Record<string, { count: number; size: number }>;
-    memoryTTL: number;
-    connected: boolean;
-    layers: {
-      memory: boolean;
-      redis: boolean;
-      postgres: boolean;
-    };
-  } {
-    const now = Date.now();
-    let totalSize = 0;
-    let expiredCount = 0;
-    let activeCount = 0;
-    const keyTypes: Record<string, { count: number; size: number }> = {};
-    
-    for (const [key, value] of this.memoryCache.entries()) {
-      const expiration = this.memoryCacheTTL.get(key);
-      const isExpired = expiration ? now > expiration : false;
-      const size = JSON.stringify(value).length;
-      
-      totalSize += size;
-      
-      if (isExpired) {
-        expiredCount++;
-      } else {
-        activeCount++;
-      }
-      
-      // Categorize by key prefix
-      const keyType = key.split(':')[0] || 'unknown';
-      if (!keyTypes[keyType]) {
-        keyTypes[keyType] = { count: 0, size: 0 };
-      }
-      keyTypes[keyType].count++;
-      keyTypes[keyType].size += size;
-    }
-    
-    return {
-      totalKeys: this.memoryCache.size,
-      activeKeys: activeCount,
-      expiredKeys: expiredCount,
-      totalSizeBytes: totalSize,
-      totalSizeKB: Math.round(totalSize / 1024 * 100) / 100,
-      keyTypes,
-      memoryTTL: this.memoryTTL,
-      connected: this.connected,
-      layers: {
-        memory: true,
-        redis: !!this.redisClient,
-        postgres: !!this.db
-      }
-    };
   }
 
   // Clean up expired memory entries manually

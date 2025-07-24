@@ -1,39 +1,806 @@
 /**
- * Unthread Telegram Bot - Message Event Handlers Module
+ * Message Event Handlers - Routes Telegram messages based on chat type
  * 
- * Handles incoming message events from Telegram and processes them according to
- * chat type and content. This module serves as the main message router for the
- * Unthread Telegram Bot, directing conversations to appropriate handlers.
- * 
- * Message Processing:
- * - Chat type detection (private, group, supergroup, channel)
- * - Pattern matching for specific message content
- * - Support conversation flow management
- * - Automatic ticket creation for group messages
- * - Smart routing based on user intent and context
- * 
- * Supported Chat Types:
- * - Private chats: Direct support form collection and ticket creation
- * - Group chats: Automatic ticket creation for all messages
- * - Supergroups: Enhanced group message handling with threading
- * - Channels: Read-only message monitoring (if applicable)
- * 
- * Features:
- * - Context-aware message processing
- * - Automatic support ticket generation
- * - Integration with Unthread API for message routing
- * - State-aware conversation management * - Error handling and user feedback
+ * Key Features:
+ * - Private chat support form collection
+ * - Group chat automatic ticket creation  
+ * - Message routing to Unthread API
+ * - Media group batch processing with proper notifications
+ * - Unified attachment handling for single and multiple files
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 
 import { LogEngine } from '@wgtechlabs/log-engine';
-import { processSupportConversation, aboutCommand } from '../commands/index.js';
+import { processConversation } from '../commands/index.js';
 import * as unthreadService from '../services/unthread.js';
-import { safeReply, safeEditMessageText } from '../bot.js';
+import { safeEditMessageText, safeReply } from '../bot.js';
+import { BotsStore } from '../sdk/bots-brain/BotsStore.js';
+import { attachmentHandler } from '../utils/attachmentHandler.js';
+import { getCommand, getMessageText, getMessageTypeInfo, isCommand } from '../utils/messageContentExtractor.js';
+import { generateStatusMessage } from '../utils/messageAnalyzer.js';
 import type { BotContext } from '../types/index.js';
+
+/**
+ * Media group item interface for batch processing
+ */
+interface MediaGroupItem {
+    fileId: string;
+    messageId: number;
+    caption?: string;
+    timestamp: number;
+    userId: number;
+    chatId: number;
+    replyToMessageId?: number;
+}
+
+/**
+ * Media group collection for batch processing
+ */
+interface MediaGroupCollection {
+    groupId: string;
+    items: MediaGroupItem[];
+    firstMessageTimestamp: number;
+    timeoutId: NodeJS.Timeout;
+    isReply: boolean;
+    replyToMessageId?: number;
+    userId: number;
+    chatId: number;
+    ctx?: BotContext;
+}
+
+/**
+ * Ticket information interface
+ */
+interface TicketInfo {
+    ticketId: string;
+    friendlyId: string;
+    conversationId?: string;
+}
+
+/**
+ * Agent message information interface
+ */
+interface AgentMessageInfo {
+    conversationId: string;
+    friendlyId: string;
+}
+
+/**
+ * Status message interface for Telegram responses
+ */
+interface StatusMessage {
+    message_id: number;
+}
+
+/**
+ * Global media group collector
+ * Stores media groups temporarily for batch processing
+ */
+const mediaGroupCollector = new Map<string, MediaGroupCollection>();
+
+/**
+ * Configuration for media group handling
+ */
+const MEDIA_GROUP_CONFIG = {
+    collectionTimeoutMs: 2000, // 2 seconds to collect all items in group
+    maxItemsPerGroup: 10,       // Maximum items per media group
+    cleanupIntervalMs: 60000    // Clean up old entries every minute
+};
+
+/**
+ * Extract media group ID from Telegram message
+ */
+function getMediaGroupId(ctx: BotContext): string | undefined {
+    if (!ctx.message) {
+        return undefined;
+    }
+    
+    // Check if message has media_group_id
+    if ('media_group_id' in ctx.message && ctx.message.media_group_id) {
+        return ctx.message.media_group_id;
+    }
+    
+    return undefined;
+}
+
+/**
+ * Process media group item and either add to collection or process immediately
+ */
+async function handleMediaGroupMessage(ctx: BotContext): Promise<boolean> {
+    const mediaGroupId = getMediaGroupId(ctx);
+    
+    // If no media group ID, process as individual file
+    if (!mediaGroupId) {
+        return false; // Let normal processing handle it
+    }
+    
+    if (!ctx.message || !ctx.from || !ctx.chat) {
+        return false;
+    }
+    
+    const fileIds = extractFileAttachments(ctx);
+    if (fileIds.length === 0 || !fileIds[0]) {
+        return false; // No attachments to process
+    }
+    
+    LogEngine.info('📎 Media group message detected', {
+        mediaGroupId,
+        fileCount: fileIds.length,
+        messageId: ctx.message.message_id,
+        userId: ctx.from.id,
+        chatId: ctx.chat.id,
+        isReply: 'reply_to_message' in ctx.message && !!ctx.message.reply_to_message,
+        replyToMessageId: 'reply_to_message' in ctx.message && ctx.message.reply_to_message ? ctx.message.reply_to_message.message_id : undefined
+    });
+    
+    // Create media group item
+    const replyToId = 'reply_to_message' in ctx.message && ctx.message.reply_to_message 
+        ? ctx.message.reply_to_message.message_id 
+        : undefined;
+        
+    const item: MediaGroupItem = {
+        fileId: fileIds[0], // Safe: validated above that array has valid first element
+        messageId: ctx.message.message_id,
+        caption: getMessageText(ctx),
+        timestamp: Date.now(),
+        userId: ctx.from.id,
+        chatId: ctx.chat.id,
+        ...(replyToId !== undefined && { replyToMessageId: replyToId })
+    };
+    
+    // Check if collection already exists for this group
+    const collection = mediaGroupCollector.get(mediaGroupId);
+    
+    if (!collection) {
+        // Create new collection
+        const newCollection: MediaGroupCollection = {
+            groupId: mediaGroupId,
+            items: [item],
+            firstMessageTimestamp: item.timestamp,
+            timeoutId: setTimeout(() => processMediaGroupCollection(mediaGroupId), MEDIA_GROUP_CONFIG.collectionTimeoutMs),
+            isReply: !!item.replyToMessageId,
+            userId: item.userId,
+            chatId: item.chatId,
+            ctx: ctx, // Store context for notifications
+            ...(item.replyToMessageId !== undefined && { replyToMessageId: item.replyToMessageId })
+        };
+        
+        mediaGroupCollector.set(mediaGroupId, newCollection);
+        
+        LogEngine.info('📦 Created new media group collection', {
+            mediaGroupId,
+            timeoutMs: MEDIA_GROUP_CONFIG.collectionTimeoutMs,
+            isReply: newCollection.isReply,
+            replyToMessageId: newCollection.replyToMessageId
+        });
+    } else {
+        // Add to existing collection
+        collection.items.push(item);
+        
+        // Update reply information if this item has reply info and collection doesn't
+        if (item.replyToMessageId && !collection.replyToMessageId) {
+            collection.isReply = true;
+            collection.replyToMessageId = item.replyToMessageId;
+            LogEngine.info('📝 Updated media group collection with reply information', {
+                mediaGroupId,
+                replyToMessageId: item.replyToMessageId,
+                fromMessageId: item.messageId
+            });
+        }
+        
+        LogEngine.info('➕ Added item to existing media group collection', {
+            mediaGroupId,
+            currentItemCount: collection.items.length,
+            maxItems: MEDIA_GROUP_CONFIG.maxItemsPerGroup,
+            isReply: collection.isReply,
+            replyToMessageId: collection.replyToMessageId
+        });
+        
+        // If we've reached max items, process immediately
+        if (collection.items.length >= MEDIA_GROUP_CONFIG.maxItemsPerGroup) {
+            clearTimeout(collection.timeoutId);
+            await processMediaGroupCollection(mediaGroupId);
+        }
+    }
+    
+    return true; // Handled by media group processor
+}
+
+/**
+ * Process collected media group items as a batch
+ */
+async function processMediaGroupCollection(mediaGroupId: string): Promise<void> {
+    const collection = mediaGroupCollector.get(mediaGroupId);
+    if (!collection) {
+        LogEngine.warn('⚠️ Media group collection not found for processing', { mediaGroupId });
+        return;
+    }
+    
+    // Clean up the collection
+    mediaGroupCollector.delete(mediaGroupId);
+    clearTimeout(collection.timeoutId);
+    
+    LogEngine.info('🔄 Processing media group collection as batch', {
+        mediaGroupId,
+        itemCount: collection.items.length,
+        isReply: collection.isReply,
+        replyToMessageId: collection.replyToMessageId,
+        collectionTimeMs: Date.now() - collection.firstMessageTimestamp
+    });
+    
+    try {
+        // Combine all file IDs from the collection
+        const allFileIds = collection.items.map(item => item.fileId);
+        
+        // Combine all captions with line breaks
+        const combinedMessage = collection.items
+            .map(item => item.caption)
+            .filter(caption => caption && caption.trim())
+            .join('\n\n') || 'Media group attachments';
+        
+        if (collection.isReply && collection.replyToMessageId) {
+            // First check if this is a reply during active support conversation (ticket creation)
+            LogEngine.info('🔍 Checking if reply is during active support conversation', {
+                mediaGroupId,
+                replyToMessageId: collection.replyToMessageId,
+                userId: collection.userId
+            });
+            
+            // Check user state for active support conversation
+            const userState = await BotsStore.getUserState(collection.userId);
+            
+            LogEngine.info('🔍 Media group user state check results', {
+                mediaGroupId,
+                replyToMessageId: collection.replyToMessageId,
+                userId: collection.userId,
+                hasUserState: !!userState,
+                userStateField: userState?.field || 'none',
+                userStateProcessor: userState?.processor || 'none',
+                userStateStep: userState?.step || 'none',
+                isExpectedSummaryState: !!(userState && userState.field === 'summary' && userState.processor === 'support')
+            });
+            
+            if (userState && userState.field === 'summary' && userState.processor === 'support') {
+                // User is in active support conversation - this is a reply to summary request, not ticket confirmation
+                LogEngine.info('🎯 Media group is reply during ticket creation - processing as summary input', {
+                    mediaGroupId,
+                    replyToMessageId: collection.replyToMessageId,
+                    userStateField: userState.field,
+                    userStateProcessor: userState.processor
+                });
+                
+                // Process as ticket creation, not ticket reply
+                await processMediaGroupTicketCreation(collection, allFileIds, combinedMessage);
+                return;
+            } else {
+                LogEngine.warn('❌ Media group user state does not match expected summary state', {
+                    mediaGroupId,
+                    replyToMessageId: collection.replyToMessageId,
+                    userId: collection.userId,
+                    userStateField: userState?.field || 'none',
+                    userStateProcessor: userState?.processor || 'none',
+                    expectedField: 'summary',
+                    expectedProcessor: 'support',
+                    reason: 'proceeding_with_ticket_agent_lookup'
+                });
+            }
+            
+            // Handle as reply to existing ticket/agent message
+            LogEngine.info('🎯 Media group identified as reply to existing ticket/agent', {
+                mediaGroupId,
+                replyToMessageId: collection.replyToMessageId,
+                itemCount: collection.items.length
+            });
+            await handleMediaGroupReply(collection, allFileIds, combinedMessage);
+        } else {
+            // Handle as regular group message (if needed in future)
+            LogEngine.warn('📋 Media group in non-reply context - no action taken', {
+                mediaGroupId,
+                itemCount: collection.items.length,
+                isReply: collection.isReply,
+                replyToMessageId: collection.replyToMessageId,
+                itemsWithReply: collection.items.filter(item => item.replyToMessageId).length,
+                firstItemReplyId: collection.items[0]?.replyToMessageId,
+                allItemReplyIds: collection.items.map(item => item.replyToMessageId)
+            });
+        }
+    } catch (error) {
+        LogEngine.error('❌ Error processing media group collection', {
+            mediaGroupId,
+            error: error instanceof Error ? error.message : String(error),
+            itemCount: collection.items.length
+        });
+    }
+}
+
+/**
+ * Handle media group as reply to ticket/agent message
+ */
+async function handleMediaGroupReply(collection: MediaGroupCollection, fileIds: string[], message: string): Promise<void> {
+    // Check if this is a reply to an existing ticket/agent message
+    if (collection.replyToMessageId) {
+        LogEngine.info('🎯 Processing media group as ticket/agent reply', {
+            mediaGroupId: collection.groupId,
+            replyToMessageId: collection.replyToMessageId,
+            fileCount: fileIds.length,
+            userId: collection.userId
+        });
+        
+        // Check if this is a reply to a ticket confirmation
+        LogEngine.info('🔍 Looking up ticket for reply', {
+            mediaGroupId: collection.groupId,
+            replyToMessageId: collection.replyToMessageId,
+            fileCount: fileIds.length
+        });
+        
+        const ticketInfo = await unthreadService.getTicketFromReply(collection.replyToMessageId);
+        if (ticketInfo) {
+            LogEngine.info('📋 Media group reply to ticket confirmation', {
+                ticketId: ticketInfo.ticketId,
+                friendlyId: ticketInfo.friendlyId,
+                mediaGroupId: collection.groupId,
+                fileCount: fileIds.length
+            });
+            
+            await processMediaGroupTicketReply(collection, ticketInfo, fileIds, message);
+            return;
+        } else {
+            LogEngine.warn('❌ No ticket found for media group reply', {
+                mediaGroupId: collection.groupId,
+                replyToMessageId: collection.replyToMessageId,
+                fileCount: fileIds.length,
+                message: 'Media group reply to unknown message - not a registered ticket confirmation'
+            });
+        }
+        
+        // Check if this is a reply to an agent message
+        LogEngine.info('🔍 Looking up agent message for reply', {
+            mediaGroupId: collection.groupId,
+            replyToMessageId: collection.replyToMessageId,
+            fileCount: fileIds.length
+        });
+        
+        const agentMessageInfo = await unthreadService.getAgentMessageFromReply(collection.replyToMessageId);
+        if (agentMessageInfo) {
+            LogEngine.info('💬 Media group reply to agent message', {
+                conversationId: agentMessageInfo.conversationId,
+                friendlyId: agentMessageInfo.friendlyId,
+                mediaGroupId: collection.groupId,
+                fileCount: fileIds.length
+            });
+            
+            await processMediaGroupAgentReply(collection, agentMessageInfo, fileIds, message);
+            return;
+        } else {
+            LogEngine.warn('❌ No agent message found for media group reply', {
+                mediaGroupId: collection.groupId,
+                replyToMessageId: collection.replyToMessageId,
+                fileCount: fileIds.length,
+                message: 'Media group reply to unknown message - not a registered agent message'
+            });
+        }
+        
+        LogEngine.debug('ℹ️ Media group reply not related to ticket/agent message', {
+            mediaGroupId: collection.groupId,
+            replyToMessageId: collection.replyToMessageId
+        });
+        return;
+    }
+    
+    // Check if this is initial ticket creation with attachments
+    LogEngine.info('🎫 Processing media group for potential initial ticket creation', {
+        mediaGroupId: collection.groupId,
+        fileCount: fileIds.length,
+        userId: collection.userId,
+        hasReplyTo: !!collection.replyToMessageId
+    });
+    
+    // Store the media group files for the support conversation processor to use
+    await processMediaGroupTicketCreation(collection, fileIds, message);
+}
+
+/**
+ * Process media group for initial ticket creation (not a reply)
+ * This triggers the proper confirmation flow when media groups are used with captions
+ */
+async function processMediaGroupTicketCreation(collection: MediaGroupCollection, fileIds: string[], message: string): Promise<void> {
+    try {
+        LogEngine.info('🎫 Processing media group for initial ticket creation', {
+            mediaGroupId: collection.groupId,
+            fileCount: fileIds.length,
+            userId: collection.userId,
+            messageText: message?.substring(0, 100) || '[no text]'
+        });
+        
+        // Import SupportConversationProcessor dependency
+        const { SupportConversationProcessor } = await import('../commands/processors/ConversationProcessors.js');
+        
+        // Check if user has an active support conversation state
+        const userState = await BotsStore.getUserState(collection.userId);
+        if (userState && userState.field === 'summary' && userState.processor === 'support') {
+            // User is actively in support flow - process media group as summary + attachments
+            LogEngine.info('🎯 Media group with caption triggers confirmation flow', {
+                userId: collection.userId,
+                fileCount: fileIds.length,
+                messageLength: message.length,
+                userStateField: userState.field,
+                currentProcessor: userState.processor
+            });
+            
+            // Ensure we have a meaningful summary from the media group caption
+            const summaryText = message && message.trim() ? message.trim() : 'Media group attachments';
+            
+            if (!collection.ctx) {
+                LogEngine.error('❌ No context available for media group summary processing', {
+                    mediaGroupId: collection.groupId,
+                    userId: collection.userId
+                });
+                return;
+            }
+            
+            // Create instance of SupportConversationProcessor and trigger summary handling
+            const supportProcessor = new SupportConversationProcessor();
+            
+            // Call handleSummaryInput with the media group caption as summary and pre-detected attachments
+            await supportProcessor.handleSummaryInput(
+                collection.ctx, 
+                summaryText, 
+                userState, 
+                fileIds  // Pre-detected attachments from media group
+            );
+            
+            LogEngine.info('✅ Media group processed through confirmation flow', {
+                mediaGroupId: collection.groupId,
+                userId: collection.userId,
+                summaryText: summaryText.substring(0, 100),
+                attachmentCount: fileIds.length,
+                triggeredConfirmationFlow: true
+            });
+            
+        } else {
+            // No active support conversation - store files and prompt user to continue
+            LogEngine.info('📂 No active support conversation, storing media group for later use', {
+                userId: collection.userId,
+                fileCount: fileIds.length,
+                userStateField: userState?.field || 'none',
+                userStateProcessor: userState?.processor || 'none'
+            });
+            
+            if (userState) {
+                userState.attachmentIds = fileIds;
+                userState.hasAttachments = fileIds.length > 0;
+                userState.mediaGroupMessage = message;
+                
+                LogEngine.info('📂 Stored media group files for future ticket creation', {
+                    userId: collection.userId,
+                    fileCount: fileIds.length,
+                    conversationField: userState.field,
+                    processor: userState.processor
+                });
+            }
+            
+            // Send status notification if we have context
+            if (collection.ctx?.telegram && collection.ctx.chat) {
+                const statusMsg = await collection.ctx.reply(
+                    `📎 ${fileIds.length} files received! Use \`/support\` to create a ticket with these attachments.`,
+                    { 
+                        parse_mode: 'Markdown',
+                        reply_parameters: { message_id: collection.ctx.message?.message_id || 0 } 
+                    }
+                ).catch(() => null);
+                
+                // Auto-delete after 10 seconds
+                if (statusMsg) {
+                    setTimeout(() => {
+                        if (collection.ctx?.chat) {
+                            collection.ctx.telegram.deleteMessage(collection.ctx.chat.id, statusMsg.message_id).catch(() => {});
+                        }
+                    }, 10000);
+                }
+            }
+        }
+        
+    } catch (error) {
+        LogEngine.error('❌ Error processing media group for ticket creation', {
+            mediaGroupId: collection.groupId,
+            userId: collection.userId,
+            error: error instanceof Error ? error.message : String(error),
+            fileCount: fileIds.length
+        });
+        
+        // Send error notification if we have context
+        if (collection.ctx?.telegram && collection.ctx.chat) {
+            await collection.ctx.reply(
+                `❌ Error processing ${fileIds.length} files. Please try again or create ticket without attachments.`
+            ).catch(() => {});
+        }
+    }
+}
+
+/**
+ * Process media group reply to ticket confirmation with status notifications
+ */
+async function processMediaGroupTicketReply(collection: MediaGroupCollection, ticketInfo: TicketInfo, fileIds: string[], message: string): Promise<void> {
+    let statusMsg: StatusMessage | null = null;
+    const ctx = collection.ctx;
+    
+    try {
+        // Send initial status notification if context is available
+        if (ctx?.telegram && ctx.chat) {
+            // Get the first message in the collection for reply context
+            const firstItem = collection.items[0];
+            if (firstItem) {
+                const statusMessage = generateStatusMessage(ctx, 'ticket-reply', fileIds.length);
+                statusMsg = await safeReply(ctx, statusMessage, {
+                    reply_parameters: { message_id: firstItem.messageId }
+                });
+                
+                LogEngine.info('📱 Media group ticket reply status notification sent', {
+                    mediaGroupId: collection.groupId,
+                    statusMessageId: statusMsg?.message_id,
+                    fileCount: fileIds.length,
+                    ticketId: ticketInfo.ticketId,
+                    chatId: ctx.chat.id
+                });
+            }
+        }
+        
+        // Get user information
+        const userData = await unthreadService.getOrCreateUser(
+            collection.userId, 
+            undefined, // username not available in collection
+            undefined, // firstName not available
+            undefined  // lastName not available
+        );
+        
+        LogEngine.info('🔄 Processing media group attachments for ticket reply', {
+            ticketId: ticketInfo.ticketId,
+            friendlyId: ticketInfo.friendlyId,
+            mediaGroupId: collection.groupId,
+            fileCount: fileIds.length,
+            messageLength: message.length
+        });
+        
+        // Process all attachments as a batch
+        const attachmentSuccess = await attachmentHandler.processAttachments(
+            fileIds,
+            ticketInfo.conversationId || ticketInfo.ticketId,
+            message || 'Media group attachments via Telegram',
+            {
+                name: userData.name,
+                email: userData.email
+            }
+        );
+        
+        if (!attachmentSuccess) {
+            throw new Error('Failed to process media group attachments');
+        }
+        
+        // Update status message to success
+        if (statusMsg && ctx && ctx.telegram && ctx.chat) {
+            await safeEditMessageText(
+                ctx,
+                ctx.chat.id,
+                statusMsg.message_id,
+                undefined,
+                `✅ ${fileIds.length} files uploaded and added to ticket!`
+            );
+            
+            // Delete status message after 3 seconds
+            setTimeout(() => {
+                if (ctx.chat && statusMsg) {
+                    ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+                }
+            }, 3000);
+            
+            LogEngine.info('📱 Media group ticket reply success notification updated', {
+                mediaGroupId: collection.groupId,
+                statusMessageId: statusMsg.message_id,
+                fileCount: fileIds.length,
+                ticketId: ticketInfo.ticketId
+            });
+        }
+        
+        LogEngine.info('✅ Media group attachments processed successfully for ticket', {
+            ticketId: ticketInfo.ticketId,
+            friendlyId: ticketInfo.friendlyId,
+            mediaGroupId: collection.groupId,
+            fileCount: fileIds.length,
+            processingMethod: 'media_group_batch'
+        });
+        
+    } catch (error) {
+        // Update status message to error
+        if (statusMsg && ctx && ctx.telegram && ctx.chat) {
+            await safeEditMessageText(
+                ctx,
+                ctx.chat.id,
+                statusMsg.message_id,
+                undefined,
+                `❌ Error uploading ${fileIds.length} files to ticket!`
+            ).catch(() => {}); // Ignore errors in error handling
+            
+            // Delete error message after 5 seconds
+            setTimeout(() => {
+                if (ctx.chat && statusMsg) {
+                    ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+                }
+            }, 5000);
+        }
+        
+        LogEngine.error('❌ Error processing media group ticket reply', {
+            ticketId: ticketInfo.ticketId,
+            mediaGroupId: collection.groupId,
+            error: error instanceof Error ? error.message : String(error),
+            fileCount: fileIds.length,
+            hasStatusMessage: !!statusMsg
+        });
+        
+        throw error; // Re-throw to handle upstream
+    }
+}
+
+/**
+ * Process media group reply to agent message with status notifications
+ */
+async function processMediaGroupAgentReply(collection: MediaGroupCollection, agentMessageInfo: AgentMessageInfo, fileIds: string[], message: string): Promise<void> {
+    let statusMsg: StatusMessage | null = null;
+    const ctx = collection.ctx;
+    
+    try {
+        // Send initial status notification if context is available
+        if (ctx && ctx.telegram && ctx.chat) {
+            // Get the first message in the collection for reply context
+            const firstItem = collection.items[0];
+            if (firstItem) {
+                const statusMessage = generateStatusMessage(ctx, 'agent-reply', fileIds.length);
+                statusMsg = await safeReply(ctx, statusMessage, {
+                    reply_parameters: { message_id: firstItem.messageId }
+                });
+                
+                LogEngine.info('📱 Media group status notification sent', {
+                    mediaGroupId: collection.groupId,
+                    statusMessageId: statusMsg?.message_id,
+                    fileCount: fileIds.length,
+                    chatId: ctx.chat.id
+                });
+            }
+        }
+        
+        // Get user information
+        const userData = await unthreadService.getOrCreateUser(
+            collection.userId,
+            undefined, // username not available in collection
+            undefined, // firstName not available
+            undefined  // lastName not available
+        );
+        
+        LogEngine.info('🔄 Processing media group attachments for agent reply', {
+            conversationId: agentMessageInfo.conversationId,
+            friendlyId: agentMessageInfo.friendlyId,
+            mediaGroupId: collection.groupId,
+            fileCount: fileIds.length,
+            messageLength: message.length
+        });
+        
+        // Process all attachments as a batch
+        const attachmentSuccess = await attachmentHandler.processAttachments(
+            fileIds,
+            agentMessageInfo.conversationId,
+            message || 'Media group attachments via Telegram',
+            {
+                name: userData.name,
+                email: userData.email
+            }
+        );
+        
+        if (!attachmentSuccess) {
+            throw new Error('Failed to process media group attachments');
+        }
+        
+        // Update status message to success
+        if (statusMsg && ctx && ctx.telegram && ctx.chat) {
+            await safeEditMessageText(
+                ctx,
+                ctx.chat.id,
+                statusMsg.message_id,
+                undefined,
+                `✅ ${fileIds.length} files uploaded and sent!`
+            );
+            
+            // Delete status message after 3 seconds
+            setTimeout(() => {
+                if (ctx.chat && statusMsg) {
+                    ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+                }
+            }, 3000);
+            
+            LogEngine.info('📱 Media group success notification updated', {
+                mediaGroupId: collection.groupId,
+                statusMessageId: statusMsg.message_id,
+                fileCount: fileIds.length
+            });
+        }
+        
+        LogEngine.info('✅ Media group attachments processed successfully for agent reply', {
+            conversationId: agentMessageInfo.conversationId,
+            friendlyId: agentMessageInfo.friendlyId,
+            mediaGroupId: collection.groupId,
+            fileCount: fileIds.length,
+            processingMethod: 'media_group_batch'
+        });
+        
+    } catch (error) {
+        // Update status message to error
+        if (statusMsg && ctx && ctx.telegram && ctx.chat) {
+            await safeEditMessageText(
+                ctx,
+                ctx.chat.id,
+                statusMsg.message_id,
+                undefined,
+                `❌ Error uploading ${fileIds.length} files!`
+            ).catch(() => {}); // Ignore errors in error handling
+            
+            // Delete error message after 5 seconds
+            setTimeout(() => {
+                if (ctx.chat && statusMsg) {
+                    ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+                }
+            }, 5000);
+        }
+        
+        LogEngine.error('❌ Error processing media group agent reply', {
+            conversationId: agentMessageInfo.conversationId,
+            mediaGroupId: collection.groupId,
+            error: error instanceof Error ? error.message : String(error),
+            fileCount: fileIds.length,
+            hasStatusMessage: !!statusMsg
+        });
+        
+        throw error; // Re-throw to handle upstream
+    }
+}
+
+/**
+ * Cleanup old media group collections
+ */
+function cleanupOldMediaGroups(): void {
+    const now = Date.now();
+    const cutoff = now - MEDIA_GROUP_CONFIG.cleanupIntervalMs;
+    
+    for (const [groupId, collection] of mediaGroupCollector.entries()) {
+        if (collection.firstMessageTimestamp < cutoff) {
+            LogEngine.debug('🧹 Cleaning up old media group collection', {
+                mediaGroupId: groupId,
+                age: now - collection.firstMessageTimestamp
+            });
+            
+            clearTimeout(collection.timeoutId);
+            mediaGroupCollector.delete(groupId);
+        }
+    }
+}
+
+// Store the cleanup interval ID for proper cleanup during shutdown
+let mediaGroupCleanupInterval: NodeJS.Timeout | null = null;
+
+// Set up periodic cleanup
+mediaGroupCleanupInterval = setInterval(cleanupOldMediaGroups, MEDIA_GROUP_CONFIG.cleanupIntervalMs);
+
+/**
+ * Cleanup function to clear the media group cleanup interval.
+ * Should be called during application shutdown to prevent memory leaks.
+ */
+export function cleanupMessageEventHandlers(): void {
+    if (mediaGroupCleanupInterval) {
+        clearInterval(mediaGroupCleanupInterval);
+        mediaGroupCleanupInterval = null;
+        LogEngine.info('Media group cleanup interval cleared');
+    }
+}
 
 /**
  * Returns true if the message originates from a group or supergroup chat.
@@ -54,9 +821,139 @@ export function isPrivateChat(ctx: BotContext): boolean {
 }
 
 /**
- * Main handler for incoming Telegram messages, routing them to appropriate processors based on chat type and message context.
+ * Detects and extracts file attachments from Telegram messages
+ * 
+ * @param ctx - Bot context containing the message
+ * @returns Array of file IDs that can be processed by AttachmentHandler
+ */
+export function extractFileAttachments(ctx: BotContext): string[] {
+    const fileIds: string[] = [];
+    
+    if (!ctx.message) {
+        return fileIds;
+    }
+    
+    try {
+        // Handle different types of file attachments
+        
+        // Photo attachments (multiple sizes, we want the largest)
+        if ('photo' in ctx.message && ctx.message.photo) {
+            const largestPhoto = ctx.message.photo[ctx.message.photo.length - 1];
+            if (largestPhoto?.file_id) {
+                fileIds.push(largestPhoto.file_id);
+                LogEngine.debug('Detected photo attachment', {
+                    fileId: largestPhoto.file_id,
+                    fileSize: largestPhoto.file_size,
+                    width: largestPhoto.width,
+                    height: largestPhoto.height
+                });
+            }
+        }
+        
+        // Document attachments (files uploaded as documents)
+        if ('document' in ctx.message && ctx.message.document) {
+            const document = ctx.message.document;
+            if (document.file_id) {
+                fileIds.push(document.file_id);
+                LogEngine.debug('Detected document attachment', {
+                    fileId: document.file_id,
+                    fileName: document.file_name,
+                    fileSize: document.file_size,
+                    mimeType: document.mime_type
+                });
+            }
+        }
+        
+        // Video attachments
+        if ('video' in ctx.message && ctx.message.video) {
+            const video = ctx.message.video;
+            if (video.file_id) {
+                fileIds.push(video.file_id);
+                LogEngine.debug('Detected video attachment', {
+                    fileId: video.file_id,
+                    fileName: video.file_name,
+                    fileSize: video.file_size,
+                    mimeType: video.mime_type,
+                    duration: video.duration
+                });
+            }
+        }
+        
+        // Voice messages
+        if ('voice' in ctx.message && ctx.message.voice) {
+            const voice = ctx.message.voice;
+            if (voice.file_id) {
+                fileIds.push(voice.file_id);
+                LogEngine.debug('Detected voice attachment', {
+                    fileId: voice.file_id,
+                    fileSize: voice.file_size,
+                    mimeType: voice.mime_type,
+                    duration: voice.duration
+                });
+            }
+        }
+        
+        // Audio files
+        if ('audio' in ctx.message && ctx.message.audio) {
+            const audio = ctx.message.audio;
+            if (audio.file_id) {
+                fileIds.push(audio.file_id);
+                LogEngine.debug('Detected audio attachment', {
+                    fileId: audio.file_id,
+                    fileName: audio.file_name,
+                    fileSize: audio.file_size,
+                    mimeType: audio.mime_type,
+                    duration: audio.duration
+                });
+            }
+        }
+        
+        // Video notes (circular videos)
+        if ('video_note' in ctx.message && ctx.message.video_note) {
+            const videoNote = ctx.message.video_note;
+            if (videoNote.file_id) {
+                fileIds.push(videoNote.file_id);
+                LogEngine.debug('Detected video note attachment', {
+                    fileId: videoNote.file_id,
+                    fileSize: videoNote.file_size,
+                    duration: videoNote.duration
+                });
+            }
+        }
+        
+        // Animation/GIF files
+        if ('animation' in ctx.message && ctx.message.animation) {
+            const animation = ctx.message.animation;
+            if (animation.file_id) {
+                fileIds.push(animation.file_id);
+                LogEngine.debug('Detected animation attachment', {
+                    fileId: animation.file_id,
+                    fileName: animation.file_name,
+                    fileSize: animation.file_size,
+                    mimeType: animation.mime_type
+                });
+            }
+        }
+        
+        LogEngine.info('File attachment detection completed', {
+            totalFiles: fileIds.length,
+            fileIds: fileIds
+        });
+        
+    } catch (error) {
+        LogEngine.error('Error detecting file attachments', {
+            error: error instanceof Error ? error.message : String(error),
+            messageType: Object.keys(ctx.message).filter(key => key !== 'message_id' && key !== 'date' && key !== 'chat' && key !== 'from')
+        });
+    }
+    
+    return fileIds;
+}
+
+/**
+ * Handles incoming Telegram messages and routes them to the appropriate processor based on chat type and message context.
  *
- * Determines whether to process the message as a command, support conversation, ticket reply, private chat, or group chat, and delegates handling accordingly. Prevents automatic responses in group chats and ensures that only relevant handlers are invoked for each message type.
+ * Determines whether the message should be handled as a command, setup wizard input, conversation flow, ticket reply, private chat, or group chat, and delegates processing accordingly. Prevents automatic responses in group chats and ensures only relevant handlers are invoked for each message type. Continues the middleware chain for private chats not handled by earlier steps.
  */
 export async function handleMessage(ctx: BotContext, next: () => Promise<void>): Promise<void> {
     try {
@@ -65,48 +962,92 @@ export async function handleMessage(ctx: BotContext, next: () => Promise<void>):
             return await next();
         }
 
-        // Log basic information about the message
-        LogEngine.debug('Processing message', {
+        // Log basic information about the message - Enhanced with unified text detection
+        const messageTypeInfo = getMessageTypeInfo(ctx);
+        LogEngine.debug('Processing message with unified text detection', {
             chatType: ctx.chat.type,
             chatId: ctx.chat.id,
             userId: ctx.from?.id,
-            messageText: 'text' in ctx.message ? ctx.message.text?.substring(0, 50) : undefined,
-            isCommand: 'text' in ctx.message ? ctx.message.text?.startsWith('/') : false,
-            hasFromUser: !!ctx.from,
-            messageType: 'text' in ctx.message ? 'text' : 'other'
+            messageTypeInfo,
+            hasFromUser: !!ctx.from
         });
         
+        // Detect file attachments early in the process
+        const attachmentFileIds = extractFileAttachments(ctx);
+        const hasAttachments = attachmentFileIds.length > 0;
+        
+        if (hasAttachments) {
+            LogEngine.info('Message contains file attachments', {
+                chatType: ctx.chat.type,
+                chatId: ctx.chat.id,
+                userId: ctx.from?.id,
+                attachmentCount: attachmentFileIds.length,
+                fileIds: attachmentFileIds
+            });
+        }
+        
+        // Check for media group messages and handle them specially
+        if (hasAttachments) {
+            const handledAsMediaGroup = await handleMediaGroupMessage(ctx);
+            if (handledAsMediaGroup) {
+                LogEngine.info('✅ Message handled by media group processor - stopping further processing', {
+                    mediaGroupId: getMediaGroupId(ctx),
+                    attachmentCount: attachmentFileIds.length
+                });
+                return; // Don't call next() - media group processor handles everything
+            }
+        }
+        
         // If this is a command, let Telegraf handle it and don't process further
-        if ('text' in ctx.message && ctx.message.text?.startsWith('/')) {
-            LogEngine.debug('Command detected, passing to command handlers', {
-                command: ctx.message.text,
-                chatType: ctx.chat.type
+        // Now properly detects commands in both text messages and photo/document captions
+        if (isCommand(ctx)) {
+            LogEngine.debug('Command detected in message (text or caption), passing to command handlers', {
+                command: getCommand(ctx),
+                chatType: ctx.chat.type,
+                textSource: messageTypeInfo.textSource
             });
             return;  // Don't call next() for commands, let Telegraf handle them
         }
         
-        // Check if this is part of a support conversation (BEFORE handling different chat types)
-        const isSupportMessage = await processSupportConversation(ctx);
+        // Check if this is part of any conversation flow (setup, support, templates, etc.)
+        const isConversationMessage = await processConversation(ctx);
         
-        if (isSupportMessage) {
-            // Skip other handlers if this was a support conversation message
-            LogEngine.debug('Message processed as support conversation');
-            return;  // Don't call next() for support messages, we're done
+        if (isConversationMessage) {
+            // Skip other handlers if this was processed by any conversation processor
+            LogEngine.debug('Message processed by conversation processor');
+            return;  // Don't call next() for conversation messages, we're done
         }
         
-        // Check if this is a reply to a ticket confirmation
-        if ('reply_to_message' in ctx.message && ctx.message.reply_to_message && 'text' in ctx.message && ctx.message.text) {
+        // Check if this is a reply to a ticket confirmation - Support attachment-only replies
+        if ('reply_to_message' in ctx.message && ctx.message.reply_to_message) {
+            LogEngine.info('Reply message detected - checking for ticket/agent context', {
+                replyToMessageId: ctx.message.reply_to_message.message_id,
+                hasText: !!getMessageText(ctx),
+                hasAttachments: extractFileAttachments(ctx).length > 0,
+                attachmentCount: extractFileAttachments(ctx).length,
+                chatId: ctx.chat?.id,
+                userId: ctx.from?.id
+            });
+            
             const handled = await handleTicketReply(ctx);
             if (handled) {
                 // Skip other handlers if this was a ticket reply
-                LogEngine.debug('Message processed as ticket reply');
+                LogEngine.info('✅ Message processed as ticket/agent reply successfully', {
+                    replyToMessageId: ctx.message.reply_to_message.message_id,
+                    hasAttachments: extractFileAttachments(ctx).length > 0
+                });
                 return;  // Don't call next() for ticket replies, we're done
+            } else {
+                LogEngine.debug('Reply not handled as ticket/agent reply - continuing with normal processing', {
+                    replyToMessageId: ctx.message.reply_to_message.message_id
+                });
             }
         }
 
-        // Handle different chat types
+        // Handle different chat types - only if not handled by conversation processors
         if (isPrivateChat(ctx)) {
-            LogEngine.debug('Processing as private message');
+            LogEngine.debug('Processing as private message (no conversation processor handled it)');
+            // Only send about message if no conversation processor handled it
             await handlePrivateMessage(ctx);
         } else if (isGroupChat(ctx)) {
             LogEngine.debug('Processing as group message - NO AUTO RESPONSES');
@@ -143,7 +1084,7 @@ async function handleTicketReply(ctx: BotContext): Promise<boolean> {
         
         LogEngine.info('Processing potential ticket reply', {
             replyToMessageId,
-            messageText: 'text' in ctx.message ? ctx.message.text?.substring(0, 100) : undefined,
+            messageText: getMessageText(ctx).substring(0, 100),
             chatId: ctx.chat?.id,
             userId: ctx.from?.id
         });
@@ -193,7 +1134,7 @@ async function handleTicketReply(ctx: BotContext): Promise<boolean> {
  * @param ticketInfo - Information about the ticket to which the reply is associated
  * @returns True if the reply was processed (successfully or with an error status message), or false if validation failed or an unexpected error occurred
  */
-async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): Promise<boolean> {
+async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: TicketInfo): Promise<boolean> {
     try {
         // Validate the reply context and ticket information
         const validation = await validateTicketReply(ctx, ticketInfo);
@@ -201,11 +1142,23 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
             return false;
         }
         
-        const { telegramUserId, username, message } = validation;
+        const { telegramUserId, username, firstName, lastName, message } = validation;
         
-        // Send a minimal status message
-        const statusMsg = await safeReply(ctx, '⏳ Adding to ticket...', {
-            reply_parameters: { message_id: ctx.message!.message_id }
+        // Detect file attachments in the reply
+        const attachmentFileIds = extractFileAttachments(ctx);
+        const hasAttachments = attachmentFileIds.length > 0;
+        
+        LogEngine.info('Processing ticket reply with potential attachments', {
+            ticketId: ticketInfo.ticketId,
+            hasMessage: !!message,
+            hasAttachments,
+            attachmentCount: attachmentFileIds.length
+        });
+        
+        // Send a minimal status message with smart content detection
+        const statusMessage = generateStatusMessage(ctx, 'ticket-reply');
+        const statusMsg = await safeReply(ctx, statusMessage, {
+            reply_parameters: { message_id: ctx.message?.message_id || 0 }
         });
 
         if (!statusMsg) {
@@ -213,11 +1166,11 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
         }
         
         try {
-            // Process and send the ticket message to Unthread
-            await processTicketMessage(ticketInfo, telegramUserId, username, message);
+            // Process and send the ticket message to Unthread (with attachments if present)
+            await processTicketMessage(ticketInfo, telegramUserId, username, message, firstName, lastName, attachmentFileIds);
             
             // Update status message to success
-            await updateStatusMessage(ctx, statusMsg, true);
+            await updateStatusMessage(ctx, statusMsg, true, hasAttachments);
             return true;
             
         } catch (error) {
@@ -228,11 +1181,13 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
                 stack: err.stack,
                 conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
                 telegramUserId,
-                username
+                username,
+                hasAttachments,
+                attachmentCount: attachmentFileIds.length
             });
             
             // Update status message to error
-            await updateStatusMessage(ctx, statusMsg, false);
+            await updateStatusMessage(ctx, statusMsg, false, hasAttachments);
             return true;
         }
         
@@ -249,31 +1204,51 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: any): 
 
 /**
  * Validates that the reply message and sender information are present and extracts user and message details for ticket processing.
+ * 
+ * Updated to support attachment-only messages without requiring text content.
  *
- * @returns An object indicating whether the reply is valid. If valid, includes the sender's Telegram user ID, username, and message text.
+ * @returns An object indicating whether the reply is valid. If valid, includes the sender's Telegram user ID, username, first name, last name, and message text.
  */
-async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ isValid: false } | { isValid: true; telegramUserId: number; username: string | undefined; message: string }> {
-    if (!ctx.from || !ctx.message || !('text' in ctx.message)) {
+async function validateTicketReply(ctx: BotContext, ticketInfo: TicketInfo): Promise<{ isValid: false } | { isValid: true; telegramUserId: number; username: string | undefined; firstName: string | undefined; lastName: string | undefined; message: string }> {
+    // Only require basic message and sender info - allow attachment-only messages
+    if (!ctx.from || !ctx.message) {
+        LogEngine.warn('❌ Ticket reply validation failed - missing basic context', {
+            hasFrom: !!ctx.from,
+            hasMessage: !!ctx.message,
+            ticketId: ticketInfo?.ticketId,
+            friendlyId: ticketInfo?.friendlyId
+        });
         return { isValid: false };
     }
     
     const telegramUserId = ctx.from.id;
     const username = ctx.from.username;
-    const message = ctx.message.text || '';
+    const firstName = ctx.from.first_name;
+    const lastName = ctx.from.last_name;
+    const message = getMessageText(ctx); // This handles both text and caption
+    const hasAttachments = extractFileAttachments(ctx).length > 0;
     
-    LogEngine.info('Processing ticket confirmation reply', {
+    LogEngine.info('✅ Ticket reply validation successful - processing reply', {
         conversationId: ticketInfo.conversationId,
         ticketId: ticketInfo.ticketId,
         friendlyId: ticketInfo.friendlyId,
         telegramUserId,
         username,
-        messageLength: message?.length
+        firstName,
+        lastName,
+        messageLength: message?.length || 0,
+        hasText: !!message,
+        hasAttachments,
+        attachmentCount: extractFileAttachments(ctx).length,
+        validationType: 'supports_attachment_only_messages'
     });
     
     return {
         isValid: true,
         telegramUserId,
         username,
+        firstName,
+        lastName,
         message
     };
 }
@@ -281,32 +1256,65 @@ async function validateTicketReply(ctx: BotContext, ticketInfo: any): Promise<{ 
 /**
  * Sends a user's message to the specified ticket conversation in Unthread.
  *
- * Retrieves or creates user data based on the Telegram user ID and username, then sends the provided message to the ticket conversation identified by the ticket information.
+ * Retrieves or creates user data based on the Telegram user ID and username, then sends the provided message to the ticket conversation identified by the ticket information. Supports file attachments.
  */
-async function processTicketMessage(ticketInfo: any, telegramUserId: number, username: string | undefined, message: string): Promise<void> {
+async function processTicketMessage(ticketInfo: TicketInfo, telegramUserId: number, username: string | undefined, message: string, firstName?: string, lastName?: string, attachmentFileIds?: string[]): Promise<void> {
     // Get user information from database
-    const userData = await unthreadService.getOrCreateUser(telegramUserId, username);
+    const userData = await unthreadService.getOrCreateUser(telegramUserId, username, firstName, lastName);
     
     LogEngine.info('Retrieved user data for ticket reply', {
         userData: JSON.stringify(userData),
         hasName: !!userData.name,
-        hasEmail: !!userData.email
+        hasEmail: !!userData.email,
+        hasAttachments: !!(attachmentFileIds && attachmentFileIds.length > 0),
+        attachmentCount: attachmentFileIds?.length || 0
     });
     
-    // Send the message to the ticket using conversationId (which is the same as ticketId)
-    await unthreadService.sendMessage({
-        conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
-        message: message || 'No message content',
-        onBehalfOf: userData
-    });
-    
-    LogEngine.info('Added message to ticket', {
-        ticketNumber: ticketInfo.friendlyId,
-        conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
-        telegramUserId,
-        username,
-        messageLength: message?.length
-    });
+    // Handle file attachments if present
+    if (attachmentFileIds && attachmentFileIds.length > 0) {
+        LogEngine.info('Processing file attachments for ticket reply', {
+            conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
+            attachmentCount: attachmentFileIds.length,
+            fileIds: attachmentFileIds
+        });
+        
+        // Process attachments using the buffer-only approach
+        const attachmentSuccess = await attachmentHandler.processAttachments(
+            attachmentFileIds,
+            ticketInfo.conversationId || ticketInfo.ticketId,
+            message || 'Customer reply with attachments via Telegram',
+            {
+                name: userData.name,
+                email: userData.email
+            }
+        );
+        
+        if (!attachmentSuccess) {
+            throw new Error('Failed to process file attachments using enhanced processing');
+        }
+        
+        LogEngine.info('File attachments processed successfully for ticket reply using enhanced processing', {
+            ticketNumber: ticketInfo.friendlyId,
+            conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
+            attachmentCount: attachmentFileIds.length,
+            processingMethod: 'pure_buffer'
+        });
+    } else {
+        // Send text-only message if no attachments
+        await unthreadService.sendMessage({
+            conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
+            message: message || 'No message content',
+            onBehalfOf: userData
+        });
+        
+        LogEngine.info('Added text message to ticket', {
+            ticketNumber: ticketInfo.friendlyId,
+            conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
+            telegramUserId,
+            username,
+            messageLength: message?.length
+        });
+    }
 }
 
 /**
@@ -314,34 +1322,45 @@ async function processTicketMessage(ticketInfo: any, telegramUserId: number, use
  *
  * The message is updated to show a checkmark for success or an error icon for failure, and is automatically removed after 3 seconds (success) or 5 seconds (error).
  */
-async function updateStatusMessage(ctx: BotContext, statusMsg: any, isSuccess: boolean): Promise<void> {
+async function updateStatusMessage(ctx: BotContext, statusMsg: StatusMessage, isSuccess: boolean, hasAttachments?: boolean): Promise<void> {
+    if (!ctx.chat) {
+        LogEngine.error('Chat context is null during status message update');
+        return;
+    }
+    
     if (isSuccess) {
         // Update status message to success
+        const successMessage = hasAttachments ? '✅ Files uploaded and added!' : '✅ Added!';
         await safeEditMessageText(
             ctx,
-            ctx.chat!.id,
+            ctx.chat.id,
             statusMsg.message_id,
             undefined,
-            '✅ Added!'
+            successMessage
         );
 
         // Delete status message after 3 seconds
         setTimeout(() => {
-            ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+            if (ctx.chat) {
+                ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+            }
         }, 3000);
     } else {
         // Update status message to error
+        const errorMessage = hasAttachments ? '❌ Error uploading files!' : '❌ Error!';
         await safeEditMessageText(
             ctx,
-            ctx.chat!.id,
+            ctx.chat.id,
             statusMsg.message_id,
             undefined,
-            '❌ Error!'
+            errorMessage
         );
 
         // Delete status message after 5 seconds
         setTimeout(() => {
-            ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+            if (ctx.chat) {
+                ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+            }
         }, 5000);
     }
 }
@@ -353,19 +1372,31 @@ async function updateStatusMessage(ctx: BotContext, statusMsg: any, isSuccess: b
  *
  * @returns True if the reply was handled (successfully sent or error occurred), false if the context was invalid.
  */
-async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): Promise<boolean> {
+async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: AgentMessageInfo): Promise<boolean> {
     try {
-        if (!ctx.from || !ctx.message || !('text' in ctx.message)) {
+        if (!ctx.from || !ctx.message) {
             return false;
         }
 
         // This is a reply to an agent message, send it back to Unthread
         const telegramUserId = ctx.from.id;
         const username = ctx.from.username;
-        const message = ctx.message.text || '';
+        const message = getMessageText(ctx);
         
-        // Send a minimal status message
-        const statusMsg = await safeReply(ctx, '⏳ Sending...', {
+        // Detect file attachments in the reply
+        const attachmentFileIds = extractFileAttachments(ctx);
+        const hasAttachments = attachmentFileIds.length > 0;
+        
+        LogEngine.info('Processing agent message reply with potential attachments', {
+            conversationId: agentMessageInfo.conversationId,
+            hasMessage: !!message,
+            hasAttachments,
+            attachmentCount: attachmentFileIds.length
+        });
+        
+        // Send a minimal status message with smart content detection
+        const statusMessage = generateStatusMessage(ctx, 'agent-reply');
+        const statusMsg = await safeReply(ctx, statusMessage, {
             reply_parameters: { message_id: ctx.message.message_id }
         });
 
@@ -374,28 +1405,123 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
         }
         
         try {
-            // Get user information for proper onBehalfOf formatting
-            const userData = await unthreadService.getOrCreateUser(telegramUserId, username);
+            // Check if user has a valid email address by getting full user data
+            const fullUserData = await BotsStore.getUserByTelegramId(telegramUserId);
             
-            // Send the message to the conversation
-            await unthreadService.sendMessage({
-                conversationId: agentMessageInfo.conversationId,
-                message: message || 'No message content',
-                onBehalfOf: userData
+            // Only require email if user has no unthreadEmail set at all
+            if (!fullUserData || !fullUserData.unthreadEmail) {
+                LogEngine.info('User has no email - prompting for email before sending reply', {
+                    telegramUserId,
+                    conversationId: agentMessageInfo.conversationId,
+                    friendlyId: agentMessageInfo.friendlyId,
+                    hasUserData: !!fullUserData,
+                    hasEmail: !!(fullUserData?.unthreadEmail)
+                });
+                
+                // Update status message to prompt for email
+                if (!ctx.chat) {
+                    LogEngine.error('Chat context is null during email required message update');
+                    return true;
+                }
+                await safeEditMessageText(
+                    ctx,
+                    ctx.chat.id,
+                    statusMsg.message_id,
+                    undefined,
+                    '📧 **Email Required**\n\n' +
+                    `To continue this conversation for ticket #${agentMessageInfo.friendlyId}, please set your email address:\n\n` +
+                    '• Use `/setemail your@email.com`\n' +
+                    '• Or reply with your email address\n\n' +
+                    '_Your message will be sent after email setup._',
+                    { parse_mode: 'Markdown' }
+                );
+                
+                // Store the pending message for delivery after email collection
+                const pendingMessageKey = `pending_reply_message:${agentMessageInfo.conversationId}:${Date.now()}`;
+                const botsStoreInstance = BotsStore.getInstance();
+                await botsStoreInstance.storage.set(pendingMessageKey, {
+                    conversationId: agentMessageInfo.conversationId,
+                    messageText: message,
+                    agentMessageInfo: agentMessageInfo,
+                    storedAt: new Date().toISOString(),
+                    telegramUserId: telegramUserId,
+                    username: username
+                }, 24 * 60 * 60); // 24 hour TTL
+                
+                LogEngine.info('Stored pending reply message for email collection', {
+                    conversationId: agentMessageInfo.conversationId,
+                    telegramUserId: telegramUserId,
+                    pendingMessageKey: pendingMessageKey
+                });
+                
+                return true;
+            }
+            
+            LogEngine.info('User has email - proceeding with reply', {
+                telegramUserId,
+                hasEmail: !!fullUserData.unthreadEmail,
+                conversationId: agentMessageInfo.conversationId
             });
             
+            // Get user information for proper onBehalfOf formatting
+            const userData = await unthreadService.getOrCreateUser(telegramUserId, username, ctx.from?.first_name, ctx.from?.last_name);
+            
+            // Handle file attachments if present
+            if (hasAttachments) {
+                LogEngine.info('Processing file attachments for agent reply', {
+                    conversationId: agentMessageInfo.conversationId,
+                    attachmentCount: attachmentFileIds.length,
+                    fileIds: attachmentFileIds
+                });
+                
+                // Process attachments using the buffer-only approach
+                const attachmentSuccess = await attachmentHandler.processAttachments(
+                    attachmentFileIds,
+                    agentMessageInfo.conversationId,
+                    message || 'Customer reply with attachments via Telegram',
+                    {
+                        name: userData.name,
+                        email: userData.email
+                    }
+                );
+                
+                if (!attachmentSuccess) {
+                    throw new Error('Failed to process file attachments using buffer processing');
+                }
+                
+                LogEngine.info('File attachments processed successfully for agent reply using enhanced processing', {
+                    conversationId: agentMessageInfo.conversationId,
+                    attachmentCount: attachmentFileIds.length,
+                    processingMethod: 'pure_buffer'
+                });
+            } else {
+                // Send text-only message if no attachments
+                await unthreadService.sendMessage({
+                    conversationId: agentMessageInfo.conversationId,
+                    message: message || 'No message content',
+                    onBehalfOf: userData
+                });
+            }
+            
             // Update status message to success
+            if (!ctx.chat) {
+                LogEngine.error('Chat context is null during success message update');
+                return true;
+            }
+            const successMessage = hasAttachments ? '✅ Files uploaded and sent!' : '✅ Sent!';
             await safeEditMessageText(
                 ctx,
-                ctx.chat!.id,
+                ctx.chat.id,
                 statusMsg.message_id,
                 undefined,
-                '✅ Sent!'
+                successMessage
             );
 
             // Delete status message after 3 seconds
             setTimeout(() => {
-                ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+                if (ctx.chat) {
+                    ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+                }
             }, 3000);
 
             LogEngine.info('Sent reply to agent', {
@@ -404,6 +1530,8 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
                 telegramUserId,
                 username,
                 messageLength: message?.length,
+                hasAttachments,
+                attachmentCount: attachmentFileIds.length,
                 chatId: ctx.chat?.id
             });
             return true;
@@ -413,21 +1541,30 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
             // Handle API errors
             LogEngine.error('Error sending reply to agent', {
                 error: err.message,
-                conversationId: agentMessageInfo.conversationId
+                conversationId: agentMessageInfo.conversationId,
+                hasAttachments,
+                attachmentCount: attachmentFileIds.length
             });
             
             // Update status message to error
+            if (!ctx.chat) {
+                LogEngine.error('Chat context is null during error message update');
+                return true;
+            }
+            const errorMessage = hasAttachments ? '❌ Error uploading files!' : '❌ Error!';
             await safeEditMessageText(
                 ctx,
-                ctx.chat!.id,
+                ctx.chat.id,
                 statusMsg.message_id,
                 undefined,
-                '❌ Error!'
+                errorMessage
             );
 
             // Delete status message after 5 seconds
             setTimeout(() => {
-                ctx.telegram.deleteMessage(ctx.chat!.id, statusMsg.message_id).catch(() => {});
+                if (ctx.chat) {
+                    ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+                }
             }, 5000);
             
             return true;
@@ -444,33 +1581,35 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: any): 
 }
 
 /**
- * Processes incoming messages from private chats and responds with an about message for non-command texts.
+ * Handles incoming messages from private chats, ignoring commands and non-conversation messages.
  *
- * Skips messages that are commands, allowing them to be handled by their respective handlers.
+ * Skips processing for command messages, allowing them to be handled by command-specific handlers. Non-command messages that are not part of an active conversation are ignored without response.
  */
 export async function handlePrivateMessage(ctx: BotContext): Promise<void> {
     try {
         // Log information about the private message
-        LogEngine.info('Processing private message', {
+        LogEngine.info('Processing private message with enhanced text detection', {
             telegramUserId: ctx.from?.id,
             username: ctx.from?.username,
             firstName: ctx.from?.first_name,
             lastName: ctx.from?.last_name,
             messageId: ctx.message?.message_id,
-            messageText: ctx.message && 'text' in ctx.message ? ctx.message.text?.substring(0, 100) : undefined
+            messageTypeInfo: getMessageTypeInfo(ctx)
         });
         
         // Only respond to private messages if they're not commands
         // Commands should be handled by their respective handlers
-        if (ctx.message && 'text' in ctx.message && ctx.message.text?.startsWith('/')) {
+        if (isCommand(ctx)) {
             LogEngine.debug('Skipping private message - it\'s a command', {
-                command: ctx.message.text.split(' ')[0]
+                command: getCommand(ctx)
             });
             return;
         }
         
-        // Send the about message for any non-command private message
-        await aboutCommand(ctx);
+        // Do nothing for non-command private messages
+        // If someone sends a message and it's not a command and not handled by conversation processors,
+        // we simply ignore it instead of sending the about message
+        LogEngine.debug('Private message received but no action taken - not a command and not part of active conversation');
         
     } catch (error) {
         const err = error as Error;
@@ -499,13 +1638,11 @@ export async function handleGroupMessage(ctx: BotContext): Promise<void> {
             LogEngine.info(`Message sent by: ${ctx.from.first_name} ${ctx.from.last_name || ''} (ID: ${ctx.from.id})`);
         }
         
-        // Log the message content for debugging
-        LogEngine.debug('Group message details', {
+        // Log the message content for debugging with enhanced text detection
+        const messageTypeInfo = getMessageTypeInfo(ctx);
+        LogEngine.debug('Group message details with enhanced text detection', {
             messageId: ctx.message?.message_id,
-            messageText: ctx.message && 'text' in ctx.message ? ctx.message.text?.substring(0, 100) : undefined,
-            messageType: ctx.message && 'photo' in ctx.message ? 'photo' : 
-                        ctx.message && 'document' in ctx.message ? 'document' : 
-                        ctx.message && 'text' in ctx.message ? 'text' : 'other',
+            messageTypeInfo,
             hasReply: ctx.message && 'reply_to_message' in ctx.message && !!ctx.message.reply_to_message,
             replyToId: ctx.message && 'reply_to_message' in ctx.message ? ctx.message.reply_to_message?.message_id : undefined
         });

@@ -1,7 +1,7 @@
 /**
  * Unthread Telegram Bot - Database Connection Module
  * 
- * Provides secure PostgreSQL database connection with comprehensive SSL support 
+ * Provides secure PostgreSQL connection with comprehensive SSL support 
  * for the Unthread Telegram Bot project. Designed for cloud deployment on Railway
  * and other cloud providers requiring secure database connections.
  * 
@@ -19,18 +19,18 @@
  * 
  * Security Features:
  * - SSL certificate validation enabled by default in production
- * - Configurable SSL validation for development environments   * - Environment-aware SSL configuration to prevent MITM attacks
+ * - Configurable SSL validation for development environments
+ * - Environment-aware SSL configuration to prevent MITM attacks
  * - Secure connection string handling with validation
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 
-import pkg from 'pg';
-const { Pool } = pkg;
-import type { Pool as PoolType, PoolClient, QueryResult } from 'pg';
-import { LogEngine } from '@wgtechlabs/log-engine';
+import pg, { type Pool as PgPool, type PoolClient, type QueryResult } from 'pg';
+const { Pool } = pg;
+import { LogEngine } from '../config/logging.js';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
@@ -48,7 +48,7 @@ const __dirname = path.dirname(__filename);
  * Handles PostgreSQL connections with SSL support and connection pooling
  */
 export class DatabaseConnection {
-    private pool: PoolType;
+    private pool: PgPool;
 
     constructor() {
         // Configure SSL based on environment
@@ -89,17 +89,12 @@ export class DatabaseConnection {
                 error: err.message,
                 stack: err.stack
             });
-        });        LogEngine.info('Database connection pool initialized', {
+        });
+        
+        LogEngine.info('Database connection pool initialized', {
             maxConnections: 10,
             sslEnabled: sslConfig !== false,
-            sslValidation: this.isRailwayEnvironment() ? 'railway-compatible' : (
-                isProduction ? 'enabled' : (
-                    process.env.DATABASE_SSL_VALIDATE === 'full' ? 'disabled' :
-                    process.env.DATABASE_SSL_VALIDATE === 'true' ? 'disabled-validation' :
-                    process.env.DATABASE_SSL_VALIDATE === 'false' ? 'enabled' : 'enabled-no-validation'
-                )
-            ),
-            environment: process.env.NODE_ENV || 'development',
+            environment: isProduction ? 'production' : 'development',
             provider: this.isRailwayEnvironment() ? 'Railway' : 'Unknown'
         });
     }
@@ -108,7 +103,7 @@ export class DatabaseConnection {
      * Get the database connection pool
      * @returns The PostgreSQL connection pool
      */
-    get connectionPool(): PoolType {
+    get connectionPool(): PgPool {
         return this.pool;
     }
 
@@ -224,7 +219,7 @@ export class DatabaseConnection {
             // Check if schema file exists asynchronously
             try {
                 await fs.promises.access(schemaPath, fs.constants.F_OK);
-            } catch (accessError) {
+            } catch {
                 throw new Error(`Schema file not found: ${schemaPath}`);
             }
 
@@ -275,7 +270,7 @@ export class DatabaseConnection {
         const postgresUrl = process.env.POSTGRES_URL;
           // Railway internal services use 'railway.internal' in their hostnames
         const isRailwayHost = (url: string | undefined): boolean => {
-            if (!url || url.trim() === '') return false;
+            if (!url || url.trim() === '') {return false;}
             try {
                 const parsedUrl = new URL(url);
                 return parsedUrl.hostname.toLowerCase().includes('railway.internal');

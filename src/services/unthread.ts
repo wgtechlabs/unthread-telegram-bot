@@ -1,45 +1,24 @@
 /**
- * Unthread Telegram Bot - Unthread API Service
+ * Unthread API Service - Customer support ticket management
  * 
- * Provides comprehensive integration with the Unthread platform API for customer
- * support ticket management. This service handles customer creation, ticket
- * management, and message routing between Telegram and Unthread.
- * 
- * Core Features:
+ * Key Features:
  * - Customer profile creation and management
  * - Support ticket creation and status tracking
- * - Message sending and conversation threading
- * - API authentication and error handling
- * - Data persistence with Bots Brain storage integration
- * 
- * API Operations:
- * - Customer creation with Telegram user data
- * - Ticket creation with support form data
- * - Message posting to existing conversations
- * - Ticket status updates and notifications
- * 
- * Integration Points:
- * - Telegram user data mapping to Unthread customers
- * - Support form data collection and validation
- * - Conversation state management and persistence
- * - Error handling and retry mechanisms
- * 
- * Security:
- * - API key authentication
- * - Request signing and validation
- * - Rate limiting compliance 
- * - Data sanitization and validation
+ * - Message routing between Telegram and Unthread
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+ * @version 1.0.0-rc1
  * @since 2025
  */
 
 import fetch from 'node-fetch';
+import FormData from 'form-data';
+import fs from 'fs';
+import path from 'path';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
-import { TicketData, AgentMessageData, UserData } from '../sdk/types.js';
-import { getDefaultTicketPriority } from '../config/env.js';
+import { AgentMessageData, TicketData, UserData } from '../sdk/types.js';
+import { getCompanyName, getDefaultTicketPriority } from '../config/env.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -55,10 +34,11 @@ interface Customer {
 
 /**
  * User data for onBehalfOf
+ * Email is optional to support users without email setup
  */
 interface OnBehalfOfUser {
   name: string;
-  email: string;
+  email: string | undefined; // Explicitly allow undefined for email collection flow
 }
 
 /**
@@ -90,6 +70,7 @@ interface RegisterTicketConfirmationParams {
   customerId: string;
   chatId: number;
   telegramUserId: number;
+  summary: string;
 }
 
 /**
@@ -109,6 +90,31 @@ interface SendMessageJSONParams {
   conversationId: string;
   message: string;
   onBehalfOf: OnBehalfOfUser;
+}
+
+/**
+ * Message parameters with file attachments
+ */
+interface SendMessageWithAttachmentsParams {
+  conversationId: string;
+  message: string;
+  onBehalfOf: OnBehalfOfUser;
+  filePaths: string[];
+}
+
+/**
+ * Ticket creation parameters with file attachments using buffers
+ */
+interface CreateTicketWithBufferAttachmentsParams {
+  groupChatName: string;
+  customerId: string;
+  summary: string;
+  onBehalfOf: OnBehalfOfUser;
+  attachments: Array<{
+    filename: string;
+    buffer: Buffer;
+    mimeType: string;
+  }>;
 }
 
 /**
@@ -134,17 +140,24 @@ interface CreateTicketPayload {
 }
 
 /**
- * Extracts and formats the customer company name from a Telegram group chat title by removing the bot's company name and handling various separators.
+ * Extracts the customer company name from a Telegram group chat title by removing the bot's company name and handling common separators.
  *
- * @param groupChatTitle - The original group chat title
- * @returns The extracted and capitalized customer company name, or "Unknown Company" if extraction fails
+ * Returns a formatted and capitalized customer name, or "Unknown Company" if extraction is not possible.
+ *
+ * @param groupChatTitle - The original group chat title from Telegram
+ * @returns The extracted customer company name for display
  */
 function extractCustomerCompanyName(groupChatTitle: string): string {
     if (!groupChatTitle) {
         return 'Unknown Company';
     }
 
-    const companyName = process.env.COMPANY_NAME || 'Unthread';
+    const companyName = getCompanyName();
+    
+    // If no company name is configured (placeholder or empty), use full group chat name
+    if (!companyName) {
+        return formatCustomerNameForDisplay(groupChatTitle);
+    }
     
     // Convert both to lowercase for effective matching
     const lowerTitle = groupChatTitle.toLowerCase().trim();
@@ -170,10 +183,10 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
                 
                 if (part1 === lowerCompanyName && part2 !== lowerCompanyName && part2) {
                     // Our company is first, customer is second
-                    return capitalizeCompanyName(part2);
+                    return formatCustomerNameForDisplay(part2);
                 } else if (part2 === lowerCompanyName && part1 !== lowerCompanyName && part1) {
                     // Customer is first, our company is second
-                    return capitalizeCompanyName(part1);
+                    return formatCustomerNameForDisplay(part1);
                 }
             }
         }
@@ -187,34 +200,33 @@ function extractCustomerCompanyName(groupChatTitle: string): string {
         result = result.replace(/^[x<>&×\s]+|[x<>&×\s]+$/g, '').trim();
         
         if (result && result !== lowerTitle) {
-            return capitalizeCompanyName(result);
+            return formatCustomerNameForDisplay(result);
         }
     }
     
-    // Final fallback: return the original title capitalized
-    return capitalizeCompanyName(groupChatTitle);
+    // If admin's company name is NOT found in the group title, 
+    // the group title likely represents the partner's name
+    // Example: Admin company = "Unthread", Group title = "ACME Global Corp" → suggest "ACME Global Corp"
+    return formatCustomerNameForDisplay(groupChatTitle);
 }
 
 /**
- * Formats a company name by capitalizing each word, replacing spaces with hyphens, and removing invalid characters.
+ * Formats a customer name for display by normalizing spaces and capitalizing each word.
  *
- * Returns 'Unknown-Company' if the input is empty.
+ * Returns 'Unknown Company' if the input is empty.
  *
- * @param name - The company name to format
- * @returns The formatted and capitalized company name
+ * @param name - The customer name to format
+ * @returns The formatted customer name with proper capitalization and spacing
  */
-function capitalizeCompanyName(name: string): string {
-    if (!name) return 'Unknown-Company';
+function formatCustomerNameForDisplay(name: string): string {
+    if (!name) {return 'Unknown Company';}
     
     return name
-        .toLowerCase()
-        .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join('-') // Use hyphen instead of space for API compatibility
         .trim()
-        .replace(/[^a-zA-Z0-9-_]/g, '') // Remove invalid characters, keep only letters, numbers, hyphens, underscores
-        .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
-        .replace(/-{2,}/g, '-'); // Replace multiple consecutive hyphens with single hyphen
+        .replace(/\s+/g, ' ') // Normalize multiple spaces to single space
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
 }
 
 // API URLs and Auth Keys
@@ -238,7 +250,8 @@ export async function createCustomer(groupChatName: string): Promise<Customer> {
         
         const response = await fetch(`${API_BASE_URL}/customers`, {
             method: 'POST',
-            headers: {
+            headers:
+ {
                 'Content-Type': 'application/json',
                 'X-API-KEY': UNTHREAD_API_KEY!
             },
@@ -249,12 +262,11 @@ export async function createCustomer(groupChatName: string): Promise<Customer> {
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`Failed to create customer: ${response.status} ${errorText}`);
+            throw new Error(`Failed to create customer: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
         const result = await response.json() as Customer;
         
-        // Log the extraction for debugging
         LogEngine.info('Customer created with extracted name', {
             originalGroupChatName: groupChatName,
             extractedCustomerName: customerName,
@@ -336,7 +348,7 @@ async function createTicketJSON(params: CreateTicketJSONParams): Promise<CreateT
 
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to create ticket: ${response.status} ${errorText}`);
+        throw new Error(`Failed to create ticket: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const result = await response.json() as CreateTicketResponse;
@@ -399,7 +411,7 @@ async function sendMessageJSON(params: SendMessageJSONParams): Promise<any> {
 
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to send message: ${response.status} ${errorText}`);
+        throw new Error(`Failed to send message: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     return await response.json();
@@ -411,32 +423,80 @@ async function sendMessageJSON(params: SendMessageJSONParams): Promise<any> {
  * @param params - Ticket confirmation data including message and ticket identifiers, chat and user IDs, and related metadata.
  */
 export async function registerTicketConfirmation(params: RegisterTicketConfirmationParams): Promise<void> {
+    LogEngine.info('Starting registerTicketConfirmation', {
+        messageId: params.messageId,
+        ticketId: params.ticketId,
+        friendlyId: params.friendlyId,
+        chatId: params.chatId,
+        telegramUserId: params.telegramUserId
+    });
+    
     try {
-        const { messageId, ticketId, friendlyId, customerId, chatId, telegramUserId } = params;
+        const { messageId, ticketId, friendlyId, customerId, chatId, telegramUserId, summary } = params;
         
-        // Store ticket mapping using BotsStore
-        await BotsStore.storeTicket({
-            messageId: messageId,
+        LogEngine.info('About to store ticket with unified approach', {
             conversationId: ticketId,
+            messageId,
+            friendlyId,
+            summary: summary.substring(0, 100) + (summary.length > 100 ? '...' : '')
+        });
+        
+        // UNIFIED APPROACH: Store ticket using the ticketId as conversationId
+        // This eliminates the ID mismatch by treating ticketId as the primary conversation identifier
+        // Webhooks will use this same ID to look up tickets
+        const storeResult = await BotsStore.storeTicket({
+            messageId: messageId,
+            conversationId: ticketId,           // Use ticketId as conversationId for unified lookup
             friendlyId: friendlyId,
             chatId: chatId,
             telegramUserId: telegramUserId,
-            ticketId: ticketId,
+            ticketId: ticketId,                 // Keep for backward compatibility
+            summary: summary,                   // Store the actual ticket summary for template usage
             createdAt: Date.now().toString()
         });
         
-        LogEngine.info('Registered ticket confirmation', {
+        LogEngine.info('Ticket storage completed', {
+            success: storeResult,
+            conversationId: ticketId,
             messageId,
-            ticketId,
+            friendlyId
+        });
+        
+        // Immediate verification - try to retrieve the ticket we just stored
+        LogEngine.info('Attempting immediate verification lookup');
+        const verificationTicket = await BotsStore.getTicketByConversationId(ticketId);
+        LogEngine.info('Immediate verification result', {
+            found: !!verificationTicket,
+            lookupKey: `ticket:unthread:${ticketId}`,
+            verificationData: verificationTicket ? {
+                conversationId: verificationTicket.conversationId,
+                friendlyId: verificationTicket.friendlyId,
+                messageId: verificationTicket.messageId
+            } : null
+        });
+        
+        LogEngine.info('Registered ticket confirmation - unified storage approach', {
+            messageId,
+            unifiedConversationId: ticketId,    // Now conversationId === ticketId
+            ticketId: ticketId,
             friendlyId,
             customerId,
             chatId,
-            telegramUserId
+            telegramUserId,
+            summary: summary.substring(0, 100) + (summary.length > 100 ? '...' : ''),
+            approach: 'unified_conversationId',
+            storageKeys: [
+                `ticket:unthread:${ticketId}`,  // Primary storage key
+                `ticket:telegram:${messageId}`,
+                `ticket:friendly:${friendlyId}`
+            ]
         });
     } catch (error) {
         LogEngine.error('Error registering ticket confirmation', {
             error: (error as Error).message,
-            ticketId: params.ticketId
+            stack: (error as Error).stack,
+            ticketId: params.ticketId,
+            messageId: params.messageId
         });
         throw error;
     }
@@ -502,7 +562,7 @@ export async function getAgentMessageFromReply(replyToMessageId: number): Promis
  */
 export async function getTicketsForChat(chatId: number): Promise<TicketData[]> {
     try {
-        // Note: This would require a new method in BotsStore to search by chatId
+        // This would require a new method in BotsStore to search by chatId
         // For now, we'll return an empty array and implement this if needed
         LogEngine.debug('getTicketsForChat called but not yet implemented with BotsStore', { chatId });
         return [];
@@ -517,21 +577,42 @@ export async function getTicketsForChat(chatId: number): Promise<TicketData[]> {
 }
 
 /**
- * Retrieves an existing customer by Telegram chat ID or creates a new customer in Unthread and stores it locally.
+ * Retrieves the Unthread customer associated with a Telegram group chat, using group configuration or legacy storage.
  *
- * @param groupChatName - The name of the Telegram group chat.
- * @param chatId - The Telegram chat ID.
- * @returns The customer object containing the Unthread customer ID and name.
+ * If the group is properly configured, returns the configured customer. If legacy customer data exists, returns that customer. Throws an error if the group is not configured for support tickets.
+ *
+ * @param groupChatName - The name of the Telegram group chat
+ * @param chatId - The Telegram chat ID
+ * @returns The customer object containing the Unthread customer ID and name
  */
 export async function getOrCreateCustomer(groupChatName: string, chatId: number): Promise<Customer> {
     try {
-        // First, check if we already have this customer in our database by chat ID
+        // Check if group is configured first
+        const groupConfig = await BotsStore.getGroupConfig(chatId);
+        
+        if (groupConfig?.isConfigured && groupConfig.customerId) {
+            // Group is configured - use the configured customer
+            LogEngine.info('Using configured customer for group', {
+                customerId: groupConfig.customerId,
+                customerName: groupConfig.customerName,
+                chatId: chatId,
+                groupConfigured: true
+            });
+            
+            return {
+                id: groupConfig.customerId,
+                name: groupConfig.customerName || 'Unknown Customer'
+            };
+        }
+        
+        // Group not configured - check for legacy customer data
         const existingCustomer = await BotsStore.getCustomerByChatId(chatId);
         if (existingCustomer) {
-            LogEngine.info('Using existing customer from database', {
+            LogEngine.info('Using existing customer from legacy storage', {
                 customerId: existingCustomer.unthreadCustomerId,
                 customerName: existingCustomer.customerName || existingCustomer.name,
-                chatId: chatId
+                chatId: chatId,
+                groupConfigured: false
             });
             return {
                 id: existingCustomer.unthreadCustomerId,
@@ -539,101 +620,186 @@ export async function getOrCreateCustomer(groupChatName: string, chatId: number)
             };
         }
 
-        // Extract the actual customer company name from the group chat title
-        const customerName = extractCustomerCompanyName(groupChatName);
-        
-        // Create customer in Unthread API
-        const response = await fetch(`${API_BASE_URL}/customers`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-API-KEY': UNTHREAD_API_KEY!
-            },
-            body: JSON.stringify({
-                name: customerName
-            })
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to create customer: ${response.status} ${errorText}`);
-        }
-
-        const result = await response.json() as Customer;
-        
-        // Store customer in our database
-        await BotsStore.storeCustomer({
-            id: `customer_${chatId}`,
-            unthreadCustomerId: result.id,
-            telegramChatId: chatId,
-            chatId: chatId,
-            chatTitle: groupChatName,
-            customerName: customerName,
-            name: customerName,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+        // Prevent auto-creation for unconfigured groups
+        // This encourages proper setup through the /setup command
+        LogEngine.warn('Attempted ticket creation in unconfigured group', {
+            groupChatName,
+            chatId,
+            message: 'Group requires setup before ticket creation'
         });
         
-        LogEngine.info('Created and stored new customer', {
-            originalGroupChatName: groupChatName,
-            extractedCustomerName: customerName,
-            customerId: result.id,
-            chatId: chatId
-        });
-
-        return {
-            id: result.id,
-            name: customerName
-        };
+        throw new Error(
+            'GROUP_NOT_CONFIGURED: This group has not been configured for support tickets. ' +
+            'Please ask a group administrator to run /setup to link this group to a customer account.'
+        );
     } catch (error) {
+        const err = error as Error;
         LogEngine.error('Error getting or creating customer', {
-            error: (error as Error).message,
-            stack: (error as Error).stack,
+            error: err.message,
+            stack: err.stack,
             groupChatName,
             chatId,
             apiUrl: `${API_BASE_URL}/customers`
         });
-        throw error;
+        
+        // Ensure we always throw the error to maintain Promise<Customer> contract
+        // The function should either resolve with a Customer or reject with an error
+        throw err;
     }
 }
 
 /**
- * Retrieves user information for a given Telegram user ID, creating and storing a new user if one does not exist.
+ * Creates a user display name using Telegram user data with proper fallback hierarchy.
  *
- * If the user is not found, a new user is generated with a name and email based on the Telegram user ID and optional username.
+ * Priority order:
+ * 1. "FirstName (@username)" (if both first name and username available)
+ * 2. "@username" (if only username available)
+ * 3. "FirstName LastName" (if names available but no username)
+ * 4. "FirstName" (if only first name available)
+ * 5. "User {ID}" (final fallback)
+ *
+ * Creates a user display name that's compatible with unthread-webhook-server validation
+ * 
+ * WEBHOOK SERVER INTEGRATION:
+ * ---------------------------
+ * The unthread-webhook-server uses this botName field for platform detection:
+ * - Names starting with '@' are classified as 'telegram' platform
+ * - Names without '@' are classified as 'dashboard' origin
+ * 
+ * Our format priority ensures proper classification:
+ * 1. "FirstName (@username)" - Best UX, detected as Telegram ✅
+ * 2. "FirstName LastName" - Good fallback, detected as Dashboard
+ * 3. "@username" - Minimal format, detected as Telegram ✅
+ * 
+ * @param telegramUserId - The Telegram user ID
+ * @param username - Optional Telegram username (without @)
+ * @param firstName - Optional Telegram user's first name
+ * @param lastName - Optional Telegram user's last name
+ * @returns Formatted display name for Unthread dashboard
+ * 
+ * @see https://github.com/wgtechlabs/unthread-webhook-server/blob/main/src/services/webhookService.ts#L118-L144
+ */
+function createUserDisplayName(
+    telegramUserId: number, 
+    username?: string, 
+    firstName?: string, 
+    lastName?: string
+): string {
+    const cleanUsername = username && username.trim() ? username.trim() : null;
+    const cleanFirstName = firstName && firstName.trim() ? firstName.trim() : null;
+    const cleanLastName = lastName && lastName.trim() ? lastName.trim() : null;
+    
+    // Priority 1: "FirstName (@username)" - best of both worlds
+    if (cleanFirstName && cleanUsername) {
+        return `${cleanFirstName} (@${cleanUsername})`;
+    }
+    
+    // Priority 2: "@username" - if no first name but username exists
+    if (cleanUsername) {
+        return `@${cleanUsername}`;
+    }
+    
+    // Priority 3: "FirstName LastName" - if names available but no username
+    if (cleanFirstName) {
+        const last = cleanLastName ? ` ${cleanLastName}` : '';
+        return `${cleanFirstName}${last}`;
+    }
+    
+    // Priority 4: Final fallback to User ID
+    return `User ${telegramUserId}`;
+}
+
+
+
+/**
+ * Retrieves user information for a Telegram user ID, creating and storing a new user if not found.
+ *
+ * If the user does not exist, generates a new user with a name and email based on the Telegram user data including display names, username, and ID as fallback, and persists the user data.
  *
  * @param telegramUserId - The Telegram user ID to look up or create
  * @param username - Optional Telegram username (without @) to use for the new user
+ * @param firstName - Optional Telegram user's first name
+ * @param lastName - Optional Telegram user's last name
  * @returns An object containing the user's name and email for use as onBehalfOf information
  */
-export async function getOrCreateUser(telegramUserId: number, username?: string): Promise<OnBehalfOfUser> {
+export async function getOrCreateUser(
+    telegramUserId: number, 
+    username?: string, 
+    firstName?: string, 
+    lastName?: string
+): Promise<OnBehalfOfUser> {
     try {
         // First, check if we already have this user in our database
         const existingUser = await BotsStore.getUserByTelegramId(telegramUserId);
         if (existingUser) {
+            // Generate the current best display name with available data
+            const currentBestName = createUserDisplayName(telegramUserId, username, firstName, lastName);
+            
+            // Check if we should update the stored name (if we have better info now)
+            // IMPORTANT: Username format affects webhook server platform detection
+            // See: https://github.com/wgtechlabs/unthread-webhook-server/blob/main/src/services/webhookService.ts#L118-L144
+            const shouldUpdateName = existingUser.unthreadName !== currentBestName && 
+                                   (currentBestName.includes('@') || // We now have username
+                                    (currentBestName.includes(' ') && !existingUser.unthreadName?.includes(' ')) || // We now have full name vs partial
+                                    existingUser.unthreadName?.startsWith('User ')); // Old fallback format
+            
+            if (shouldUpdateName) {
+                // Update the stored user with better name information
+                const updatedUserData: Partial<UserData> = {
+                    unthreadName: currentBestName,
+                    updatedAt: new Date().toISOString()
+                };
+                
+                // Update optional fields if provided
+                if (username) {
+                    updatedUserData.telegramUsername = username;
+                    updatedUserData.username = username;
+                }
+                if (firstName) {
+                    updatedUserData.firstName = firstName;
+                }
+                if (lastName) {
+                    updatedUserData.lastName = lastName;
+                }
+                
+                await BotsStore.updateUser(telegramUserId, updatedUserData);
+                
+                LogEngine.info('Updated existing user with better display name', {
+                    telegramUserId: existingUser.telegramUserId,
+                    oldName: existingUser.unthreadName,
+                    newName: currentBestName,
+                    username: username,
+                    firstName: firstName,
+                    lastName: lastName
+                });
+                
+                return {
+                    name: currentBestName,
+                    email: existingUser.unthreadEmail
+                };
+            }
+            
             LogEngine.info('Using existing user from database', {
                 telegramUserId: existingUser.telegramUserId,
                 unthreadName: existingUser.unthreadName,
-                unthreadEmail: existingUser.unthreadEmail
+                unthreadEmail: existingUser.unthreadEmail,
+                hasEmail: !!existingUser.unthreadEmail
             });
             return {
                 name: existingUser.unthreadName || `User ${existingUser.telegramUserId}`,
-                email: existingUser.unthreadEmail || `user_${existingUser.telegramUserId}@telegram.user`
+                email: existingUser.unthreadEmail // No fallback - can be undefined
             };
         }
 
-        // Create new user data
-        const unthreadName = username ? `@${username}` : `User ${telegramUserId}`;
-        const unthreadEmail = username 
-            ? `${username}_${telegramUserId}@telegram.user`
-            : `user_${telegramUserId}@telegram.user`;
+        // Create new user data with proper name prioritization
+        const unthreadName = createUserDisplayName(telegramUserId, username, firstName, lastName);
 
-        // Store user in our database
+        // Store user in our database WITHOUT automatic email
         const userData: UserData = {
             id: `user_${telegramUserId}`,
             telegramUserId: telegramUserId,
             unthreadName: unthreadName,
-            unthreadEmail: unthreadEmail,
+            // unthreadEmail omitted - will be undefined by default
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
@@ -643,18 +809,28 @@ export async function getOrCreateUser(telegramUserId: number, username?: string)
             userData.username = username;
         }
         
+        if (firstName) {
+            userData.firstName = firstName;
+        }
+        
+        if (lastName) {
+            userData.lastName = lastName;
+        }
+        
         await BotsStore.storeUser(userData);
         
-        LogEngine.info('Created and stored new user', {
+        LogEngine.info('Created and stored new user with proper display name', {
             telegramUserId: telegramUserId,
             telegramUsername: username,
+            firstName: firstName,
+            lastName: lastName,
             unthreadName: unthreadName,
-            unthreadEmail: unthreadEmail
+            unthreadEmail: 'undefined - will be set at interaction point'
         });
 
         return {
             name: unthreadName,
-            email: unthreadEmail
+            email: undefined // No automatic email - will be collected at interaction point
         };
     } catch (error) {
         LogEngine.error('Error getting or creating user', {
@@ -667,5 +843,590 @@ export async function getOrCreateUser(telegramUserId: number, username?: string)
     }
 }
 
+/**
+ * Creates a customer name for Unthread by extracting the company name from a Telegram group chat title and prefixing it with "[Telegram]".
+ *
+ * @param groupChatTitle - The Telegram group chat title to extract the company name from
+ * @returns The formatted customer name with a "[Telegram]" prefix
+ */
+export function generateCustomerName(groupChatTitle: string): string {
+    if (!groupChatTitle) {
+        return '[Telegram] Unknown Company';
+    }
+
+    // Use existing extraction logic to get the customer name
+    const extractedName = extractCustomerCompanyName(groupChatTitle);
+    
+    // Add [Telegram] prefix to distinguish from other channels
+    return `[Telegram] ${extractedName}`;
+}
+
+/**
+ * Customer Operations - API Integration Functions
+ */
+
+/**
+ * Checks whether a customer exists in Unthread by customer ID.
+ *
+ * Returns an object indicating existence, with customer details if found, or an error message if not.
+ *
+ * @param customerId - The customer ID to check
+ * @returns An object with `exists` (boolean), `customer` (if found), and `error` (if applicable)
+ */
+export async function validateCustomerExists(customerId: string): Promise<{
+    exists: boolean;
+    customer?: Customer;
+    error?: string;
+}> {
+    try {
+        if (!customerId || customerId.trim() === '') {
+            return {
+                exists: false,
+                error: 'Customer ID cannot be empty'
+            };
+        }
+
+        const response = await fetch(`${API_BASE_URL}/customers/${customerId}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-KEY': UNTHREAD_API_KEY!
+            }
+        });
+
+        if (response.status === 404) {
+            LogEngine.info('Customer not found in Unthread', { customerId });
+            return {
+                exists: false,
+                error: 'Customer not found'
+            };
+        }
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            LogEngine.error('Error validating customer', {
+                customerId,
+                status: response.status,
+                statusText: response.statusText,
+                error: errorText
+            });
+            return {
+                exists: false,
+                error: `API error: ${response.status} ${response.statusText} - ${errorText}`
+            };
+        }
+
+        const customer = await response.json() as Customer;
+        
+        LogEngine.info('Customer validated successfully', {
+            customerId,
+            customerName: customer.name
+        });
+
+        return {
+            exists: true,
+            customer: customer
+        };
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Exception during customer validation', {
+            customerId,
+            error: err.message,
+            stack: err.stack
+        });
+        return {
+            exists: false,
+            error: `Validation failed: ${err.message}`
+        };
+    }
+}
+
+/**
+ * Retrieves detailed information for a customer from Unthread by customer ID.
+ *
+ * Returns the customer details if the customer exists, or null if not found or on error.
+ *
+ * @param customerId - The ID of the customer to retrieve
+ * @returns The customer details, or null if the customer does not exist or an error occurs
+ */
+export async function getCustomerDetails(customerId: string): Promise<Customer | null> {
+    try {
+        const validation = await validateCustomerExists(customerId);
+        
+        if (validation.exists && validation.customer) {
+            return validation.customer;
+        }
+        
+        return null;
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error getting customer details', {
+            customerId,
+            error: err.message
+        });
+        return null;
+    }
+}
+
+/**
+ * Creates a new customer in Unthread with the given name and caches the result to prevent duplicate entries.
+ *
+ * @param customerName - The name to assign to the new customer
+ * @returns The created customer object
+ * @throws If the customer name is empty or the Unthread API request fails
+ */
+export async function createCustomerWithName(customerName: string): Promise<Customer> {
+    try {
+        if (!customerName || customerName.trim() === '') {
+            throw new Error('Customer name cannot be empty');
+        }
+
+        const trimmedName = customerName.trim();
+
+        const response = await fetch(`${API_BASE_URL}/customers`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-KEY': UNTHREAD_API_KEY!
+            },
+            body: JSON.stringify({
+                name: trimmedName
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to create customer: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+
+        const result = await response.json() as Customer;
+        
+        LogEngine.info('Customer created successfully', {
+            customerName: trimmedName,
+            customerId: result.id
+        });
+
+        // Cache the customer to avoid duplicates
+        customerCache.set(trimmedName, result);
+
+        return result;
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Error creating customer with name', {
+            customerName,
+            error: err.message
+        });
+        throw error;
+    }
+}
+
+/**
+ * Converts Unthread API or network errors into user-friendly messages based on the error type and operation.
+ *
+ * @param error - The error object encountered during the operation
+ * @param operation - A description of the operation that failed
+ * @returns A formatted, user-friendly error message describing the issue
+ */
+export function handleUnthreadApiError(error: any, operation: string): string {
+    const err = error as Error;
+    
+    // Network errors
+    if (err.message.includes('fetch')) {
+        return '🌐 **Connection Error**\n\nUnable to connect to Unthread servers. Please check your internet connection and try again.';
+    }
+    
+    // API key errors
+    if (err.message.includes('401') || err.message.includes('unauthorized')) {
+        return '🔑 **Authentication Error**\n\nInvalid API credentials. Please contact your system administrator.';
+    }
+    
+    // Rate limiting
+    if (err.message.includes('429') || err.message.includes('rate limit')) {
+        return '⏰ **Rate Limit Exceeded**\n\nToo many requests. Please wait a moment and try again.';
+    }
+    
+    // Server errors
+    if (err.message.includes('500') || err.message.includes('503')) {
+        return '🚨 **Server Error**\n\nUnthread servers are experiencing issues. Please try again later.';
+    }
+    
+    // Customer not found
+    if (err.message.includes('404') || err.message.includes('not found')) {
+        return '❌ **Customer Not Found**\n\nThe specified customer ID does not exist in your Unthread account.';
+    }
+    
+    // Generic error
+    return `❌ **${operation} Failed**\n\nAn unexpected error occurred: ${err.message}\n\nPlease try again or contact support if the issue persists.`;
+}
+
+/**
+ * Unthread API Service
+ * 
+ * IMPORTANT: Username Format Integration with Webhook Server
+ * =========================================================
+ * 
+ * This service's username formatting is critical for integration with the
+ * unthread-webhook-server repository (https://github.com/wgtechlabs/unthread-webhook-server).
+ * 
+ * The webhook server validates usernames using platform detection logic in:
+ * src/services/webhookService.ts (detectPlatformSource method)
+ * 
+ * WEBHOOK SERVER VALIDATION LOGIC:
+ * --------------------------------
+ * - If botName.startsWith('@') → Classified as 'telegram' platform
+ * - If botName does NOT start with '@' → Classified as 'dashboard' origin
+ * - Used for analytics, monitoring, and proper event routing
+ * 
+ * OUR USERNAME FORMAT REQUIREMENTS:
+ * ---------------------------------
+ * 1. "FirstName (@username)" → Detected as Telegram platform ✅
+ * 2. "@username" → Detected as Telegram platform ✅  
+ * 3. "User 123456" → Detected as Dashboard origin ✅
+ * 
+ * This ensures proper:
+ * - Platform source detection in webhook logs
+ * - Analytics and monitoring accuracy
+ * - Event routing and classification
+ * - Audit trail compliance
+ * 
+ * @see https://github.com/wgtechlabs/unthread-webhook-server/blob/main/src/services/webhookService.ts#L118-L144
+ */
+
 // Export the customer cache for potential use in other modules
 export { customerCache };
+
+/**
+ * Downloads an attachment file from Unthread using the file download API.
+ * 
+ * This function handles downloading files from Unthread conversations with comprehensive
+ * error handling, file validation, and memory management for safe processing.
+ * 
+ * @param conversationId - The Unthread conversation ID containing the file
+ * @param fileId - The unique file identifier from the attachment metadata
+ * @param expectedFileName - The expected filename for validation (optional but recommended)
+ * @param maxSizeBytes - Maximum allowed file size in bytes (default: 50MB for Telegram compatibility)
+ * @returns Promise<Buffer> containing the file data
+ * @throws AttachmentProcessingError with specific error types for different failure scenarios
+ * 
+ * @example
+ * ```typescript
+ * try {
+ *   const fileBuffer = await downloadAttachmentFromUnthread(
+ *     'conv_123', 
+ *     'file_456', 
+ *     'document.pdf',
+ *     50 * 1024 * 1024 // 50MB
+ *   );
+ *   // Process the file buffer...
+ * } catch (error) {
+ *   if (error instanceof AttachmentProcessingError) {
+ *     // Handle specific attachment errors
+ *   }
+ * }
+ * ```
+ */
+/**
+ * DISABLED: Downloads an attachment from an Unthread conversation
+ * 
+ * This function has been temporarily disabled due to reliability issues with
+ * the Unthread file download API. The function was failing consistently when
+ * trying to download files from Slack through Unthread's proxy.
+ * 
+ * RE-ENABLEMENT STEPS when Unthread API is fixed:
+ * Step 7: Replace this function body with the original implementation
+ * Step 8: Test the function with known file IDs from Unthread
+ * Step 9: Verify downloads work for various file types and sizes
+ * Step 10: Monitor logs for any remaining download failures
+ * 
+ * @deprecated Temporarily disabled - will be re-enabled when API issues are resolved
+ * @param conversationId - The Unthread conversation ID containing the file
+ * @param fileId - The unique file identifier from the attachment metadata
+ * @param expectedFileName - The expected filename for validation (optional but recommended)
+ * @param maxSizeBytes - Maximum allowed file size in bytes (default: 50MB for Telegram compatibility)
+ * @returns Promise<Buffer> containing the file data
+ * @throws Error indicating the function is disabled
+ */
+export async function downloadAttachmentFromUnthread(
+    conversationId: string,
+    fileId: string,
+    expectedFileName?: string
+): Promise<Buffer> {
+    
+    LogEngine.warn('downloadAttachmentFromUnthread called but function is disabled', {
+        conversationId,
+        fileId,
+        expectedFileName,
+        reason: 'Unthread file download API issues - function temporarily disabled'
+    });
+    
+    throw new Error(
+        'File download from Unthread is temporarily disabled due to API reliability issues. ' +
+        'The Unthread→Telegram attachment flow has been disabled until these issues are resolved.'
+    );
+}
+
+/**
+ * Sends a message with file attachments to an existing Unthread conversation using multipart/form-data.
+ *
+ * @param params - Contains the conversation ID, message content, user information, and file paths.
+ * @returns The API response for the sent message with attachments.
+ * @throws If the API request fails or file paths are invalid.
+ */
+export async function sendMessageWithAttachments(params: SendMessageWithAttachmentsParams): Promise<any> {
+    try {
+        LogEngine.info('Sending message with attachments to Unthread', {
+            conversationId: params.conversationId,
+            fileCount: params.filePaths.length,
+            onBehalfOf: params.onBehalfOf.name
+        });
+
+        return await sendMessageMultipart(params);
+    } catch (error) {
+        LogEngine.error('Error sending message with attachments', {
+            error: (error as Error).message,
+            conversationId: params.conversationId,
+            fileCount: params.filePaths.length
+        });
+        throw error;
+    }
+}
+
+/**
+ * Creates a ticket with file attachments using memory buffers and multipart/form-data.
+ * This version accepts file buffers directly instead of file paths, making it ideal
+ * for integration with the AttachmentHandler's buffer-based approach.
+ *
+ * @param params - Contains ticket data and file buffers for attachments.
+ * @returns The ticket creation response with ID and friendly ID.
+ * @throws If the API request fails or buffer processing fails.
+ */
+export async function createTicketWithBufferAttachments(params: CreateTicketWithBufferAttachmentsParams): Promise<CreateTicketResponse> {
+    try {
+        LogEngine.info('Creating ticket with buffer attachments in Unthread', {
+            groupChatName: params.groupChatName,
+            customerId: params.customerId,
+            fileCount: params.attachments.length,
+            onBehalfOf: params.onBehalfOf.name,
+            implementation: 'buffer-based'
+        });
+
+        return await createTicketMultipartBuffer(params);
+    } catch (error) {
+        LogEngine.error('Error creating ticket with buffer attachments', {
+            error: (error as Error).message,
+            groupChatName: params.groupChatName,
+            customerId: params.customerId,
+            fileCount: params.attachments.length
+        });
+        throw error;
+    }
+}
+
+/**
+ * Internal method to send a message with attachments using multipart/form-data.
+ *
+ * @param params - Message parameters with file paths.
+ * @returns The response data from the Unthread API.
+ * @throws If the API request fails or files cannot be read.
+ */
+async function sendMessageMultipart(params: SendMessageWithAttachmentsParams): Promise<any> {
+    const { conversationId, message, onBehalfOf, filePaths } = params;
+
+    // Create form data
+    const form = new FormData();
+
+    // Add the message payload as JSON
+    const messagePayload = {
+        body: {
+            type: "markdown",
+            value: message
+        },
+        onBehalfOf: onBehalfOf
+    };
+
+    form.append('json', JSON.stringify(messagePayload));
+
+    // Add each file to the form using buffer-based approach
+    for (const filePath of filePaths) {
+        if (!fs.existsSync(filePath)) {
+            LogEngine.warn('File not found, skipping attachment', { filePath });
+            continue;
+        }
+
+        const fileName = path.basename(filePath);
+        const fileBuffer = fs.readFileSync(filePath);
+        form.append('attachments', fileBuffer, fileName);
+        
+        LogEngine.debug('Added file to multipart form', { fileName, filePath, size: fileBuffer.length });
+    }
+
+    // Send request to Unthread
+    const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: {
+            'X-API-KEY': UNTHREAD_API_KEY!,
+            ...form.getHeaders()
+        },
+        body: form
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to send message with attachments: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const result = await response.json() as any;
+    
+    LogEngine.info('Message with attachments sent successfully', {
+        conversationId,
+        messageId: result.ts || 'unknown',
+        fileCount: filePaths.length
+    });
+
+    return result;
+}
+
+/**
+ * Internal method to create a ticket with buffer attachments using the proven two-step approach.
+ * Step 1: Create ticket using JSON (reliable)
+ * Step 2: Send attachment as message to the created conversation (reliable)
+ * This ensures attachments are always visible in the Unthread dashboard.
+ *
+ * @param params - Ticket creation parameters with file buffers.
+ * @returns The ticket creation response.
+ * @throws If the API request fails or buffer processing fails.
+ */
+async function createTicketMultipartBuffer(params: CreateTicketWithBufferAttachmentsParams): Promise<CreateTicketResponse> {
+    const { groupChatName, summary, customerId, onBehalfOf, attachments } = params;
+
+    LogEngine.info('Creating ticket with buffer attachments using two-step approach', {
+        groupChatName,
+        customerId,
+        fileCount: attachments.length,
+        onBehalfOf: onBehalfOf.name,
+        implementation: 'two-step-approach'
+    });
+
+    try {
+        // STEP 1: Create the ticket using proven JSON approach
+        const customerCompanyName = extractCustomerCompanyName(groupChatName);
+        const title = `[Telegram Ticket] ${customerCompanyName}`;
+        
+        // Ensure summary is not empty
+        const ticketSummary = summary && summary.trim() ? summary.trim() : 'File attachment submitted via Telegram';
+        
+        LogEngine.debug('Step 1: Creating ticket with JSON approach', {
+            title,
+            summary: ticketSummary,
+            customerId,
+            attachmentCount: attachments.length
+        });
+
+        // Create ticket using the working JSON method
+        const ticket = await createTicketJSON({ 
+            title, 
+            summary: ticketSummary, 
+            customerId, 
+            onBehalfOf 
+        });
+
+        LogEngine.info('Step 1 completed: Ticket created successfully', {
+            ticketId: ticket.id,
+            friendlyId: ticket.friendlyId
+        });
+
+        // STEP 2: Send attachments as message to the created conversation
+        if (attachments.length > 0) {
+            LogEngine.debug('Step 2: Sending attachments as message to conversation', {
+                conversationId: ticket.id,
+                attachmentCount: attachments.length
+            });
+
+            // Create FormData for message with attachments
+            const form = new FormData();
+
+            // Add message payload - make it appear as a natural customer message
+            const attachmentNames = attachments.map(att => att.filename).join(', ');
+            const messagePayload = {
+                body: {
+                    type: "markdown",
+                    value: `*Attachment${attachments.length > 1 ? 's' : ''} shared:* ${attachmentNames}`
+                },
+                onBehalfOf: onBehalfOf
+            };
+
+            LogEngine.debug('Step 2: Message payload for attachment', {
+                conversationId: ticket.id,
+                onBehalfOfName: onBehalfOf.name,
+                onBehalfOfEmail: onBehalfOf.email,
+                messageContent: messagePayload.body.value
+            });
+
+            // Use correct field names per API documentation
+            form.append('json', JSON.stringify(messagePayload));
+
+            // Add each attachment buffer
+            for (const attachment of attachments) {
+                form.append('attachments', attachment.buffer, attachment.filename);
+                
+                LogEngine.debug('Added attachment to message form', { 
+                    fileName: attachment.filename, 
+                    size: attachment.buffer.length,
+                    mimeType: attachment.mimeType 
+                });
+            }
+
+            // Send message with attachments to the conversation
+            const messageResponse = await fetch(`${API_BASE_URL}/conversations/${ticket.id}/messages`, {
+                method: 'POST',
+                headers: {
+                    'X-API-KEY': UNTHREAD_API_KEY!,
+                    ...form.getHeaders()
+                },
+                body: form
+            });
+
+            if (!messageResponse.ok) {
+                const errorText = await messageResponse.text();
+                LogEngine.error('Step 2 failed: Could not send attachments as message', {
+                    status: messageResponse.status,
+                    statusText: messageResponse.statusText,
+                    errorText,
+                    conversationId: ticket.id,
+                    attachmentCount: attachments.length
+                });
+                // Don't throw here - ticket was created successfully, just log the attachment failure
+                LogEngine.warn('Ticket created but attachments could not be sent as follow-up message', {
+                    ticketId: ticket.id,
+                    friendlyId: ticket.friendlyId
+                });
+            } else {
+                const messageResult = await messageResponse.json() as any;
+                LogEngine.info('Step 2 completed: Attachments sent successfully as message', {
+                    conversationId: ticket.id,
+                    messageId: messageResult.ts || messageResult.id || 'unknown',
+                    attachmentCount: attachments.length
+                });
+            }
+        }
+
+        LogEngine.info('Two-step ticket creation with buffer attachments completed successfully', {
+            ticketId: ticket.id,
+            friendlyId: ticket.friendlyId,
+            fileCount: attachments.length,
+            implementation: 'two-step-approach-success'
+        });
+
+        return ticket;
+
+    } catch (error) {
+        LogEngine.error('Failed to create ticket with buffer attachments using two-step approach', {
+            error: (error as Error).message,
+            groupChatName,
+            customerId,
+            attachmentCount: attachments.length,
+            implementation: 'two-step-approach-error'
+        });
+        throw error;
+    }
+}

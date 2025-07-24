@@ -8,11 +8,11 @@ This project and everyone participating in it is governed by the project's [Code
 
 ## 💖 How to Contribute
 
-There are many ways to contribute to this open source project. Any contributions are welcome and appreciated. Be sure to read the details of each section for you to start contributing.
+There are many ways to contribute to this open source project. All contributions are welcome and appreciated. Be sure to read the details of each section to get started.
 
 ### 🧬 Development
 
-If you can write code then create a pull request to this repo and I will review your code. Please consider submitting your pull request to the `dev` branch. I will auto reject if you submit your pull request to the `main` branch.
+If you can write code, create a pull request to this repository and I will review your code. Please consider submitting your pull request to the `dev` branch. Pull requests to the `main` branch will be automatically rejected.
 
 #### 🔧 Development Setup
 
@@ -368,6 +368,48 @@ This bot works in conjunction with the [`wgtechlabs/unthread-webhook-server`](ht
 - **Network**: All services communicate via `unthread-integration-network`
 
 For standalone webhook server setup, see the [`wgtechlabs/unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server) repository.
+
+### 🔗 Webhook Server Integration Requirements
+
+This bot works in close integration with the [`unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server). When modifying user-related functionality, developers **must** consider the webhook server's platform detection logic.
+
+#### **Critical Integration Points:**
+
+**Username Format Validation:**
+
+- The webhook server uses `event.data.botName` for platform detection
+- Names starting with `@` are classified as **Telegram platform**
+- Names without `@` are classified as **Dashboard origin**
+
+**Required Format Compatibility:**
+
+```typescript
+// ✅ CORRECT - Detected as Telegram platform
+"Waren Gonzaga (@warengonzaga)"
+"@warengonzaga"  
+
+// ✅ ACCEPTABLE - Detected as Dashboard origin
+"Waren Gonzaga"
+"User 123456"
+
+// ❌ AVOID - May cause misclassification
+"waren.user"
+"Waren-@-warengonzaga"
+```
+
+**Implementation Reference:**
+
+- **Bot Code**: `src/services/unthread.ts` → `createUserDisplayName()` function
+- **Webhook Server**: [`src/services/webhookService.ts#L118-L144`](https://github.com/wgtechlabs/unthread-webhook-server/blob/main/src/services/webhookService.ts#L118-L144)
+
+**Testing Requirements:**
+
+When modifying username-related code, verify:
+
+1. ✅ Username formats pass webhook server validation
+2. ✅ Platform detection works correctly  
+3. ✅ Analytics and monitoring remain accurate
+4. ✅ Event routing functions properly
 
 ## 🏗️ Installation & Deployment
 
