@@ -96,38 +96,23 @@ export function initializeLogConfig(): LogConfig {
   
   // Determine configuration safely
   if (logLevel) {
-    // Handle standard log levels
-    if (logLevel === 'info') {
+    // First check if logLevel directly matches any known config keys
+    if (logLevel === 'development' || logLevel === 'production' || logLevel === 'debug') {
+      currentConfig = LOG_CONFIGS[logLevel as keyof typeof LOG_CONFIGS];
+    }
+    // Then handle standard log levels mapped to specific configs
+    else if (logLevel === 'info') {
       currentConfig = LOG_CONFIGS.development;
     } else if (logLevel === 'warn' || logLevel === 'error') {
       currentConfig = LOG_CONFIGS.production;
-    } else if (logLevel === 'debug') {
-      currentConfig = LOG_CONFIGS.debug;
     }
-    // Handle direct config names
-    else if (logLevel === 'development') {
-      currentConfig = LOG_CONFIGS.development;
-    } else if (logLevel === 'production') {
-      currentConfig = LOG_CONFIGS.production;
+    // Fall back to environment-based config
+    else {
+      currentConfig = getConfigFromEnv(env);
     }
-    // Fall back to environment
-    else if (env === 'development') {
-      currentConfig = LOG_CONFIGS.development;
-    } else if (env === 'production') {
-      currentConfig = LOG_CONFIGS.production;
-    } else if (env === 'debug') {
-      currentConfig = LOG_CONFIGS.debug;
-    } else {
-      currentConfig = LOG_CONFIGS.development;
-    }
-  } else if (env === 'development') {
-    currentConfig = LOG_CONFIGS.development;
-  } else if (env === 'production') {
-    currentConfig = LOG_CONFIGS.production;
-  } else if (env === 'debug') {
-    currentConfig = LOG_CONFIGS.debug;
   } else {
-    currentConfig = LOG_CONFIGS.development;
+    // No logLevel specified, use environment
+    currentConfig = getConfigFromEnv(env);
   }
   
   LogEngine.info('🔧 Log configuration initialized', {
@@ -138,6 +123,21 @@ export function initializeLogConfig(): LogConfig {
   });
   
   return currentConfig;
+}
+
+/**
+ * Helper function to get config based on environment
+ */
+function getConfigFromEnv(env: string): LogConfig {
+  if (env === 'development') {
+    return LOG_CONFIGS.development;
+  } else if (env === 'production') {
+    return LOG_CONFIGS.production;
+  } else if (env === 'debug') {
+    return LOG_CONFIGS.debug;
+  } else {
+    return LOG_CONFIGS.development;
+  }
 }
 
 /**
