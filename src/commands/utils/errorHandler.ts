@@ -430,6 +430,10 @@ export function getErrorDetails(error: unknown, _context?: string): ErrorDetails
  * In production, stack traces are sanitized to remove absolute file paths. Sensitive fields like password, token, apiKey, secret, and authorization are redacted. Nested objects are sanitized recursively.
  *
  * @returns The sanitized log data with sensitive information masked or removed.
+ * 
+ * @todo Replace this custom sanitization with LogEngine's built-in redaction capabilities
+ *       once we configure the redaction patterns in LogEngine v2.2.0. This would centralize
+ *       all sensitive data handling and provide consistent redaction across the application.
  */
 /* eslint-disable security/detect-object-injection */
 function sanitizeLogData(logData: any): any {  
@@ -450,11 +454,20 @@ function sanitizeLogData(logData: any): any {
     if (sanitized.secret) {sanitized.secret = '[REDACTED]';}
     if (sanitized.authorization) {sanitized.authorization = '[REDACTED]';}
     
-    // Sanitize any nested objects
+    // Sanitize any nested objects and arrays
     for (const key in sanitized) {
         if (Object.prototype.hasOwnProperty.call(sanitized, key) && sanitized[key] && typeof sanitized[key] === 'object') {
             // Recursively sanitize nested objects
-            if (typeof sanitized[key] === 'object' && !Array.isArray(sanitized[key])) {
+            if (Array.isArray(sanitized[key])) {
+                // Handle arrays: iterate over elements and sanitize objects within
+                sanitized[key] = (sanitized[key] as any[]).map((element: any) => {
+                    if (element && typeof element === 'object') {
+                        return sanitizeLogData(element);
+                    }
+                    return element;
+                });
+            } else {
+                // Handle regular objects
                 sanitized[key] = sanitizeLogData(sanitized[key] as Record<string, unknown>);
             }
         }
