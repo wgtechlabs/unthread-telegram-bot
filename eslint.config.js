@@ -63,6 +63,8 @@ export default [
           varsIgnorePattern: '^_',
           args: 'after-used',
           argsIgnorePattern: '^_',
+          caughtErrors: 'all',
+          caughtErrorsIgnorePattern: '^_',
         },
       ],
       
@@ -131,8 +133,13 @@ export default [
       '**/webhookMessage.ts'
     ],
     rules: {
-      '@typescript-eslint/no-unused-vars': 'warn', // Reduce to warning instead of error
-      'no-unused-vars': 'warn',
+      '@typescript-eslint/no-unused-vars': 'off', // Completely off for disabled features
+      'no-unused-vars': 'off', // Completely off for disabled features
+      'unused-imports/no-unused-vars': 'off', // Completely off for disabled features
+      '@typescript-eslint/no-explicit-any': 'off', // Allow any in disabled features
+      'security/detect-non-literal-fs-filename': 'off', // Allow filesystem operations
+      'no-control-regex': 'off', // Allow control characters in regex
+      'no-useless-escape': 'off', // Allow escape characters
     },
   },
   

@@ -20,14 +20,10 @@ import dotenv from 'dotenv';
 // Load environment variables from .env file
 dotenv.config();
 
-// Configure LogEngine to use local timezone only before any logging
+// Configure LogEngine early (moved to config/logging.ts)
+// This ensures all imports use consistent log formatting
+import './config/logging.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
-LogEngine.configure({
-    format: {
-        includeIsoTimestamp: false,
-        includeLocalTime: true
-    }
-});
 
 // Validate environment configuration before proceeding
 import { validateEnvironment } from './config/env.js';

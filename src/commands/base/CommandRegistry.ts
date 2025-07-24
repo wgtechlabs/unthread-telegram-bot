@@ -10,6 +10,7 @@
 import type { ICallbackProcessor, ICommand, IConversationProcessor } from './BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
+import { StartupLogger } from '../../utils/logConfig.js';
 import { isAdminUser } from '../../config/env.js';
 
 export class CommandRegistry {
@@ -32,7 +33,7 @@ export class CommandRegistry {
         }
 
         this.commands.set(command.metadata.name, command);
-        LogEngine.info(`Registered command: ${command.metadata.name}`, {
+        StartupLogger.logCommandRegistration(command.metadata.name, {
             adminOnly: command.metadata.adminOnly,
             privateOnly: command.metadata.privateOnly,
             groupOnly: command.metadata.groupOnly,
@@ -68,7 +69,7 @@ export class CommandRegistry {
      */
     registerConversationProcessor(processor: IConversationProcessor): void {
         this.conversationProcessors.push(processor);
-        LogEngine.info(`Registered conversation processor`);
+        StartupLogger.logProcessorRegistration('conversation');
     }
 
     /**
@@ -76,7 +77,7 @@ export class CommandRegistry {
      */
     registerCallbackProcessor(processor: ICallbackProcessor): void {
         this.callbackProcessors.push(processor);
-        LogEngine.info(`Registered callback processor`);
+        StartupLogger.logProcessorRegistration('callback');
     }
 
     /**

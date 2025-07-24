@@ -10,6 +10,7 @@
 import type { ICallbackProcessor } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
 import type { DmSetupSession } from '../../sdk/types.js';
+import type { GlobalTemplateEvent } from '../../config/globalTemplates.js';
 import { logError } from '../utils/errorHandler.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { generateStatusMessage } from '../../utils/messageAnalyzer.js';
@@ -1514,6 +1515,7 @@ Choose how you'd like to handle message templates:`;
                 }
             });
         } catch (_editError) {
+            // Note: _editError is intentionally unused - we handle all edit failures the same way
             // If edit fails (e.g., message too old or from text input), send a new message
             await ctx.reply(successMessage, {
                 parse_mode: 'Markdown',
@@ -1544,7 +1546,7 @@ Choose how you'd like to handle message templates:`;
                 finalCustomerName = result.finalCustomerName;
             } else {
                 // Create new customer
-                const result = await this.createNewCustomer(customerName!, session, sessionId);
+                const result = await this.createNewCustomer(customerName || '', session, sessionId);
                 customerId = result.customerId;
                 finalCustomerName = result.finalCustomerName;
             }
@@ -2125,7 +2127,7 @@ Each template has access to relevant data like ticket details, customer info, ag
             const availableVariables = templateManager.getAvailableVariables();
             
             // Get current template
-            const currentTemplate = await templateManager.getTemplate(templateType as any);
+            const currentTemplate = await templateManager.getTemplate(templateType as GlobalTemplateEvent);
             
             // Map template type to readable name
             let templateDisplayName = 'Template';
@@ -2248,7 +2250,7 @@ ${timeVars}
             // Get current template content
             const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
             const templateManager = GlobalTemplateManager.getInstance();
-            const currentTemplate = await templateManager.getTemplate(templateType as any);
+            const currentTemplate = await templateManager.getTemplate(templateType as GlobalTemplateEvent);
             
             // Map template type to readable name
             let templateDisplayName = templateType.charAt(0).toUpperCase() + templateType.slice(1).replace('_', ' ');
@@ -2787,7 +2789,7 @@ export class AdminCallbackProcessor implements ICallbackProcessor {
             const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
             const templateManager = GlobalTemplateManager.getInstance();
             const availableVariables = templateManager.getAvailableVariables();
-            const currentTemplate = await templateManager.getTemplate(templateType as any);
+            const currentTemplate = await templateManager.getTemplate(templateType as GlobalTemplateEvent);
             
             // Map template type to readable name and description
             let templateDisplayName = templateType.charAt(0).toUpperCase() + templateType.slice(1).replace('_', ' ');

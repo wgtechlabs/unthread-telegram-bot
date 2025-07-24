@@ -11,6 +11,8 @@
 import { commandRegistry } from './base/CommandRegistry.js';
 import type { BotContext } from '../types/index.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
+import { StartupLogger } from '../utils/logConfig.js';
+import { createCommandExecutor, createProcessorExecutor } from './utils/commandExecutor.js';
 
 // Basic commands
 import { 
@@ -80,6 +82,9 @@ export function initializeCommands(): void {
     commandRegistry.registerCallbackProcessor(new SetupCallbackProcessor());
     commandRegistry.registerCallbackProcessor(new AdminCallbackProcessor());
 
+    // Show command registration summary (single line instead of 12+ lines)
+    StartupLogger.showCommandRegistrationSummary();
+
     const stats = commandRegistry.getStats();
     LogEngine.info('✅ Command system initialized', {
         totalCommands: stats.totalCommands,
@@ -136,232 +141,43 @@ export function generateHelp(ctx: BotContext): string {
 export { commandRegistry };
 
 // Legacy compatibility functions - these match the original exports
-// but now use the clean architecture under the hood
+// but now use the clean architecture under the hood with ZERO code duplication
 
-export const startCommand = async (ctx: BotContext): Promise<void> => {
-    try {
-        await commandRegistry.execute('start', ctx);
-    } catch (error) {
-        LogEngine.error('Start command failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-    }
-};
-
-export const helpCommand = async (ctx: BotContext): Promise<void> => {
-    try {
-        await commandRegistry.execute('help', ctx);
-    } catch (error) {
-        LogEngine.error('Help command failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-    }
-};
-
-export const versionCommand = async (ctx: BotContext): Promise<void> => {
-    try {
-        await commandRegistry.execute('version', ctx);
-    } catch (error) {
-        LogEngine.error('Version command failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-    }
-};
-
-export const aboutCommand = async (ctx: BotContext): Promise<void> => {
-    try {
-        await commandRegistry.execute('about', ctx);
-    } catch (error) {
-        LogEngine.error('About command failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-    }
-};
-
-export const activateCommand = async (ctx: BotContext): Promise<void> => {
-    try {
-        await commandRegistry.execute('activate', ctx);
-    } catch (error) {
-        LogEngine.error('Activate command failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-    }
-};
-
-export const supportCommand = async (ctx: BotContext): Promise<void> => {
-    try {
-        await commandRegistry.execute('support', ctx);
-    } catch (error) {
-        LogEngine.error('Support command failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-    }
-};
-
-export const cancelCommand = async (ctx: BotContext): Promise<void> => {
-    try {
-        await commandRegistry.execute('cancel', ctx);
-    } catch (error) {
-        LogEngine.error('Cancel command failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-    }
-};
-
-export const resetCommand = async (ctx: BotContext): Promise<void> => {
-    try {
-        await commandRegistry.execute('reset', ctx);
-    } catch (error) {
-        LogEngine.error('Reset command failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-    }
-};
-
-export const setupCommand = async (ctx: BotContext): Promise<void> => {
-    try {
-        await commandRegistry.execute('setup', ctx);
-    } catch (error) {
-        LogEngine.error('Setup command failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-    }
-};
-
-export const templatesCommand = async (ctx: BotContext): Promise<void> => {
-    try {
-        await commandRegistry.execute('templates', ctx);
-    } catch (error) {
-        LogEngine.error('Templates command failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-    }
-};
+export const startCommand = createCommandExecutor('start');
+export const helpCommand = createCommandExecutor('help');
+export const versionCommand = createCommandExecutor('version');
+export const aboutCommand = createCommandExecutor('about');
+export const activateCommand = createCommandExecutor('activate');
+export const supportCommand = createCommandExecutor('support');
+export const cancelCommand = createCommandExecutor('cancel');
+export const resetCommand = createCommandExecutor('reset');
+export const setupCommand = createCommandExecutor('setup');
+export const templatesCommand = createCommandExecutor('templates');
 
 // Legacy processor functions that now use the clean architecture
-export const processSupportConversation = async (ctx: BotContext): Promise<boolean> => {
-    try {
-        return await processConversation(ctx);
-    } catch (error) {
-        LogEngine.error('Support conversation processing failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-        return false;
-    }
-};
+export const processSupportConversation = createProcessorExecutor('processConversation', 'Support conversation processing');
+export const handleCallbackQuery = createProcessorExecutor('processCallback', 'Callback query handling');
+export const processSetupTextInput = createProcessorExecutor('processConversation', 'Setup text input processing');
+export const processTemplateEditInput = createProcessorExecutor('processConversation', 'Template edit input processing');
 
-export const handleCallbackQuery = async (ctx: BotContext): Promise<boolean> => {
-    try {
-        return await processCallback(ctx);
-    } catch (error) {
-        LogEngine.error('Callback query handling failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-        return false;
-    }
-};
+// Additional legacy compatibility functions with void return type
+export const handleTemplateEditCallback = createCommandExecutor('processCallback', {
+    logPrefix: 'Template edit callback handling'
+});
 
-// Additional legacy compatibility
-export const processSetupTextInput = async (ctx: BotContext): Promise<boolean> => {
-    try {
-        return await processConversation(ctx);
-    } catch (error) {
-        LogEngine.error('Setup text input processing failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-        return false;
-    }
-};
+export const handleTemplateCancelCallback = createCommandExecutor('processCallback', {
+    logPrefix: 'Template cancel callback handling'
+});
 
-export const processTemplateEditInput = async (ctx: BotContext): Promise<boolean> => {
-    try {
-        return await processConversation(ctx);
-    } catch (error) {
-        LogEngine.error('Template edit input processing failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-        return false;
-    }
-};
+export const handleTemplateCancelEditCallback = createCommandExecutor('processCallback', {
+    logPrefix: 'Template cancel edit callback handling'
+});
 
-export const handleTemplateEditCallback = async (ctx: BotContext, templateEvent: string): Promise<void> => {
-    try {
-        await processCallback(ctx);
-    } catch (error) {
-        LogEngine.error('Template edit callback handling failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id,
-            templateEvent
-        });
-    }
-};
+export const handleTemplateBackMenuCallback = createCommandExecutor('processCallback', {
+    logPrefix: 'Template back menu callback handling'
+});
 
-export const handleTemplateCancelCallback = async (ctx: BotContext): Promise<void> => {
-    try {
-        await processCallback(ctx);
-    } catch (error) {
-        LogEngine.error('Template cancel callback handling failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-    }
-};
-
-export const handleTemplateCancelEditCallback = async (ctx: BotContext): Promise<void> => {
-    try {
-        await processCallback(ctx);
-    } catch (error) {
-        LogEngine.error('Template cancel edit callback handling failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-    }
-};
-
-export const handleTemplateBackMenuCallback = async (ctx: BotContext): Promise<void> => {
-    try {
-        await processCallback(ctx);
-    } catch (error) {
-        LogEngine.error('Template back menu callback handling failed', {
-            error: error instanceof Error ? error.message : String(error),
-            userId: ctx.from?.id,
-            chatId: ctx.chat?.id
-        });
-    }
-};
-
-LogEngine.info('🎉 Clean Command Architecture Successfully Loaded!', {
+StartupLogger.logArchitectureSuccess({
     architectureBenefits: [
         'Single Responsibility: Each command has one job',
         'Open/Closed: Easy to add new commands without modification', 

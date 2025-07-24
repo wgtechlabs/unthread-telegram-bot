@@ -1,7 +1,40 @@
 /**
  * Unthread Telegram Bot - Database Connection Module
  * 
- * Provides secure PostgreSQL database connection with comprehensive SSL support 
+ * Provides secure Postgr        // Handle        // Handle pool errors
+        this.pool.on('error', (err: Error) => {
+            LogEngine.error('Unexpected error on idle client', {
+                error: err.message,
+                stack: err.stack
+            });
+        });
+        
+        StartupLogger.logDatabaseConnection({
+            maxConnections: 10,
+            sslEnabled: sslConfig !== false,
+            environment: isProduction ? 'production' : 'development',
+        });   
+        StartupLogger.logDatabaseConnection({
+            maxConnections: 10,
+            sslEnabled: sslConfig !== false,
+            environment: isProduction ? 'production' : 'development',
+        });        this.pool.on('error', (err: Error) => {
+            LogEngine.error('Unexpected error on idle client', {
+                error: err.message,
+                stack: err.stack
+            });
+        });
+        
+        StartupLogger.logDatabaseConnection({
+            maxConnections: 10,
+            sslEnabled: sslConfig !== false,
+            environment: isProduction ? 'production' : 'development',
+        }); StartupLogger.logDatabaseConnection({
+            maxConnections: 10,
+            sslEnabled: sslConfig !== false,
+            environment: isProduction ? 'production' : 'development',
+            provider: this.isRailwayEnvironment() ? 'Railway' : 'Unknown'
+        });connection with comprehensive SSL support 
  * for the Unthread Telegram Bot project. Designed for cloud deployment on Railway
  * and other cloud providers requiring secure database connections.
  * 
@@ -29,7 +62,7 @@
 
 import pg, { type Pool as PgPool, type PoolClient, type QueryResult } from 'pg';
 const { Pool } = pg;
-import { LogEngine } from '@wgtechlabs/log-engine';
+import { LogEngine } from '../config/logging.js';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
@@ -88,17 +121,12 @@ export class DatabaseConnection {
                 error: err.message,
                 stack: err.stack
             });
-        });        LogEngine.info('Database connection pool initialized', {
+        });
+        
+        LogEngine.info('Database connection pool initialized', {
             maxConnections: 10,
             sslEnabled: sslConfig !== false,
-            sslValidation: this.isRailwayEnvironment() ? 'railway-compatible' : (
-                isProduction ? 'enabled' : (
-                    process.env.DATABASE_SSL_VALIDATE === 'full' ? 'disabled' :
-                    process.env.DATABASE_SSL_VALIDATE === 'true' ? 'disabled-validation' :
-                    process.env.DATABASE_SSL_VALIDATE === 'false' ? 'enabled' : 'enabled-no-validation'
-                )
-            ),
-            environment: process.env.NODE_ENV || 'development',
+            environment: isProduction ? 'production' : 'development',
             provider: this.isRailwayEnvironment() ? 'Railway' : 'Unknown'
         });
     }

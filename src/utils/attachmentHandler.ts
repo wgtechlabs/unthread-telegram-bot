@@ -28,7 +28,8 @@
 import path from 'path';
 import fetch from 'node-fetch';
 import FormData from 'form-data';
-import { LogEngine } from '@wgtechlabs/log-engine';
+import { LogEngine } from '../config/logging.js';
+import { StartupLogger } from './logConfig.js';
 
 // Import statements for buffer-based file processing
 // The following imports have been PERMANENTLY REMOVED:
@@ -81,7 +82,7 @@ export interface SecurityValidationResult {
     threatLevel: 'LOW' | 'MEDIUM' | 'HIGH';
 }
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 
 /**
  * Enhanced error classification for better handling - Unified with Dashboard→Telegram flow
@@ -678,9 +679,8 @@ export class AttachmentHandler {
 
     constructor() {
         this.initializeEnhancedFeatures();
-        LogEngine.info('AttachmentHandler initialized (Simple Buffer Processing)', {
+        StartupLogger.logAttachmentHandler({
             implementation: 'Buffer-Only',
-            streamSupport: false,
             maxFileSize: `${BUFFER_ATTACHMENT_CONFIG.maxFileSize / (1024 * 1024)}MB`,
             maxFiles: BUFFER_ATTACHMENT_CONFIG.maxFiles
         });
