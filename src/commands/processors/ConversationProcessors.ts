@@ -9,7 +9,7 @@
 
 import type { IConversationProcessor } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
-import type { UserState } from '../../sdk/types.js';
+import type { DmSetupSession, UserState } from '../../sdk/types.js';
 import { BotsStore } from '../../sdk/bots-brain/index.js';
 import { logError } from '../utils/errorHandler.js';
 import * as unthreadService from '../../services/unthread.js';
@@ -731,7 +731,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
         }
     }
 
-    private async handleCustomerIdInput(ctx: BotContext, session: any, customerId: string): Promise<boolean> {
+    private async handleCustomerIdInput(ctx: BotContext, session: DmSetupSession, customerId: string): Promise<boolean> {
         try {
             // First, extend session expiry to prevent timeout during customer validation
             const { BotsStore } = await import('../../sdk/bots-brain/index.js');
@@ -841,7 +841,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
         }
     }
 
-    private async handleCustomNameInput(ctx: BotContext, session: any, inputText: string): Promise<boolean> {
+    private async handleCustomNameInput(ctx: BotContext, session: DmSetupSession, inputText: string): Promise<boolean> {
         try {
             // First, extend session expiry to prevent timeout during customer creation
             const { BotsStore } = await import('../../sdk/bots-brain/index.js');
@@ -943,7 +943,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
     /**
      * Handle template content input during setup
      */
-    private async handleTemplateContentInput(ctx: BotContext, session: any, templateContent: string): Promise<boolean> {
+    private async handleTemplateContentInput(ctx: BotContext, session: DmSetupSession, templateContent: string): Promise<boolean> {
         try {
             // Validate template content length
             if (templateContent.trim().length === 0) {
@@ -1089,7 +1089,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
     /**
      * Validate customer ID format and existence
      */
-    private async validateCustomerId(ctx: BotContext, customerId: string, session: any): Promise<{
+    private async validateCustomerId(ctx: BotContext, customerId: string, session: DmSetupSession): Promise<{
         isValid: boolean;
         customerName?: string;
         error?: string;
@@ -1207,7 +1207,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
     /**
      * Create group configuration for existing customer
      */
-    private async createGroupConfigForCustomer(session: any, customerId: string, customerName: string): Promise<void> {
+    private async createGroupConfigForCustomer(session: DmSetupSession, customerId: string, customerName: string): Promise<void> {
         const { BotsStore } = await import('../../sdk/bots-brain/index.js');
         
         // Create group configuration for existing customer
