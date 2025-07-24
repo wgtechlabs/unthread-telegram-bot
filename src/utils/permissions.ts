@@ -302,29 +302,11 @@ To set up this group with Unthread, I need admin permissions in **${chatTitle}**
 • To pin important notifications
 • To moderate ticket conversations
 
-Once you've made me an admin, click the button below to continue setup.`;
-
-  const keyboard: InlineKeyboardMarkup = {
-    inline_keyboard: [
-      [
-        {
-          text: '🔄 Retry Setup',
-          callback_data: 'retry_bot_admin_check'
-        }
-      ],
-      [
-        {
-          text: '❓ Help & Instructions',
-          callback_data: 'bot_admin_help'
-        }
-      ]
-    ]
-  };
+Once you've made me an admin, please run the \`/setup\` command again to continue.`;
 
   try {
     await ctx.reply(message, {
-      parse_mode: 'Markdown',
-      reply_markup: keyboard
+      parse_mode: 'Markdown'
     });
     
     LogEngine.info(`[BotPermissions] Sent bot admin required message to chat ${ctx.chat?.id}`);
@@ -334,8 +316,7 @@ Once you've made me an admin, click the button below to continue setup.`;
     // Fallback message without markdown if parsing fails
     try {
       await ctx.reply(
-        `🔐 Bot Admin Required\n\nTo set up this group, I need admin permissions. Please make me an administrator and try again.`,
-        { reply_markup: keyboard }
+        `🔐 Bot Admin Required\n\nTo set up this group, I need admin permissions. Please make me an administrator and try again.`
       );
     } catch (fallbackError) {
       LogEngine.error('[BotPermissions] Error sending fallback bot admin message:', fallbackError);
