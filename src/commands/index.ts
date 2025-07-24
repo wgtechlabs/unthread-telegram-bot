@@ -46,7 +46,8 @@ import {
 import { 
     AdminCallbackProcessor,
     SetupCallbackProcessor,
-    SupportCallbackProcessor
+    SupportCallbackProcessor,
+    TemplateCallbackProcessor
 } from './processors/CallbackProcessors.js';
 
 /**
@@ -81,6 +82,7 @@ export function initializeCommands(): void {
     commandRegistry.registerCallbackProcessor(new SupportCallbackProcessor());
     commandRegistry.registerCallbackProcessor(new SetupCallbackProcessor());
     commandRegistry.registerCallbackProcessor(new AdminCallbackProcessor());
+    commandRegistry.registerCallbackProcessor(new TemplateCallbackProcessor());
 
     // Show command registration summary (single line instead of 12+ lines)
     StartupLogger.showCommandRegistrationSummary();

@@ -10,7 +10,7 @@
 import type { ICallbackProcessor } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
 import type { DmSetupSession } from '../../sdk/types.js';
-import type { GlobalTemplateEvent } from '../../config/globalTemplates.js';
+import type { GlobalTemplate, GlobalTemplateEvent } from '../../config/globalTemplates.js';
 import { logError } from '../utils/errorHandler.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { generateStatusMessage } from '../../utils/messageAnalyzer.js';
@@ -851,11 +851,30 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
     private static callbackIdCounter = 1;
 
     canHandle(callbackData: string): boolean {
+        // Only handle setup-related and session-based template editing (during setup flow)
+        // Standalone template editing (from /templates command) should be handled by TemplateCallbackProcessor
         return callbackData.startsWith('setup_') || 
                callbackData.startsWith('dmsetup_') || 
-               callbackData.startsWith('template_edit_') ||
-               callbackData.startsWith('template_start_edit_') ||
-               callbackData.startsWith('template_cancel_edit_');
+               (callbackData.startsWith('template_edit_') && this.isSessionBasedTemplateEdit(callbackData)) ||
+               (callbackData.startsWith('template_start_edit_') && this.isSessionBasedTemplateEdit(callbackData)) ||
+               (callbackData.startsWith('template_cancel_edit_') && this.isSessionBasedTemplateEdit(callbackData));
+    }
+
+    /**
+     * Check if template edit callback is session-based (has session ID) vs standalone
+     */
+    private isSessionBasedTemplateEdit(callbackData: string): boolean {
+        // Session-based template edits have session IDs in their callback data
+        // Format: template_edit_tc_cb123 or template_start_edit_tc_cb123
+        const parts = callbackData.split('_');
+        
+        // Check if the callback has a session identifier (cb123 format or setup_chatId_timestamp format)
+        if (parts.length >= 4) {
+            const lastPart = parts[parts.length - 1];
+            return lastPart !== undefined && (lastPart.startsWith('cb') || lastPart.startsWith('setup'));
+        }
+        
+        return false;
     }
 
     // Helper function to convert template types to short codes for callback data
@@ -2859,6 +2878,653 @@ ${timeVars}
         } catch (error) {
             logError(error, 'AdminCallbackProcessor.handleStandaloneTemplateEdit', { templateType });
             await ctx.answerCbQuery("❌ Failed to open template editor. Please try again.");
+            return true;
+        }
+    }
+}
+
+/**
+ * Template Callback Processor
+ * Handles callbacks related to standalone template management (from /templates command)
+ * This processor doesn't require sessions and works independently
+ */
+export class TemplateCallbackProcessor implements ICallbackProcessor {
+    canHandle(callbackData: string): boolean {
+        return callbackData.startsWith('template_');
+    }
+
+    async process(ctx: BotContext, callbackData: string): Promise<boolean> {
+        try {
+            const action = callbackData.replace('template_', '');
+            
+            switch (true) {
+                case action.startsWith('edit_ticket_created'):
+                    return await this.handleEditTemplate(ctx, 'ticket_created');
+                case action.startsWith('edit_agent_response'):
+                    return await this.handleEditTemplate(ctx, 'agent_response');
+                case action.startsWith('edit_ticket_status'):
+                    return await this.handleEditTemplate(ctx, 'ticket_status');
+                case action.startsWith('start_edit_'):
+                    return await this.handleStartEdit(ctx, action.replace('start_edit_', ''));
+                case action.startsWith('preview_'):
+                    return await this.handlePreviewTemplate(ctx, action.replace('preview_', ''));
+                case action.startsWith('reset_') && !action.startsWith('reset_confirm') && !action.startsWith('reset_execute'):
+                    return await this.handleResetTemplate(ctx, action.replace('reset_', ''));
+                case action === 'cancel_edit':
+                    return await this.handleCancelEdit(ctx);
+                case action === 'preview_all':
+                    return await this.handlePreviewAll(ctx);
+                case action === 'reset_confirm':
+                    return await this.handleResetConfirm(ctx);
+                case action === 'reset_execute':
+                    return await this.handleResetExecute(ctx);
+                case action === 'close':
+                    return await this.handleClose(ctx);
+                case action === 'back_to_manager':
+                    return await this.handleBackToManager(ctx);
+                default:
+                    return false;
+            }
+        } catch (error) {
+            logError(error, 'TemplateCallbackProcessor.process', { 
+                callbackData, 
+                userId: ctx.from?.id 
+            });
+            await ctx.answerCbQuery("❌ An error occurred. Please try again.");
+            return true;
+        }
+    }
+
+    /**
+     * Handle editing a specific template
+     */
+    private async handleEditTemplate(ctx: BotContext, templateType: string): Promise<boolean> {
+        await ctx.answerCbQuery(`✏️ Opening ${templateType.replace('_', ' ')} editor...`);
+        
+        try {
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            const templateManager = GlobalTemplateManager.getInstance();
+            
+            // Get current template and available variables
+            const currentTemplate = await templateManager.getTemplate(templateType as GlobalTemplateEvent);
+            const availableVariables = templateManager.getAvailableVariables();
+            
+            // Map template type to readable name
+            let templateDisplayName = 'Template';
+            let templateDescription = '';
+            
+            switch (templateType) {
+                case 'ticket_created':
+                    templateDisplayName = 'Ticket Created';
+                    templateDescription = 'Sent when a new support ticket is created';
+                    break;
+                case 'agent_response':
+                    templateDisplayName = 'Agent Response';
+                    templateDescription = 'Sent when an agent responds to a ticket';
+                    break;
+                case 'ticket_status':
+                    templateDisplayName = 'Ticket Status';
+                    templateDescription = 'Sent when a support ticket status changes';
+                    break;
+                default:
+                    templateDisplayName = templateType.charAt(0).toUpperCase() + templateType.slice(1).replace('_', ' ');
+            }
+
+            // Build available variables list
+            const coreVars = availableVariables.core.map(v => `• \`{{${v.name}}}\` - ${v.description}`).join('\n');
+            const agentVars = availableVariables.agent.map(v => `• \`{{${v.name}}}\` - ${v.description}`).join('\n');
+            const timeVars = availableVariables.time.map(v => `• \`{{${v.name}}}\` - ${v.description}`).join('\n');
+
+            const editMessage = `✏️ **Template Editor: ${templateDisplayName}**
+
+**Purpose:** ${templateDescription}
+
+📝 **Current Template:**
+\`\`\`
+${currentTemplate?.content || 'Loading...'}
+\`\`\`
+
+🔧 **Available Variables:**
+
+**Core Variables:**
+${coreVars}
+
+**Agent Variables:**
+${agentVars}
+
+**Time Variables:**
+${timeVars}
+
+💡 **Usage Examples:**
+• \`{{ticketNumber}}\` → TKT-445
+• \`{{customerName}}\` → John Doe
+
+**To edit this template:**
+1. Click "✏️ Start Editing" below
+2. Type your new template content
+3. Use variables like \`{{ticketNumber}}\`, \`{{summary}}\`, etc.
+4. Send your message to save the template`;
+
+            await ctx.editMessageText(editMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "✏️ Start Editing", callback_data: `template_start_edit_${templateType}` }
+                        ],
+                        [
+                            { text: "📊 Preview", callback_data: `template_preview_${templateType}` },
+                            { text: "🔄 Reset to Default", callback_data: `template_reset_${templateType}` }
+                        ],
+                        [
+                            { text: "⬅️ Back to Manager", callback_data: "template_back_to_manager" }
+                        ]
+                    ]
+                }
+            });
+            
+            return true;
+        } catch (error) {
+            logError(error, 'TemplateCallbackProcessor.handleEditTemplate', { templateType });
+            await ctx.answerCbQuery("❌ Failed to open template editor. Please try again.");
+            return true;
+        }
+    }
+
+    /**
+     * Handle starting template editing (conversation mode)
+     */
+    private async handleStartEdit(ctx: BotContext, templateType: string): Promise<boolean> {
+        await ctx.answerCbQuery("✏️ Starting template editor...");
+        
+        try {
+            const userId = ctx.from?.id;
+            if (!userId) {
+                await ctx.answerCbQuery("❌ Unable to identify user.");
+                return true;
+            }
+
+            // Store editing state in user state
+            await BotsStore.setUserState(userId, {
+                currentField: 'template_content',
+                field: 'template_content',
+                templateType: templateType,
+                editMode: 'standalone'
+            });
+
+            const instructionMessage = `✏️ **Template Editing Mode**
+
+You're now editing the **${templateType.replace('_', ' ')}** template.
+
+**Instructions:**
+• Type your new template content below
+• Use variables like \`{{ticketNumber}}\`, \`{{summary}}\`, \`{{customerName}}\`
+• Keep it clear and professional
+• Multiple lines are supported
+
+**Available Variables:**
+• \`{{ticketNumber}}\` - User-friendly ticket number (TKT-445)
+• \`{{summary}}\` - Ticket summary/title
+• \`{{customerName}}\` - Customer name
+• \`{{status}}\` - Ticket status
+• \`{{response}}\` - Agent response content (for agent_response template)
+
+**Send your new template content now:**`;
+
+            await ctx.editMessageText(instructionMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "❌ Cancel Editing", callback_data: "template_cancel_edit" }
+                        ]
+                    ]
+                }
+            });
+            
+            return true;
+        } catch (error) {
+            logError(error, 'TemplateCallbackProcessor.handleStartEdit', { templateType });
+            await ctx.answerCbQuery("❌ Failed to start template editing. Please try again.");
+            return true;
+        }
+    }
+
+    /**
+     * Handle preview all templates
+     */
+    private async handlePreviewAll(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("📊 Loading template preview...");
+        
+        try {
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            const templateManager = GlobalTemplateManager.getInstance();
+            const templates = await templateManager.getGlobalTemplates();
+
+            const previewMessage = `📊 **Template Preview**
+
+**🎫 Ticket Created Template:**
+${templates.templates.ticket_created.enabled ? '✅ Enabled' : '❌ Disabled'}
+\`\`\`
+${templates.templates.ticket_created.content}
+\`\`\`
+
+**👨‍💼 Agent Response Template:**
+${templates.templates.agent_response.enabled ? '✅ Enabled' : '❌ Disabled'}
+\`\`\`
+${templates.templates.agent_response.content}
+\`\`\`
+
+**✅ Ticket Status Template:**
+${templates.templates.ticket_status.enabled ? '✅ Enabled' : '❌ Disabled'}
+\`\`\`
+${templates.templates.ticket_status.content}
+\`\`\`
+
+**Configuration:**
+• Version: ${templates.version}
+• Last Updated: ${new Date(templates.lastUpdated).toLocaleString()}`;
+
+            await ctx.editMessageText(previewMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "⬅️ Back to Manager", callback_data: "template_back_to_manager" }
+                        ]
+                    ]
+                }
+            });
+            
+            return true;
+        } catch (error) {
+            logError(error, 'TemplateCallbackProcessor.handlePreviewAll');
+            await ctx.answerCbQuery("❌ Failed to load preview. Please try again.");
+            return true;
+        }
+    }
+
+    /**
+     * Handle reset confirmation
+     */
+    private async handleResetConfirm(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("⚠️ Reset confirmation...");
+        
+        const confirmMessage = `⚠️ **Reset Templates to Defaults**
+
+This will reset **ALL** templates to their default values and **remove all customizations**.
+
+**What will be reset:**
+• 🎫 Ticket Created template
+• 👨‍💼 Agent Response template  
+• ✅ Ticket Status template
+
+**This action cannot be undone.**
+
+Are you sure you want to proceed?`;
+
+        await ctx.editMessageText(confirmMessage, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "⚠️ Yes, Reset All", callback_data: "template_reset_execute" }
+                    ],
+                    [
+                        { text: "❌ Cancel", callback_data: "template_back_to_manager" }
+                    ]
+                ]
+            }
+        });
+        
+        return true;
+    }
+
+    /**
+     * Handle reset execution
+     */
+    private async handleResetExecute(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("🔄 Resetting templates...");
+        
+        try {
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            const templateManager = GlobalTemplateManager.getInstance();
+            
+            const result = await templateManager.resetToDefaults(ctx.from?.id);
+            
+            if (result.success) {
+                const successMessage = `✅ **Templates Reset Successfully**
+
+All templates have been reset to their default values.
+
+**What's been reset:**
+• 🎫 Ticket Created template → Default content
+• 👨‍💼 Agent Response template → Default content
+• ✅ Ticket Status template → Default content
+
+Your templates are now using the standard, professional defaults.`;
+
+                await ctx.editMessageText(successMessage, {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "📝 Open Template Manager", callback_data: "template_back_to_manager" }
+                            ]
+                        ]
+                    }
+                });
+            } else {
+                await ctx.editMessageText(`❌ **Reset Failed**\n\n${result.error || 'Unknown error occurred'}\n\nPlease try again.`, {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "⬅️ Back to Manager", callback_data: "template_back_to_manager" }
+                            ]
+                        ]
+                    }
+                });
+            }
+            
+            return true;
+        } catch (error) {
+            logError(error, 'TemplateCallbackProcessor.handleResetExecute');
+            await ctx.answerCbQuery("❌ Failed to reset templates. Please try again.");
+            return true;
+        }
+    }
+
+    /**
+     * Handle close
+     */
+    private async handleClose(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("👋 Closing template manager...");
+        
+        try {
+            await ctx.deleteMessage();
+        } catch (_error) {
+            // If we can't delete, just edit with a closed message
+            await ctx.editMessageText("📝 **Template Manager Closed**\n\nUse `/templates` to open it again.", {
+                parse_mode: 'Markdown'
+            });
+        }
+        
+        return true;
+    }
+
+    /**
+     * Handle back to manager
+     */
+    private async handleBackToManager(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("⬅️ Returning to template manager...");
+        
+        try {
+            // Import and call the template manager show method
+            // const { TemplatesCommand } = await import('../admin/AdminCommands.js');
+            // Note: We're rebuilding the template manager interface directly here
+            
+            // Get current templates for status
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            const templateManager = GlobalTemplateManager.getInstance();
+            const templates = await templateManager.getGlobalTemplates();
+            
+            const templateEntries = Object.entries(templates.templates);
+            const customizedTemplates = templateEntries.filter(([_, template]) => 
+                template.lastModifiedBy && template.lastModifiedAt
+            );
+            const totalTemplates = templateEntries.length;
+            const customizedCount = customizedTemplates.length;
+            
+            // Generate status message based on customization state
+            let statusMessage: string;
+            let activityInfo: string;
+            
+            if (customizedCount === 0) {
+                statusMessage = "Using defaults";
+                activityInfo = "No customizations yet";
+            } else if (customizedCount === totalTemplates) {
+                statusMessage = "Fully customized";
+                const lastModified = Math.max(...customizedTemplates.map(([_, t]) => 
+                    t.lastModifiedAt ? new Date(t.lastModifiedAt).getTime() : 0
+                ));
+                activityInfo = `Last updated ${new Date(lastModified).toLocaleDateString()}`;
+            } else {
+                statusMessage = `${customizedCount}/${totalTemplates} customized`;
+                const lastModified = Math.max(...customizedTemplates.map(([_, t]) => 
+                    t.lastModifiedAt ? new Date(t.lastModifiedAt).getTime() : 0
+                ));
+                activityInfo = `Last updated ${new Date(lastModified).toLocaleDateString()}`;
+            }
+            
+            // Generate individual template status indicators
+            const getTemplateStatus = (template: GlobalTemplate): string => {
+                if (!template.enabled) {
+                    return "❌ Disabled";
+                }
+                if (template.lastModifiedBy && template.lastModifiedAt) {
+                    return "✏️ Customized";
+                }
+                return "🚀 Default";
+            };
+            
+            const templateMessage = 
+                "📝 **Message Template Manager**\n\n" +
+                "Customize how the bot communicates with your customers.\n\n" +
+                `**Current Status:** ${statusMessage}\n` +
+                `**Last Activity:** ${activityInfo}\n\n` +
+                "**Available Templates:**\n" +
+                `• 🎫 **Ticket Created** - ${getTemplateStatus(templates.templates.ticket_created)}\n` +
+                `• 👨‍💼 **Agent Response** - ${getTemplateStatus(templates.templates.agent_response)}\n` +
+                `• ✅ **Ticket Status** - ${getTemplateStatus(templates.templates.ticket_status)}\n\n` +
+                "**Management Options:**";
+
+            await ctx.editMessageText(templateMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "🎫 Edit Ticket Created", callback_data: "template_edit_ticket_created" },
+                            { text: "👨‍💼 Edit Agent Response", callback_data: "template_edit_agent_response" }
+                        ],
+                        [
+                            { text: "✅ Edit Ticket Status", callback_data: "template_edit_ticket_status" },
+                            { text: "📊 Template Preview", callback_data: "template_preview_all" }
+                        ],
+                        [
+                            { text: "🔄 Reset to Defaults", callback_data: "template_reset_confirm" }
+                        ],
+                        [
+                            { text: "❌ Close", callback_data: "template_close" }
+                        ]
+                    ]
+                }
+            });
+            
+            return true;
+        } catch (error) {
+            logError(error, 'TemplateCallbackProcessor.handleBackToManager');
+            await ctx.answerCbQuery("❌ Failed to return to manager. Please try again.");
+            return true;
+        }
+    }
+
+    /**
+     * Handle previewing a specific template
+     */
+    private async handlePreviewTemplate(ctx: BotContext, templateType: string): Promise<boolean> {
+        await ctx.answerCbQuery(`📊 Previewing ${templateType.replace('_', ' ')} template...`);
+        
+        try {
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            const templateManager = GlobalTemplateManager.getInstance();
+            const template = await templateManager.getTemplate(templateType as GlobalTemplateEvent);
+            
+            if (!template) {
+                await ctx.answerCbQuery("❌ Template not found.");
+                return true;
+            }
+
+            const templateDisplayName = templateType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+            
+            const previewMessage = `📊 **${templateDisplayName} Template Preview**
+
+**Status:** ${template.enabled ? '✅ Enabled' : '❌ Disabled'}
+
+**Content:**
+\`\`\`
+${template.content}
+\`\`\`
+
+**Example with sample data:**
+${this.renderTemplateExample(template.content, templateType)}
+
+**Last Modified:** ${template.lastModifiedAt ? new Date(template.lastModifiedAt).toLocaleString() : 'Never (default)'}`;
+
+            await ctx.editMessageText(previewMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "✏️ Edit Template", callback_data: `template_edit_${templateType}` }
+                        ],
+                        [
+                            { text: "⬅️ Back to Manager", callback_data: "template_back_to_manager" }
+                        ]
+                    ]
+                }
+            });
+            
+            return true;
+        } catch (error) {
+            logError(error, 'TemplateCallbackProcessor.handlePreviewTemplate', { templateType });
+            await ctx.answerCbQuery("❌ Failed to load preview. Please try again.");
+            return true;
+        }
+    }
+
+    /**
+     * Render template example with sample data
+     */
+    private renderTemplateExample(content: string, templateType: string): string {
+        const sampleData: Record<string, string> = {
+            ticketNumber: 'TKT-445',
+            summary: 'Login issue with mobile app',
+            customerName: 'John Doe',
+            status: templateType === 'ticket_status' ? 'Resolved' : 'Open',
+            response: 'Thanks for reaching out! I\'ve investigated your login issue...'
+        };
+
+        let example = content;
+        for (const [key, value] of Object.entries(sampleData)) {
+            const pattern = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+            example = example.replace(pattern, value);
+        }
+
+        return example;
+    }
+
+    /**
+     * Handle resetting a specific template
+     */
+    private async handleResetTemplate(ctx: BotContext, templateType: string): Promise<boolean> {
+        await ctx.answerCbQuery(`🔄 Resetting ${templateType.replace('_', ' ')} template...`);
+        
+        try {
+            const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
+            const { DEFAULT_GLOBAL_TEMPLATES } = await import('../../config/globalTemplates.js');
+            
+            const templateManager = GlobalTemplateManager.getInstance();
+            const defaultTemplate = DEFAULT_GLOBAL_TEMPLATES.templates[templateType as keyof typeof DEFAULT_GLOBAL_TEMPLATES.templates];
+            
+            if (!defaultTemplate) {
+                await ctx.answerCbQuery("❌ Default template not found.");
+                return true;
+            }
+
+            const result = await templateManager.updateTemplate(
+                templateType as GlobalTemplateEvent,
+                defaultTemplate.content,
+                true,
+                ctx.from?.id
+            );
+
+            if (result.success) {
+                const templateDisplayName = templateType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                
+                const successMessage = `✅ **${templateDisplayName} Template Reset**
+
+The template has been reset to its default content.
+
+**Default Content:**
+\`\`\`
+${defaultTemplate.content}
+\`\`\`
+
+Your template is now using the standard, professional default.`;
+
+                await ctx.editMessageText(successMessage, {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "✏️ Customize Again", callback_data: `template_edit_${templateType}` }
+                            ],
+                            [
+                                { text: "⬅️ Back to Manager", callback_data: "template_back_to_manager" }
+                            ]
+                        ]
+                    }
+                });
+            } else {
+                await ctx.editMessageText(`❌ **Reset Failed**\n\n${result.error || 'Unknown error occurred'}\n\nPlease try again.`, {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "⬅️ Back to Manager", callback_data: "template_back_to_manager" }
+                            ]
+                        ]
+                    }
+                });
+            }
+            
+            return true;
+        } catch (error) {
+            logError(error, 'TemplateCallbackProcessor.handleResetTemplate', { templateType });
+            await ctx.answerCbQuery("❌ Failed to reset template. Please try again.");
+            return true;
+        }
+    }
+
+    /**
+     * Handle canceling template edit
+     */
+    private async handleCancelEdit(ctx: BotContext): Promise<boolean> {
+        await ctx.answerCbQuery("❌ Template editing canceled...");
+        
+        try {
+            const userId = ctx.from?.id;
+            if (userId) {
+                // Clear any editing state
+                await BotsStore.clearUserState(userId);
+            }
+
+            await ctx.editMessageText("❌ **Template Editing Canceled**\n\nNo changes were made to your templates.", {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: "📝 Open Template Manager", callback_data: "template_back_to_manager" }
+                        ]
+                    ]
+                }
+            });
+            
+            return true;
+        } catch (error) {
+            logError(error, 'TemplateCallbackProcessor.handleCancelEdit');
+            await ctx.answerCbQuery("❌ Failed to cancel editing. Please try again.");
             return true;
         }
     }
