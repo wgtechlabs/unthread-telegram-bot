@@ -21,6 +21,13 @@ import { v4 as uuidv4 } from 'uuid';
 export type SendMessageFunction = (_chatId: number, _message: string) => Promise<void>;
 
 /**
+ * Interface for step data used in setup sessions
+ */
+export interface StepData {
+  [key: string]: string | number | boolean | null;
+}
+
+/**
  * Determines whether the specified Telegram user ID is listed as an admin in the environment configuration.
  *
  * @param telegramUserId - The Telegram user ID to check
@@ -375,7 +382,7 @@ export function getDmSessionTimeRemaining(session: DmSetupSession): number {
 export async function updateDmSetupSessionStep(
   sessionId: string, 
   step: string, 
-  stepData?: Record<string, any>
+  stepData?: StepData
 ): Promise<boolean> {
   try {
     const updates: Partial<DmSetupSession> = {
