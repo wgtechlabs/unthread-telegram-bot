@@ -227,130 +227,196 @@ export class TelegramWebhookHandler {
         });
       }
 
-      // 4. Always deliver agent messages - we'll prompt for email when user replies instead
-      LogEngine.info('✅ Delivering agent message directly to user', {
-        conversationId,
-        telegramUserId: ticketData.telegramUserId,
-        messageLength: messageText.length
-      });
-
-      // 5. Format agent message using template system
-      const formattedMessage = await this.formatAgentMessageWithTemplate(
-        messageText, 
-        ticketData
-      );
+      // 4. Handle attachment-only events (unknown source) vs text+attachment events (dashboard source)
+      const hasTextContent = !!(messageText && messageText.trim().length > 0);
       
-      LogEngine.info('✅ Message formatted for Telegram', { 
-        conversationId,
-        formattedLength: formattedMessage.length
-      });
-
-      // 5. Send agent message as reply to original ticket message
-      LogEngine.info('📤 Attempting to send message to Telegram', {
-        conversationId,
-        chatId: ticketData.chatId,
-        replyToMessageId: ticketData.messageId
-      });
-
-      try {
-        const sentMessage = await this.safeSendMessage(
-          ticketData.chatId,
-          formattedMessage,
-          { 
-            reply_to_message_id: ticketData.messageId,
-            parse_mode: 'Markdown',
-            disable_web_page_preview: true
-          }
-        );
-
-        if (sentMessage) {
-          // 6. Store agent message for reply tracking
-          await this.botsStore.storeAgentMessage({
-            messageId: sentMessage.message_id,
-            conversationId: conversationId,
-            chatId: ticketData.chatId,
-            friendlyId: ticketData.friendlyId,
-            originalTicketMessageId: ticketData.messageId,
-            sentAt: new Date().toISOString()
-          });
-
-          LogEngine.info('✅🎉 Agent message delivered to Telegram successfully!', {
-            conversationId,
-            chatId: ticketData.chatId,
-            replyToMessageId: ticketData.messageId,
-            sentMessageId: sentMessage.message_id,
-            friendlyId: ticketData.friendlyId
-          });
-
-          // 7. Process ONLY Slack files - dashboard attachments are USELESS (u-warentest IDs don't work)
-          // The real files come from "unknown" source events which need a separate handler
-          if (hasAttachments) {
-            LogEngine.info('📎 Processing Slack files only - dashboard u-warentest IDs ignored', {
-              conversationId,
-              slackFileCount: hasSlackFiles && dataFiles ? dataFiles.length : 0,
-              totalAttachments: allAttachments.length,
-              chatId: ticketData.chatId,
-              status: 'Slack-only processing (dashboard IDs are useless)'
-            });
-            
-            // Process Slack files using Slack thumbnail endpoint
-            if (hasSlackFiles && dataFiles) {
-              await this.processSlackFiles(
-                dataFiles,
-                conversationId,
-                ticketData.chatId,
-                sentMessage.message_id
-              );
-            }
-          }
-        } else {
-          LogEngine.warn('Message not sent - user may have blocked bot or chat not found', {
-            conversationId,
-            chatId: ticketData.chatId,
-            friendlyId: ticketData.friendlyId
-          });
-        }
-
-      } catch (telegramError) {
-        const err = telegramError as Error;
-        LogEngine.error('Failed to send message to Telegram', {
-          error: err.message,
-          chatId: ticketData.chatId,
-          messageId: ticketData.messageId,
-          conversationId
+      if (hasTextContent) {
+        // This is a text message (dashboard event) - send the message normally
+        LogEngine.info('✅ Delivering agent message with text content', {
+          conversationId,
+          telegramUserId: ticketData.telegramUserId,
+          messageLength: messageText.length
         });
+
+        // 5. Format agent message using template system
+        const formattedMessage = await this.formatAgentMessageWithTemplate(
+          messageText, 
+          ticketData
+        );
         
-        // Try sending without reply if reply fails (original message might be deleted)
+        LogEngine.info('✅ Message formatted for Telegram', { 
+          conversationId,
+          formattedLength: formattedMessage.length
+        });
+
+        // 6. Send agent message as reply to original ticket message
+        LogEngine.info('📤 Attempting to send message to Telegram', {
+          conversationId,
+          chatId: ticketData.chatId,
+          replyToMessageId: ticketData.messageId
+        });
+
         try {
-          const fallbackMessage = await this.safeSendMessage(
+          const sentMessage = await this.safeSendMessage(
             ticketData.chatId,
-            `${formattedMessage}\n\n_Note: Sent as new message (original ticket message not found)_`,
+            formattedMessage,
             { 
+              reply_to_message_id: ticketData.messageId,
               parse_mode: 'Markdown',
               disable_web_page_preview: true
             }
           );
 
-          if (fallbackMessage) {
-            LogEngine.info('Agent message sent as new message (fallback)', {
-              conversationId,
-              chatId: ticketData.chatId
+          if (sentMessage) {
+            // 7. Store agent message for reply tracking
+            await this.botsStore.storeAgentMessage({
+              messageId: sentMessage.message_id,
+              conversationId: conversationId,
+              chatId: ticketData.chatId,
+              friendlyId: ticketData.friendlyId,
+              originalTicketMessageId: ticketData.messageId,
+              sentAt: new Date().toISOString()
             });
-          } else {
-            LogEngine.warn('Fallback message also failed - user may have blocked bot', {
+
+            // Store this as the latest agent message for attachment replies
+            await this.botsStore.storage.set(
+              `agent_message:${conversationId}:latest`,
+              JSON.stringify({
+                messageId: sentMessage.message_id,
+                conversationId: conversationId,
+                chatId: ticketData.chatId,
+                sentAt: new Date().toISOString()
+              }),
+              60 * 60 * 24 // 24 hour TTL
+            );
+
+            LogEngine.info('✅🎉 Agent message delivered to Telegram successfully!', {
               conversationId,
-              chatId: ticketData.chatId
+              chatId: ticketData.chatId,
+              replyToMessageId: ticketData.messageId,
+              sentMessageId: sentMessage.message_id,
+              friendlyId: ticketData.friendlyId
+            });
+
+            // 8. Process ONLY Slack files - dashboard attachments are USELESS (u-warentest IDs don't work)
+            // The real files come from "unknown" source events which need a separate handler
+            if (hasAttachments) {
+              LogEngine.info('📎 Processing Slack files only - dashboard u-warentest IDs ignored', {
+                conversationId,
+                slackFileCount: hasSlackFiles && dataFiles ? dataFiles.length : 0,
+                totalAttachments: allAttachments.length,
+                chatId: ticketData.chatId,
+                status: 'Slack-only processing (dashboard IDs are useless)'
+              });
+              
+              // Process Slack files using Slack thumbnail endpoint
+              if (hasSlackFiles && dataFiles) {
+                await this.processSlackFiles(
+                  dataFiles,
+                  conversationId,
+                  ticketData.chatId,
+                  sentMessage.message_id
+                );
+              }
+            }
+          } else {
+            LogEngine.warn('Message not sent - user may have blocked bot or chat not found', {
+              conversationId,
+              chatId: ticketData.chatId,
+              friendlyId: ticketData.friendlyId
             });
           }
-
-        } catch (fallbackError) {
-          const fallbackErr = fallbackError as Error;
-          LogEngine.error('Failed to send fallback message to Telegram', {
-            error: fallbackErr.message,
+        } catch (telegramError) {
+          const err = telegramError as Error;
+          LogEngine.error('Failed to send message to Telegram', {
+            error: err.message,
             chatId: ticketData.chatId,
+            messageId: ticketData.messageId,
             conversationId
           });
-          throw fallbackError;
+          
+          // Try sending without reply if reply fails (original message might be deleted)
+          try {
+            const fallbackMessage = await this.safeSendMessage(
+              ticketData.chatId,
+              `${formattedMessage}\n\n_Note: Sent as new message (original ticket message not found)_`,
+              { 
+                parse_mode: 'Markdown',
+                disable_web_page_preview: true
+              }
+            );
+
+            if (fallbackMessage) {
+              LogEngine.info('Agent message sent as new message (fallback)', {
+                conversationId,
+                chatId: ticketData.chatId
+              });
+            } else {
+              LogEngine.warn('Fallback message also failed - user may have blocked bot', {
+                conversationId,
+                chatId: ticketData.chatId
+              });
+            }
+
+          } catch (fallbackError) {
+            const fallbackErr = fallbackError as Error;
+            LogEngine.error('Failed to send fallback message to Telegram', {
+              error: fallbackErr.message,
+              chatId: ticketData.chatId,
+              conversationId
+            });
+            throw fallbackError;
+          }
+        }
+      } else if (hasAttachments) {
+        // This is an attachment-only event (unknown source) - find the latest agent message to reply to
+        LogEngine.info('📎 Processing attachment-only event (finding agent message to reply to)', {
+          conversationId,
+          attachmentCount: allAttachments.length,
+          chatId: ticketData.chatId,
+          status: 'Finding latest agent message for attachment reply'
+        });
+
+        // Use a simple approach: check Redis for the most recent agent message in this conversation
+        let replyToMessageId = ticketData.messageId; // Default fallback to original ticket
+        
+        try {
+          // Try to get the latest agent message from Redis using a simple pattern
+          // We'll look for agent messages stored with this conversation ID
+          const agentMessageKey = `agent_message:${conversationId}:latest`;
+          const latestAgentMessageData = await this.botsStore.storage.get(agentMessageKey);
+          
+          if (latestAgentMessageData && typeof latestAgentMessageData === 'string') {
+            const agentMessage = JSON.parse(latestAgentMessageData);
+            replyToMessageId = agentMessage.messageId;
+            
+            LogEngine.info('🎯 Found latest agent message to reply to', {
+              conversationId,
+              latestAgentMessageId: replyToMessageId,
+              originalTicketId: ticketData.messageId
+            });
+          } else {
+            LogEngine.info('🎯 No latest agent message found, using original ticket as reply target', {
+              conversationId,
+              replyToMessageId: ticketData.messageId
+            });
+          }
+        } catch (lookupError) {
+          LogEngine.warn('⚠️ Failed to lookup latest agent message, using original ticket as reply target', {
+            conversationId,
+            error: lookupError instanceof Error ? lookupError.message : String(lookupError),
+            fallbackReplyId: ticketData.messageId
+          });
+        }
+
+        // Process Slack files using the determined reply target (latest agent message or original ticket)
+        if (hasSlackFiles && dataFiles) {
+          await this.processSlackFiles(
+            dataFiles,
+            conversationId,
+            ticketData.chatId,
+            replyToMessageId
+          );
         }
       }
 
