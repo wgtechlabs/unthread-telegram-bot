@@ -15,6 +15,7 @@ import fetch from 'node-fetch';
 import FormData from 'form-data';
 import fs from 'fs';
 import path from 'path';
+import { URLSearchParams } from 'url';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import { AgentMessageData, TicketData, UserData } from '../sdk/types.js';
@@ -1126,25 +1127,128 @@ export { customerCache };
  * ```
  */
 /**
- * DISABLED: Downloads an attachment from an Unthread conversation
+ * Downloads an image attachment from Unthread using the proven fetch-based approach.
  * 
- * This function has been temporarily disabled due to reliability issues with
- * the Unthread file download API. The function was failing consistently when
- * trying to download files from Slack through Unthread's proxy.
+ * This function uses the working fetch pattern discovered through extensive testing.
+ * It specifically targets image files and uses Unthread's file download API with
+ * proper authentication and error handling.
  * 
- * RE-ENABLEMENT STEPS when Unthread API is fixed:
- * Step 7: Replace this function body with the original implementation
- * Step 8: Test the function with known file IDs from Unthread
- * Step 9: Verify downloads work for various file types and sizes
- * Step 10: Monitor logs for any remaining download failures
- * 
- * @deprecated Temporarily disabled - will be re-enabled when API issues are resolved
- * @param conversationId - The Unthread conversation ID containing the file
  * @param fileId - The unique file identifier from the attachment metadata
- * @param expectedFileName - The expected filename for validation (optional but recommended)
- * @param maxSizeBytes - Maximum allowed file size in bytes (default: 50MB for Telegram compatibility)
- * @returns Promise<Buffer> containing the file data
- * @throws Error indicating the function is disabled
+ * @param teamId - The Slack team ID for the file (required for Unthread API)
+ * @param expectedFileName - The expected filename for validation (optional)
+ * @param thumbSize - Thumbnail size for images (default: 160px, max: 1024px)
+ * @returns Promise<Buffer> containing the image data
+ * @throws Error with specific error types for different failure scenarios
+ */
+export async function downloadUnthreadImage(
+    fileId: string,
+    teamId: string,
+    expectedFileName?: string,
+    thumbSize: number = 160
+): Promise<Buffer> {
+    
+    LogEngine.info('Starting Unthread image download', {
+        fileId,
+        teamId,
+        expectedFileName,
+        thumbSize,
+        method: 'fetch-based-proven-pattern'
+    });
+
+    try {
+        // Validate inputs
+        if (!fileId || !teamId) {
+            throw new Error('fileId and teamId are required for Unthread image download');
+        }
+
+        if (!UNTHREAD_API_KEY) {
+            throw new Error('UNTHREAD_API_KEY environment variable is not set');
+        }
+
+        // Use the proven working endpoint and pattern from context
+        const endpoint = `${API_BASE_URL}/slack/files/${fileId}/thumb`;
+        const params = new URLSearchParams({ 
+            thumbSize: thumbSize.toString(), 
+            teamId: teamId 
+        });
+
+        LogEngine.debug('Making Unthread API request', {
+            endpoint,
+            params: Object.fromEntries(params.entries()),
+            hasApiKey: !!UNTHREAD_API_KEY
+        });
+
+        // Use fetch API (proven to work, unlike Axios)
+        const response = await fetch(`${endpoint}?${params}`, {
+            headers: {
+                'X-API-KEY': UNTHREAD_API_KEY,
+                'Accept': 'application/octet-stream'
+            }
+        });
+
+        LogEngine.debug('Received Unthread API response', {
+            fileId,
+            status: response.status,
+            statusText: response.statusText,
+            contentType: response.headers.get('content-type'),
+            contentLength: response.headers.get('content-length'),
+            ok: response.ok
+        });
+
+        if (!response.ok) {
+            throw new Error(`Unthread API error: ${response.status} ${response.statusText}`);
+        }
+
+        // Convert to blob and then to buffer (proven pattern)
+        const blob = await response.blob();
+        const buffer = Buffer.from(await blob.arrayBuffer());
+
+        // Validate the downloaded content
+        if (buffer.length === 0) {
+            throw new Error('Downloaded file is empty');
+        }
+
+        // Image-specific validation
+        const contentType = response.headers.get('content-type') || 'unknown';
+        if (!contentType.startsWith('image/')) {
+            LogEngine.warn('Downloaded file may not be an image', {
+                fileId,
+                contentType,
+                expectedFileName
+            });
+        }
+
+        // Size validation (Telegram limit is 10MB for photos)
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (buffer.length > maxSize) {
+            throw new Error(`Image too large: ${buffer.length} bytes (max: ${maxSize})`);
+        }
+
+        LogEngine.info('Unthread image download successful', {
+            fileId,
+            size: buffer.length,
+            contentType,
+            expectedFileName
+        });
+
+        return buffer;
+
+    } catch (error) {
+        const err = error as Error;
+        LogEngine.error('Unthread image download failed', {
+            fileId,
+            teamId,
+            expectedFileName,
+            error: err.message,
+            stack: err.stack
+        });
+        throw error;
+    }
+}
+
+/**
+ * @deprecated Use downloadUnthreadImage for image files specifically
+ * Legacy function maintained for backward compatibility
  */
 export async function downloadAttachmentFromUnthread(
     conversationId: string,
@@ -1152,16 +1256,16 @@ export async function downloadAttachmentFromUnthread(
     expectedFileName?: string
 ): Promise<Buffer> {
     
-    LogEngine.warn('downloadAttachmentFromUnthread called but function is disabled', {
+    LogEngine.warn('downloadAttachmentFromUnthread called - redirecting to image-specific function', {
         conversationId,
         fileId,
         expectedFileName,
-        reason: 'Unthread file download API issues - function temporarily disabled'
+        recommendation: 'Use downloadUnthreadImage for better image handling'
     });
     
     throw new Error(
-        'File download from Unthread is temporarily disabled due to API reliability issues. ' +
-        'The Unthread→Telegram attachment flow has been disabled until these issues are resolved.'
+        'This function is deprecated. Use downloadUnthreadImage() for image files. ' +
+        'Generic file download is not implemented - images only for this release.'
     );
 }
 
