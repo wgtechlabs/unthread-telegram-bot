@@ -179,7 +179,9 @@ yarn docker:build:sbom
    # ADMIN_USERS supports multiple user IDs: ADMIN_USERS=123456789,987654321
    # Then start the bot
    yarn start
-   ```5. **Test Your Bot**
+   ```
+
+5. **Test Your Bot**
    - Add your bot to a Telegram group
    - Send `/start` to see if it responds
    - Try creating a ticket with `/support`
@@ -213,6 +215,7 @@ BOT_USERNAME=your_bot_username  # Eliminates API calls for deep links and comman
 UNTHREAD_API_KEY=your_unthread_api_key
 UNTHREAD_SLACK_CHANNEL_ID=your_unthread_slack_channel_id
 UNTHREAD_WEBHOOK_SECRET=your_unthread_webhook_secret
+UNTHREAD_TEAM_ID=your_unthread_team_id  # Required for file attachment downloads
 
 # Required - Database (Docker will handle this automatically)
 POSTGRES_URL=postgresql://postgres:postgres@postgres-platform:5432/unthread_telegram_bot
