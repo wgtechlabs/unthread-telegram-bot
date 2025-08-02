@@ -20,7 +20,7 @@
  * - Support ticket data and conversation history * - Form data collection and multi-step workflows
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1
+ * @version 1.0.0-rc2
  * @since 2025
  */
 // Multi-layer storage architecture for bots (Memory + Redis + PostgreSQL)

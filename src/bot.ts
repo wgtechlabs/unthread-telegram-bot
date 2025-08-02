@@ -7,7 +7,7 @@
  * - Error handling and user cleanup
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1
+ * @version 1.0.0-rc2
  * @since 2025
  */
 import { Telegraf } from 'telegraf';

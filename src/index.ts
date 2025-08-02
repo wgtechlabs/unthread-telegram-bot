@@ -12,7 +12,7 @@
  * - Real-time webhook event processing
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1
+ * @version 1.0.0-rc2
  * @since 2025
  */
 import dotenv from 'dotenv';
@@ -349,7 +349,7 @@ try {
             LogEngine.warn('Webhook handler does not implement handleConversationUpdated; skipping subscription.');
         }
 
-        // Phase 4: Subscribe to unknown events for image attachment processing
+        // Subscribe to unknown events for image attachment processing
         if (typeof webhookHandler.handleUnknownEventWithImages === 'function') {
             // Register for various unknown event types that might contain image attachments
             const unknownEventTypes = [
@@ -367,9 +367,9 @@ try {
                 LogEngine.info(`Subscribed to ${eventType} events for image processing`);
             });
             
-            LogEngine.info('Phase 4: Image attachment processing enabled for unknown events');
+            LogEngine.info('Image attachment processing enabled for unknown events');
         } else {
-            LogEngine.warn('Webhook handler does not implement handleUnknownEventWithImages; Phase 4 integration incomplete.');
+            LogEngine.warn('Webhook handler does not implement handleUnknownEventWithImages; image processing integration incomplete.');
         }
 
         // Start the webhook consumer

@@ -328,7 +328,7 @@ export function formatEmailForDisplay(email: string, isDummy: boolean): string {
 
 /**
  * Delivers any pending agent messages for a user after they set their email
- * This completes the Phase 2 email collection flow
+ * This completes the email collection flow
  */
 export async function deliverPendingAgentMessages(telegramUserId: number): Promise<{
     delivered: number;

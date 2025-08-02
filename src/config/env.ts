@@ -30,7 +30,7 @@
  * - Detects placeholder values and prevents accidental deployment
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1
+ * @version 1.0.0-rc2
  * @since 2025
  */
 
@@ -106,7 +106,7 @@ export function validateEnvironment(): void {
         getAdminUsers(); // This will throw if placeholder values are detected
         validateRedisUrls(); // Validate Redis URL configurations
         validateRequiredTokens(); // Validate API tokens and secrets
-        validateImageProcessingConfig(); // Phase 4: Validate image processing configuration
+        validateImageProcessingConfig(); // Validate image processing configuration
     } catch (error) {
         LogEngine.error('❌ Environment configuration error:', {
             error: (error as Error).message
@@ -397,7 +397,7 @@ export function getConfiguredBotUsername(): string | null {
 }
 
 /**
- * Phase 4: Image Processing Configuration
+ * Image Processing Configuration
  * Get image processing configuration with sensible defaults
  */
 export interface ImageProcessingConfig {
@@ -440,7 +440,7 @@ export function getImageProcessingConfig(): ImageProcessingConfig {
 }
 
 /**
- * Phase 4: Validate image processing environment
+ * Validate image processing environment
  * Ensures SLACK_TEAM_ID is available for image downloads
  */
 export function validateImageProcessingConfig(): void {

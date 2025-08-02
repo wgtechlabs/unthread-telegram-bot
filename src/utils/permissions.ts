@@ -25,7 +25,7 @@
  * - Use checkAndPromptBotAdmin() for automated permission prompting
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1
+ * @version 1.0.0-rc2
  * @since 2025
  */
 

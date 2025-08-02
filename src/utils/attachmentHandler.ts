@@ -21,7 +21,7 @@
  * - Maximum files: 5 files per operation
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1 - Pure Buffer Implementation (Unthread→Telegram flow disabled)
+ * @version 1.0.0-rc2 - Pure Buffer Implementation (Unthread→Telegram flow disabled)
  * @since 2025
  */
 
@@ -512,7 +512,7 @@ function detectMimeTypeFromExtension(fileName: string): string {
 }
 
 /**
- * Phase 3.1 Enhanced filename sanitization for security
+ * Enhanced filename sanitization for security
  */
 function sanitizeFileName(fileName: string): SecurityValidationResult {
     const issues: string[] = [];
@@ -584,7 +584,7 @@ interface PerformanceContext {
 }
 
 /**
- * Phase 3.1 Performance monitoring wrapper
+ * Performance monitoring wrapper
  */
 async function withPerformanceMonitoring<T>(
     operation: () => Promise<T>,
@@ -634,7 +634,7 @@ async function withPerformanceMonitoring<T>(
 }
 
 /**
- * Phase 3.1 Enhanced retry logic with exponential backoff
+ * Enhanced retry logic with exponential backoff
  */
 async function withRetry<T>(
     operation: () => Promise<T>,
@@ -722,7 +722,7 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 3.1 Memory optimization monitoring
+     * Memory optimization monitoring
      */
     private startMemoryOptimization(): void {
         this.memoryMonitoringInterval = setInterval(() => {
@@ -740,11 +740,11 @@ export class AttachmentHandler {
         }, 30000); // Check every 30 seconds
     }
 
-    // Method stubs will be implemented in the next phases
-    // This completes Phase 1: Clean Buffer Template
+    // Method stubs will be implemented in future iterations
+    // This completes the Clean Buffer Template
 
     /**
-     * Phase 3.1 Enhanced file size validation with security checks
+     * Enhanced file size validation with security checks
      */
     private validateFileSize(fileSize: number, fileName?: string): boolean {
         const isValid = fileSize > 0 && fileSize <= BUFFER_ATTACHMENT_CONFIG.maxFileSize;
@@ -873,7 +873,7 @@ export class AttachmentHandler {
         
         const originalFileName = telegramFile.file_path.split('/').pop() || `file_${fileId}`;
         
-        // Phase 5 Security: Enhanced filename sanitization with error handling
+        // Enhanced filename sanitization with error handling
         const securityValidation = sanitizeFileName(originalFileName);
         if (!securityValidation.sanitizedFileName) {
             const processingError = createProcessingError(
@@ -981,7 +981,7 @@ export class AttachmentHandler {
                 detectionMethod: (extensionMime !== 'application/octet-stream') ? 'extension' : 'content-type'
             });
 
-            // Phase 5 Security: Enhanced MIME type validation
+            // Enhanced MIME type validation
             if (BUFFER_ATTACHMENT_CONFIG.enableContentValidation && 
                 !BUFFER_ATTACHMENT_CONFIG.allowedMimeTypes.includes(mimeType)) {
                 LogEngine.warn('[AttachmentHandler] Unsupported MIME type detected', {
@@ -1022,7 +1022,7 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 5 Enhanced load file to buffer with unified error handling
+     * Enhanced load file to buffer with unified error handling
      * Orchestrates the file loading process using focused, single-responsibility methods
      */
     async loadFileToBuffer(fileId: string): Promise<FileBuffer> {
@@ -1164,7 +1164,7 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 3.1 Enhanced upload buffer to Unthread with retry logic using proper Unthread API
+     * Enhanced upload buffer to Unthread with retry logic using proper Unthread API
      */
     async uploadBufferToUnthread(fileBuffer: FileBuffer, conversationId: string, message?: string, onBehalfOf?: { name: string; email: string | undefined }): Promise<boolean> {
         const { result } = await withPerformanceMonitoring(async () => {
@@ -1239,7 +1239,7 @@ export class AttachmentHandler {
                     version: '4.0.0'
                 });
 
-                // Phase 3.1 Security: Zero out buffer after upload
+                // Security: Zero out buffer after upload
                 fileBuffer.buffer.fill(0);
 
                 return true;
@@ -1349,7 +1349,7 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 3.1 Enhanced main buffer processing pipeline with batch upload support
+     * Enhanced main buffer processing pipeline with batch upload support
      */
     async processBufferAttachments(fileIds: string[], conversationId: string, message?: string, onBehalfOf?: { name: string; email: string | undefined }): Promise<BufferProcessingResult> {
         const startTime = Date.now();
@@ -1492,7 +1492,7 @@ export class AttachmentHandler {
             return false;
         }
 
-        // Phase 3.1: Memory pre-check
+        // Memory pre-check
         const initialMemory = process.memoryUsage();
         LogEngine.debug('Memory usage before processing', {
             heapUsedMB: Math.round(initialMemory.heapUsed / 1024 / 1024),
@@ -1503,7 +1503,7 @@ export class AttachmentHandler {
             // Use buffer-based approach (ONLY option)
             const result = await this.processBufferAttachments(fileIds, conversationId, message, onBehalfOf);
             
-            // Phase 3.1: Post-processing memory check
+            // Post-processing memory check
             const finalMemory = process.memoryUsage();
             const memoryDelta = finalMemory.heapUsed - initialMemory.heapUsed;
             
@@ -1541,7 +1541,7 @@ export class AttachmentHandler {
             });
             return false;
         } finally {
-            // Phase 3.1: Cleanup and memory management
+            // Cleanup and memory management
             if (global.gc && BUFFER_ATTACHMENT_CONFIG.enablePerformanceMetrics) {
                 const currentMemory = process.memoryUsage().heapUsed;
                 if (currentMemory > BUFFER_ATTACHMENT_CONFIG.memoryThreshold) {
@@ -1553,7 +1553,7 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 3.1 Enhanced cleanup method for proper resource management
+     * Enhanced cleanup method for proper resource management
      */
     private stopMemoryOptimization(): void {
         if (this.memoryMonitoringInterval) {
@@ -1565,7 +1565,7 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 2: Upload image buffer to Telegram using Bot API
+     * Upload image buffer to Telegram using Bot API
      * Leverages existing error handling and retry patterns for reliable delivery
      */
     async uploadBufferToTelegram(
@@ -1692,7 +1692,7 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 2: Upload multiple image buffers to Telegram as media group
+     * Upload multiple image buffers to Telegram as media group
      * Optimized for batch image delivery with proper grouping
      */
     async uploadMultipleImagesToTelegram(
@@ -1763,7 +1763,7 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 2: Send media group to Telegram (2-10 images)
+     * Send media group to Telegram (2-10 images)
      * Private helper method for batch image uploads
      */
     private async sendTelegramMediaGroup(
@@ -1860,10 +1860,10 @@ export class AttachmentHandler {
         
         this.stopMemoryOptimization();
         
-        // Phase 3.1: Clean up global buffer pool
+        // Clean up global buffer pool
         globalBufferPool.cleanup();
         
-        // Phase 3.1: Final garbage collection if available
+        // Final garbage collection if available
         if (global.gc && BUFFER_ATTACHMENT_CONFIG.enablePerformanceMetrics) {
             LogEngine.debug('Triggering final garbage collection');
             global.gc();

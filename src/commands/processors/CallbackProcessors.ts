@@ -438,7 +438,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
     }
 
     /**
-     * Handle proceeding with the current summary (Phase 4: Confirmation Flow)
+     * Handle proceeding with the current summary (Confirmation Flow)
      */
     private async handleProceedWithSummary(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("✅ Processing your request...");
@@ -796,7 +796,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
     }
 
     /**
-     * Handle editing the summary (Phase 4: Confirmation Flow)
+     * Handle editing the summary (Confirmation Flow)
      */
     private async handleEditSummary(ctx: BotContext): Promise<boolean> {
         await ctx.answerCbQuery("✏️ Edit your summary...");

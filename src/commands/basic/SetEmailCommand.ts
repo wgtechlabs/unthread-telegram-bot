@@ -105,7 +105,7 @@ export class SetEmailCommand extends BaseCommand {
                 emailDomain: validation.sanitizedValue?.split('@')[1] || 'unknown'
             });
 
-            // Phase 2: Deliver any pending agent messages now that user has valid email
+            // Deliver any pending agent messages now that user has valid email
             try {
                 const deliveryResult = await deliverPendingAgentMessages(userId);
                 
