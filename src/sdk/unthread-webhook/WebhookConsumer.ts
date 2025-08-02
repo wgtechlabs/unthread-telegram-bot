@@ -129,7 +129,7 @@ export class WebhookConsumer {
   subscribe(eventType: string, sourcePlatform: string, handler: EventHandler): void {
     const key = `${eventType}:${sourcePlatform}`;
     this.eventHandlers.set(key, handler);
-    LogEngine.info(`Subscribed to ${eventType} events from ${sourcePlatform}`);
+    // Subscription logging moved to startup summary to reduce noise
   }
   
   /**

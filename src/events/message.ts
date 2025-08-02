@@ -126,7 +126,7 @@ async function handleMediaGroupMessage(ctx: BotContext): Promise<boolean> {
         return false; // No attachments to process
     }
     
-    LogEngine.info('📎 Media group message detected', {
+    LogEngine.debug('📎 Media group message detected', {
         mediaGroupId,
         fileCount: fileIds.length,
         messageId: ctx.message.message_id,
@@ -170,7 +170,7 @@ async function handleMediaGroupMessage(ctx: BotContext): Promise<boolean> {
         
         mediaGroupCollector.set(mediaGroupId, newCollection);
         
-        LogEngine.info('📦 Created new media group collection', {
+        LogEngine.debug('📦 Created new media group collection', {
             mediaGroupId,
             timeoutMs: MEDIA_GROUP_CONFIG.collectionTimeoutMs,
             isReply: newCollection.isReply,
@@ -184,14 +184,14 @@ async function handleMediaGroupMessage(ctx: BotContext): Promise<boolean> {
         if (item.replyToMessageId && !collection.replyToMessageId) {
             collection.isReply = true;
             collection.replyToMessageId = item.replyToMessageId;
-            LogEngine.info('📝 Updated media group collection with reply information', {
+            LogEngine.debug('📝 Updated media group collection with reply information', {
                 mediaGroupId,
                 replyToMessageId: item.replyToMessageId,
                 fromMessageId: item.messageId
             });
         }
         
-        LogEngine.info('➕ Added item to existing media group collection', {
+        LogEngine.debug('➕ Added item to existing media group collection', {
             mediaGroupId,
             currentItemCount: collection.items.length,
             maxItems: MEDIA_GROUP_CONFIG.maxItemsPerGroup,
@@ -223,7 +223,7 @@ async function processMediaGroupCollection(mediaGroupId: string): Promise<void> 
     mediaGroupCollector.delete(mediaGroupId);
     clearTimeout(collection.timeoutId);
     
-    LogEngine.info('🔄 Processing media group collection as batch', {
+    LogEngine.debug('🔄 Processing media group collection as batch', {
         mediaGroupId,
         itemCount: collection.items.length,
         isReply: collection.isReply,

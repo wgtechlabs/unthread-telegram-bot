@@ -118,7 +118,7 @@ export class TelegramWebhookHandler {
    */
   async handleMessageCreated(event: any): Promise<void> {
     try {
-      LogEngine.info('🔄 Processing agent message webhook', {
+      LogEngine.debug('🔄 Processing agent message webhook', {
         conversationId: event.data.conversationId,
         textLength: event.data.content?.length || 0,
         sentBy: event.data.userId,
@@ -214,7 +214,7 @@ export class TelegramWebhookHandler {
 
       // Log attachment detection
       if (hasAttachments && allAttachments.length > 0) {
-        LogEngine.info('📎 Processing message with attachments', {
+        LogEngine.debug('📎 Processing message with attachments', {
           conversationId,
           attachmentCount: allAttachments.length,
           hasTextContent: !!(messageText && messageText.trim().length > 0),
@@ -370,7 +370,7 @@ export class TelegramWebhookHandler {
         }
       } else if (hasAttachments) {
         // This is an attachment-only event (unknown source) - find the latest agent message to reply to
-        LogEngine.info('📎 Processing attachment-only event (finding agent message to reply to)', {
+        LogEngine.debug('📎 Processing attachment-only event (finding agent message to reply to)', {
           conversationId,
           attachmentCount: allAttachments.length,
           chatId: ticketData.chatId,
@@ -811,7 +811,7 @@ export class TelegramWebhookHandler {
     chatId: number,
     replyToMessageId: number
   ): Promise<void> {
-    LogEngine.info('🔄 Processing Slack files from Unthread webhook', {
+    LogEngine.debug('🔄 Processing Slack files from Unthread webhook', {
       conversationId,
       slackFileCount: slackFiles.length,
       chatId,
@@ -874,7 +874,7 @@ export class TelegramWebhookHandler {
       }
     }
 
-    LogEngine.info('✅ Slack file processing completed', {
+    LogEngine.debug('✅ Slack file processing completed', {
       conversationId,
       processedCount: slackFiles.length
     });

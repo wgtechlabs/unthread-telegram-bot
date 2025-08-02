@@ -338,7 +338,6 @@ try {
         webhookConsumer.subscribe('message_created', 'unknown', 
             webhookHandler.handleMessageCreated.bind(webhookHandler)
         );
-        LogEngine.info('✅ Registered handler for message_created:unknown (real file attachments)');
 
         // Subscribe to conversation status update events from dashboard
         if (typeof webhookHandler.handleConversationUpdated === 'function') {
@@ -364,17 +363,23 @@ try {
                 webhookConsumer!.subscribe(eventType, 'dashboard', 
                     webhookHandler!.handleUnknownEventWithImages.bind(webhookHandler)
                 );
-                LogEngine.info(`Subscribed to ${eventType} events for image processing`);
             });
             
-            LogEngine.info('Image attachment processing enabled for unknown events');
+            // Image attachment processing configured - details in startup summary
         } else {
             LogEngine.warn('Webhook handler does not implement handleUnknownEventWithImages; image processing integration incomplete.');
         }
 
         // Start the webhook consumer
         await webhookConsumer.start();
-        LogEngine.info('Webhook consumer started successfully');
+        
+        // Log consolidated subscription summary
+        const status = webhookConsumer.getStatus();
+        LogEngine.info('✅ Webhook event subscriptions configured', {
+            totalSubscriptions: status.subscribedEvents.length,
+            eventTypes: status.subscribedEvents,
+            queueName: status.queueName
+        });
     } else {
         LogEngine.warn('Webhook Redis URL not configured - webhook processing disabled');
         LogEngine.info('Bot will run in basic mode (ticket creation only)');
