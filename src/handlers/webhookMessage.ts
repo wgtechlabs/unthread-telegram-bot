@@ -44,6 +44,7 @@ export class TelegramWebhookHandler {
   private botsStore: IBotsStore; // SDK type, properly typed with IBotsStore interface
   private templateManager: GlobalTemplateManager;
   private imageConfig: ImageProcessingConfig; // Phase 4: Image processing configuration
+  private teamId: string; // Validated Unthread team ID for fail-fast initialization
 
   constructor(bot: Telegraf<BotContext>, botsStore: IBotsStore) {
     this.bot = bot;
@@ -51,10 +52,22 @@ export class TelegramWebhookHandler {
     this.templateManager = GlobalTemplateManager.getInstance();
     this.imageConfig = getImageProcessingConfig(); // Phase 4: Load configuration
     
+    // Fail-fast validation: Ensure required environment variables are set at initialization
+    this.teamId = process.env.UNTHREAD_TEAM_ID || '';
+    if (!this.teamId) {
+      const errorMessage = 'UNTHREAD_TEAM_ID environment variable is not set. Please configure it before starting the application.';
+      LogEngine.error('Configuration validation failed during initialization', {
+        missingVariable: 'UNTHREAD_TEAM_ID',
+        suggestion: 'Set UNTHREAD_TEAM_ID in your environment variables'
+      });
+      throw new Error(errorMessage);
+    }
+    
     LogEngine.info('TelegramWebhookHandler initialized', {
       imageProcessingEnabled: this.imageConfig.enabled,
       maxImageSizeMB: Math.round(this.imageConfig.maxImageSize / 1024 / 1024),
-      supportedFormats: this.imageConfig.supportedFormats.length
+      supportedFormats: this.imageConfig.supportedFormats.length,
+      teamIdConfigured: !!this.teamId // Log confirmation without exposing the actual value
     });
   }
 
@@ -1055,16 +1068,11 @@ export class TelegramWebhookHandler {
             timeout: this.imageConfig.downloadTimeout
           });
 
-          // Phase 4: Download with timeout handling
-          const teamId = process.env.UNTHREAD_TEAM_ID || '';
-          if (!teamId) {
-            throw new Error('UNTHREAD_TEAM_ID environment variable is not set');
-          }
-
+          // Phase 4: Download with timeout handling (using pre-validated team ID)
           // Download with timeout wrapper
           const downloadPromise = downloadUnthreadImage(
             fileId, 
-            teamId, 
+            this.teamId, // Use the validated team ID from constructor
             fileName,
             this.imageConfig.enableThumbnails ? this.imageConfig.thumbnailSize : undefined
           );
