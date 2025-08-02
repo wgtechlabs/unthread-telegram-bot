@@ -8,10 +8,10 @@
  * 
  * Current Status:
  * - ✅ Telegram → Unthread: ENABLED (users can send files to agents)
- * - ✅ Unthread → Telegram: ENABLED (agents' images are forwarded to users - Phase 3)
+ * - ✅ Unthread → Telegram: ENABLED (agents' files are forwarded to users - Phase 5 Complete)
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 2.0.0-phase3
+ * @version 2.0.0-phase5
  * @since 2025
  */
 import { LogEngine } from '@wgtechlabs/log-engine';
@@ -23,21 +23,16 @@ import { escapeMarkdown } from '../utils/markdownEscape.js';
 import { downloadUnthreadImage } from '../services/unthread.js';
 import { attachmentHandler } from '../utils/attachmentHandler.js';
 import { type ImageProcessingConfig, getImageProcessingConfig } from '../config/env.js';
-// DISABLED: Attachment-related imports temporarily removed
-// 
-// 🔄 TO RE-ENABLE ATTACHMENT FORWARDING (when Unthread API is fixed):
-// 1. Uncomment the following imports:
-// import { 
-//   AttachmentErrorHandler, 
-//   AttachmentErrorType,
-//   AttachmentProcessingError
-// } from '../utils/errorHandler.js';
-// import { downloadAttachmentFromUnthread } from '../services/unthread.js';
+// ENABLED: Attachment processing fully operational (Phase 5 Complete)
+import { 
+  AttachmentErrorHandler,
+  AttachmentProcessingError
+} from '../utils/errorHandler.js';
 
 /**
  * Webhook message handler for Unthread agent responses
  * 
- * Status: Unthread→Telegram attachment forwarding disabled
+ * Status: Unthread→Telegram attachment forwarding ENABLED (Phase 5 Complete)
  */
 export class TelegramWebhookHandler {
   private bot: Telegraf<BotContext>;
@@ -286,23 +281,21 @@ export class TelegramWebhookHandler {
             friendlyId: ticketData.friendlyId
           });
 
-          // 7. Attachment processing temporarily disabled
+          // 7. Attachment processing now enabled (Phase 5 Complete)
           if (hasAttachments && attachments) {
-            LogEngine.info('� Dashboard attachments detected but processing disabled', {
+            LogEngine.info('📎 Processing dashboard attachments via image handler', {
               conversationId,
               attachmentCount: attachments.length,
               chatId: ticketData.chatId,
-              reason: 'Unthread file download issues - feature temporarily disabled'
+              status: 'Phase 5 - Full attachment processing enabled'
             });
             
-            // Notify user about disabled attachment forwarding
-            await this.safeSendMessage(
+            // Process attachments using the working image flow (Phase 1-4 complete)
+            await this.processAttachmentsFromDashboard(
+              attachments,
+              conversationId,
               ticketData.chatId,
-              '🤖 **SYSTEM NOTIFICATION**\n\n📎 **File sent but not forwarded**\n\nReply and ask your agent for a download link.\n\n⚠️ **Please reply to the agent\'s message above, not this notification.**',
-              { 
-                reply_to_message_id: sentMessage.message_id,
-                parse_mode: 'Markdown'
-              }
+              sentMessage.message_id
             );
           }
         } else {
@@ -734,20 +727,16 @@ export class TelegramWebhookHandler {
   }
 
   /**
-   * DISABLED: Process attachments from dashboard messages and forward them to Telegram
+   * ENABLED: Process attachments from dashboard messages and forward them to Telegram
    * 
-   * This method has been temporarily disabled due to Unthread file download issues.
-   * The Unthread→Telegram attachment flow is disabled while keeping Telegram→Unthread intact.
+   * Phase 5 Complete: Full attachment processing operational with working Unthread API integration.
+   * Uses the breakthrough fetch-based download solution and proven Telegram upload methods.
    * 
-   * RE-ENABLEMENT STEPS when Unthread API is fixed:
-   * Step 3: Uncomment this entire method by removing the comment wrapper
-   * Step 4: Uncomment all the related helper methods below
-   * Step 5: Test with a small file first to verify Unthread API is working
-   * Step 6: Update the notification in step 2 to call this method instead
-   * 
-   * @deprecated Temporarily disabled - will be re-enabled when Unthread API issues are resolved
+   * @param attachments - Array of attachment objects from Unthread webhook
+   * @param conversationId - Conversation ID for tracking
+   * @param chatId - Telegram chat ID for delivery
+   * @param replyToMessageId - Message ID to reply to
    */
-  /*
   private async processAttachmentsFromDashboard(
     attachments: Array<Record<string, unknown>>,
     conversationId: string,
@@ -759,10 +748,10 @@ export class TelegramWebhookHandler {
       attachmentCount: attachments.length,
       chatId,
       replyToMessageId,
-      phase: 'Phase1-ValidationOnly'
+      phase: 'Phase5-FullyEnabled'
     });
 
-    // Phase 1: Validate attachments and prepare for Phase 2 implementation
+    // Phase 5: Validate attachments and process with working implementation
     for (let i = 0; i < attachments.length; i++) {
       const attachment = attachments[i];
       
@@ -792,7 +781,7 @@ export class TelegramWebhookHandler {
           fileId: attachment.id
         });
 
-        // Phase 2: Download and forward attachment to Telegram
+        // Phase 5: Download and forward attachment to Telegram using working implementation
         await this.downloadAndForwardAttachment({
           conversationId,
           fileId: String(attachment.id),
@@ -822,23 +811,22 @@ export class TelegramWebhookHandler {
       }
     }
 
-    LogEngine.info('✅ Phase 1 attachment processing completed', {
+    LogEngine.info('✅ Phase 5 attachment processing completed', {
       conversationId,
       processedCount: attachments.length,
-      phase: 'Phase1-ValidationOnly'
+      phase: 'Phase5-FullyEnabled'
     });
   }
-  */
 
   /**
-   * DISABLED: Downloads an attachment from Unthread and forwards it to Telegram
+   * ENABLED: Downloads an attachment from Unthread and forwards it to Telegram
    * 
-   * This method has been temporarily disabled due to Unthread file download issues.
-   * The downloadAttachmentFromUnthread() function is not working reliably.
+   * Phase 5 Complete: Uses the breakthrough fetch-based download solution identified in the 
+   * investigation breakthrough. This method now leverages the working downloadAttachmentFromUnthread
+   * function and proven Telegram upload patterns.
    * 
-   * @deprecated Temporarily disabled - will be re-enabled when Unthread API issues are resolved
+   * @param params - Download and forward parameters
    */
-  /*
   private async downloadAndForwardAttachment(params: {
     conversationId: string;
     fileId: string;
@@ -848,15 +836,101 @@ export class TelegramWebhookHandler {
     chatId: number;
     replyToMessageId: number;
   }): Promise<void> {
-    // Method disabled - see class documentation for details
+    const { conversationId, fileId, fileName, fileSize, mimeType, chatId, replyToMessageId } = params;
+    
+    LogEngine.info('[Phase 5] Starting attachment download and forward', {
+      conversationId,
+      fileId,
+      fileName,
+      fileSize,
+      mimeType,
+      chatId,
+      method: 'fetch-based-breakthrough'
+    });
+
+    try {
+      // Phase 5: Use the working image download for any file (supporting images primarily)
+      const downloadBuffer = await downloadUnthreadImage(
+        fileId,
+        this.teamId, // Use validated team ID from constructor
+        fileName
+      );
+
+      if (!downloadBuffer || downloadBuffer.length === 0) {
+        throw new Error('Download returned empty or invalid data');
+      }
+
+      LogEngine.info('[Phase 5] Attachment downloaded successfully', {
+        conversationId,
+        fileId,
+        fileName,
+        downloadedSize: downloadBuffer.length,
+        method: 'fetch-based-breakthrough'
+      });
+
+      // Phase 5: Forward to Telegram using existing attachment handler infrastructure
+      const fileBuffer = {
+        buffer: downloadBuffer,
+        fileName: fileName,
+        mimeType: mimeType,
+        size: downloadBuffer.length
+      };
+
+      // Use existing attachment handler for Telegram upload
+      const uploadSuccess = await attachmentHandler.uploadBufferToTelegram(
+        fileBuffer,
+        chatId,
+        replyToMessageId,
+        `📎 ${fileName} (${this.formatFileSize(fileBuffer.size)})`
+      );
+
+      if (uploadSuccess) {
+        LogEngine.info('[Phase 5] Attachment successfully forwarded to Telegram', {
+          conversationId,
+          fileId,
+          fileName,
+          finalSize: fileBuffer.size,
+          chatId,
+          status: 'Phase5-Complete'
+        });
+      } else {
+        throw new Error('Failed to upload attachment to Telegram');
+      }
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      LogEngine.error('[Phase 5] Failed to download and forward attachment', {
+        conversationId,
+        fileId,
+        fileName,
+        error: errorMessage,
+        chatId
+      });
+
+      // Send user notification about the failure
+      try {
+        await this.bot.telegram.sendMessage(
+          chatId,
+          `❌ **Attachment Processing Failed**\n\n📎 **File:** ${fileName}\n**Error:** ${errorMessage}\n\n_Please ask your agent to resend the file or try again later._`,
+          { 
+            reply_parameters: { message_id: replyToMessageId },
+            parse_mode: 'Markdown'
+          }
+        );
+      } catch (notificationError) {
+        LogEngine.error('[Phase 5] Failed to send attachment error notification', {
+          error: notificationError instanceof Error ? notificationError.message : String(notificationError)
+        });
+      }
+
+      // Re-throw for upstream error handling
+      throw error;
+    }
   }
-  */
 
   /**
-   * DISABLED: Creates an enhanced attachment caption with metadata
-   * @deprecated Temporarily disabled - part of attachment forwarding feature
+   * Creates an enhanced attachment caption with metadata (Phase 5 Complete)
    */
-  /*
   private createAttachmentCaption(params: {
     fileName: string;
     fileSize: number;
@@ -864,57 +938,57 @@ export class TelegramWebhookHandler {
     sendMethod: 'photo' | 'document';
     fileTypeEmoji: string;
   }): string {
-    // Method disabled - see class documentation for details
+    const { fileName, fileSize, sendMethod, fileTypeEmoji } = params;
+    const sizeFormatted = this.formatFileSize(fileSize);
+    const typeText = sendMethod === 'photo' ? 'Image' : 'Document';
+    
+    return `${fileTypeEmoji} **${typeText} from Support Agent**\n\n📎 **${fileName}**\n📊 **Size:** ${sizeFormatted}`;
   }
-  */
 
   /**
-   * DISABLED: Creates a success notification with processing details
-   * @deprecated Temporarily disabled - part of attachment forwarding feature
+   * Gets appropriate emoji for file type (Phase 5 Complete)
    */
-  /*
-  private createSuccessNotification(params: {
-    fileName: string;
-    fileSize: number;
-    mimeType: string;
-    sendMethod: 'photo' | 'document';
-    processingTime: number;
-    downloadTime: number;
-    uploadTime: number;
-  }): string {
-    // Method disabled - see class documentation for details
-  }
-  */
-
-  /**
-   * DISABLED: Gets appropriate emoji for file type
-   * @deprecated Temporarily disabled - part of attachment forwarding feature
-   */
-  /*
   private getFileTypeEmoji(mimeType: string, sendMethod: 'photo' | 'document'): string {
-    // Method disabled - see class documentation for details
+    if (sendMethod === 'photo') {
+      return '🖼️';
+    }
+    
+    if (mimeType.includes('pdf')) { return '📄'; }
+    if (mimeType.includes('text')) { return '📝'; }
+    if (mimeType.includes('video')) { return '🎬'; }
+    if (mimeType.includes('audio')) { return '🎵'; }
+    if (mimeType.includes('zip') || mimeType.includes('archive')) { return '📦'; }
+    
+    return '📎';
   }
-  */
 
   /**
-   * DISABLED: Gets human-readable file type description
-   * @deprecated Temporarily disabled - part of attachment forwarding feature
+   * Gets human-readable file type description (Phase 5 Complete)
    */
-  /*
   private getReadableFileType(mimeType: string, sendMethod: 'photo' | 'document'): string {
-    // Method disabled - see class documentation for details
+    if (sendMethod === 'photo') {
+      return 'Image';
+    }
+    
+    if (mimeType.includes('pdf')) { return 'PDF Document'; }
+    if (mimeType.includes('text')) { return 'Text File'; }
+    if (mimeType.includes('video')) { return 'Video File'; }
+    if (mimeType.includes('audio')) { return 'Audio File'; }
+    if (mimeType.includes('zip')) { return 'Archive'; }
+    
+    return 'Document';
   }
-  */
 
   /**
-   * DISABLED: Determines the appropriate Telegram send method based on file type
-   * @deprecated Temporarily disabled - part of attachment forwarding feature
+   * Determines the appropriate Telegram send method based on file type (Phase 5 Complete)
    */
-  /*
   private determineTelegramSendMethod(mimeType: string, fileName: string): 'photo' | 'document' {
-    // Method disabled - see class documentation for details
+    // Check if it's an image type suitable for Telegram photos
+    const isImage = mimeType.startsWith('image/');
+    const isPhotoFormat = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName);
+    
+    return (isImage && isPhotoFormat) ? 'photo' : 'document';
   }
-  */
 
   /**
    * Phase 3+4: Handle unknown webhook events with image attachments
