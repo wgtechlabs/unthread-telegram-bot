@@ -8,10 +8,10 @@
  * 
  * Current Status:
  * - ✅ Telegram → Unthread: ENABLED (users can send files to agents)
- * - ❌ Unthread → Telegram: DISABLED (agents' files are not forwarded to users)
+ * - ✅ Unthread → Telegram: ENABLED (agents' images are forwarded to users - Phase 3)
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1
+ * @version 2.0.0-phase3
  * @since 2025
  */
 import { LogEngine } from '@wgtechlabs/log-engine';
@@ -20,6 +20,8 @@ import type { BotContext } from '../types/index.js';
 import type { IBotsStore } from '../sdk/types.js';
 import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 import { escapeMarkdown } from '../utils/markdownEscape.js';
+import { downloadUnthreadImage } from '../services/unthread.js';
+import { attachmentHandler } from '../utils/attachmentHandler.js';
 // DISABLED: Attachment-related imports temporarily removed
 // 
 // 🔄 TO RE-ENABLE ATTACHMENT FORWARDING (when Unthread API is fixed):
@@ -891,6 +893,234 @@ export class TelegramWebhookHandler {
     // Method disabled - see class documentation for details
   }
   */
+
+  /**
+   * Phase 3: Handle unknown webhook events with image attachments
+   * Routes Unthread agent image attachments to Telegram users
+   */
+  async handleUnknownEventWithImages(event: any): Promise<void> {
+    try {
+      LogEngine.info('[Phase 3] Processing unknown event with potential image attachments', {
+        eventType: event.type,
+        conversationId: event.data?.conversationId,
+        timestamp: event.timestamp
+      });
+
+      // 1. Extract conversation ID from webhook event
+      const conversationId = event.data?.conversationId;
+      if (!conversationId) {
+        LogEngine.warn('[Phase 3] No conversation ID in unknown event', { 
+          eventType: event.type,
+          dataKeys: Object.keys(event.data || {})
+        });
+        return;
+      }
+
+      // 2. Look up ticket data for routing
+      const ticketData = await this.botsStore.getTicketByConversationId(conversationId);
+      if (!ticketData) {
+        LogEngine.warn('[Phase 3] No ticket found for conversation in unknown event', {
+          conversationId,
+          eventType: event.type
+        });
+        return;
+      }
+
+      // 3. Extract attachments from various possible locations in the event
+      let attachments: Array<Record<string, unknown>> = [];
+      
+      // Check multiple possible locations for attachments
+      const metadata = event.data.metadata as Record<string, unknown> | undefined;
+      const eventPayload = metadata?.event_payload as Record<string, unknown> | undefined;
+      
+      // Try different attachment locations
+      if (eventPayload?.attachments) {
+        attachments = eventPayload.attachments as Array<Record<string, unknown>>;
+      } else if (event.data.attachments) {
+        attachments = event.data.attachments as Array<Record<string, unknown>>;
+      } else if (metadata?.attachments) {
+        attachments = metadata.attachments as Array<Record<string, unknown>>;
+      }
+
+      // 4. Filter for image attachments only (Phase 3 scope)
+      const imageAttachments = attachments.filter((att: Record<string, unknown>) => {
+        const mimeType = att.mimeType as string || att.mime_type as string || att.type as string || '';
+        const fileName = att.name as string || att.filename as string || '';
+        
+        // Check if it's an image by MIME type or file extension
+        const isImageMime = mimeType.startsWith('image/');
+        const isImageExtension = /\.(jpg|jpeg|png|gif|webp|bmp|svg|tiff|ico)$/i.test(fileName);
+        
+        return isImageMime || isImageExtension;
+      });
+
+      if (imageAttachments.length === 0) {
+        LogEngine.debug('[Phase 3] No image attachments found in unknown event', {
+          conversationId,
+          eventType: event.type,
+          totalAttachments: attachments.length
+        });
+        return;
+      }
+
+      LogEngine.info('[Phase 3] Found image attachments in unknown event', {
+        conversationId,
+        eventType: event.type,
+        imageCount: imageAttachments.length,
+        totalAttachments: attachments.length
+      });
+
+      // 5. Extract file IDs and download images
+      const fileIds: string[] = [];
+      const imageBuffers: Array<{ buffer: Buffer; fileName: string; mimeType: string; size: number }> = [];
+
+      for (const attachment of imageAttachments) {
+        try {
+          const fileId = attachment.id as string || attachment.file_id as string;
+          const fileName = attachment.name as string || attachment.filename as string || `image_${Date.now()}`;
+          const mimeType = attachment.mimeType as string || attachment.mime_type as string || 'image/jpeg';
+
+          if (!fileId) {
+            LogEngine.warn('[Phase 3] No file ID found for image attachment', {
+              attachment: Object.keys(attachment)
+            });
+            continue;
+          }
+
+          LogEngine.debug('[Phase 3] Downloading image from Unthread', {
+            fileId,
+            fileName,
+            mimeType
+          });
+
+          // Download image using our Phase 1 implementation
+          const teamId = process.env.UNTHREAD_TEAM_ID || '';
+          if (!teamId) {
+            throw new Error('UNTHREAD_TEAM_ID environment variable is not set');
+          }
+
+          const imageBuffer = await downloadUnthreadImage(fileId, teamId, fileName);
+          
+          // Create FileBuffer structure for our attachment handler
+          const fileBufferData = {
+            buffer: imageBuffer,
+            fileName: fileName,
+            mimeType: mimeType,
+            size: imageBuffer.length
+          };
+          
+          imageBuffers.push(fileBufferData);
+          fileIds.push(fileId);
+
+          LogEngine.info('[Phase 3] Image downloaded successfully', {
+            fileId,
+            fileName: fileName,
+            size: imageBuffer.length
+          });
+
+        } catch (downloadError) {
+          LogEngine.error('[Phase 3] Failed to download image attachment', {
+            attachmentId: attachment.id || attachment.file_id,
+            error: downloadError instanceof Error ? downloadError.message : String(downloadError)
+          });
+          // Continue with other attachments
+        }
+      }
+
+      if (imageBuffers.length === 0) {
+        LogEngine.warn('[Phase 3] No images successfully downloaded', {
+          conversationId,
+          eventType: event.type,
+          attemptedDownloads: imageAttachments.length
+        });
+        return;
+      }
+
+      // 6. Upload images to Telegram using our Phase 2 implementation
+      try {
+        const chatId = ticketData.chatId;
+        const replyToMessageId = ticketData.messageId;
+        
+        // Extract message text if available
+        const messageText = event.data.content || event.data.text || event.data.message;
+        const caption = messageText ? `💬 ${messageText}` : `📎 ${imageBuffers.length} image${imageBuffers.length > 1 ? 's' : ''} from agent`;
+
+        LogEngine.info('[Phase 3] Uploading images to Telegram', {
+          conversationId,
+          chatId,
+          imageCount: imageBuffers.length,
+          hasCaption: !!messageText
+        });
+
+        let uploadSuccess = false;
+
+        if (imageBuffers.length === 1) {
+          // Single image upload
+          const firstImage = imageBuffers[0];
+          if (!firstImage) {
+            throw new Error('Invalid image buffer detected');
+          }
+          
+          uploadSuccess = await attachmentHandler.uploadBufferToTelegram(
+            firstImage,
+            chatId,
+            replyToMessageId,
+            caption
+          );
+        } else {
+          // Multiple images upload
+          uploadSuccess = await attachmentHandler.uploadMultipleImagesToTelegram(
+            imageBuffers,
+            chatId,
+            replyToMessageId,
+            caption
+          );
+        }
+
+        if (uploadSuccess) {
+          LogEngine.info('[Phase 3] Images uploaded to Telegram successfully', {
+            conversationId,
+            chatId,
+            imageCount: imageBuffers.length,
+            eventType: event.type
+          });
+
+          // Store agent message for tracking
+          await this.botsStore.storeAgentMessage({
+            messageId: 0, // We don't have the exact message ID, but this is for tracking
+            conversationId: conversationId,
+            chatId: chatId,
+            friendlyId: ticketData.friendlyId,
+            originalTicketMessageId: ticketData.messageId,
+            sentAt: new Date().toISOString()
+          });
+
+        } else {
+          LogEngine.error('[Phase 3] Failed to upload images to Telegram', {
+            conversationId,
+            chatId,
+            imageCount: imageBuffers.length
+          });
+        }
+
+      } catch (uploadError) {
+        LogEngine.error('[Phase 3] Error uploading images to Telegram', {
+          conversationId,
+          chatId: ticketData.chatId,
+          imageCount: imageBuffers.length,
+          error: uploadError instanceof Error ? uploadError.message : String(uploadError)
+        });
+      }
+
+    } catch (error) {
+      LogEngine.error('[Phase 3] Critical error in handleUnknownEventWithImages', {
+        eventType: event.type,
+        conversationId: event.data?.conversationId,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack?.substring(0, 500) : undefined
+      });
+    }
+  }
 
   /**
    * Format file size in human-readable format
