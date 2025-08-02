@@ -148,6 +148,47 @@ interface TelegramFileResponse {
 }
 
 /**
+ * Telegram sendPhoto API Response interface
+ */
+interface TelegramSendPhotoResponse {
+    ok: boolean;
+    result?: {
+        message_id: number;
+        date: number;
+        photo?: Array<{
+            file_id: string;
+            file_unique_id: string;
+            width: number;
+            height: number;
+            file_size?: number;
+        }>;
+        caption?: string;
+    };
+    error_code?: number;
+    description?: string;
+}
+
+/**
+ * Telegram sendMediaGroup API Response interface
+ */
+interface TelegramSendMediaGroupResponse {
+    ok: boolean;
+    result?: Array<{
+        message_id: number;
+        date: number;
+        photo?: Array<{
+            file_id: string;
+            file_unique_id: string;
+            width: number;
+            height: number;
+            file_size?: number;
+        }>;
+    }>;
+    error_code?: number;
+    description?: string;
+}
+
+/**
  * Unthread API Response interface
  */
 interface UnthreadMessageResponse {
@@ -1524,6 +1565,294 @@ export class AttachmentHandler {
     }
 
     /**
+     * Phase 2: Upload image buffer to Telegram using Bot API
+     * Leverages existing error handling and retry patterns for reliable delivery
+     */
+    async uploadBufferToTelegram(
+        fileBuffer: FileBuffer, 
+        chatId: number, 
+        replyToMessageId?: number,
+        caption?: string
+    ): Promise<boolean> {
+        
+        const operationContext: PerformanceContext = {
+            fileName: fileBuffer.fileName,
+            fileSize: fileBuffer.size,
+            conversationId: chatId.toString()
+        };
+
+        try {
+            const { result } = await withPerformanceMonitoring(async () => {
+                return await withRetry(async () => {
+                    LogEngine.info('[AttachmentHandler] Starting image upload to Telegram', {
+                        fileName: fileBuffer.fileName,
+                        fileSize: fileBuffer.size,
+                        chatId,
+                        replyToMessageId,
+                        hasCaption: !!caption,
+                        method: 'uploadBufferToTelegram'
+                    });
+
+                    // Validate Telegram Bot Token
+                    const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+                    if (!TELEGRAM_BOT_TOKEN) {
+                        throw new Error('TELEGRAM_BOT_TOKEN environment variable is not set');
+                    }
+
+                    // Image-specific validation
+                    if (!fileBuffer.mimeType.startsWith('image/')) {
+                        throw new Error(`Only images are supported in this release. Got: ${fileBuffer.mimeType}`);
+                    }
+
+                    // Create FormData for Telegram Bot API
+                    const formData = new FormData();
+                    formData.append('chat_id', chatId.toString());
+                    formData.append('photo', fileBuffer.buffer, {
+                        filename: fileBuffer.fileName,
+                        contentType: fileBuffer.mimeType
+                    });
+
+                    // Add optional parameters
+                    if (caption) {
+                        formData.append('caption', caption.substring(0, 1024)); // Telegram caption limit
+                    }
+
+                    if (replyToMessageId) {
+                        formData.append('reply_to_message_id', replyToMessageId.toString());
+                    }
+
+                    LogEngine.debug('[AttachmentHandler] FormData prepared for Telegram upload', {
+                        fileName: fileBuffer.fileName,
+                        chatId,
+                        captionLength: caption?.length || 0,
+                        hasReplyTo: !!replyToMessageId
+                    });
+
+                    // Upload to Telegram Bot API using sendPhoto endpoint
+                    const telegramApiUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`;
+                    const uploadResponse = await fetch(telegramApiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'User-Agent': 'unthread-telegram-bot/2.0.0-image-flow',
+                            ...formData.getHeaders()
+                        },
+                        body: formData
+                    });
+
+                    LogEngine.debug('[AttachmentHandler] Received Telegram API response', {
+                        fileName: fileBuffer.fileName,
+                        status: uploadResponse.status,
+                        statusText: uploadResponse.statusText,
+                        ok: uploadResponse.ok
+                    });
+
+                    if (!uploadResponse.ok) {
+                        const errorText = await uploadResponse.text().catch(() => 'Unknown error');
+                        throw new Error(`Telegram upload failed: ${uploadResponse.status} ${uploadResponse.statusText} - ${errorText}`);
+                    }
+
+                    const responseData = await uploadResponse.json() as TelegramSendPhotoResponse;
+
+                    if (!responseData.ok) {
+                        throw new Error(`Telegram API error: ${responseData.description || 'Unknown error'}`);
+                    }
+
+                    LogEngine.info('[AttachmentHandler] Image uploaded to Telegram successfully', {
+                        fileName: fileBuffer.fileName,
+                        fileSize: fileBuffer.size,
+                        chatId,
+                        messageId: responseData.result?.message_id || 'unknown',
+                        fileId: responseData.result?.photo?.[0]?.file_id || 'unknown'
+                    });
+
+                    // Security: Zero out buffer after upload
+                    fileBuffer.buffer.fill(0);
+
+                    return true;
+
+                }, `uploadBufferToTelegram-${chatId}`, operationContext);
+            }, `uploadBufferToTelegram-withPerformanceMonitoring-${chatId}`, operationContext);
+
+            return result;
+
+        } catch (error) {
+            const classifiedError = classifyError(error instanceof Error ? error : new Error(String(error)), operationContext);
+            
+            LogEngine.error('[AttachmentHandler] Image upload to Telegram failed', {
+                fileName: fileBuffer.fileName,
+                chatId,
+                errorCode: classifiedError.code,
+                technicalMessage: classifiedError.message,
+                retryable: classifiedError.retryable,
+                context: operationContext
+            });
+
+            throw error;
+        }
+    }
+
+    /**
+     * Phase 2: Upload multiple image buffers to Telegram as media group
+     * Optimized for batch image delivery with proper grouping
+     */
+    async uploadMultipleImagesToTelegram(
+        imageBuffers: FileBuffer[],
+        chatId: number,
+        replyToMessageId?: number,
+        caption?: string
+    ): Promise<boolean> {
+        
+        LogEngine.info('[AttachmentHandler] Starting batch image upload to Telegram', {
+            imageCount: imageBuffers.length,
+            chatId,
+            replyToMessageId,
+            hasCaption: !!caption
+        });
+
+        try {
+            // Validate all files are images
+            const nonImages = imageBuffers.filter(buf => !buf.mimeType.startsWith('image/'));
+            if (nonImages.length > 0) {
+                throw new Error(`Non-image files detected: ${nonImages.map(f => f.fileName).join(', ')}`);
+            }
+
+            // Telegram media group limit is 10 items
+            if (imageBuffers.length > 10) {
+                LogEngine.warn('[AttachmentHandler] Too many images for media group, processing individually', {
+                    imageCount: imageBuffers.length,
+                    limit: 10
+                });
+                
+                // Process individually if too many
+                let successCount = 0;
+                for (const imageBuffer of imageBuffers) {
+                    try {
+                        await this.uploadBufferToTelegram(imageBuffer, chatId, replyToMessageId);
+                        successCount++;
+                    } catch (error) {
+                        LogEngine.error('[AttachmentHandler] Individual image upload failed', {
+                            fileName: imageBuffer.fileName,
+                            error: error instanceof Error ? error.message : String(error)
+                        });
+                    }
+                }
+                
+                return successCount > 0;
+            }
+
+            // Use sendMediaGroup for 2-10 images
+            if (imageBuffers.length > 1) {
+                return await this.sendTelegramMediaGroup(imageBuffers, chatId, replyToMessageId, caption);
+            }
+
+            // Single image - use regular sendPhoto
+            const firstBuffer = imageBuffers[0];
+            if (!firstBuffer) {
+                throw new Error('Invalid image buffer detected');
+            }
+            return await this.uploadBufferToTelegram(firstBuffer, chatId, replyToMessageId, caption);
+
+        } catch (error) {
+            LogEngine.error('[AttachmentHandler] Batch image upload to Telegram failed', {
+                imageCount: imageBuffers.length,
+                chatId,
+                error: error instanceof Error ? error.message : String(error)
+            });
+            return false;
+        }
+    }
+
+    /**
+     * Phase 2: Send media group to Telegram (2-10 images)
+     * Private helper method for batch image uploads
+     */
+    private async sendTelegramMediaGroup(
+        imageBuffers: FileBuffer[],
+        chatId: number,
+        replyToMessageId?: number,
+        caption?: string
+    ): Promise<boolean> {
+        
+        const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+        if (!TELEGRAM_BOT_TOKEN) {
+            throw new Error('TELEGRAM_BOT_TOKEN environment variable is not set');
+        }
+
+        try {
+            // Prepare media array for sendMediaGroup
+            const media = imageBuffers.map((buffer, index) => ({
+                type: 'photo' as const,
+                media: `attach://photo${index}`,
+                caption: index === 0 ? caption?.substring(0, 1024) : undefined // Only first item gets caption
+            }));
+
+            // Create FormData
+            const formData = new FormData();
+            formData.append('chat_id', chatId.toString());
+            formData.append('media', JSON.stringify(media));
+
+            if (replyToMessageId) {
+                formData.append('reply_to_message_id', replyToMessageId.toString());
+            }
+
+            // Attach all images
+            imageBuffers.forEach((buffer, index) => {
+                formData.append(`photo${index}`, buffer.buffer, {
+                    filename: buffer.fileName,
+                    contentType: buffer.mimeType
+                });
+            });
+
+            LogEngine.debug('[AttachmentHandler] Sending media group to Telegram', {
+                mediaCount: imageBuffers.length,
+                chatId,
+                hasCaption: !!caption
+            });
+
+            // Send to Telegram
+            const telegramApiUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMediaGroup`;
+            const response = await fetch(telegramApiUrl, {
+                method: 'POST',
+                headers: {
+                    'User-Agent': 'unthread-telegram-bot/2.0.0-image-flow',
+                    ...formData.getHeaders()
+                },
+                body: formData
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => 'Unknown error');
+                throw new Error(`Telegram media group upload failed: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+
+            const responseData = await response.json() as TelegramSendMediaGroupResponse;
+
+            if (!responseData.ok) {
+                throw new Error(`Telegram API error: ${responseData.description || 'Unknown error'}`);
+            }
+
+            LogEngine.info('[AttachmentHandler] Media group uploaded to Telegram successfully', {
+                mediaCount: imageBuffers.length,
+                chatId,
+                messageCount: responseData.result?.length || 0
+            });
+
+            // Security: Zero out buffers after upload
+            imageBuffers.forEach(buffer => buffer.buffer.fill(0));
+
+            return true;
+
+        } catch (error) {
+            LogEngine.error('[AttachmentHandler] Media group upload failed', {
+                imageCount: imageBuffers.length,
+                chatId,
+                error: error instanceof Error ? error.message : String(error)
+            });
+            throw error;
+        }
+    }
+
+    /**
      * Shutdown method for graceful cleanup
      */
     public shutdown(): void {
@@ -1539,10 +1868,9 @@ export class AttachmentHandler {
             LogEngine.debug('Triggering final garbage collection');
             global.gc();
         }
-        
-        LogEngine.info('AttachmentHandler shutdown complete');
-    }
 
+        LogEngine.info('AttachmentHandler shutdown completed');
+    }
 }
 
 // Create and export singleton instance
