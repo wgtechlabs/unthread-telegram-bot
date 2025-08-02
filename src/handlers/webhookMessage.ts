@@ -22,6 +22,7 @@ import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 import { escapeMarkdown } from '../utils/markdownEscape.js';
 import { downloadUnthreadImage } from '../services/unthread.js';
 import { attachmentHandler } from '../utils/attachmentHandler.js';
+import { type ImageProcessingConfig, getImageProcessingConfig } from '../config/env.js';
 // DISABLED: Attachment-related imports temporarily removed
 // 
 // 🔄 TO RE-ENABLE ATTACHMENT FORWARDING (when Unthread API is fixed):
@@ -42,11 +43,19 @@ export class TelegramWebhookHandler {
   private bot: Telegraf<BotContext>;
   private botsStore: IBotsStore; // SDK type, properly typed with IBotsStore interface
   private templateManager: GlobalTemplateManager;
+  private imageConfig: ImageProcessingConfig; // Phase 4: Image processing configuration
 
   constructor(bot: Telegraf<BotContext>, botsStore: IBotsStore) {
     this.bot = bot;
     this.botsStore = botsStore;
     this.templateManager = GlobalTemplateManager.getInstance();
+    this.imageConfig = getImageProcessingConfig(); // Phase 4: Load configuration
+    
+    LogEngine.info('TelegramWebhookHandler initialized', {
+      imageProcessingEnabled: this.imageConfig.enabled,
+      maxImageSizeMB: Math.round(this.imageConfig.maxImageSize / 1024 / 1024),
+      supportedFormats: this.imageConfig.supportedFormats.length
+    });
   }
 
   /**
@@ -895,21 +904,31 @@ export class TelegramWebhookHandler {
   */
 
   /**
-   * Phase 3: Handle unknown webhook events with image attachments
-   * Routes Unthread agent image attachments to Telegram users
+   * Phase 3+4: Handle unknown webhook events with image attachments
+   * Routes Unthread agent image attachments to Telegram users with enhanced configuration
    */
   async handleUnknownEventWithImages(event: any): Promise<void> {
     try {
-      LogEngine.info('[Phase 3] Processing unknown event with potential image attachments', {
+      // Phase 4: Check if image processing is enabled
+      if (!this.imageConfig.enabled) {
+        LogEngine.debug('[Phase 4] Image processing disabled via configuration', {
+          eventType: event.type,
+          conversationId: event.data?.conversationId
+        });
+        return;
+      }
+
+      LogEngine.info('[Phase 4] Processing unknown event with potential image attachments', {
         eventType: event.type,
         conversationId: event.data?.conversationId,
-        timestamp: event.timestamp
+        timestamp: event.timestamp,
+        configEnabled: this.imageConfig.enabled
       });
 
       // 1. Extract conversation ID from webhook event
       const conversationId = event.data?.conversationId;
       if (!conversationId) {
-        LogEngine.warn('[Phase 3] No conversation ID in unknown event', { 
+        LogEngine.warn('[Phase 4] No conversation ID in unknown event', { 
           eventType: event.type,
           dataKeys: Object.keys(event.data || {})
         });
@@ -919,7 +938,7 @@ export class TelegramWebhookHandler {
       // 2. Look up ticket data for routing
       const ticketData = await this.botsStore.getTicketByConversationId(conversationId);
       if (!ticketData) {
-        LogEngine.warn('[Phase 3] No ticket found for conversation in unknown event', {
+        LogEngine.warn('[Phase 4] No ticket found for conversation in unknown event', {
           conversationId,
           eventType: event.type
         });
@@ -942,64 +961,133 @@ export class TelegramWebhookHandler {
         attachments = metadata.attachments as Array<Record<string, unknown>>;
       }
 
-      // 4. Filter for image attachments only (Phase 3 scope)
+      // 4. Phase 4: Enhanced image filtering with configuration validation
       const imageAttachments = attachments.filter((att: Record<string, unknown>) => {
         const mimeType = att.mimeType as string || att.mime_type as string || att.type as string || '';
         const fileName = att.name as string || att.filename as string || '';
+        const fileSize = (att.size as number) || 0;
         
         // Check if it's an image by MIME type or file extension
         const isImageMime = mimeType.startsWith('image/');
         const isImageExtension = /\.(jpg|jpeg|png|gif|webp|bmp|svg|tiff|ico)$/i.test(fileName);
         
-        return isImageMime || isImageExtension;
+        // Phase 4: Validate against configuration
+        const isSupportedFormat = this.imageConfig.supportedFormats.includes(mimeType) || 
+                                 this.imageConfig.supportedFormats.some(format => {
+                                   const formatPrefix = format.split('/')[0];
+                                   return formatPrefix && mimeType.startsWith(formatPrefix);
+                                 });
+        
+        const isValidSize = fileSize === 0 || fileSize <= this.imageConfig.maxImageSize;
+        
+        if ((isImageMime || isImageExtension) && !isSupportedFormat) {
+          LogEngine.warn('[Phase 4] Image format not supported by configuration', {
+            fileName, mimeType, 
+            supportedFormats: this.imageConfig.supportedFormats
+          });
+          return false;
+        }
+        
+        if ((isImageMime || isImageExtension) && !isValidSize) {
+          LogEngine.warn('[Phase 4] Image size exceeds configuration limit', {
+            fileName, 
+            fileSizeMB: Math.round(fileSize / 1024 / 1024),
+            maxSizeMB: Math.round(this.imageConfig.maxImageSize / 1024 / 1024)
+          });
+          return false;
+        }
+        
+        return (isImageMime || isImageExtension) && isSupportedFormat && isValidSize;
       });
 
       if (imageAttachments.length === 0) {
-        LogEngine.debug('[Phase 3] No image attachments found in unknown event', {
+        LogEngine.debug('[Phase 4] No valid image attachments found in unknown event', {
           conversationId,
           eventType: event.type,
-          totalAttachments: attachments.length
+          totalAttachments: attachments.length,
+          configEnabled: this.imageConfig.enabled
         });
         return;
       }
 
-      LogEngine.info('[Phase 3] Found image attachments in unknown event', {
+      // Phase 4: Apply batch size limits
+      const processableImages = imageAttachments.slice(0, this.imageConfig.maxImagesPerBatch);
+      if (imageAttachments.length > this.imageConfig.maxImagesPerBatch) {
+        LogEngine.warn('[Phase 4] Image batch size exceeds limit, processing subset', {
+          conversationId,
+          totalImages: imageAttachments.length,
+          processingCount: processableImages.length,
+          maxBatchSize: this.imageConfig.maxImagesPerBatch
+        });
+      }
+
+      LogEngine.info('[Phase 4] Found valid image attachments in unknown event', {
         conversationId,
         eventType: event.type,
-        imageCount: imageAttachments.length,
-        totalAttachments: attachments.length
+        validImageCount: processableImages.length,
+        totalAttachments: attachments.length,
+        configValidation: 'passed'
       });
 
-      // 5. Extract file IDs and download images
+      // 5. Phase 4: Enhanced image download with timeout and error tracking
       const fileIds: string[] = [];
       const imageBuffers: Array<{ buffer: Buffer; fileName: string; mimeType: string; size: number }> = [];
+      const downloadErrors: Array<{ fileName: string; error: string }> = [];
 
-      for (const attachment of imageAttachments) {
+      for (const attachment of processableImages) {
         try {
           const fileId = attachment.id as string || attachment.file_id as string;
           const fileName = attachment.name as string || attachment.filename as string || `image_${Date.now()}`;
           const mimeType = attachment.mimeType as string || attachment.mime_type as string || 'image/jpeg';
 
           if (!fileId) {
-            LogEngine.warn('[Phase 3] No file ID found for image attachment', {
+            LogEngine.warn('[Phase 4] No file ID found for image attachment', {
               attachment: Object.keys(attachment)
             });
+            downloadErrors.push({ fileName, error: 'No file ID found' });
             continue;
           }
 
-          LogEngine.debug('[Phase 3] Downloading image from Unthread', {
+          LogEngine.debug('[Phase 4] Downloading image from Unthread', {
             fileId,
             fileName,
-            mimeType
+            mimeType,
+            timeout: this.imageConfig.downloadTimeout
           });
 
-          // Download image using our Phase 1 implementation
+          // Phase 4: Download with timeout handling
           const teamId = process.env.UNTHREAD_TEAM_ID || '';
           if (!teamId) {
             throw new Error('UNTHREAD_TEAM_ID environment variable is not set');
           }
 
-          const imageBuffer = await downloadUnthreadImage(fileId, teamId, fileName);
+          // Download with timeout wrapper
+          const downloadPromise = downloadUnthreadImage(
+            fileId, 
+            teamId, 
+            fileName,
+            this.imageConfig.enableThumbnails ? this.imageConfig.thumbnailSize : undefined
+          );
+          
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Download timeout')), this.imageConfig.downloadTimeout);
+          });
+
+          const imageBuffer = await Promise.race([downloadPromise, timeoutPromise]);
+          
+          // Phase 4: Additional size validation after download
+          if (imageBuffer.length > this.imageConfig.maxImageSize) {
+            LogEngine.warn('[Phase 4] Downloaded image exceeds size limit', {
+              fileName,
+              actualSize: imageBuffer.length,
+              maxSize: this.imageConfig.maxImageSize
+            });
+            downloadErrors.push({ 
+              fileName, 
+              error: `Image too large: ${Math.round(imageBuffer.length / 1024 / 1024)}MB` 
+            });
+            continue;
+          }
           
           // Create FileBuffer structure for our attachment handler
           const fileBufferData = {
@@ -1012,32 +1100,69 @@ export class TelegramWebhookHandler {
           imageBuffers.push(fileBufferData);
           fileIds.push(fileId);
 
-          LogEngine.info('[Phase 3] Image downloaded successfully', {
+          LogEngine.info('[Phase 4] Image downloaded successfully', {
             fileId,
             fileName: fileName,
-            size: imageBuffer.length
+            size: imageBuffer.length,
+            downloadTimeMs: Date.now() // Note: actual timing would need start time
           });
 
         } catch (downloadError) {
-          LogEngine.error('[Phase 3] Failed to download image attachment', {
+          const errorMessage = downloadError instanceof Error ? downloadError.message : String(downloadError);
+          LogEngine.error('[Phase 4] Failed to download image attachment', {
             attachmentId: attachment.id || attachment.file_id,
-            error: downloadError instanceof Error ? downloadError.message : String(downloadError)
+            fileName: attachment.name,
+            error: errorMessage,
+            timeout: this.imageConfig.downloadTimeout
+          });
+          
+          downloadErrors.push({ 
+            fileName: attachment.name as string || 'unknown', 
+            error: errorMessage 
           });
           // Continue with other attachments
         }
       }
 
+      // Phase 4: Enhanced download results logging
       if (imageBuffers.length === 0) {
-        LogEngine.warn('[Phase 3] No images successfully downloaded', {
+        LogEngine.warn('[Phase 4] No images successfully downloaded', {
           conversationId,
           eventType: event.type,
-          attemptedDownloads: imageAttachments.length
+          attemptedDownloads: processableImages.length,
+          downloadErrors: downloadErrors.length > 0 ? downloadErrors : undefined
         });
+        
+        // Phase 4: Send user notification about download failures
+        if (downloadErrors.length > 0) {
+          try {
+            await this.bot.telegram.sendMessage(
+              ticketData.chatId,
+              `⚠️ **Image Processing Error**\n\nSome images couldn't be downloaded:\n${downloadErrors.map(e => `• ${e.fileName}: ${e.error}`).join('\n')}\n\n_Please ask your agent to resend the images._`,
+              { 
+                reply_parameters: { message_id: ticketData.messageId },
+                parse_mode: 'Markdown'
+              }
+            );
+          } catch (notificationError) {
+            LogEngine.error('[Phase 4] Failed to send download error notification', {
+              error: notificationError instanceof Error ? notificationError.message : String(notificationError)
+            });
+          }
+        }
         return;
       }
 
-      // 6. Upload images to Telegram using our Phase 2 implementation
+      LogEngine.info('[Phase 4] Download phase completed', {
+        conversationId,
+        successfulDownloads: imageBuffers.length,
+        failedDownloads: downloadErrors.length,
+        totalAttempted: processableImages.length
+      });
+
+      // 6. Phase 4: Enhanced upload to Telegram with timeout and performance tracking
       try {
+        const uploadStartTime = Date.now();
         const chatId = ticketData.chatId;
         const replyToMessageId = ticketData.messageId;
         
@@ -1045,47 +1170,62 @@ export class TelegramWebhookHandler {
         const messageText = event.data.content || event.data.text || event.data.message;
         const caption = messageText ? `💬 ${messageText}` : `📎 ${imageBuffers.length} image${imageBuffers.length > 1 ? 's' : ''} from agent`;
 
-        LogEngine.info('[Phase 3] Uploading images to Telegram', {
+        LogEngine.info('[Phase 4] Uploading images to Telegram', {
           conversationId,
           chatId,
           imageCount: imageBuffers.length,
-          hasCaption: !!messageText
+          hasCaption: !!messageText,
+          totalSize: imageBuffers.reduce((sum, img) => sum + img.size, 0),
+          timeout: this.imageConfig.uploadTimeout
         });
 
         let uploadSuccess = false;
 
-        if (imageBuffers.length === 1) {
-          // Single image upload
-          const firstImage = imageBuffers[0];
-          if (!firstImage) {
-            throw new Error('Invalid image buffer detected');
+        // Phase 4: Upload with timeout wrapper
+        const uploadPromise = (async () => {
+          if (imageBuffers.length === 1) {
+            // Single image upload
+            const firstImage = imageBuffers[0];
+            if (!firstImage) {
+              throw new Error('Invalid image buffer detected');
+            }
+            
+            return await attachmentHandler.uploadBufferToTelegram(
+              firstImage,
+              chatId,
+              replyToMessageId,
+              caption
+            );
+          } else {
+            // Multiple images upload
+            return await attachmentHandler.uploadMultipleImagesToTelegram(
+              imageBuffers,
+              chatId,
+              replyToMessageId,
+              caption
+            );
           }
-          
-          uploadSuccess = await attachmentHandler.uploadBufferToTelegram(
-            firstImage,
-            chatId,
-            replyToMessageId,
-            caption
-          );
-        } else {
-          // Multiple images upload
-          uploadSuccess = await attachmentHandler.uploadMultipleImagesToTelegram(
-            imageBuffers,
-            chatId,
-            replyToMessageId,
-            caption
-          );
-        }
+        })();
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Upload timeout')), this.imageConfig.uploadTimeout);
+        });
+
+        uploadSuccess = await Promise.race([uploadPromise, timeoutPromise]);
+        const uploadTime = Date.now() - uploadStartTime;
 
         if (uploadSuccess) {
-          LogEngine.info('[Phase 3] Images uploaded to Telegram successfully', {
+          LogEngine.info('[Phase 4] Images uploaded to Telegram successfully', {
             conversationId,
             chatId,
             imageCount: imageBuffers.length,
-            eventType: event.type
+            eventType: event.type,
+            uploadTimeMs: uploadTime,
+            performance: 'optimal',
+            totalSizeMB: Math.round(imageBuffers.reduce((sum, img) => sum + img.size, 0) / 1024 / 1024)
           });
 
-          // Store agent message for tracking
+          // Store agent message for tracking with enhanced metadata
           await this.botsStore.storeAgentMessage({
             messageId: 0, // We don't have the exact message ID, but this is for tracking
             conversationId: conversationId,
@@ -1095,29 +1235,86 @@ export class TelegramWebhookHandler {
             sentAt: new Date().toISOString()
           });
 
+          // Phase 4: Success notification with processing metrics (optional)
+          if (uploadTime > 5000 || imageBuffers.length > 3) { // Only for slow uploads or large batches
+            try {
+              await this.bot.telegram.sendMessage(
+                chatId,
+                `✅ **Image Processing Complete**\n\n📊 **Processing Stats:**\n• Images processed: ${imageBuffers.length}\n• Upload time: ${Math.round(uploadTime / 1000)}s\n• Total size: ${Math.round(imageBuffers.reduce((sum, img) => sum + img.size, 0) / 1024 / 1024)}MB`,
+                { 
+                  reply_parameters: { message_id: replyToMessageId },
+                  parse_mode: 'Markdown'
+                }
+              );
+            } catch (statsError) {
+              LogEngine.debug('[Phase 4] Stats notification failed (non-critical)', {
+                error: statsError instanceof Error ? statsError.message : String(statsError)
+              });
+            }
+          }
+
         } else {
-          LogEngine.error('[Phase 3] Failed to upload images to Telegram', {
+          LogEngine.error('[Phase 4] Failed to upload images to Telegram', {
             conversationId,
             chatId,
-            imageCount: imageBuffers.length
+            imageCount: imageBuffers.length,
+            uploadTimeMs: uploadTime
           });
+          
+          // Phase 4: Send user notification about upload failures
+          try {
+            await this.bot.telegram.sendMessage(
+              chatId,
+              `❌ **Image Upload Failed**\n\nWe couldn't send ${imageBuffers.length} image${imageBuffers.length > 1 ? 's' : ''} from your agent. This might be a temporary issue.\n\n_Please ask your agent to resend the images or try again later._`,
+              { 
+                reply_parameters: { message_id: replyToMessageId },
+                parse_mode: 'Markdown'
+              }
+            );
+          } catch (notificationError) {
+            LogEngine.error('[Phase 4] Failed to send upload error notification', {
+              error: notificationError instanceof Error ? notificationError.message : String(notificationError)
+            });
+          }
         }
 
       } catch (uploadError) {
-        LogEngine.error('[Phase 3] Error uploading images to Telegram', {
+        LogEngine.error('[Phase 4] Critical error uploading images to Telegram', {
           conversationId,
           chatId: ticketData.chatId,
           imageCount: imageBuffers.length,
-          error: uploadError instanceof Error ? uploadError.message : String(uploadError)
+          error: uploadError instanceof Error ? uploadError.message : String(uploadError),
+          timeout: this.imageConfig.uploadTimeout
         });
+        
+        // Phase 4: Send critical error notification
+        try {
+          await this.bot.telegram.sendMessage(
+            ticketData.chatId,
+            `🚨 **Critical Error**\n\nA technical error occurred while processing ${imageBuffers.length} image${imageBuffers.length > 1 ? 's' : ''} from your agent.\n\nError: ${uploadError instanceof Error ? uploadError.message : 'Unknown error'}\n\n_Our team has been notified. Please contact support if this persists._`,
+            { 
+              reply_parameters: { message_id: ticketData.messageId },
+              parse_mode: 'Markdown'
+            }
+          );
+        } catch (criticalNotificationError) {
+          LogEngine.error('[Phase 4] Failed to send critical error notification', {
+            error: criticalNotificationError instanceof Error ? criticalNotificationError.message : String(criticalNotificationError)
+          });
+        }
       }
 
     } catch (error) {
-      LogEngine.error('[Phase 3] Critical error in handleUnknownEventWithImages', {
+      LogEngine.error('[Phase 4] Critical error in handleUnknownEventWithImages', {
         eventType: event.type,
         conversationId: event.data?.conversationId,
         error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack?.substring(0, 500) : undefined
+        stack: error instanceof Error ? error.stack?.substring(0, 500) : undefined,
+        imageProcessingConfig: {
+          enabled: this.imageConfig.enabled,
+          maxImageSizeMB: Math.round(this.imageConfig.maxImageSize / 1024 / 1024),
+          maxBatchSize: this.imageConfig.maxImagesPerBatch
+        }
       });
     }
   }

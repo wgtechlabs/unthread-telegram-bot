@@ -106,6 +106,7 @@ export function validateEnvironment(): void {
         getAdminUsers(); // This will throw if placeholder values are detected
         validateRedisUrls(); // Validate Redis URL configurations
         validateRequiredTokens(); // Validate API tokens and secrets
+        validateImageProcessingConfig(); // Phase 4: Validate image processing configuration
     } catch (error) {
         LogEngine.error('❌ Environment configuration error:', {
             error: (error as Error).message
@@ -393,4 +394,78 @@ export function getConfiguredBotUsername(): string | null {
     }
     
     return configuredUsername;
+}
+
+/**
+ * Phase 4: Image Processing Configuration
+ * Get image processing configuration with sensible defaults
+ */
+export interface ImageProcessingConfig {
+    enabled: boolean;
+    maxImageSize: number;
+    supportedFormats: string[];
+    maxImagesPerBatch: number;
+    downloadTimeout: number;
+    uploadTimeout: number;
+    enableThumbnails: boolean;
+    thumbnailSize: number;
+}
+
+export function getImageProcessingConfig(): ImageProcessingConfig {
+    const isEnabled = process.env.IMAGE_PROCESSING_ENABLED?.toLowerCase() !== 'false'; // Default: true
+    const maxImageSize = parseInt(process.env.MAX_IMAGE_SIZE_MB || '10') * 1024 * 1024; // Default: 10MB
+    const maxImagesPerBatch = parseInt(process.env.MAX_IMAGES_PER_BATCH || '10'); // Default: 10 (Telegram limit)
+    const downloadTimeout = parseInt(process.env.IMAGE_DOWNLOAD_TIMEOUT_MS || '15000'); // Default: 15s
+    const uploadTimeout = parseInt(process.env.IMAGE_UPLOAD_TIMEOUT_MS || '30000'); // Default: 30s
+    const enableThumbnails = process.env.ENABLE_THUMBNAILS?.toLowerCase() !== 'false'; // Default: true
+    const thumbnailSize = parseInt(process.env.THUMBNAIL_SIZE || '160'); // Default: 160px
+    
+    const supportedFormats = process.env.SUPPORTED_IMAGE_FORMATS?.split(',').map(f => f.trim()) || [
+        'image/jpeg',
+        'image/png', 
+        'image/gif',
+        'image/webp'
+    ];
+
+    return {
+        enabled: isEnabled,
+        maxImageSize,
+        supportedFormats,
+        maxImagesPerBatch,
+        downloadTimeout,
+        uploadTimeout,
+        enableThumbnails,
+        thumbnailSize
+    };
+}
+
+/**
+ * Phase 4: Validate image processing environment
+ * Ensures UNTHREAD_TEAM_ID is available for image downloads
+ */
+export function validateImageProcessingConfig(): void {
+    const config = getImageProcessingConfig();
+    
+    if (!config.enabled) {
+        LogEngine.info('📸 Image processing disabled via configuration');
+        return;
+    }
+
+    // Validate UNTHREAD_TEAM_ID for image downloads
+    if (!process.env.UNTHREAD_TEAM_ID) {
+        LogEngine.warn('⚠️  UNTHREAD_TEAM_ID not configured - image downloads may fail', {
+            recommendation: 'Set UNTHREAD_TEAM_ID environment variable for reliable image processing'
+        });
+    }
+
+    LogEngine.info('📸 Image processing configuration validated', {
+        enabled: config.enabled,
+        maxImageSizeMB: Math.round(config.maxImageSize / 1024 / 1024),
+        supportedFormats: config.supportedFormats.length,
+        maxImagesPerBatch: config.maxImagesPerBatch,
+        timeouts: {
+            download: config.downloadTimeout,
+            upload: config.uploadTimeout
+        }
+    });
 }

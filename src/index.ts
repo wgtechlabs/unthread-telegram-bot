@@ -342,6 +342,29 @@ try {
             LogEngine.warn('Webhook handler does not implement handleConversationUpdated; skipping subscription.');
         }
 
+        // Phase 4: Subscribe to unknown events for image attachment processing
+        if (typeof webhookHandler.handleUnknownEventWithImages === 'function') {
+            // Register for various unknown event types that might contain image attachments
+            const unknownEventTypes = [
+                'file_uploaded',
+                'attachment_added', 
+                'media_shared',
+                'content_updated',
+                'unknown'
+            ];
+            
+            unknownEventTypes.forEach(eventType => {
+                webhookConsumer!.subscribe(eventType, 'dashboard', 
+                    webhookHandler!.handleUnknownEventWithImages.bind(webhookHandler)
+                );
+                LogEngine.info(`Subscribed to ${eventType} events for image processing`);
+            });
+            
+            LogEngine.info('Phase 4: Image attachment processing enabled for unknown events');
+        } else {
+            LogEngine.warn('Webhook handler does not implement handleUnknownEventWithImages; Phase 4 integration incomplete.');
+        }
+
         // Start the webhook consumer
         await webhookConsumer.start();
         LogEngine.info('Webhook consumer started successfully');
