@@ -215,7 +215,7 @@ BOT_USERNAME=your_bot_username  # Eliminates API calls for deep links and comman
 UNTHREAD_API_KEY=your_unthread_api_key
 UNTHREAD_SLACK_CHANNEL_ID=your_unthread_slack_channel_id
 UNTHREAD_WEBHOOK_SECRET=your_unthread_webhook_secret
-UNTHREAD_TEAM_ID=your_unthread_team_id  # Required for file attachment downloads
+SLACK_TEAM_ID=your_slack_workspace_id  # Required for file attachment downloads
 
 # Required - Database (Docker will handle this automatically)
 POSTGRES_URL=postgresql://postgres:postgres@postgres-platform:5432/unthread_telegram_bot

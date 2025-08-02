@@ -441,7 +441,7 @@ export function getImageProcessingConfig(): ImageProcessingConfig {
 
 /**
  * Phase 4: Validate image processing environment
- * Ensures UNTHREAD_TEAM_ID is available for image downloads
+ * Ensures SLACK_TEAM_ID is available for image downloads
  */
 export function validateImageProcessingConfig(): void {
     const config = getImageProcessingConfig();
@@ -451,10 +451,10 @@ export function validateImageProcessingConfig(): void {
         return;
     }
 
-    // Validate UNTHREAD_TEAM_ID for image downloads
-    if (!process.env.UNTHREAD_TEAM_ID) {
-        LogEngine.warn('⚠️  UNTHREAD_TEAM_ID not configured - image downloads may fail', {
-            recommendation: 'Set UNTHREAD_TEAM_ID environment variable for reliable image processing'
+    // Validate SLACK_TEAM_ID for image downloads
+    if (!process.env.SLACK_TEAM_ID) {
+        LogEngine.warn('⚠️  SLACK_TEAM_ID not configured - image downloads may fail', {
+            recommendation: 'Set SLACK_TEAM_ID environment variable for reliable image processing'
         });
     }
 
