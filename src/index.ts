@@ -333,6 +333,13 @@ try {
             webhookHandler.handleMessageCreated.bind(webhookHandler)
         );
 
+        // CRITICAL: Subscribe to agent message events from "unknown" source 
+        // The real file attachments come from "unknown" source events, not dashboard!
+        webhookConsumer.subscribe('message_created', 'unknown', 
+            webhookHandler.handleMessageCreated.bind(webhookHandler)
+        );
+        LogEngine.info('✅ Registered handler for message_created:unknown (real file attachments)');
+
         // Subscribe to conversation status update events from dashboard
         if (typeof webhookHandler.handleConversationUpdated === 'function') {
             webhookConsumer.subscribe('conversation_updated', 'dashboard', 

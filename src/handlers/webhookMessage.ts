@@ -24,10 +24,7 @@ import { downloadUnthreadImage } from '../services/unthread.js';
 import { attachmentHandler } from '../utils/attachmentHandler.js';
 import { type ImageProcessingConfig, getImageProcessingConfig } from '../config/env.js';
 // ENABLED: Attachment processing fully operational (Phase 5 Complete)
-import { 
-  AttachmentErrorHandler,
-  AttachmentProcessingError
-} from '../utils/errorHandler.js';
+// Removed unused AttachmentErrorHandler and AttachmentProcessingError imports
 
 /**
  * Webhook message handler for Unthread agent responses
@@ -186,11 +183,15 @@ export class TelegramWebhookHandler {
       // 3. Validate message content - check both 'content' and 'text' fields
       const messageText = event.data.content || event.data.text;
       
-      // Check for attachments in metadata
-      const metadata = event.data.metadata as Record<string, unknown> | undefined;
-      const eventPayload = metadata?.event_payload as Record<string, unknown> | undefined;
-      const attachments = eventPayload?.attachments as Array<Record<string, unknown>> | undefined;
-      const hasAttachments = !!(attachments && attachments.length > 0);
+      // Check for attachments ONLY in data.files (Slack files)
+      // Dashboard attachments with u-warentest IDs are USELESS - the real files come from "unknown" source events
+      const dataFiles = event.data.files as Array<Record<string, unknown>> | undefined;
+      
+      const hasSlackFiles = !!(dataFiles && dataFiles.length > 0);
+      const hasAttachments = hasSlackFiles;
+      
+      // Use only Slack files for processing - dashboard attachments are ignored
+      const allAttachments = [...(dataFiles || [])];
       
       // Message must have either text content OR attachments
       if ((!messageText || messageText.trim().length === 0) && !hasAttachments) {
@@ -212,12 +213,12 @@ export class TelegramWebhookHandler {
       }
 
       // Log attachment detection
-      if (hasAttachments && attachments) {
+      if (hasAttachments && allAttachments.length > 0) {
         LogEngine.info('📎 Processing message with attachments', {
           conversationId,
-          attachmentCount: attachments.length,
+          attachmentCount: allAttachments.length,
           hasTextContent: !!(messageText && messageText.trim().length > 0),
-          attachments: attachments.map((att: Record<string, unknown>) => ({
+          attachments: allAttachments.map((att: Record<string, unknown>) => ({
             id: att.id,
             name: att.name,
             size: att.size,
@@ -281,22 +282,26 @@ export class TelegramWebhookHandler {
             friendlyId: ticketData.friendlyId
           });
 
-          // 7. Attachment processing now enabled (Phase 5 Complete)
-          if (hasAttachments && attachments) {
-            LogEngine.info('📎 Processing dashboard attachments via image handler', {
+          // 7. Process ONLY Slack files - dashboard attachments are USELESS (u-warentest IDs don't work)
+          // The real files come from "unknown" source events which need a separate handler
+          if (hasAttachments) {
+            LogEngine.info('📎 Processing Slack files only - dashboard u-warentest IDs ignored', {
               conversationId,
-              attachmentCount: attachments.length,
+              slackFileCount: hasSlackFiles && dataFiles ? dataFiles.length : 0,
+              totalAttachments: allAttachments.length,
               chatId: ticketData.chatId,
-              status: 'Phase 5 - Full attachment processing enabled'
+              status: 'Slack-only processing (dashboard IDs are useless)'
             });
             
-            // Process attachments using the working image flow (Phase 1-4 complete)
-            await this.processAttachmentsFromDashboard(
-              attachments,
-              conversationId,
-              ticketData.chatId,
-              sentMessage.message_id
-            );
+            // Process Slack files using Slack thumbnail endpoint
+            if (hasSlackFiles && dataFiles) {
+              await this.processSlackFiles(
+                dataFiles,
+                conversationId,
+                ticketData.chatId,
+                sentMessage.message_id
+              );
+            }
           }
         } else {
           LogEngine.warn('Message not sent - user may have blocked bot or chat not found', {
@@ -727,107 +732,94 @@ export class TelegramWebhookHandler {
   }
 
   /**
-   * ENABLED: Process attachments from dashboard messages and forward them to Telegram
+   * Process ONLY Slack files from Unthread webhook events and forward them to Telegram
    * 
-   * Phase 5 Complete: Full attachment processing operational with working Unthread API integration.
-   * Uses the breakthrough fetch-based download solution and proven Telegram upload methods.
-   * 
-   * @param attachments - Array of attachment objects from Unthread webhook
+   * @param slackFiles - Array of Slack file objects from data.files
    * @param conversationId - Conversation ID for tracking
    * @param chatId - Telegram chat ID for delivery
    * @param replyToMessageId - Message ID to reply to
    */
-  private async processAttachmentsFromDashboard(
-    attachments: Array<Record<string, unknown>>,
+  private async processSlackFiles(
+    slackFiles: Array<Record<string, unknown>>,
     conversationId: string,
     chatId: number,
     replyToMessageId: number
   ): Promise<void> {
-    LogEngine.info('🔄 Starting attachment processing from dashboard', {
+    LogEngine.info('🔄 Processing Slack files from Unthread webhook', {
       conversationId,
-      attachmentCount: attachments.length,
+      slackFileCount: slackFiles.length,
       chatId,
-      replyToMessageId,
-      phase: 'Phase5-FullyEnabled'
+      replyToMessageId
     });
 
-    // Phase 5: Validate attachments and process with working implementation
-    for (let i = 0; i < attachments.length; i++) {
-      const attachment = attachments[i];
+    for (let i = 0; i < slackFiles.length; i++) {
+      const slackFile = slackFiles[i];
       
-      // Skip invalid attachments
-      if (!attachment) {
-        LogEngine.warn('⚠️ Skipping undefined attachment', {
+      // Type safety: Ensure slackFile is a valid object
+      if (!slackFile || typeof slackFile !== 'object') {
+        LogEngine.warn('⚠️ Skipping invalid Slack file object', {
           conversationId,
-          attachmentIndex: i + 1
+          fileIndex: i + 1,
+          receivedType: typeof slackFile
         });
         continue;
       }
       
       try {
-        // Validate attachment structure
-        AttachmentErrorHandler.validateAttachment(attachment, {
+        const fileId = String(slackFile.id);
+        
+        // Validate that this is a proper Slack file ID
+        if (!fileId.startsWith('F') || fileId.length < 10) {
+          LogEngine.warn('⚠️ Invalid Slack file ID format', {
+            conversationId,
+            fileId,
+            expectedFormat: 'F######## (starts with F, 10+ chars)'
+          });
+          continue;
+        }
+
+        LogEngine.info('✅ Valid Slack file detected', {
           conversationId,
-          chatId,
-          messageId: replyToMessageId
+          fileIndex: i + 1,
+          fileName: slackFile.name,
+          fileSize: slackFile.size,
+          fileType: slackFile.mimetype,
+          fileId: fileId
         });
 
-        LogEngine.info('✅ Attachment validated successfully', {
+        // Process using Slack file thumbnail endpoint
+        await this.downloadAndForwardSlackFile({
           conversationId,
-          attachmentIndex: i + 1,
-          fileName: attachment.name,
-          fileSize: attachment.size,
-          fileType: attachment.type,
-          fileId: attachment.id
-        });
-
-        // Phase 5: Download and forward attachment to Telegram using working implementation
-        await this.downloadAndForwardAttachment({
-          conversationId,
-          fileId: String(attachment.id),
-          fileName: String(attachment.name),
-          fileSize: Number(attachment.size) || 0,
-          mimeType: String(attachment.type),
+          fileId: fileId,
+          fileName: String(slackFile.name),
+          fileSize: Number(slackFile.size) || 0,
+          mimeType: String(slackFile.mimetype || slackFile.type),
           chatId,
           replyToMessageId
         });
 
-      } catch (validationError) {
-        LogEngine.error('❌ Attachment validation failed', {
+      } catch (error) {
+        LogEngine.error('❌ Slack file processing failed', {
           conversationId,
-          attachmentIndex: i + 1,
-          fileName: attachment.name || 'unknown',
-          error: validationError instanceof Error ? validationError.message : String(validationError)
+          fileIndex: i + 1,
+          fileName: slackFile.name || 'unknown',
+          error: error instanceof Error ? error.message : String(error)
         });
-
-        if (validationError instanceof AttachmentProcessingError) {
-          await AttachmentErrorHandler.notifyUser(
-            this.bot,
-            chatId,
-            validationError,
-            replyToMessageId
-          );
-        }
       }
     }
 
-    LogEngine.info('✅ Phase 5 attachment processing completed', {
+    LogEngine.info('✅ Slack file processing completed', {
       conversationId,
-      processedCount: attachments.length,
-      phase: 'Phase5-FullyEnabled'
+      processedCount: slackFiles.length
     });
   }
 
   /**
-   * ENABLED: Downloads an attachment from Unthread and forwards it to Telegram
+   * Downloads a Slack file using Unthread's Slack file thumbnail endpoint and forwards to Telegram
    * 
-   * Phase 5 Complete: Uses the breakthrough fetch-based download solution identified in the 
-   * investigation breakthrough. This method now leverages the working downloadAttachmentFromUnthread
-   * function and proven Telegram upload patterns.
-   * 
-   * @param params - Download and forward parameters
+   * @param params - Download and forward parameters for Slack files
    */
-  private async downloadAndForwardAttachment(params: {
+  private async downloadAndForwardSlackFile(params: {
     conversationId: string;
     fileId: string;
     fileName: string;
@@ -838,37 +830,41 @@ export class TelegramWebhookHandler {
   }): Promise<void> {
     const { conversationId, fileId, fileName, fileSize, mimeType, chatId, replyToMessageId } = params;
     
-    LogEngine.info('[Phase 5] Starting attachment download and forward', {
+    LogEngine.info('[Phase 5] Starting Slack file download and forward', {
       conversationId,
       fileId,
       fileName,
       fileSize,
       mimeType,
       chatId,
-      method: 'fetch-based-breakthrough'
+      method: 'slack-thumbnail-endpoint'
     });
 
     try {
-      // Phase 5: Use the working image download for any file (supporting images primarily)
+      // Use Unthread's Slack file thumbnail endpoint for Slack file IDs
+      // Endpoint: https://api.unthread.io/api/slack/files/{fileId}/thumb?thumbSize=160&teamId={teamId}
+      const thumbnailSize = 160; // Standard thumbnail size
+      
       const downloadBuffer = await downloadUnthreadImage(
         fileId,
-        this.teamId, // Use validated team ID from constructor
-        fileName
+        this.teamId,
+        fileName,
+        thumbnailSize // Use thumbnail size parameter
       );
 
       if (!downloadBuffer || downloadBuffer.length === 0) {
-        throw new Error('Download returned empty or invalid data');
+        throw new Error('Slack file download returned empty or invalid data');
       }
 
-      LogEngine.info('[Phase 5] Attachment downloaded successfully', {
+      LogEngine.info('[Phase 5] Slack file downloaded successfully', {
         conversationId,
         fileId,
         fileName,
         downloadedSize: downloadBuffer.length,
-        method: 'fetch-based-breakthrough'
+        method: 'slack-thumbnail-endpoint'
       });
 
-      // Phase 5: Forward to Telegram using existing attachment handler infrastructure
+      // Forward to Telegram using existing attachment handler infrastructure
       const fileBuffer = {
         buffer: downloadBuffer,
         fileName: fileName,
@@ -885,7 +881,7 @@ export class TelegramWebhookHandler {
       );
 
       if (uploadSuccess) {
-        LogEngine.info('[Phase 5] Attachment successfully forwarded to Telegram', {
+        LogEngine.info('[Phase 5] Slack file successfully forwarded to Telegram', {
           conversationId,
           fileId,
           fileName,
@@ -894,12 +890,12 @@ export class TelegramWebhookHandler {
           status: 'Phase5-Complete'
         });
       } else {
-        throw new Error('Failed to upload attachment to Telegram');
+        throw new Error('Failed to upload Slack file to Telegram');
       }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      LogEngine.error('[Phase 5] Failed to download and forward attachment', {
+      LogEngine.error('[Phase 5] Failed to download and forward Slack file', {
         conversationId,
         fileId,
         fileName,
@@ -911,14 +907,14 @@ export class TelegramWebhookHandler {
       try {
         await this.bot.telegram.sendMessage(
           chatId,
-          `❌ **Attachment Processing Failed**\n\n📎 **File:** ${fileName}\n**Error:** ${errorMessage}\n\n_Please ask your agent to resend the file or try again later._`,
+          `❌ **Slack File Processing Failed**\n\n📎 **File:** ${fileName}\n**Error:** ${errorMessage}\n\n_Please ask your agent to resend the file or try again later._`,
           { 
             reply_parameters: { message_id: replyToMessageId },
             parse_mode: 'Markdown'
           }
         );
       } catch (notificationError) {
-        LogEngine.error('[Phase 5] Failed to send attachment error notification', {
+        LogEngine.error('[Phase 5] Failed to send Slack file error notification', {
           error: notificationError instanceof Error ? notificationError.message : String(notificationError)
         });
       }
