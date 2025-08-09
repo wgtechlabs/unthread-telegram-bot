@@ -308,11 +308,57 @@ async function processMediaGroupCollection(mediaGroupId: string): Promise<void> 
             });
         }
     } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        
         LogEngine.error('❌ Error processing media group collection', {
             mediaGroupId,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage,
             itemCount: collection.items.length
         });
+        
+        // Handle specific error types with user feedback
+        if (errorMessage === 'UNSUPPORTED_FILE_TYPES_MEDIA_GROUP') {
+            LogEngine.info('🚫 Providing user feedback for unsupported media group file types', {
+                mediaGroupId,
+                chatId: collection.chatId,
+                userId: collection.userId
+            });
+            
+            // Provide user-friendly feedback about unsupported file types
+            if (collection.ctx && collection.chatId) {
+                try {
+                    const messageOptions: Record<string, unknown> = { 
+                        parse_mode: 'Markdown' as const
+                    };
+                    
+                    // Add reply parameters if we have a message to reply to
+                    if (collection.replyToMessageId) {
+                        messageOptions.reply_parameters = {
+                            message_id: collection.replyToMessageId
+                        };
+                    }
+                    
+                    await collection.ctx.telegram.sendMessage(
+                        collection.chatId,
+                        '🚫 **Files Not Supported**\n\n' +
+                        'Some files in your media group are not supported. ' +
+                        'Only image files are currently supported:\n' +
+                        '• JPEG (.jpg, .jpeg)\n' +
+                        '• PNG (.png)\n' +
+                        '• GIF (.gif)\n' +
+                        '• WebP (.webp)\n\n' +
+                        'Please send your message again with supported image files only.',
+                        messageOptions
+                    );
+                } catch (notifyError) {
+                    LogEngine.error('Failed to send unsupported file type notification', {
+                        mediaGroupId,
+                        chatId: collection.chatId,
+                        notifyError: notifyError instanceof Error ? notifyError.message : String(notifyError)
+                    });
+                }
+            }
+        }
     }
 }
 
