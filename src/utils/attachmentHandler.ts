@@ -30,6 +30,7 @@ import fetch, { Response } from 'node-fetch';
 import FormData from 'form-data';
 import { LogEngine } from '../config/logging.js';
 import { StartupLogger } from './logConfig.js';
+import { getImageProcessingConfig } from '../config/env.js';
 
 // Import statements for buffer-based file processing
 // The following imports have been PERMANENTLY REMOVED:
@@ -232,43 +233,8 @@ export const BUFFER_ATTACHMENT_CONFIG = {
     maxFileNameLength: 255,                  // Prevent path traversal attacks
     sanitizeFileNames: true,                 // Remove dangerous characters from filenames
     
-    // Supported MIME types
-    allowedMimeTypes: [
-        // Images
-        'image/jpeg',
-        'image/png', 
-        'image/gif',
-        'image/webp',
-        'image/bmp',
-        'image/svg+xml',
-        'image/tiff',
-        'image/x-icon',
-        
-        // Documents
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'text/plain',
-        'text/csv',
-        'application/rtf',
-        'text/markdown',
-        
-        // Archives
-        'application/zip',
-        'application/x-rar-compressed',
-        'application/x-7z-compressed',
-        'application/x-tar',
-        'application/gzip',
-        
-        // Audio/Video (common formats)
-        'audio/mpeg',
-        'video/mp4',
-        'video/x-msvideo',
-        'video/quicktime',
-        'audio/wav'
-    ],
+    // NOTE: File type validation now uses centralized configuration from env.ts
+    // See getImageProcessingConfig().supportedFormats for current supported formats
     
     // File extensions mapping for MIME type fallback
     extensionToMime: {
@@ -981,21 +947,28 @@ export class AttachmentHandler {
                 detectionMethod: (extensionMime !== 'application/octet-stream') ? 'extension' : 'content-type'
             });
 
-            // Enhanced MIME type validation
-            if (BUFFER_ATTACHMENT_CONFIG.enableContentValidation && 
-                !BUFFER_ATTACHMENT_CONFIG.allowedMimeTypes.includes(mimeType)) {
-                LogEngine.warn('[AttachmentHandler] Unsupported MIME type detected', {
-                    fileName: sanitizedFileName,
-                    mimeType,
-                    allowedTypes: BUFFER_ATTACHMENT_CONFIG.allowedMimeTypes
-                });
-                
-                const processingError = createProcessingError(
-                    AttachmentProcessingError.INVALID_FILE_TYPE,
-                    `Unsupported file type: ${mimeType}`,
-                    { ...operationContext, fileName: sanitizedFileName, mimeType }
+            // Enhanced MIME type validation using centralized configuration
+            if (BUFFER_ATTACHMENT_CONFIG.enableContentValidation) {
+                const supportedFormats = getImageProcessingConfig().supportedFormats;
+                const isSupportedFormat = supportedFormats.some(format => 
+                    mimeType.toLowerCase().includes(format.toLowerCase())
                 );
-                throw new Error(processingError.message);
+                
+                if (!isSupportedFormat) {
+                    LogEngine.warn('[AttachmentHandler] Unsupported MIME type detected', {
+                        fileName: sanitizedFileName,
+                        mimeType,
+                        allowedFormats: supportedFormats,
+                        centralizedConfig: true
+                    });
+                    
+                    const processingError = createProcessingError(
+                        AttachmentProcessingError.INVALID_FILE_TYPE,
+                        `Unsupported file type: ${mimeType}. Only supported formats: ${supportedFormats.join(', ')}`,
+                        { ...operationContext, fileName: sanitizedFileName, mimeType }
+                    );
+                    throw new Error(processingError.message);
+                }
             }
 
             LogEngine.info('[AttachmentHandler] File loaded to buffer successfully', {

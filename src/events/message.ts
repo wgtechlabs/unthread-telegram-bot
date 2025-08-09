@@ -576,7 +576,15 @@ async function processMediaGroupTicketReply(collection: MediaGroupCollection, ti
         );
         
         if (!attachmentSuccess) {
-            throw new Error('Failed to process media group attachments');
+            // Log the attachment failure and throw special error for unsupported files
+            LogEngine.warn('Media group attachment processing failed for ticket reply', {
+                mediaGroupId: collection.groupId,
+                ticketId: ticketInfo.ticketId,
+                fileCount: fileIds.length,
+                reason: 'unsupported_file_types_or_processing_error'
+            });
+            
+            throw new Error('UNSUPPORTED_FILE_TYPES_MEDIA_GROUP');
         }
         
         // Update status message to success
@@ -1175,7 +1183,45 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: Ticket
             
         } catch (error) {
             const err = error as Error;
-            // Handle API errors
+            
+            // Check if this is an unsupported file type error
+            if (err.message === 'UNSUPPORTED_FILE_TYPES') {
+                LogEngine.warn('Ticket reply failed due to unsupported file types', {
+                    conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
+                    telegramUserId,
+                    hasAttachments,
+                    attachmentCount: attachmentFileIds.length
+                });
+                
+                // Show user-friendly error message for unsupported files
+                if (ctx.chat && statusMsg) {
+                    await safeEditMessageText(
+                        ctx,
+                        ctx.chat.id,
+                        statusMsg.message_id,
+                        undefined,
+                        '🚫 **File Not Supported**\n\n' +
+                        'Only image files are currently supported:\n' +
+                        '• JPEG (.jpg, .jpeg)\n' +
+                        '• PNG (.png)\n' +
+                        '• GIF (.gif)\n' +
+                        '• WebP (.webp)\n\n' +
+                        'Please send your message again with supported image files only.',
+                        { parse_mode: 'Markdown' }
+                    );
+                    
+                    // Delete error message after 10 seconds (longer for user to read)
+                    setTimeout(() => {
+                        if (ctx.chat && statusMsg) {
+                            ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+                        }
+                    }, 10000);
+                }
+                
+                return true; // Message handled (with error), don't process further
+            }
+            
+            // Handle other API errors
             LogEngine.error('Error adding message to ticket', {
                 error: err.message,
                 stack: err.stack,
@@ -1290,7 +1336,15 @@ async function processTicketMessage(ticketInfo: TicketInfo, telegramUserId: numb
         );
         
         if (!attachmentSuccess) {
-            throw new Error('Failed to process file attachments using enhanced processing');
+            // Simple approach: Show error message and don't send text message
+            LogEngine.warn('Attachment processing failed - unsupported file types', {
+                ticketNumber: ticketInfo.friendlyId,
+                conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
+                attachmentCount: attachmentFileIds.length,
+                reason: 'unsupported_file_types'
+            });
+            
+            throw new Error('UNSUPPORTED_FILE_TYPES'); // Special error code for unsupported files
         }
         
         LogEngine.info('File attachments processed successfully for ticket reply using enhanced processing', {
@@ -1486,7 +1540,41 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: AgentM
                 );
                 
                 if (!attachmentSuccess) {
-                    throw new Error('Failed to process file attachments using buffer processing');
+                    // Simple approach: Show error message and don't send text message
+                    LogEngine.warn('Attachment processing failed - unsupported file types', {
+                        conversationId: agentMessageInfo.conversationId,
+                        attachmentCount: attachmentFileIds.length,
+                        reason: 'unsupported_file_types'
+                    });
+                    
+                    if (!ctx.chat) {
+                        LogEngine.error('Chat context is null during attachment error message');
+                        return true;
+                    }
+                    
+                    await safeEditMessageText(
+                        ctx,
+                        ctx.chat.id,
+                        statusMsg.message_id,
+                        undefined,
+                        '🚫 **File Not Supported**\n\n' +
+                        'Only image files are currently supported:\n' +
+                        '• JPEG (.jpg, .jpeg)\n' +
+                        '• PNG (.png)\n' +
+                        '• GIF (.gif)\n' +
+                        '• WebP (.webp)\n\n' +
+                        'Please send your message again with supported image files only.',
+                        { parse_mode: 'Markdown' }
+                    );
+                    
+                    // Delete error message after 10 seconds
+                    setTimeout(() => {
+                        if (ctx.chat && statusMsg) {
+                            ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+                        }
+                    }, 10000);
+                    
+                    return true; // Message handled (with error), don't send text message
                 }
                 
                 LogEngine.info('File attachments processed successfully for agent reply using enhanced processing', {
