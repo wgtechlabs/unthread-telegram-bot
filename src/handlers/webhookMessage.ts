@@ -689,7 +689,7 @@ export class TelegramWebhookHandler {
     });
 
     for (let i = 0; i < slackFiles.length; i++) {
-      const slackFile = slackFiles[i];
+      const slackFile = slackFiles.at(i);
       
       // Type safety: Ensure slackFile is a valid object
       if (!slackFile || typeof slackFile !== 'object') {
@@ -1225,7 +1225,7 @@ export class TelegramWebhookHandler {
 
     let processedCount = 0;
     for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+      const file = files.at(i);
       
       // Validate file object for security
       if (!file || typeof file !== 'object') {
