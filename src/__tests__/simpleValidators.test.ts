@@ -84,7 +84,7 @@ describe('SimpleInputValidator', () => {
     it('should handle single word', () => {
       const stats = SimpleInputValidator.getStats('Hello');
       
-      expect(stats).toBe('5 characters, 1 words');
+      expect(stats).toBe('5 characters, 1 word');
     });
 
     it('should handle empty string', () => {
