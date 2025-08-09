@@ -950,9 +950,17 @@ export class AttachmentHandler {
             // Enhanced MIME type validation using centralized configuration
             if (BUFFER_ATTACHMENT_CONFIG.enableContentValidation) {
                 const supportedFormats = getImageProcessingConfig().supportedFormats;
-                const isSupportedFormat = supportedFormats.some(format => 
-                    mimeType.toLowerCase().includes(format.toLowerCase())
-                );
+                const isSupportedFormat = supportedFormats.some(format => {
+                    const formatLower = format.toLowerCase();
+                    const mimeLower = mimeType.toLowerCase();
+                    // If format is a full MIME type, use exact match
+                    // If format ends with '/', treat as prefix (e.g., 'image/')
+                    if (formatLower.endsWith('/')) {
+                        return mimeLower.startsWith(formatLower);
+                    } else {
+                        return mimeLower === formatLower;
+                    }
+                });
                 
                 if (!isSupportedFormat) {
                     LogEngine.warn('[AttachmentHandler] Unsupported MIME type detected', {
