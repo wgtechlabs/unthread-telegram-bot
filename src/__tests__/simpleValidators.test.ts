@@ -1,7 +1,7 @@
 /**
  * Unit tests for simpleValidators utilities
  */
-import { describe, it, expect } from '@jest/globals';
+import { describe, expect, it } from '@jest/globals';
 import { SimpleInputValidator } from '../utils/simpleValidators';
 
 describe('SimpleInputValidator', () => {

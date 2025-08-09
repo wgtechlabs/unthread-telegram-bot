@@ -1,14 +1,14 @@
 /**
  * Unit tests for env utilities
  */
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import {
-  getEnvVar,
-  isProduction,
-  isDevelopment,
-  getDefaultTicketPriority,
   getCompanyName,
-  getConfiguredBotUsername
+  getConfiguredBotUsername,
+  getDefaultTicketPriority,
+  getEnvVar,
+  isDevelopment,
+  isProduction
 } from '../config/env';
 
 describe('env utilities', () => {

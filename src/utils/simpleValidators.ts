@@ -71,6 +71,8 @@ export class SimpleInputValidator {
     static getStats(input: string): string {
         const trimmed = input.trim();
         const wordCount = trimmed.split(/\s+/).filter(word => word.length > 0).length;
-        return `${trimmed.length} characters, ${wordCount} words`;
+        const charText = trimmed.length === 1 ? 'character' : 'characters';
+        const wordText = wordCount === 1 ? 'word' : 'words';
+        return `${trimmed.length} ${charText}, ${wordCount} ${wordText}`;
     }
 }

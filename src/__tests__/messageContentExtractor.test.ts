@@ -1,14 +1,14 @@
 /**
  * Unit tests for messageContentExtractor utilities
  */
-import { describe, it, expect } from '@jest/globals';
+import { describe, expect, it } from '@jest/globals';
 import {
-  getMessageText,
-  isCommand,
   getCommand,
   getCommandArgs,
+  getMessageText,
+  getMessageTypeInfo,
   hasTextContent,
-  getMessageTypeInfo
+  isCommand
 } from '../utils/messageContentExtractor';
 import type { BotContext } from '../types/index';
 
