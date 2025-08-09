@@ -249,10 +249,10 @@ export function isProduction(): boolean {
 /**
  * Determines whether the application is running in development mode.
  *
- * @returns `true` if the `NODE_ENV` environment variable is undefined or set to 'development'; otherwise, `false`.
+ * @returns `true` if the `NODE_ENV` environment variable is undefined or set to 'development' or 'test'; otherwise, `false`.
  */
 export function isDevelopment(): boolean {
-    return process.env.NODE_ENV === undefined || process.env.NODE_ENV === 'development';
+    return process.env.NODE_ENV === undefined || process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
 }
 
 /**

@@ -1291,7 +1291,17 @@ export async function downloadUnthreadImage(
             });
 
             if (!response.ok) {
-                throw new Error(`Unthread API error: ${response.status} ${response.statusText}`);
+                let errorMessage = `Unthread API error: ${response.status} ${response.statusText}`;
+                try {
+                    const errorBody = await response.text();
+                    if (errorBody) {
+                        errorMessage += ` - Response body: ${errorBody}`;
+                    }
+                } catch (bodyError) {
+                    // If we can't read the body, continue with the basic error message
+                    LogEngine.warn('Failed to read error response body', { bodyError });
+                }
+                throw new Error(errorMessage);
             }
 
             // Early validation: Check content-type immediately for images only

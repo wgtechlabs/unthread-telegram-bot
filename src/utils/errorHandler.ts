@@ -256,9 +256,31 @@ export class AttachmentErrorHandler {
       );
     }
 
+    // Check for zero-byte or invalid size values
+    if (attachment.size !== undefined && 
+        (attachment.size === 0 || 
+         typeof attachment.size !== 'number' || 
+         isNaN(attachment.size) || 
+         attachment.size < 0)) {
+      const errorContext: any = {
+        ...context,
+        fileName: attachment.name as string
+      };
+      if (typeof attachment.size === 'number') {
+        errorContext.fileSize = attachment.size;
+      }
+      throw this.createError(
+        AttachmentErrorType.ATTACHMENT_VALIDATION_FAILED,
+        `Invalid file size: ${attachment.size}. File must have a valid positive size.`,
+        errorContext
+      );
+    }
+
     if (
       attachment.size && 
       typeof attachment.size === 'number' && 
+      attachment.size > 0 &&
+      !isNaN(attachment.size) &&
       attachment.size > maxImageSize * ATTACHMENT_SIZE_VALIDATION.MAX_SIZE_VALIDATION_MULTIPLIER
     ) {
       throw this.createError(

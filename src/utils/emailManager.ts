@@ -27,7 +27,7 @@ import type { UserData } from '../sdk/types.js';
  */
 const EMAIL_CONFIG = {
     // Default domain for dummy emails - can be overridden via environment variable
-    dummyEmailDomain: process.env.DUMMY_EMAIL_DOMAIN || 'telegram.user'
+    dummyEmailDomain: (process.env.DUMMY_EMAIL_DOMAIN || 'telegram.user').toLowerCase()
 };
 
 /**
@@ -142,7 +142,7 @@ export async function getUserEmailPreferences(userId: number): Promise<UserEmail
 
         return {
             email: userData.unthreadEmail,
-            isDummy: userData.unthreadEmail.endsWith(`@${EMAIL_CONFIG.dummyEmailDomain}`), // Auto-generated emails
+            isDummy: userData.unthreadEmail.toLowerCase().endsWith(`@${EMAIL_CONFIG.dummyEmailDomain}`), // Auto-generated emails
             setAt: userData.updatedAt || userData.createdAt || new Date().toISOString(),
             canModify: true
         };
