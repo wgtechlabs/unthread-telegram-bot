@@ -1238,6 +1238,7 @@ export class TelegramWebhookHandler {
     LogEngine.debug('Metadata extraction completed', {
       conversationId,
       metadataFileCount: AttachmentDetectionService.getFileCount(event),
+      metadataFileNames: fileNames,
       metadataTypes: fileTypes,
       metadataTotalSize: totalSize,
       extractionTimeMs: Date.now() - startTime
