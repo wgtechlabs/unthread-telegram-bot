@@ -879,7 +879,7 @@ export class TelegramWebhookHandler {
         fileBuffer,
         chatId,
         replyToMessageId,
-        `📎 ${fileName} (${this.formatFileSize(fileBuffer.size)})`
+        `📎 ${escapeMarkdown(fileName)} (${this.formatFileSize(fileBuffer.size)})`
       );
 
       if (uploadSuccess) {
@@ -907,12 +907,12 @@ export class TelegramWebhookHandler {
 
       // Send user notification about the failure
       try {
-        await this.bot.telegram.sendMessage(
+        await this.safeSendMessage(
           chatId,
-          `❌ **Slack File Processing Failed**\n\n📎 **File:** ${fileName}\n**Error:** ${errorMessage}\n\n_Please ask your agent to resend the file or try again later._`,
+          `❌ **Slack File Processing Failed**\n\n📎 **File:** ${escapeMarkdown(fileName)}\n**Error:** ${escapeMarkdown(errorMessage)}\n\n_Please ask your agent to resend the file or try again later._`,
           { 
-            reply_parameters: { message_id: replyToMessageId },
-            parse_mode: 'Markdown'
+            reply_to_message_id: replyToMessageId,
+            parse_mode: 'MarkdownV2'
           }
         );
       } catch (notificationError) {
@@ -1373,13 +1373,14 @@ export class TelegramWebhookHandler {
    * Validates that the metadata-driven approach is functioning correctly
    */
   private logIntegrationStatus(event: WebhookEvent, conversationId: string): void {
+    const maxSizeBytes = getImageProcessingConfig().maxImageSize * getImageProcessingConfig().maxImagesPerBatch;
     const integration = {
       status: 'Handler Integration',
-      metadataAvailable: !!event.attachments,
+      metadataAvailable: !!event.attachments?.hasFiles,
       sourcePlatform: event.sourcePlatform,
       targetPlatform: event.targetPlatform,
       validationResult: AttachmentDetectionService.validateConsistency(event),
-      processingDecision: AttachmentDetectionService.getProcessingDecision(event),
+      processingDecision: AttachmentDetectionService.getProcessingDecision(event, maxSizeBytes),
       attachmentSummary: AttachmentDetectionService.getAttachmentSummary(event)
     };
 
