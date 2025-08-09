@@ -33,6 +33,19 @@ import type { Telegraf } from 'telegraf';
 import { getImageProcessingConfig } from '../config/env.js';
 
 /**
+ * File Size Validation Constants
+ * Defines business rules for attachment size limits and validation thresholds
+ */
+const ATTACHMENT_SIZE_VALIDATION = {
+    /**
+     * Multiplier for maximum file size validation
+     * Allows files up to 5x the processing limit for early detection of oversized files
+     * This helps catch problematic files before expensive processing operations
+     */
+    MAX_SIZE_VALIDATION_MULTIPLIER: 5,
+} as const;
+
+/**
  * Attachment processing error types with specific classification
  */
 export enum AttachmentErrorType {
@@ -223,7 +236,11 @@ export class AttachmentErrorHandler {
       );
     }
 
-    if (attachment.size && typeof attachment.size === 'number' && attachment.size > getImageProcessingConfig().maxImageSize * 5) {
+    if (
+      attachment.size && 
+      typeof attachment.size === 'number' && 
+      attachment.size > getImageProcessingConfig().maxImageSize * ATTACHMENT_SIZE_VALIDATION.MAX_SIZE_VALIDATION_MULTIPLIER
+    ) {
       throw this.createError(
         AttachmentErrorType.FILE_SIZE_EXCEEDED,
         `File size ${attachment.size} exceeds maximum limit`,
