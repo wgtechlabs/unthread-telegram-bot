@@ -961,15 +961,26 @@ export class AttachmentHandler {
             const contentTypeMime = downloadResponse.headers.get('content-type');
             const extensionMime = detectMimeTypeFromExtension(sanitizedFileName);
             
-            // Use extension-based detection if available, otherwise fall back to content-type header
-            const mimeType = (extensionMime !== 'application/octet-stream') ? extensionMime : contentTypeMime || 'application/octet-stream';
+            // Prioritize Content-Type header over file extension for security
+            const mimeType = contentTypeMime || extensionMime || 'application/octet-stream';
+            
+            // Check for potential MIME type spoofing
+            if (contentTypeMime && extensionMime !== 'application/octet-stream' && contentTypeMime !== extensionMime) {
+                LogEngine.warn('[AttachmentHandler] MIME type mismatch detected - potential spoofing', {
+                    fileName: sanitizedFileName,
+                    contentTypeMime,
+                    extensionMime,
+                    finalMimeType: mimeType,
+                    message: 'Content-Type header differs from file extension MIME type'
+                });
+            }
             
             LogEngine.debug('[AttachmentHandler] MIME type detection', {
                 fileName: sanitizedFileName,
                 contentTypeMime,
                 extensionMime,
                 finalMimeType: mimeType,
-                detectionMethod: (extensionMime !== 'application/octet-stream') ? 'extension' : 'content-type'
+                detectionMethod: contentTypeMime ? 'content-type' : (extensionMime !== 'application/octet-stream' ? 'extension' : 'fallback')
             });
 
             // Enhanced MIME type validation using centralized configuration

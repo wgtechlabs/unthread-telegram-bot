@@ -156,7 +156,10 @@ function validateRedisUrls(): void {
     if (!isDevEnvironment) {
         placeholderValues.push(
             'redis://localhost:6379', // Valid for dev, placeholder in production
-            'redis://redis:6379' // Valid for docker compose, placeholder in production
+            'redis://redis:6379', // Valid for docker compose, placeholder in production
+            'redis://127.0.0.1:6379', // Localhost IP, placeholder in production
+            'rediss://localhost:6379', // TLS localhost, placeholder in production
+            'rediss://redis:6379' // TLS docker, placeholder in production
         );
     }
 
