@@ -18,6 +18,7 @@
 
 import { WebhookEvent } from '../types/webhookEvents.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
+import { getImageProcessingConfig } from '../config/env.js';
 
 export class AttachmentDetectionService {
   
@@ -62,10 +63,7 @@ export class AttachmentDetectionService {
       return false;
     }
     
-    const supportedTypes = [
-      'image/jpeg', 'image/jpg', 'image/png', 
-      'image/gif', 'image/webp'
-    ];
+    const supportedTypes = getImageProcessingConfig().supportedFormats;
     
     return event.attachments?.types.some(type => 
       supportedTypes.includes(type.toLowerCase())

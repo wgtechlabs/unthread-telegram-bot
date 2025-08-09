@@ -412,16 +412,18 @@ export interface ImageProcessingConfig {
 }
 
 export function getImageProcessingConfig(): ImageProcessingConfig {
-    const isEnabled = process.env.IMAGE_PROCESSING_ENABLED?.toLowerCase() !== 'false'; // Default: true
-    const maxImageSize = parseInt(process.env.MAX_IMAGE_SIZE_MB || '10') * 1024 * 1024; // Default: 10MB
-    const maxImagesPerBatch = parseInt(process.env.MAX_IMAGES_PER_BATCH || '10'); // Default: 10 (Telegram limit)
-    const downloadTimeout = parseInt(process.env.IMAGE_DOWNLOAD_TIMEOUT_MS || '15000'); // Default: 15s
-    const uploadTimeout = parseInt(process.env.IMAGE_UPLOAD_TIMEOUT_MS || '30000'); // Default: 30s
-    const enableThumbnails = process.env.ENABLE_THUMBNAILS?.toLowerCase() !== 'false'; // Default: true
-    const thumbnailSize = parseInt(process.env.THUMBNAIL_SIZE || '160'); // Default: 160px
+    // Hardcoded sensible defaults - no environment configuration needed
+    const isEnabled = true; // Always enabled for image processing
+    const maxImageSize = 10 * 1024 * 1024; // 10MB (Telegram limit)
+    const maxImagesPerBatch = 10; // 10 images per batch (Telegram limit)
+    const downloadTimeout = 15000; // 15 seconds
+    const uploadTimeout = 30000; // 30 seconds
+    const enableThumbnails = true; // Always use thumbnails for better performance
+    const thumbnailSize = 720; // 720px high quality thumbnails for Telegram
     
-    const supportedFormats = process.env.SUPPORTED_IMAGE_FORMATS?.split(',').map(f => f.trim()) || [
+    const supportedFormats = [
         'image/jpeg',
+        'image/jpg',   // Alternative JPEG MIME type for broader compatibility
         'image/png', 
         'image/gif',
         'image/webp'

@@ -1144,7 +1144,7 @@ export async function downloadUnthreadImage(
     fileId: string,
     teamId: string,
     expectedFileName?: string,
-    thumbSize: number = 160
+    thumbSize: number = 720
 ): Promise<Buffer> {
     
     LogEngine.info('Starting Unthread image download', {
