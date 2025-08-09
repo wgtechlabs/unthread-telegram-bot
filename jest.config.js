@@ -3,6 +3,11 @@ export default {
   extensionsToTreatAsEsm: ['.ts'],
   testEnvironment: 'node',
   testMatch: ['**/src/__tests__/**/*.test.ts'],
+  transform: {
+    '^.+\\.ts$': ['ts-jest', {
+      useESM: true
+    }]
+  },
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/__tests__/**',
@@ -13,11 +18,6 @@ export default {
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
-  globals: {
-    'ts-jest': {
-      useESM: true
-    }
-  },
   setupFilesAfterEnv: [],
   testTimeout: 10000,
   verbose: true
