@@ -133,7 +133,7 @@ export async function getUserEmailPreferences(userId: number): Promise<UserEmail
             userId,
             userExists: !!userData,
             hasUnthreadEmail: !!userData?.unthreadEmail,
-            unthreadEmail: userData?.unthreadEmail
+            emailDomain: userData?.unthreadEmail ? userData.unthreadEmail.split('@')[1] : undefined
         });
         
         if (!userData?.unthreadEmail) {
@@ -142,7 +142,7 @@ export async function getUserEmailPreferences(userId: number): Promise<UserEmail
 
         return {
             email: userData.unthreadEmail,
-            isDummy: userData.unthreadEmail.includes('@telegram.user'), // Auto-generated emails
+            isDummy: userData.unthreadEmail.includes(`@${EMAIL_CONFIG.dummyEmailDomain}`), // Auto-generated emails
             setAt: userData.updatedAt || userData.createdAt || new Date().toISOString(),
             canModify: true
         };
