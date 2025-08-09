@@ -143,14 +143,22 @@ function validateRedisUrls(): void {
         { name: 'WEBHOOK_REDIS_URL', value: process.env.WEBHOOK_REDIS_URL }
     ];
 
+    // Different placeholder validation for development vs production
+    const isDevEnvironment = isDevelopment();
     const placeholderValues = [
         'your_redis_url_here',
         'redis://your-redis-host:6379',
-        'redis://localhost:6379', // Common placeholder that won't work in production
-        'redis://redis:6379', // Docker compose placeholder
         'your_redis_connection_string',
         'redis_url_here'
     ];
+
+    // Only treat localhost and docker redis as placeholders in production
+    if (!isDevEnvironment) {
+        placeholderValues.push(
+            'redis://localhost:6379', // Valid for dev, placeholder in production
+            'redis://redis:6379' // Valid for docker compose, placeholder in production
+        );
+    }
 
     for (const redis of redisUrls) {
         if (!redis.value) {continue;} // Already caught by required variable check

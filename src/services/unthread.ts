@@ -272,8 +272,46 @@ const CHANNEL_ID = process.env.UNTHREAD_SLACK_CHANNEL_ID!;
 // Customer ID cache to avoid creating duplicates
 const customerCache = new Map<string, Customer>();
 
-// URLSearchParams cache for image download requests to avoid repeated object creation
-const downloadQueryCache = new Map<string, string>();
+// Simple LRU cache implementation for query strings
+class LRUCache<K, V> {
+    private cache = new Map<K, V>();
+    private maxSize: number;
+
+    constructor(maxSize: number = 100) {
+        this.maxSize = maxSize;
+    }
+
+    get(key: K): V | undefined {
+        const value = this.cache.get(key);
+        if (value !== undefined) {
+            // Move to end (most recently used)
+            this.cache.delete(key);
+            this.cache.set(key, value);
+        }
+        return value;
+    }
+
+    set(key: K, value: V): void {
+        if (this.cache.has(key)) {
+            // Update existing key
+            this.cache.delete(key);
+        } else if (this.cache.size >= this.maxSize) {
+            // Remove least recently used (first item)
+            const firstKey = this.cache.keys().next().value;
+            if (firstKey !== undefined) {
+                this.cache.delete(firstKey);
+            }
+        }
+        this.cache.set(key, value);
+    }
+
+    has(key: K): boolean {
+        return this.cache.has(key);
+    }
+}
+
+// URLSearchParams cache for image download requests with size limit
+const downloadQueryCache = new LRUCache<string, string>(50);
 
 /**
  * Creates a new customer in Unthread using the extracted company name from a Telegram group chat title.
