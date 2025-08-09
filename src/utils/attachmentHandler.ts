@@ -230,6 +230,35 @@ export interface BufferAttachment {
 }
 
 /**
+ * File Magic Numbers for Content-Based MIME Type Detection
+ * Used to detect file types from buffer content when Content-Type is unreliable
+ */
+export const FILE_SIGNATURES = {
+    // Image signatures (first few bytes of file)
+    'image/jpeg': [
+        [0xFF, 0xD8, 0xFF], // JPEG/JFIF
+        [0xFF, 0xD8, 0xFF, 0xE0], // JPEG/JFIF
+        [0xFF, 0xD8, 0xFF, 0xE1], // JPEG/EXIF
+    ],
+    'image/png': [
+        [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] // PNG signature
+    ],
+    'image/gif': [
+        [0x47, 0x49, 0x46, 0x38, 0x37, 0x61], // GIF87a
+        [0x47, 0x49, 0x46, 0x38, 0x39, 0x61]  // GIF89a
+    ],
+    'image/webp': [
+        [0x52, 0x49, 0x46, 0x46] // RIFF (WebP starts with RIFF)
+    ],
+    'image/bmp': [
+        [0x42, 0x4D] // BM header
+    ],
+    'application/pdf': [
+        [0x25, 0x50, 0x44, 0x46] // %PDF
+    ]
+};
+
+/**
  * Enhanced Buffer Configuration - Performance & Reliability
  * Configuration for buffer-based file processing
  */
@@ -257,6 +286,7 @@ export const BUFFER_ATTACHMENT_CONFIG = {
     enableContentValidation: true,           // Validate file content beyond MIME type
     maxFileNameLength: 255,                  // Prevent path traversal attacks
     sanitizeFileNames: true,                 // Remove dangerous characters from filenames
+    enableClipboardSupport: true,            // Enhanced MIME detection for clipboard files
     
     // NOTE: File type validation now uses centralized configuration from env.ts
     // See getImageProcessingConfig().supportedFormats for current supported formats
@@ -497,9 +527,102 @@ const globalBufferPool = new BufferPool();
 /**
  * Detect MIME type from file extension (fallback)
  */
+/**
+ * Detect MIME type from file extension
+ */
 function detectMimeTypeFromExtension(fileName: string): string {
     const ext = path.extname(fileName).toLowerCase();
     return BUFFER_ATTACHMENT_CONFIG.extensionToMime[ext as keyof typeof BUFFER_ATTACHMENT_CONFIG.extensionToMime] || 'application/octet-stream';
+}
+
+/**
+ * Detect MIME type from buffer content using file signatures (magic numbers)
+ * This is particularly useful for clipboard files that come with generic Content-Type headers
+ */
+function detectMimeTypeFromBuffer(buffer: Buffer): string {
+    if (buffer.length < 4) {
+        return 'application/octet-stream';
+    }
+
+    // Check against known file signatures
+    for (const [mimeType, signatures] of Object.entries(FILE_SIGNATURES)) {
+        for (const signature of signatures) {
+            if (buffer.length >= signature.length) {
+                // Convert signature to Buffer for safe comparison
+                const signatureBuffer = Buffer.from(signature);
+                const bufferSlice = buffer.slice(0, signature.length);
+                
+                if (bufferSlice.equals(signatureBuffer)) {
+                    // Special case for WebP: need to check for WebP signature after RIFF
+                    if (mimeType === 'image/webp' && buffer.length >= 12) {
+                        const webpSignature = buffer.slice(8, 12);
+                        if (webpSignature.toString('ascii') === 'WEBP') {
+                            return mimeType;
+                        }
+                        continue; // Not WebP, continue checking other formats
+                    } else if (mimeType !== 'image/webp') {
+                        return mimeType;
+                    }
+                }
+            }
+        }
+    }
+
+    return 'application/octet-stream';
+}
+
+/**
+ * Enhanced MIME type detection with clipboard support
+ * Combines Content-Type header, file extension, and buffer inspection for accurate detection
+ */
+function detectMimeTypeEnhanced(contentTypeMime: string | null, fileName: string, buffer: Buffer): {
+    finalMimeType: string;
+    detectionMethod: string;
+    isClipboardLikely: boolean;
+    hasMismatch: boolean;
+} {
+    const extensionMime = detectMimeTypeFromExtension(fileName);
+    const bufferMime = detectMimeTypeFromBuffer(buffer);
+    
+    // Check if this looks like a clipboard scenario
+    const isClipboardLikely = contentTypeMime === 'application/octet-stream' && 
+                             extensionMime !== 'application/octet-stream';
+    
+    let finalMimeType: string;
+    let detectionMethod: string;
+    let hasMismatch = false;
+
+    if (isClipboardLikely && BUFFER_ATTACHMENT_CONFIG.enableClipboardSupport) {
+        // For clipboard scenarios, prioritize buffer inspection if available
+        if (bufferMime !== 'application/octet-stream') {
+            finalMimeType = bufferMime;
+            detectionMethod = 'buffer-signature';
+        } else if (extensionMime !== 'application/octet-stream') {
+            finalMimeType = extensionMime;
+            detectionMethod = 'extension-fallback';
+        } else {
+            finalMimeType = contentTypeMime || 'application/octet-stream';
+            detectionMethod = 'content-type-fallback';
+        }
+    } else {
+        // Standard detection: prioritize Content-Type header for security
+        finalMimeType = contentTypeMime || extensionMime || 'application/octet-stream';
+        detectionMethod = contentTypeMime ? 'content-type' : 
+                         (extensionMime !== 'application/octet-stream' ? 'extension' : 'fallback');
+    }
+
+    // Check for potential spoofing (but be lenient with clipboard files)
+    if (contentTypeMime && extensionMime !== 'application/octet-stream' && 
+        contentTypeMime !== extensionMime && !isClipboardLikely) {
+        hasMismatch = true;
+    }
+
+    return {
+        finalMimeType,
+        detectionMethod,
+        isClipboardLikely,
+        hasMismatch
+    };
 }
 
 /**
@@ -957,38 +1080,42 @@ export class AttachmentHandler {
                 throw new Error(processingError.message);
             }
 
-            // Enhanced MIME type detection with security validation
+            // Enhanced MIME type detection with clipboard support and buffer inspection
             const contentTypeMime = downloadResponse.headers.get('content-type');
-            const extensionMime = detectMimeTypeFromExtension(sanitizedFileName);
+            const mimeDetection = detectMimeTypeEnhanced(contentTypeMime, sanitizedFileName, buffer);
             
-            // Prioritize Content-Type header over file extension for security
-            const mimeType = contentTypeMime || extensionMime || 'application/octet-stream';
-            
-            // Check for potential MIME type spoofing
-            if (contentTypeMime && extensionMime !== 'application/octet-stream' && contentTypeMime !== extensionMime) {
+            // Log detection results with enhanced context
+            if (mimeDetection.isClipboardLikely) {
+                LogEngine.info('[AttachmentHandler] Clipboard file detected - using enhanced MIME detection', {
+                    fileName: sanitizedFileName,
+                    contentTypeMime,
+                    finalMimeType: mimeDetection.finalMimeType,
+                    detectionMethod: mimeDetection.detectionMethod,
+                    isClipboardLikely: mimeDetection.isClipboardLikely
+                });
+            } else if (mimeDetection.hasMismatch) {
                 LogEngine.warn('[AttachmentHandler] MIME type mismatch detected - potential spoofing', {
                     fileName: sanitizedFileName,
                     contentTypeMime,
-                    extensionMime,
-                    finalMimeType: mimeType,
+                    finalMimeType: mimeDetection.finalMimeType,
+                    detectionMethod: mimeDetection.detectionMethod,
                     message: 'Content-Type header differs from file extension MIME type'
                 });
+            } else {
+                LogEngine.debug('[AttachmentHandler] MIME type detection', {
+                    fileName: sanitizedFileName,
+                    contentTypeMime,
+                    finalMimeType: mimeDetection.finalMimeType,
+                    detectionMethod: mimeDetection.detectionMethod
+                });
             }
-            
-            LogEngine.debug('[AttachmentHandler] MIME type detection', {
-                fileName: sanitizedFileName,
-                contentTypeMime,
-                extensionMime,
-                finalMimeType: mimeType,
-                detectionMethod: contentTypeMime ? 'content-type' : (extensionMime !== 'application/octet-stream' ? 'extension' : 'fallback')
-            });
 
             // Enhanced MIME type validation using centralized configuration
             if (BUFFER_ATTACHMENT_CONFIG.enableContentValidation) {
                 const supportedFormats = getImageProcessingConfig().supportedFormats;
                 
                 // Parse MIME type to remove parameters (e.g., "image/jpeg; charset=utf-8" -> "image/jpeg")
-                const baseMimeType = (mimeType.split(';')[0] || mimeType).trim().toLowerCase();
+                const baseMimeType = (mimeDetection.finalMimeType.split(';')[0] || mimeDetection.finalMimeType).trim().toLowerCase();
                 
                 const isSupportedFormat = supportedFormats.some(format => {
                     const formatLower = format.toLowerCase();
@@ -1010,16 +1137,17 @@ export class AttachmentHandler {
                 if (!isSupportedFormat) {
                     LogEngine.warn('[AttachmentHandler] Unsupported MIME type detected', {
                         fileName: sanitizedFileName,
-                        originalMimeType: mimeType,
+                        originalMimeType: mimeDetection.finalMimeType,
                         baseMimeType,
                         allowedFormats: supportedFormats,
-                        centralizedConfig: true
+                        centralizedConfig: true,
+                        clipboardSupport: mimeDetection.isClipboardLikely
                     });
                     
                     const processingError = createProcessingError(
                         AttachmentProcessingError.INVALID_FILE_TYPE,
-                        `Unsupported file type: ${mimeType}. Only supported formats: ${supportedFormats.join(', ')}`,
-                        { ...operationContext, fileName: sanitizedFileName, mimeType }
+                        `Unsupported file type: ${mimeDetection.finalMimeType}. Only supported formats: ${supportedFormats.join(', ')}`,
+                        { ...operationContext, fileName: sanitizedFileName, mimeType: mimeDetection.finalMimeType }
                     );
                     throw new Error(processingError.message);
                 }
@@ -1028,13 +1156,14 @@ export class AttachmentHandler {
             LogEngine.info('[AttachmentHandler] File loaded to buffer successfully', {
                 fileName: sanitizedFileName,
                 size: buffer.length,
-                mimeType
+                mimeType: mimeDetection.finalMimeType,
+                detectionMethod: mimeDetection.detectionMethod
             });
 
             return {
                 buffer,
                 fileName: sanitizedFileName,
-                mimeType,
+                mimeType: mimeDetection.finalMimeType,
                 size: buffer.length
             };
             
