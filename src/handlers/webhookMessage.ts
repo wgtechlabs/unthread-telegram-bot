@@ -45,16 +45,8 @@ export class TelegramWebhookHandler {
     this.templateManager = GlobalTemplateManager.getInstance();
     this.imageConfig = getImageProcessingConfig(); // Load configuration
     
-    // Fail-fast validation: Ensure required environment variables are set at initialization
+    // SLACK_TEAM_ID is validated as required environment variable at startup
     this.teamId = process.env.SLACK_TEAM_ID || '';
-    if (!this.teamId) {
-      const errorMessage = 'SLACK_TEAM_ID environment variable is not set. Please configure it before starting the application.';
-      LogEngine.error('Configuration validation failed during initialization', {
-        missingVariable: 'SLACK_TEAM_ID',
-        suggestion: 'Set SLACK_TEAM_ID in your environment variables (Slack workspace identifier)'
-      });
-      throw new Error(errorMessage);
-    }
     
     LogEngine.info('TelegramWebhookHandler initialized', {
       imageProcessingEnabled: this.imageConfig.enabled,

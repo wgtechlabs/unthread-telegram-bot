@@ -14,6 +14,7 @@
  * - PLATFORM_REDIS_URL: Redis connection for bot state management
  * - WEBHOOK_REDIS_URL: Redis connection for webhook event processing (required for agent responses)
  * - POSTGRES_URL: PostgreSQL database connection for persistent storage
+ * - SLACK_TEAM_ID: Slack workspace ID for file attachment downloads (required for image processing)
  * 
  * Optional Environment Variables:
  * - DATABASE_SSL_VALIDATE: SSL validation mode for database connections (true/false)
@@ -47,7 +48,8 @@ const REQUIRED_ENV_VARS = [
     'ADMIN_USERS',
     'PLATFORM_REDIS_URL',
     'WEBHOOK_REDIS_URL',
-    'POSTGRES_URL'
+    'POSTGRES_URL',
+    'SLACK_TEAM_ID'
 ] as const;
 
 /**
@@ -61,7 +63,8 @@ const ENV_VAR_HELP: Record<string, string> = {
     'ADMIN_USERS': 'Message @userinfobot on Telegram to get your user ID (comma-separated list)',
     'PLATFORM_REDIS_URL': 'Redis connection string for bot state management',
     'WEBHOOK_REDIS_URL': 'Redis connection string for webhook event processing (agent responses)',
-    'POSTGRES_URL': 'PostgreSQL connection string for persistent storage'
+    'POSTGRES_URL': 'PostgreSQL connection string for persistent storage',
+    'SLACK_TEAM_ID': 'Slack workspace ID for file attachment downloads (from Slack workspace URL or API)'
 };
 
 /**
@@ -451,7 +454,7 @@ export function getImageProcessingConfig(): ImageProcessingConfig {
 
 /**
  * Validate image processing environment
- * Ensures SLACK_TEAM_ID is available for image downloads
+ * Image processing configuration is validated at startup through required environment variables
  */
 export function validateImageProcessingConfig(): void {
     const config = getImageProcessingConfig();
@@ -459,13 +462,6 @@ export function validateImageProcessingConfig(): void {
     if (!config.enabled) {
         LogEngine.info('📸 Image processing disabled via configuration');
         return;
-    }
-
-    // Validate SLACK_TEAM_ID for image downloads
-    if (!process.env.SLACK_TEAM_ID) {
-        LogEngine.warn('⚠️  SLACK_TEAM_ID not configured - image downloads may fail', {
-            recommendation: 'Set SLACK_TEAM_ID environment variable for reliable image processing'
-        });
     }
 
     LogEngine.info('📸 Image processing configuration validated', {
