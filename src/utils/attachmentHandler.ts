@@ -253,6 +253,12 @@ export const FILE_SIGNATURES = {
     'image/bmp': [
         [0x42, 0x4D] // BM header
     ],
+    'image/heic': [
+        [0x00, 0x00, 0x00, 0x00, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63] // ....ftypheic
+    ],
+    'image/avif': [
+        [0x00, 0x00, 0x00, 0x00, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66] // ....ftypavif
+    ],
     'application/pdf': [
         [0x25, 0x50, 0x44, 0x46] // %PDF
     ]
@@ -265,7 +271,7 @@ export const FILE_SIGNATURES = {
 export const BUFFER_ATTACHMENT_CONFIG = {
     // File Limits (optimized for buffer processing)
     maxFileSize: 10 * 1024 * 1024,          // 10MB per file (buffer-optimized)
-    maxFiles: 5,                             // 5 files max per message
+    maxFiles: 10,                            // Align with Telegram media group limit (2-10 files)
     
     // Network Settings
     downloadTimeout: 15000,                  // 15 seconds download timeout
@@ -392,7 +398,7 @@ function createProcessingError(
             case AttachmentProcessingError.FILE_NOT_FOUND:
                 return "❌ File not found. The file may have been deleted or is no longer available.";
             case AttachmentProcessingError.FILE_TOO_LARGE:
-                return "📏 File too large. Please send a file smaller than 10MB.";
+                return `📏 File too large. Please send a file smaller than ${Math.round(BUFFER_ATTACHMENT_CONFIG.maxFileSize / (1024 * 1024))}MB.`;
             case AttachmentProcessingError.FILE_CORRUPTED:
                 return "🔧 File appears to be corrupted. Please try sending the file again.";
             case AttachmentProcessingError.INVALID_FILE_TYPE:
@@ -471,7 +477,9 @@ function classifyError(error: Error, context?: PerformanceContext): ProcessingEr
     }
 
     // API errors (HIGH PRIORITY - specific to service)
-    if (message.includes('telegram') && (message.includes('api') || message.includes('401') || message.includes('403'))) {
+    if (message.includes('telegram') && (message.includes('api') || message.includes('upload') || 
+        message.includes('sendphoto') || message.includes('sendmediagroup') || 
+        message.includes('401') || message.includes('403'))) {
         return createProcessingError(AttachmentProcessingError.TELEGRAM_API_ERROR, error.message, context);
     }
 
@@ -547,15 +555,15 @@ function detectMimeTypeFromBuffer(buffer: Buffer): string {
     // Check against known file signatures
     for (const [mimeType, signatures] of Object.entries(FILE_SIGNATURES)) {
         for (const signature of signatures) {
-            if (buffer.length >= signature.length) {
-                // Convert signature to Buffer for safe comparison
+            if (buffer.length >= signature.length && Array.isArray(signature)) {
+                // Use Buffer.from once and compare directly for better performance
                 const signatureBuffer = Buffer.from(signature);
-                const bufferSlice = buffer.slice(0, signature.length);
+                const match = buffer.subarray(0, signature.length).equals(signatureBuffer);
                 
-                if (bufferSlice.equals(signatureBuffer)) {
+                if (match) {
                     // Special case for WebP: need to check for WebP signature after RIFF
                     if (mimeType === 'image/webp' && buffer.length >= 12) {
-                        const webpSignature = buffer.slice(8, 12);
+                        const webpSignature = buffer.subarray(8, 12);
                         if (webpSignature.toString('ascii') === 'WEBP') {
                             return mimeType;
                         }
@@ -879,21 +887,37 @@ export class AttachmentHandler {
      * Get file information from Telegram API
      */
     private async getFileInfoFromTelegram(fileId: string, operationContext: PerformanceContext): Promise<Response> {
-        const telegramApiUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`;
+        const token = process.env.TELEGRAM_BOT_TOKEN;
+        if (!token) {
+            const processingError = createProcessingError(
+                AttachmentProcessingError.CONFIGURATION_ERROR,
+                'TELEGRAM_BOT_TOKEN is not set',
+                operationContext
+            );
+            throw new Error(processingError.message);
+        }
+        const telegramApiUrl = `https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`;
         
         LogEngine.debug('[AttachmentHandler] Making Telegram API request', {
             fileId,
-            url: telegramApiUrl.replace(process.env.TELEGRAM_BOT_TOKEN || '', '[TOKEN]'),
-            hasToken: !!process.env.TELEGRAM_BOT_TOKEN
+            url: telegramApiUrl.replace(token, '[TOKEN]'),
+            hasToken: !!token
         });
 
         try {
+            // Create AbortController with timeout for robust request handling
+            const controller = new (globalThis as any).AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), BUFFER_ATTACHMENT_CONFIG.downloadTimeout);
+            
             const fileResponse = await fetch(telegramApiUrl, {
                 method: 'GET',
                 headers: {
                     'User-Agent': 'unthread-telegram-bot/1.0'
-                }
+                },
+                signal: controller.signal
             });
+            
+            clearTimeout(timeoutId);
             
             LogEngine.debug('[AttachmentHandler] Received Telegram API response', {
                 fileId,
@@ -1049,13 +1073,14 @@ export class AttachmentHandler {
             throw new Error(processingError.message);
         }
 
-        // Additional size validation from headers
+        // Additional size validation from headers with proper numeric validation
         const contentLength = downloadResponse.headers.get('content-length');
-        if (contentLength && !this.validateFileSize(parseInt(contentLength), sanitizedFileName)) {
+        const contentLengthNum = contentLength ? Number(contentLength) : undefined;
+        if (contentLengthNum && Number.isFinite(contentLengthNum) && !this.validateFileSize(contentLengthNum, sanitizedFileName)) {
             const processingError = createProcessingError(
                 AttachmentProcessingError.FILE_TOO_LARGE,
-                `File too large based on content-length: ${contentLength} bytes`,
-                { ...operationContext, fileName: sanitizedFileName, fileSize: parseInt(contentLength) }
+                `File too large based on content-length: ${contentLengthNum} bytes`,
+                { ...operationContext, fileName: sanitizedFileName, fileSize: contentLengthNum }
             );
             throw new Error(processingError.message);
         }
@@ -1257,8 +1282,10 @@ export class AttachmentHandler {
 
         // Process files sequentially to manage memory usage consistently
         for (let index = 0; index < fileIds.length; index++) {
-            const fileId = fileIds.at(index);
-            if (!fileId) {
+            const fileId = fileIds[index];
+            
+            // Enhanced validation to prevent object injection
+            if (!fileId || typeof fileId !== 'string' || fileId.trim().length === 0) {
                 LogEngine.warn('[AttachmentHandler] Skipping invalid file ID at index', { index });
                 conversionErrors.push(`File ${index + 1}: Invalid file ID`);
                 continue;
@@ -1786,7 +1813,9 @@ export class AttachmentHandler {
 
                     // Upload to Telegram Bot API using sendPhoto endpoint
                     const telegramApiUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`;
-                    const uploadResponse = await fetch(telegramApiUrl, {
+                    
+                    // Add upload timeout protection using Promise.race
+                    const uploadPromise = fetch(telegramApiUrl, {
                         method: 'POST',
                         headers: {
                             'User-Agent': 'unthread-telegram-bot/2.0.0-image-flow',
@@ -1794,6 +1823,12 @@ export class AttachmentHandler {
                         },
                         body: formData
                     });
+                    
+                    const timeoutPromise = new Promise<never>((_, reject) => {
+                        setTimeout(() => reject(new Error(`Upload timeout after ${BUFFER_ATTACHMENT_CONFIG.uploadTimeout}ms`)), BUFFER_ATTACHMENT_CONFIG.uploadTimeout);
+                    });
+                    
+                    const uploadResponse = await Promise.race([uploadPromise, timeoutPromise]);
 
                     LogEngine.debug('[AttachmentHandler] Received Telegram API response', {
                         fileName: fileBuffer.fileName,
@@ -1821,9 +1856,6 @@ export class AttachmentHandler {
                         fileId: responseData.result?.photo?.[0]?.file_id || 'unknown'
                     });
 
-                    // Security: Zero out buffer after upload
-                    fileBuffer.buffer.fill(0);
-
                     return true;
 
                 }, `uploadBufferToTelegram-${chatId}`, operationContext);
@@ -1844,6 +1876,11 @@ export class AttachmentHandler {
             });
 
             throw error;
+        } finally {
+            // Security: Ensure buffer is zeroed even on failure
+            if (fileBuffer && fileBuffer.buffer) {
+                fileBuffer.buffer.fill(0);
+            }
         }
     }
 
@@ -1915,6 +1952,13 @@ export class AttachmentHandler {
                 error: error instanceof Error ? error.message : String(error)
             });
             return false;
+        } finally {
+            // Security: Ensure buffers are zeroized even on failures
+            imageBuffers.forEach(buf => {
+                if (buf && buf.buffer) {
+                    buf.buffer.fill(0);
+                }
+            });
         }
     }
 
@@ -1967,7 +2011,9 @@ export class AttachmentHandler {
 
             // Send to Telegram
             const telegramApiUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMediaGroup`;
-            const response = await fetch(telegramApiUrl, {
+            
+            // Add upload timeout protection using Promise.race
+            const uploadPromise = fetch(telegramApiUrl, {
                 method: 'POST',
                 headers: {
                     'User-Agent': 'unthread-telegram-bot/2.0.0-image-flow',
@@ -1975,6 +2021,12 @@ export class AttachmentHandler {
                 },
                 body: formData
             });
+            
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error(`Media group upload timeout after ${BUFFER_ATTACHMENT_CONFIG.uploadTimeout}ms`)), BUFFER_ATTACHMENT_CONFIG.uploadTimeout);
+            });
+            
+            const response = await Promise.race([uploadPromise, timeoutPromise]);
 
             if (!response.ok) {
                 const errorText = await response.text().catch(() => 'Unknown error');
@@ -1993,9 +2045,6 @@ export class AttachmentHandler {
                 messageCount: responseData.result?.length || 0
             });
 
-            // Security: Zero out buffers after upload
-            imageBuffers.forEach(buffer => buffer.buffer.fill(0));
-
             return true;
 
         } catch (error) {
@@ -2005,6 +2054,13 @@ export class AttachmentHandler {
                 error: error instanceof Error ? error.message : String(error)
             });
             throw error;
+        } finally {
+            // Security: Ensure buffers are zeroized even on failures
+            imageBuffers.forEach(buffer => {
+                if (buffer && buffer.buffer) {
+                    buffer.buffer.fill(0);
+                }
+            });
         }
     }
 
