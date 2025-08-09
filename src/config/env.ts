@@ -412,6 +412,14 @@ export interface ImageProcessingConfig {
 }
 
 export function getImageProcessingConfig(): ImageProcessingConfig {
+    // Image Processing Constants
+    const TELEGRAM_THUMBNAIL_SIZES = {
+        LOW_QUALITY: 160,   // Slack API low resolution
+        HIGH_QUALITY: 360,  // Slack API high resolution (Telegram optimal)
+    } as const;
+
+    const DEFAULT_THUMBNAIL_SIZE_PX = TELEGRAM_THUMBNAIL_SIZES.HIGH_QUALITY;
+
     // Hardcoded sensible defaults - no environment configuration needed
     const isEnabled = true; // Always enabled for image processing
     const maxImageSize = 10 * 1024 * 1024; // 10MB (Telegram limit)
@@ -419,8 +427,7 @@ export function getImageProcessingConfig(): ImageProcessingConfig {
     const downloadTimeout = 15000; // 15 seconds
     const uploadTimeout = 30000; // 30 seconds
     const enableThumbnails = true; // Always use thumbnails for better performance
-    // Slack API thumbnail sizes: 160px (low), 360px (high)
-    const thumbnailSize = 360; // 360px high quality thumbnails for Telegram (max official Slack size)
+    const thumbnailSize = DEFAULT_THUMBNAIL_SIZE_PX;
 
     const supportedFormats = [
         'image/jpeg',
