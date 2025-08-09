@@ -1223,60 +1223,90 @@ export async function downloadUnthreadImage(
             usingCachedParams: true
         });
 
-        // Use fetch API (proven to work, unlike Axios)
-        const response = await fetch(`${endpoint}?${cachedParams}`, {
-            headers: {
-                'X-API-KEY': UNTHREAD_API_KEY,
-                'Accept': 'application/octet-stream'
-            }
-        });
+        // Create AbortController with timeout for robust request handling
+        // Using type assertion for Node.js 20+ global AbortController
+        const abortController = new (globalThis as any).AbortController();
+        const timeout = setTimeout(() => {
+            abortController.abort();
+        }, getImageProcessingConfig().downloadTimeout);
 
-        LogEngine.debug('Received Unthread API response', {
-            fileId,
-            status: response.status,
-            statusText: response.statusText,
-            contentType: response.headers.get('content-type'),
-            contentLength: response.headers.get('content-length'),
-            ok: response.ok
-        });
+        try {
+            // Use fetch API (proven to work, unlike Axios) with timeout protection
+            const response = await fetch(`${endpoint}?${cachedParams}`, {
+                headers: {
+                    'X-API-KEY': UNTHREAD_API_KEY,
+                    'Accept': 'application/octet-stream'
+                },
+                signal: abortController.signal
+            });
 
-        if (!response.ok) {
-            throw new Error(`Unthread API error: ${response.status} ${response.statusText}`);
-        }
+            // Clear timeout on successful response
+            clearTimeout(timeout);
 
-        // Convert to blob and then to buffer (proven pattern)
-        const blob = await response.blob();
-        const buffer = Buffer.from(await blob.arrayBuffer());
-
-        // Validate the downloaded content
-        if (buffer.length === 0) {
-            throw new Error('Downloaded file is empty');
-        }
-
-        // Image-specific validation
-        const contentType = response.headers.get('content-type') || 'unknown';
-        if (!contentType.startsWith('image/')) {
-            LogEngine.warn('Downloaded file may not be an image', {
+            LogEngine.debug('Received Unthread API response', {
                 fileId,
+                status: response.status,
+                statusText: response.statusText,
+                contentType: response.headers.get('content-type'),
+                contentLength: response.headers.get('content-length'),
+                ok: response.ok
+            });
+
+            if (!response.ok) {
+                throw new Error(`Unthread API error: ${response.status} ${response.statusText}`);
+            }
+
+            // Early validation: Check content-type immediately for images only
+            const contentType = response.headers.get('content-type') || '';
+            if (!contentType.startsWith('image/')) {
+                throw new Error(`Only image files are supported. Received content-type: ${contentType}`);
+            }
+
+            // Early validation: Check content-length against maxImageSize before downloading
+            const contentLengthHeader = response.headers.get('content-length');
+            const maxSize = getImageProcessingConfig().maxImageSize;
+            
+            if (contentLengthHeader) {
+                const contentLength = parseInt(contentLengthHeader, 10);
+                if (!isNaN(contentLength) && contentLength > maxSize) {
+                    throw new Error(`Image too large: ${contentLength} bytes (max: ${maxSize})`);
+                }
+            }
+
+            // Convert response directly to buffer for efficiency (no blob intermediate step)
+            const buffer = Buffer.from(await response.arrayBuffer());
+
+            // Validate the downloaded content
+            if (buffer.length === 0) {
+                throw new Error('Downloaded file is empty');
+            }
+
+            // Final size validation (in case content-length header was missing or incorrect)
+            if (buffer.length > maxSize) {
+                throw new Error(`Image too large: ${buffer.length} bytes (max: ${maxSize})`);
+            }
+
+            LogEngine.info('Unthread image download successful', {
+                fileId,
+                size: buffer.length,
                 contentType,
                 expectedFileName
             });
+
+            return buffer;
+
+        } catch (fetchError) {
+            // Clear timeout in case of error
+            clearTimeout(timeout);
+            
+            // Handle AbortController timeout specifically
+            if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+                throw new Error(`Image download timeout after ${getImageProcessingConfig().downloadTimeout}ms`);
+            }
+            
+            // Re-throw other fetch errors
+            throw fetchError;
         }
-
-        // Size validation (Telegram limit)
-        const maxSize = getImageProcessingConfig().maxImageSize; // Use centralized max image size
-        if (buffer.length > maxSize) {
-            throw new Error(`Image too large: ${buffer.length} bytes (max: ${maxSize})`);
-        }
-
-        LogEngine.info('Unthread image download successful', {
-            fileId,
-            size: buffer.length,
-            contentType,
-            expectedFileName
-        });
-
-        return buffer;
 
     } catch (error) {
         const err = error as Error;
