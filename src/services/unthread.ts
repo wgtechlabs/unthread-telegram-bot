@@ -238,6 +238,9 @@ const CHANNEL_ID = process.env.UNTHREAD_SLACK_CHANNEL_ID!;
 // Customer ID cache to avoid creating duplicates
 const customerCache = new Map<string, Customer>();
 
+// URLSearchParams cache for image download requests to avoid repeated object creation
+const downloadQueryCache = new Map<string, string>();
+
 /**
  * Creates a new customer in Unthread using the extracted company name from a Telegram group chat title.
  *
@@ -1167,19 +1170,27 @@ export async function downloadUnthreadImage(
 
         // Use the proven working endpoint and pattern from context
         const endpoint = `${API_BASE_URL}/slack/files/${fileId}/thumb`;
-        const params = new URLSearchParams({ 
-            thumbSize: thumbSize.toString(), 
-            teamId: teamId 
-        });
+        
+        // Use a cache for query strings based on thumbSize and teamId
+        const cacheKey = `${thumbSize}:${teamId}`;
+        if (!downloadQueryCache.has(cacheKey)) {
+            const params = new URLSearchParams({  
+                thumbSize: thumbSize.toString(),  
+                teamId: teamId  
+            });
+            downloadQueryCache.set(cacheKey, params.toString());
+        }
+        const cachedParams = downloadQueryCache.get(cacheKey);
 
         LogEngine.debug('Making Unthread API request', {
             endpoint,
-            params: Object.fromEntries(params.entries()),
-            hasApiKey: !!UNTHREAD_API_KEY
+            params: { thumbSize, teamId },
+            hasApiKey: !!UNTHREAD_API_KEY,
+            usingCachedParams: true
         });
 
         // Use fetch API (proven to work, unlike Axios)
-        const response = await fetch(`${endpoint}?${params}`, {
+        const response = await fetch(`${endpoint}?${cachedParams}`, {
             headers: {
                 'X-API-KEY': UNTHREAD_API_KEY,
                 'Accept': 'application/octet-stream'
