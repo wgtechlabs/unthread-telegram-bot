@@ -49,7 +49,7 @@ export class AttachmentDetectionService {
       return false;
     }
     
-    return event.attachments?.types.some(type => 
+    return event.attachments?.types?.some(type => 
       type.startsWith('image/')
     ) ?? false;
   }
@@ -65,7 +65,7 @@ export class AttachmentDetectionService {
     
     const supportedTypes = getImageProcessingConfig().supportedFormats;
     
-    return event.attachments?.types.some(type => 
+    return event.attachments?.types?.some(type => 
       supportedTypes.includes(type.toLowerCase())
     ) ?? false;
   }

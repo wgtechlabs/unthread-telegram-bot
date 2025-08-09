@@ -56,7 +56,7 @@ import type { IBotsStore } from '../sdk/types.js';
 import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 import { escapeMarkdown } from '../utils/markdownEscape.js';
 import { downloadUnthreadImage } from '../services/unthread.js';
-import { BUFFER_ATTACHMENT_CONFIG, attachmentHandler } from '../utils/attachmentHandler.js';
+import { attachmentHandler } from '../utils/attachmentHandler.js';
 import { type ImageProcessingConfig, getImageProcessingConfig, getSlackTeamId } from '../config/env.js';
 import { AttachmentDetectionService } from '../services/attachmentDetection.js';
 // ENABLED: Attachment processing fully operational with metadata-driven detection
@@ -205,7 +205,8 @@ export class TelegramWebhookHandler {
       });
 
       // 4. Get attachment processing decision using metadata-first approach
-      const processingDecision = AttachmentDetectionService.getProcessingDecision(webhookEvent);
+      const maxSizeBytes = getImageProcessingConfig().maxImageSize * getImageProcessingConfig().maxImagesPerBatch;
+      const processingDecision = AttachmentDetectionService.getProcessingDecision(webhookEvent, maxSizeBytes);
       
       // Log integration status for monitoring
       this.logIntegrationStatus(webhookEvent, conversationId);
@@ -226,7 +227,7 @@ export class TelegramWebhookHandler {
       }
 
       if (processingDecision.isOversized) {
-        await this.handleOversizedAttachments(webhookEvent, ticketData);
+        await this.handleOversizedAttachments(webhookEvent, ticketData, maxSizeBytes);
         return;
       }
 
@@ -1029,17 +1030,18 @@ export class TelegramWebhookHandler {
    * Handle oversized attachments with user notification
    * Informs users when files exceed size limits
    */
-  private async handleOversizedAttachments(event: WebhookEvent, ticketData: any): Promise<void> {
+  private async handleOversizedAttachments(event: WebhookEvent, ticketData: any, maxSizeBytes: number): Promise<void> {
     const totalSize = AttachmentDetectionService.getTotalSize(event);
     
     LogEngine.info('📎 Handling oversized attachments', {
       conversationId: event.data.conversationId,
       totalSize: totalSize,
+      maxSizeBytes: maxSizeBytes,
       attachmentSummary: AttachmentDetectionService.getAttachmentSummary(event)
     });
 
     // Send notification about size limits
-    const maxSizeMB = Math.round(BUFFER_ATTACHMENT_CONFIG.maxFileSize / (1024 * 1024));
+    const maxSizeMB = Math.round(maxSizeBytes / (1024 * 1024));
     const message = '📎 *Attachment Received*\n\n' +
       `⚠️ Files are too large to process (${this.formatFileSize(totalSize)}). ` +
       `Maximum size limit is ${maxSizeMB}MB.\n\n` +
