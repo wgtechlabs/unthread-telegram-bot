@@ -769,12 +769,23 @@ export class TelegramWebhookHandler {
           continue;
         }
 
+        // Extract metadata with proper undefined guards and type safety
+        const fileName = (slackFile.name && typeof slackFile.name === 'string') 
+          ? slackFile.name 
+          : 'unknown-file';
+        const mimeType = (slackFile.mimetype && typeof slackFile.mimetype === 'string') 
+          ? slackFile.mimetype 
+          : (slackFile.type && typeof slackFile.type === 'string') 
+            ? slackFile.type 
+            : 'application/octet-stream';
+        const fileSize = Number(slackFile.size) || 0;
+
         LogEngine.info('✅ Valid Slack file detected', {
           conversationId,
           fileIndex: i + 1,
-          fileName: slackFile.name,
-          fileSize: slackFile.size,
-          fileType: slackFile.mimetype,
+          fileName: fileName,
+          fileSize: fileSize,
+          fileType: mimeType,
           fileId: fileId
         });
 
@@ -782,9 +793,9 @@ export class TelegramWebhookHandler {
         await this.downloadAndForwardSlackFile({
           conversationId,
           fileId: fileId,
-          fileName: String(slackFile.name),
-          fileSize: Number(slackFile.size) || 0,
-          mimeType: String(slackFile.mimetype || slackFile.type),
+          fileName: fileName,
+          fileSize: fileSize,
+          mimeType: mimeType,
           chatId,
           replyToMessageId
         });
