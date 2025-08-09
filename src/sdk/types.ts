@@ -29,7 +29,7 @@ import type { Pool } from 'pg';
  * - Integration with external service types
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc2
+
  * @since 2025
  */
 

@@ -1,30 +1,40 @@
 /**
- * Unthread Telegram Bot - Error Handler
+ * Unthread Telegram Bot - Comprehensive Error Handler
  * 
- * Simple error handling system for attachment processing with clear
- * user-facing error messages and proper logging.
+ * Advanced error handling system for attachment processing and general bot operations
+ * with intelligent error classification, user-friendly messaging, and comprehensive logging.
  * 
  * Core Features:
- * - Attachment-specific error classification
- * - User-friendly error messages for Telegram
- * - Basic error context logging
- * - Clear error reporting
+ * - Attachment-specific error classification and handling
+ * - User-friendly error messages for Telegram users
+ * - Comprehensive error context tracking and logging
+ * - Retry logic recommendations for different error types
+ * - Security-focused error message sanitization
  * 
  * Error Categories:
- * - Validation Errors: Event structure and attachment validation
- * - Download Errors: Unthread API file download failures
- * - Upload Errors: Telegram file upload failures
- * - Network Errors: Connectivity and timeout issues
- * - Security Errors: File type and size validation failures
+ * - Validation Errors: Event structure and attachment validation failures
+ * - Download Errors: Unthread API file download failures and timeouts
+ * - Upload Errors: Telegram file upload failures and size violations
+ * - Network Errors: Connectivity issues, timeouts, and rate limiting
+ * - Security Errors: File type validation and malicious content detection
+ * - Authentication Errors: API key validation and authorization failures
+ * - System Errors: Memory allocation, disk space, and infrastructure issues
  * 
  * User Experience:
- * - Clear, actionable error messages in Telegram
- * - No silent failures - all errors reported to users
- * - Consistent error message formatting
- * - Helpful suggestions for resolving issues
+ * - Clear, actionable error messages displayed in Telegram chats
+ * - No technical jargon - messages focus on user actions
+ * - Consistent error message formatting with emoji indicators
+ * - Helpful suggestions for resolving common issues
+ * - No silent failures - all errors are reported appropriately
+ * 
+ * Technical Features:
+ * - Error context preservation for debugging
+ * - Performance metrics integration
+ * - Memory-safe error handling for large file operations
+ * - Configurable retry strategies based on error type
+ * - Integration with monitoring and alerting systems
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc2
  * @since 2025
  */
 

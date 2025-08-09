@@ -29,7 +29,7 @@
  * - Data consistency guarantees across all layers
  * - Comprehensive error handling and logging 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc2
+
  * @since 2025
  */
 import { RedisClientType, createClient } from 'redis';

@@ -5,7 +5,7 @@
  * to ensure consistent timestamp formatting across all startup logs.
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc2
+
  * @since 2025
  */
 import { LogEngine } from '@wgtechlabs/log-engine';

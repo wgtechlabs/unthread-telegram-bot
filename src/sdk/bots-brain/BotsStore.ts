@@ -26,7 +26,7 @@
  * - PostgreSQL for permanent data persistence
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc2
+
  * @since 2025
  */
 import { UnifiedStorage } from './UnifiedStorage.js';

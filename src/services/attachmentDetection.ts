@@ -12,7 +12,7 @@
  * - Consistent validation with trust-but-verify approach
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0
+
  * @since August 2025
  */
 

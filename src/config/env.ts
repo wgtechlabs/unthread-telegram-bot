@@ -1,9 +1,10 @@
 /**
  * Unthread Telegram Bot - Environment Configuration and Validation
  * 
- * Validates and manages environment variables required for the Unthread Telegram Bot
- * to function properly. This module ensures all necessary API keys, database connections,
- * and service endpoints are configured before the bot starts.
+ * Comprehensive environment variable management system that validates and manages 
+ * all configuration required for the Unthread Telegram Bot to function properly. 
+ * This module ensures all necessary API keys, database connections, and service 
+ * endpoints are configured before the bot starts.
  * 
  * Required Environment Variables:
  * - TELEGRAM_BOT_TOKEN: Telegram Bot API authentication token (from @BotFather)
@@ -23,15 +24,23 @@
  * - MY_COMPANY_NAME: Company name for ticket attribution
  * - UNTHREAD_DEFAULT_PRIORITY: Default priority for new tickets (3, 5, 7, or 9)
  * - BOT_USERNAME: Bot username for performance optimization (eliminates API calls if set)
+ * - DUMMY_EMAIL_DOMAIN: Domain for generating placeholder email addresses
  * 
- * Security:
- * - Validates all critical environment variables at startup
+ * Validation Features:
+ * - Fail-fast validation prevents startup with incomplete configuration
+ * - Comprehensive error messages with setup instructions for each variable
+ * - Placeholder value detection prevents accidental deployment
+ * - Token format validation (e.g., Telegram bot token structure)
+ * - Environment-specific configuration support
+ * 
+ * Security Considerations:
+ * - No sensitive values are logged or exposed in error messages
+ * - Validates critical environment variables at startup
  * - Provides clear error messages for missing configuration 
  * - Prevents bot startup with incomplete configuration
  * - Detects placeholder values and prevents accidental deployment
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc2
  * @since 2025
  */
 

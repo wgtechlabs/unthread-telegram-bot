@@ -1,13 +1,47 @@
 /**
- * Unthread API Service - Customer support ticket management
+ * Unthread Platform Integration Service
  * 
- * Key Features:
- * - Customer profile creation and management
- * - Support ticket creation and status tracking
- * - Message routing between Telegram and Unthread
+ * Comprehensive service layer for all interactions with the Unthread customer support
+ * platform API, providing seamless integration between Telegram bot functionality
+ * and Unthread's ticket management system.
+ * 
+ * Core Capabilities:
+ * - Customer and conversation management with intelligent deduplication
+ * - Support ticket creation and lifecycle management
+ * - Message routing and delivery with rich formatting support
+ * - File attachment processing and transfer (images, documents)
+ * - Agent response handling and real-time delivery
+ * - Error handling with retry logic and fallback strategies
+ * 
+ * API Integration Features:
+ * - RESTful API communication with proper authentication
+ * - Webhook event processing for real-time agent responses
+ * - File download/upload with progress monitoring and resume capability
+ * - Rate limiting compliance and exponential backoff
+ * - Comprehensive error classification and handling
+ * 
+ * Data Management:
+ * - Customer deduplication based on Telegram group chat names
+ * - Conversation state management and persistence
+ * - Message threading and context preservation
+ * - Attachment metadata tracking and validation
+ * - Performance caching for frequently accessed data
+ * 
+ * Performance Optimizations:
+ * - Connection pooling for HTTP requests
+ * - Query string caching for repetitive API calls
+ * - Customer lookup caching to prevent duplicate creation
+ * - Image thumbnail processing with size optimization
+ * - Memory-efficient file streaming for large attachments
+ * 
+ * Security Features:
+ * - API key validation and secure header management
+ * - Request signature verification for webhooks
+ * - File content validation before processing
+ * - Sanitization of user inputs and file names
+ * - Rate limiting protection and abuse prevention
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc2
  * @since 2025
  */
 

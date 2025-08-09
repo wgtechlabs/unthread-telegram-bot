@@ -5,7 +5,7 @@
  * status notifications that focus on user intent rather than technical implementation.
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc2
+
  * @since 2025
  */
 
