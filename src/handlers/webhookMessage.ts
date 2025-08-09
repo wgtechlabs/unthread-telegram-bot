@@ -56,7 +56,7 @@ import type { IBotsStore } from '../sdk/types.js';
 import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 import { escapeMarkdown } from '../utils/markdownEscape.js';
 import { downloadUnthreadImage } from '../services/unthread.js';
-import { attachmentHandler } from '../utils/attachmentHandler.js';
+import { BUFFER_ATTACHMENT_CONFIG, attachmentHandler } from '../utils/attachmentHandler.js';
 import { type ImageProcessingConfig, getImageProcessingConfig, getSlackTeamId } from '../config/env.js';
 import { AttachmentDetectionService } from '../services/attachmentDetection.js';
 // ENABLED: Attachment processing fully operational with metadata-driven detection
@@ -1039,9 +1039,10 @@ export class TelegramWebhookHandler {
     });
 
     // Send notification about size limits
+    const maxSizeMB = Math.round(BUFFER_ATTACHMENT_CONFIG.maxFileSize / (1024 * 1024));
     const message = '📎 *Attachment Received*\n\n' +
       `⚠️ Files are too large to process (${this.formatFileSize(totalSize)}). ` +
-      'Maximum size limit is 50MB.\n\n' +
+      `Maximum size limit is ${maxSizeMB}MB.\n\n` +
       'Your agent can still see and access all files in the dashboard.';
 
     await this.safeSendMessage(
