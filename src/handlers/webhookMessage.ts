@@ -1292,10 +1292,14 @@ export class TelegramWebhookHandler {
       const fileName = (file.name && typeof file.name === 'string') 
         ? String(file.name).trim() 
         : `image_${i + 1}`;
-      const fileType = fileTypes.find(type => type.startsWith('image/'))?.toLowerCase();
+      
+      // Extract MIME type directly from the current file object
+      const fileType = (file.mimetype && typeof file.mimetype === 'string') 
+        ? String(file.mimetype).toLowerCase() 
+        : '';
 
-      // Skip non-images using metadata
-      if (!fileType || !supportedImageTypes.includes(fileType)) {
+      // Skip non-images using per-file MIME type validation
+      if (!fileType || !fileType.startsWith('image/') || !supportedImageTypes.includes(fileType)) {
         LogEngine.debug('Skipping non-image or unsupported image type', {
           conversationId,
           fileName,
