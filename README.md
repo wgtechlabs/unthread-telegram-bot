@@ -56,7 +56,7 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
 - **👤 One-Time Email Setup** - Collect email once, automatically use for all future tickets
 - **📧 Email Management** - View and update email preferences with `/viewemail` and `/setemail` commands
 - **💬 Real-Time Communication** - Bidirectional messaging between agents and customers
-- **📎 File Attachment Support** - Full bidirectional file sharing between Telegram and Unthread (Phase 5 Complete)
+- **📎 File Attachment Support** - Full bidirectional file sharing between Telegram and Unthread (Complete)
   - ✅ **Telegram → Unthread**: Users can send files directly to agents via Telegram
   - ✅ **Unthread → Telegram**: Agent files are automatically forwarded to users with metadata
   - ✅ **Image Processing**: Enhanced image handling with thumbnail support and format validation

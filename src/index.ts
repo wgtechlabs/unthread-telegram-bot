@@ -345,7 +345,7 @@ try {
         webhookHandler = new TelegramWebhookHandler(bot, botsStore);
 
         // Subscribe to agent message events from dashboard only
-        // Phase 4: Simplified to dashboard → telegram flow exclusively
+        // Simplified to dashboard → telegram flow exclusively
         webhookConsumer.subscribe('message_created', 'dashboard', 
             webhookHandler.handleMessageCreated.bind(webhookHandler)
         );
@@ -364,7 +364,7 @@ try {
         
         // Log consolidated subscription summary
         const status = webhookConsumer.getStatus();
-        LogEngine.info('✅ Webhook event subscriptions configured (Phase 4: Dashboard-only architecture)', {
+        LogEngine.info('✅ Webhook event subscriptions configured (Dashboard-only architecture)', {
             totalSubscriptions: status.subscribedEvents.length,
             eventTypes: status.subscribedEvents,
             queueName: status.queueName,

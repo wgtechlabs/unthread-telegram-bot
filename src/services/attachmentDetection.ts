@@ -41,7 +41,7 @@ export class AttachmentDetectionService {
   }
   
   /**
-   * Image-specific detection for Phase 1 implementation
+   * Image-specific detection for enhanced attachment processing
    * Uses metadata types array for instant categorization
    */
   static hasImageAttachments(event: WebhookEvent): boolean {
