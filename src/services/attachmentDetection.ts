@@ -197,7 +197,7 @@ export class AttachmentDetectionService {
    * Generate processing decision summary
    * Helpful for logging and debugging
    */
-  static getProcessingDecision(event: WebhookEvent, maxSizeBytes: number = getImageProcessingConfig().maxImageSize * 5): {
+  static getProcessingDecision(event: WebhookEvent, maxSizeBytes: number = getImageProcessingConfig().maxImageSize * getImageProcessingConfig().maxImagesPerBatch): {
     shouldProcess: boolean;
     hasAttachments: boolean;
     hasImages: boolean;
