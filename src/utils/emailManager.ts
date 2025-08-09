@@ -142,7 +142,7 @@ export async function getUserEmailPreferences(userId: number): Promise<UserEmail
 
         return {
             email: userData.unthreadEmail,
-            isDummy: userData.unthreadEmail.includes(`@${EMAIL_CONFIG.dummyEmailDomain}`), // Auto-generated emails
+            isDummy: userData.unthreadEmail.endsWith(`@${EMAIL_CONFIG.dummyEmailDomain}`), // Auto-generated emails
             setAt: userData.updatedAt || userData.createdAt || new Date().toISOString(),
             canModify: true
         };

@@ -340,7 +340,7 @@ async function processMediaGroupCollection(mediaGroupId: string): Promise<void> 
                     
                     await collection.ctx.telegram.sendMessage(
                         collection.chatId,
-                        '🚫 **Files Not Supported**\n\n' +
+                        '🚫 *Files Not Supported*\n\n' +
                         'Some files in your media group are not supported. ' +
                         'Only image files are currently supported:\n' +
                         '• JPEG (.jpg, .jpeg)\n' +

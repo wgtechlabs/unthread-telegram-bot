@@ -246,10 +246,20 @@ export class AttachmentErrorHandler {
       );
     }
 
+    const maxImageSize = getImageProcessingConfig().maxImageSize;
+    
+    if (!maxImageSize || maxImageSize <= 0) {
+      throw this.createError(
+        AttachmentErrorType.ATTACHMENT_VALIDATION_FAILED,
+        'Image processing configuration error: maxImageSize is not properly configured',
+        context
+      );
+    }
+
     if (
       attachment.size && 
       typeof attachment.size === 'number' && 
-      attachment.size > getImageProcessingConfig().maxImageSize * ATTACHMENT_SIZE_VALIDATION.MAX_SIZE_VALIDATION_MULTIPLIER
+      attachment.size > maxImageSize * ATTACHMENT_SIZE_VALIDATION.MAX_SIZE_VALIDATION_MULTIPLIER
     ) {
       throw this.createError(
         AttachmentErrorType.FILE_SIZE_EXCEEDED,
