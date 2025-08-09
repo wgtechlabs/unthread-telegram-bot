@@ -70,6 +70,21 @@ export interface TelegramError extends Error {
   };
   on?: {
     method: string;
-    payload: any;
+    payload: unknown;
   };
 }
+
+// Webhook event types - new webhook attachment metadata structure
+export type {
+  WebhookEvent,
+  WebhookAttachments,
+  WebhookFileData,
+  AttachmentProcessingResult,
+  AttachmentConfig
+} from './webhookEvents.js';
+
+// Webhook event validation functions
+export {
+  isValidWebhookEvent,
+  hasValidAttachments
+} from './webhookEvents.js';
