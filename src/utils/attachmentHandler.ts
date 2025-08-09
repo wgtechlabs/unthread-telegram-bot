@@ -981,11 +981,17 @@ export class AttachmentHandler {
                 
                 const isSupportedFormat = supportedFormats.some(format => {
                     const formatLower = format.toLowerCase();
-                    // If format is a full MIME type, use exact match
+                    // Handle wildcard patterns like "image/*"
+                    if (formatLower.endsWith('/*')) {
+                        const prefix = formatLower.slice(0, -1); // Remove '*' to get "image/"
+                        return baseMimeType.startsWith(prefix);
+                    }
                     // If format ends with '/', treat as prefix (e.g., 'image/')
-                    if (formatLower.endsWith('/')) {
+                    else if (formatLower.endsWith('/')) {
                         return baseMimeType.startsWith(formatLower);
-                    } else {
+                    } 
+                    // Otherwise use exact match for full MIME types
+                    else {
                         return baseMimeType === formatLower;
                     }
                 });

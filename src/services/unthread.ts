@@ -1252,7 +1252,11 @@ export async function downloadUnthreadImage(
             });
             downloadQueryCache.set(cacheKey, params.toString());
         }
-        const cachedParams = downloadQueryCache.get(cacheKey);
+        // Get cached params with fallback to prevent race condition undefined values
+        const cachedParams = downloadQueryCache.get(cacheKey) || new URLSearchParams({
+            thumbSize: thumbSize.toString(),
+            teamId: teamId
+        }).toString();
 
         LogEngine.debug('Making Unthread API request', {
             endpoint,
