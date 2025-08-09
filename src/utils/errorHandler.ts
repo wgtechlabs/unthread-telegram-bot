@@ -30,6 +30,7 @@
 
 import { LogEngine } from '@wgtechlabs/log-engine';
 import type { Telegraf } from 'telegraf';
+import { getImageProcessingConfig } from '../config/env.js';
 
 /**
  * Attachment processing error types with specific classification
@@ -222,10 +223,10 @@ export class AttachmentErrorHandler {
       );
     }
 
-    if (attachment.size && typeof attachment.size === 'number' && attachment.size > 50 * 1024 * 1024) {
+    if (attachment.size && typeof attachment.size === 'number' && attachment.size > getImageProcessingConfig().maxImageSize * 5) {
       throw this.createError(
         AttachmentErrorType.FILE_SIZE_EXCEEDED,
-        `File size ${attachment.size} exceeds 50MB limit`,
+        `File size ${attachment.size} exceeds maximum limit`,
         {
           ...context,
           fileName: attachment.name as string,

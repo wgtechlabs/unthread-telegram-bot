@@ -419,8 +419,9 @@ export function getImageProcessingConfig(): ImageProcessingConfig {
     const downloadTimeout = 15000; // 15 seconds
     const uploadTimeout = 30000; // 30 seconds
     const enableThumbnails = true; // Always use thumbnails for better performance
-    const thumbnailSize = 720; // 720px high quality thumbnails for Telegram
-    
+    // Slack API thumbnail sizes: 160px (low), 360px (high)
+    const thumbnailSize = 360; // 360px high quality thumbnails for Telegram (max official Slack size)
+
     const supportedFormats = [
         'image/jpeg',
         'image/jpg',   // Alternative JPEG MIME type for broader compatibility

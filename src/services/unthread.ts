@@ -19,7 +19,7 @@ import { URLSearchParams } from 'url';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import { AgentMessageData, TicketData, UserData } from '../sdk/types.js';
-import { getCompanyName, getDefaultTicketPriority } from '../config/env.js';
+import { getCompanyName, getDefaultTicketPriority, getImageProcessingConfig } from '../config/env.js';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -1136,7 +1136,7 @@ export { customerCache };
  * @param fileId - The unique file identifier from the attachment metadata
  * @param teamId - The Slack team ID for the file (required for Unthread API)
  * @param expectedFileName - The expected filename for validation (optional)
- * @param thumbSize - Thumbnail size for images (default: 160px, max: 1024px)
+ * @param thumbSize - Thumbnail size for images (default: from config, max: 1024px)
  * @returns Promise<Buffer> containing the image data
  * @throws Error with specific error types for different failure scenarios
  */
@@ -1144,7 +1144,7 @@ export async function downloadUnthreadImage(
     fileId: string,
     teamId: string,
     expectedFileName?: string,
-    thumbSize: number = 720
+    thumbSize: number = getImageProcessingConfig().thumbnailSize
 ): Promise<Buffer> {
     
     LogEngine.info('Starting Unthread image download', {
@@ -1218,8 +1218,8 @@ export async function downloadUnthreadImage(
             });
         }
 
-        // Size validation (Telegram limit is 10MB for photos)
-        const maxSize = 10 * 1024 * 1024; // 10MB
+        // Size validation (Telegram limit)
+        const maxSize = getImageProcessingConfig().maxImageSize; // Use centralized max image size
         if (buffer.length > maxSize) {
             throw new Error(`Image too large: ${buffer.length} bytes (max: ${maxSize})`);
         }

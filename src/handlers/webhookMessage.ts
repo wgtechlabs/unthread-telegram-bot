@@ -805,8 +805,8 @@ export class TelegramWebhookHandler {
 
     try {
       // Use Unthread's Slack file thumbnail endpoint for Slack file IDs
-      // Endpoint: https://api.unthread.io/api/slack/files/{fileId}/thumb?thumbSize=720&teamId={teamId}
-      const thumbnailSize = 720; // High quality thumbnail size for Telegram
+      // Endpoint: https://api.unthread.io/api/slack/files/{fileId}/thumb?thumbSize={config}&teamId={teamId}
+      const thumbnailSize = this.imageConfig.thumbnailSize; // Use centralized thumbnail size configuration
       
       const downloadBuffer = await downloadUnthreadImage(
         fileId,
