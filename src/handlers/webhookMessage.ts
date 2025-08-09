@@ -179,6 +179,9 @@ export class TelegramWebhookHandler {
       // 4. Get attachment processing decision using metadata-first approach
       const processingDecision = AttachmentDetectionService.getProcessingDecision(webhookEvent);
       
+      // Log Phase 3 integration status for monitoring
+      this.logPhase3Integration(webhookEvent, conversationId);
+      
       LogEngine.info('📋 Attachment processing decision', {
         conversationId,
         shouldProcess: processingDecision.shouldProcess,
@@ -1552,7 +1555,7 @@ export class TelegramWebhookHandler {
 
   /**
    * Process image attachments using metadata-driven approach
-   * Handles supported image types with proper error handling
+   * Handles supported image types with proper error handling and metadata efficiency
    */
   private async processImageAttachments(
     event: WebhookEvent,
@@ -1560,25 +1563,221 @@ export class TelegramWebhookHandler {
     chatId: number,
     replyToMessageId: number
   ): Promise<void> {
-    LogEngine.info('📎 Processing image attachments with metadata', {
+    LogEngine.info('📎 Processing image attachments with metadata-driven approach', {
       conversationId,
       attachmentSummary: AttachmentDetectionService.getAttachmentSummary(event),
       chatId,
-      replyToMessageId
+      replyToMessageId,
+      metadataDriven: true // Flag to indicate new processing approach
     });
 
-    // Use existing processSlackFiles method for now
-    // TODO: Refactor to use metadata-driven approach in future phases
+    // Validate we have supported images using metadata
+    if (!AttachmentDetectionService.hasSupportedImages(event)) {
+      LogEngine.warn('No supported images found for processing', {
+        conversationId,
+        hasAttachments: AttachmentDetectionService.hasAttachments(event),
+        hasImages: AttachmentDetectionService.hasImageAttachments(event),
+        processingApproach: 'metadata-first'
+      });
+      return;
+    }
+
+    // Performance measurement for metadata vs legacy comparison
+    const startTime = Date.now();
+
+    // Get file information using metadata
+    const fileNames = AttachmentDetectionService.getFileNames(event);
+    const fileTypes = AttachmentDetectionService.getFileTypes(event);
+    const totalSize = AttachmentDetectionService.getTotalSize(event);
     const files = event.data.files;
-    if (files && files.length > 0) {
-      // Cast to the expected format for existing method compatibility
+
+    LogEngine.debug('Metadata extraction completed', {
+      conversationId,
+      metadataFileCount: AttachmentDetectionService.getFileCount(event),
+      metadataTypes: fileTypes,
+      metadataTotalSize: totalSize,
+      extractionTimeMs: Date.now() - startTime
+    });
+
+    if (!files || files.length === 0) {
+      LogEngine.warn('No files array found despite attachment metadata', {
+        conversationId,
+        metadataFileCount: AttachmentDetectionService.getFileCount(event),
+        inconsistency: true
+      });
+      return;
+    }
+
+    // Validate metadata consistency with trust-but-verify approach
+    if (!AttachmentDetectionService.validateConsistency(event)) {
+      LogEngine.error('Metadata inconsistency detected, falling back to legacy processing', {
+        conversationId,
+        metadataCount: AttachmentDetectionService.getFileCount(event),
+        actualCount: files.length,
+        fallbackReason: 'metadata_inconsistency'
+      });
+      
+      // Fallback to legacy method for safety
       await this.processSlackFiles(
         files as unknown as Record<string, unknown>[],
         conversationId,
         chatId,
         replyToMessageId
       );
+      return;
     }
+
+    // Process each supported image using metadata guidance
+    const supportedImageTypes = [
+      'image/jpeg', 'image/jpg', 'image/png', 
+      'image/gif', 'image/webp'
+    ];
+
+    let processedCount = 0;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      
+      // Validate file object for security
+      if (!file || typeof file !== 'object') {
+        LogEngine.warn('Skipping invalid file object', {
+          conversationId,
+          fileIndex: i + 1,
+          receivedType: typeof file
+        });
+        continue;
+      }
+
+      // Safely extract filename from file object directly
+      const fileName = (file.name && typeof file.name === 'string') 
+        ? String(file.name).trim() 
+        : `image_${i + 1}`;
+      const fileType = fileTypes.find(type => type.startsWith('image/'))?.toLowerCase();
+
+      // Skip non-images using metadata
+      if (!fileType || !supportedImageTypes.includes(fileType)) {
+        LogEngine.debug('Skipping non-image or unsupported image type', {
+          conversationId,
+          fileName,
+          fileType,
+          fileIndex: i + 1
+        });
+        continue;
+      }
+
+      try {
+        LogEngine.info('Processing supported image with metadata context', {
+          conversationId,
+          fileName,
+          fileType,
+          fileSize: file.size || 0,
+          fileId: file.id || 'unknown',
+          fileIndex: i + 1
+        });
+
+        await this.processImageFile({
+          conversationId,
+          file,
+          fileName,
+          fileType,
+          chatId,
+          replyToMessageId,
+          fileIndex: i + 1,
+          totalFiles: files.length
+        });
+
+        processedCount++;
+
+      } catch (error) {
+        LogEngine.error('Failed to process image file', {
+          conversationId,
+          fileName,
+          fileType,
+          fileIndex: i + 1,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+
+    LogEngine.info('Image processing completed with metadata-driven approach', {
+      conversationId,
+      totalFiles: files.length,
+      processedImages: processedCount,
+      skippedFiles: files.length - processedCount,
+      processingTimeMs: Date.now() - startTime,
+      efficiency: 'metadata-first'
+    });
+  }
+
+  /**
+   * Verify Phase 3 integration health
+   * Validates that the metadata-driven approach is functioning correctly
+   */
+  private logPhase3Integration(event: WebhookEvent, conversationId: string): void {
+    const integration = {
+      phase: 'Phase 3 - Handler Integration',
+      metadataAvailable: !!event.attachments,
+      sourcePlatform: event.sourcePlatform,
+      targetPlatform: event.targetPlatform,
+      validationResult: AttachmentDetectionService.validateConsistency(event),
+      processingDecision: AttachmentDetectionService.getProcessingDecision(event),
+      attachmentSummary: AttachmentDetectionService.getAttachmentSummary(event)
+    };
+
+    LogEngine.debug('Phase 3 Integration Status', {
+      conversationId,
+      integration,
+      success: integration.metadataAvailable && integration.validationResult
+    });
+  }
+
+  /**
+   * Process individual image file with proper type validation
+   * Handles the actual download and forwarding of a single image
+   */
+  private async processImageFile(params: {
+    conversationId: string;
+    file: any;
+    fileName: string;
+    fileType: string;
+    chatId: number;
+    replyToMessageId: number;
+    fileIndex: number;
+    totalFiles: number;
+  }): Promise<void> {
+    const { conversationId, file, fileName, fileType, chatId, replyToMessageId, fileIndex, totalFiles } = params;
+    
+    // Validate file structure
+    if (!file || typeof file !== 'object') {
+      throw new Error(`Invalid file object at index ${fileIndex}`);
+    }
+
+    const fileId = String(file.id);
+    const fileSize = Number(file.size) || 0;
+    
+    // Validate Slack file ID format
+    if (!fileId.startsWith('F') || fileId.length < 10) {
+      throw new Error(`Invalid Slack file ID format: ${fileId}`);
+    }
+
+    LogEngine.info('Processing image file', {
+      conversationId,
+      fileId,
+      fileName,
+      fileSize,
+      fileType,
+      progress: `${fileIndex}/${totalFiles}`
+    });
+
+    // Use Slack thumbnail endpoint for image download
+    await this.downloadAndForwardSlackFile({
+      conversationId,
+      fileId,
+      fileName,
+      fileSize,
+      mimeType: fileType,
+      chatId,
+      replyToMessageId
+    });
   }
 
 }
