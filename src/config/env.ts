@@ -484,3 +484,18 @@ export function validateImageProcessingConfig(): void {
         }
     });
 }
+
+/**
+ * Get the Slack team ID for file attachment downloads.
+ * This function is safe to call after validateEnvironment() has run.
+ * 
+ * @returns The Slack team ID string
+ * @throws Error if SLACK_TEAM_ID is not configured (should not happen after startup validation)
+ */
+export function getSlackTeamId(): string {
+    const teamId = process.env.SLACK_TEAM_ID;
+    if (!teamId) {
+        throw new Error('SLACK_TEAM_ID environment variable is not configured');
+    }
+    return teamId;
+}

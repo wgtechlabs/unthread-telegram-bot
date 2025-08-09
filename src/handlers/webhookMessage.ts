@@ -57,7 +57,7 @@ import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 import { escapeMarkdown } from '../utils/markdownEscape.js';
 import { downloadUnthreadImage } from '../services/unthread.js';
 import { attachmentHandler } from '../utils/attachmentHandler.js';
-import { type ImageProcessingConfig, getImageProcessingConfig } from '../config/env.js';
+import { type ImageProcessingConfig, getImageProcessingConfig, getSlackTeamId } from '../config/env.js';
 import { AttachmentDetectionService } from '../services/attachmentDetection.js';
 // ENABLED: Attachment processing fully operational with metadata-driven detection
 // PHASE 4 COMPLETE: Legacy "unknown" source processing removed, dashboard-only architecture
@@ -81,7 +81,7 @@ export class TelegramWebhookHandler {
     this.imageConfig = getImageProcessingConfig(); // Load configuration
     
     // SLACK_TEAM_ID is validated as required environment variable at startup
-    this.teamId = process.env.SLACK_TEAM_ID || '';
+    this.teamId = getSlackTeamId(); // Safe getter that ensures non-empty value
     
     LogEngine.info('TelegramWebhookHandler initialized', {
       imageProcessingEnabled: this.imageConfig.enabled,
