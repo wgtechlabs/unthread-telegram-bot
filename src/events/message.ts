@@ -752,7 +752,7 @@ async function processMediaGroupAgentReply(collection: MediaGroupCollection, age
         );
         
         if (!attachmentSuccess) {
-            throw new Error('Failed to process media group attachments');
+            throw new Error('UNSUPPORTED_FILE_TYPES_MEDIA_GROUP');
         }
         
         // Update status message to success
