@@ -63,6 +63,55 @@ import { AttachmentDetectionService } from '../services/attachmentDetection.js';
 // COMPLETE: Legacy "unknown" source processing removed, dashboard-only architecture
 
 /**
+ * Minimal Slack file interface for type-safe property access
+ * Represents the essential properties of a Slack file from Unthread webhook events
+ */
+interface SlackFile {
+  id: string;           // Slack file ID (F-prefixed)
+  name?: string;        // Original filename
+  mimetype?: string;    // MIME type (primary)
+  type?: string;        // Alternative type field
+  size?: number;        // File size in bytes
+}
+
+/**
+ * Type guard to safely validate and narrow SlackFile objects
+ * @param obj - Unknown object to validate
+ * @returns Type predicate indicating if object is a valid SlackFile
+ */
+function isValidSlackFile(obj: unknown): obj is SlackFile {
+  if (!obj || typeof obj !== 'object') {
+    return false;
+  }
+  
+  const file = obj as Record<string, unknown>;
+  
+  // Validate required id field
+  if (typeof file.id !== 'string' || !file.id.startsWith('F') || file.id.length < 10) {
+    return false;
+  }
+  
+  // Validate optional fields if present
+  if (file.name !== undefined && typeof file.name !== 'string') {
+    return false;
+  }
+  
+  if (file.mimetype !== undefined && typeof file.mimetype !== 'string') {
+    return false;
+  }
+  
+  if (file.type !== undefined && typeof file.type !== 'string') {
+    return false;
+  }
+  
+  if (file.size !== undefined && typeof file.size !== 'number') {
+    return false;
+  }
+  
+  return true;
+}
+
+/**
  * Webhook message handler for Unthread agent responses
  * 
  * Status: Unthread→Telegram attachment forwarding ENABLED
@@ -731,7 +780,7 @@ export class TelegramWebhookHandler {
    * @param replyToMessageId - Message ID to reply to
    */
   private async processSlackFiles(
-    slackFiles: Array<Record<string, unknown>>,
+    slackFiles: Array<unknown>,
     conversationId: string,
     chatId: number,
     replyToMessageId: number
@@ -744,41 +793,37 @@ export class TelegramWebhookHandler {
     });
 
     for (let i = 0; i < slackFiles.length; i++) {
-      const slackFile = slackFiles.at(i);
+      const rawSlackFile = slackFiles.at(i);
       
-      // Type safety: Ensure slackFile is a valid object
-      if (!slackFile || typeof slackFile !== 'object') {
+      // Type safety: Validate and narrow to SlackFile type
+      if (!isValidSlackFile(rawSlackFile)) {
         LogEngine.warn('⚠️ Skipping invalid Slack file object', {
           conversationId,
           fileIndex: i + 1,
-          receivedType: typeof slackFile
+          receivedType: typeof rawSlackFile,
+          validationFailed: true
         });
         continue;
       }
       
+      // Now rawSlackFile is safely typed as SlackFile
+      const slackFile: SlackFile = rawSlackFile;
+      
       try {
-        const fileId = String(slackFile.id);
+        // Type-safe property access
+        const fileId = slackFile.id;
         
-        // Validate that this is a proper Slack file ID
-        if (!fileId.startsWith('F') || fileId.length < 10) {
-          LogEngine.warn('⚠️ Invalid Slack file ID format', {
-            conversationId,
-            fileId,
-            expectedFormat: 'F######## (starts with F, 10+ chars)'
-          });
-          continue;
-        }
+        LogEngine.debug('Processing validated Slack file', {
+          conversationId,
+          fileId,
+          fileName: slackFile.name,
+          fileIndex: i + 1
+        });
 
-        // Extract metadata with proper undefined guards and type safety
-        const fileName = (slackFile.name && typeof slackFile.name === 'string') 
-          ? slackFile.name 
-          : 'unknown-file';
-        const mimeType = (slackFile.mimetype && typeof slackFile.mimetype === 'string') 
-          ? slackFile.mimetype 
-          : (slackFile.type && typeof slackFile.type === 'string') 
-            ? slackFile.type 
-            : 'application/octet-stream';
-        const fileSize = Number(slackFile.size) || 0;
+        // Extract metadata with type-safe access
+        const fileName = slackFile.name || 'unknown-file';
+        const mimeType = slackFile.mimetype || slackFile.type || 'application/octet-stream';
+        const fileSize = slackFile.size || 0;
 
         LogEngine.info('✅ Valid Slack file detected', {
           conversationId,
@@ -912,7 +957,7 @@ export class TelegramWebhookHandler {
           `❌ **Slack File Processing Failed**\n\n📎 **File:** ${escapeMarkdown(fileName)}\n**Error:** ${escapeMarkdown(errorMessage)}\n\n_Please ask your agent to resend the file or try again later._`,
           { 
             reply_to_message_id: replyToMessageId,
-            parse_mode: 'MarkdownV2'
+            parse_mode: 'Markdown'
           }
         );
       } catch (notificationError) {
@@ -1278,7 +1323,7 @@ export class TelegramWebhookHandler {
       
       // Fallback to legacy method for safety
       await this.processSlackFiles(
-        files as unknown as Record<string, unknown>[],
+        files,
         conversationId,
         chatId,
         replyToMessageId
