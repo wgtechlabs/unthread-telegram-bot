@@ -51,6 +51,8 @@ services:
     environment:
       # Override Redis URL to use webhook-specific Redis instance
       - REDIS_URL=redis://redis-webhook:6379
+      # Set target platform for webhook routing
+      - TARGET_PLATFORM=telegram
     depends_on:
       redis-webhook:
         condition: service_healthy  # Wait for Redis to be ready
