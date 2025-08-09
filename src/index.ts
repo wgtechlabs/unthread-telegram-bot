@@ -328,14 +328,9 @@ try {
         const botsStore = BotsStore.getInstance();
         webhookHandler = new TelegramWebhookHandler(bot, botsStore);
 
-        // Subscribe to agent message events from dashboard
+        // Subscribe to agent message events from dashboard only
+        // Phase 4: Simplified to dashboard → telegram flow exclusively
         webhookConsumer.subscribe('message_created', 'dashboard', 
-            webhookHandler.handleMessageCreated.bind(webhookHandler)
-        );
-
-        // CRITICAL: Subscribe to agent message events from "unknown" source 
-        // The real file attachments come from "unknown" source events, not dashboard!
-        webhookConsumer.subscribe('message_created', 'unknown', 
             webhookHandler.handleMessageCreated.bind(webhookHandler)
         );
 
@@ -348,37 +343,17 @@ try {
             LogEngine.warn('Webhook handler does not implement handleConversationUpdated; skipping subscription.');
         }
 
-        // Subscribe to unknown events for image attachment processing
-        if (typeof webhookHandler.handleUnknownEventWithImages === 'function') {
-            // Register for various unknown event types that might contain image attachments
-            const unknownEventTypes = [
-                'file_uploaded',
-                'attachment_added', 
-                'media_shared',
-                'content_updated',
-                'unknown'
-            ];
-            
-            unknownEventTypes.forEach(eventType => {
-                webhookConsumer!.subscribe(eventType, 'dashboard', 
-                    webhookHandler!.handleUnknownEventWithImages.bind(webhookHandler)
-                );
-            });
-            
-            // Image attachment processing configured - details in startup summary
-        } else {
-            LogEngine.warn('Webhook handler does not implement handleUnknownEventWithImages; image processing integration incomplete.');
-        }
-
         // Start the webhook consumer
         await webhookConsumer.start();
         
         // Log consolidated subscription summary
         const status = webhookConsumer.getStatus();
-        LogEngine.info('✅ Webhook event subscriptions configured', {
+        LogEngine.info('✅ Webhook event subscriptions configured (Phase 4: Dashboard-only architecture)', {
             totalSubscriptions: status.subscribedEvents.length,
             eventTypes: status.subscribedEvents,
-            queueName: status.queueName
+            queueName: status.queueName,
+            architecture: 'dashboard-only',
+            legacyEventsRemoved: true
         });
     } else {
         LogEngine.warn('Webhook Redis URL not configured - webhook processing disabled');
