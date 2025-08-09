@@ -206,7 +206,34 @@ export class TelegramWebhookHandler {
       // 6. Validate message content - check both 'content' and 'text' fields
       const messageText = webhookEvent.data.content || webhookEvent.data.text;
       
-      // Message must have either text content OR attachments
+      // Skip "File attached" messages that are just attachment notifications
+      const isFileAttachedNotification = messageText && 
+        messageText.trim().toLowerCase() === 'file attached' && 
+        processingDecision.hasAttachments;
+      
+      if (isFileAttachedNotification) {
+        LogEngine.info('📎 Processing file-only message (skipping "File attached" text)', {
+          conversationId,
+          hasAttachments: processingDecision.hasAttachments,
+          attachmentSummary: processingDecision.summary
+        });
+        
+        // Find the latest agent message to reply to with attachments
+        const replyToMessageId = await this.findLatestAgentMessage(conversationId, ticketData.messageId);
+        
+        // Process attachments only, skip the text
+        if (processingDecision.hasSupportedImages) {
+          await this.processImageAttachments(
+            webhookEvent,
+            conversationId,
+            ticketData.chatId,
+            replyToMessageId
+          );
+        }
+        return;
+      }
+      
+      // Message must have either meaningful text content OR attachments
       if ((!messageText || messageText.trim().length === 0) && !processingDecision.hasAttachments) {
         LogEngine.warn('❌ Empty message with no attachments in webhook event', { 
           conversationId,
