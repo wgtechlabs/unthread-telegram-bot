@@ -5,7 +5,7 @@
  * compared to the old generic "Processing files" approach.
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1
+
  * @since 2025
  */
 

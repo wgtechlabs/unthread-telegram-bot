@@ -37,6 +37,10 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
 
 - **Agent → Customer**: When agents respond via the Unthread dashboard, messages are delivered to Telegram in real-time
 - **Customer → Agent**: Customers can simply reply to agent messages naturally - no special commands needed
+- **📎 Image Attachments**: Bidirectional image sharing support (up to 10MB)
+  - Send images from Telegram directly to agents (JPEG, PNG, GIF, WebP, etc.)
+  - Receive agent images automatically in Telegram with proper formatting
+  - Smart image processing with thumbnail generation and format validation
 - **Status Notifications**: Receive real-time notifications when ticket status changes with clear messaging and emoji indicators
 - **Conversation Flow**: Maintains complete conversation history across both platforms
 
@@ -48,18 +52,11 @@ The **Official Unthread Telegram Bot** creates a seamless bridge between your cu
 
 ## ✨ Key Features
 
-- **🎫 Seamless Ticket Management** - Create support tickets directly from Telegram with `/support` command
-- **👤 One-Time Email Setup** - Collect email once, automatically use for all future tickets
-- **📧 Email Management** - View and update email preferences with `/viewemail` and `/setemail` commands
-- **💬 Real-Time Communication** - Bidirectional messaging between agents and customers
-- **🏢 Smart Customer Detection** - Automatically extracts customer names from group chat titles
-- **💬 Natural Conversation Flow** - Customers reply normally, no special commands needed
-- **✅ Status Notifications** - Real-time alerts when tickets are opened or closed
-- **🔒 Enterprise-Ready** - Secure, scalable architecture with comprehensive logging
-- **⚡ Easy Deployment** - Quick setup with Docker or manual installation
-- **🛠️ Template System** - Customizable message templates for consistent communication
-- **🔍 Advanced Logging** - Powered by @wgtechlabs/log-engine with PII redaction and security features
-- **🛡️ Supply Chain Security** - SBOM generation and build provenance for transparency
+- **🎫 Ticket Management** - Create tickets with `/support` • **👤 Email Setup** - One-time email collection
+- **💬 Real-Time Messaging** - Bidirectional communication • **📎 Image Attachments** - Share images up to 10MB
+- **🏢 Smart Detection** - Auto-extract customer names • **✅ Status Alerts** - Real-time notifications
+- **🔒 Enterprise Security** - Advanced logging & PII redaction • **⚡ Easy Deploy** - Docker & Railway ready
+- **🛠️ Template System** - Customizable messaging • **🛡️ Supply Chain** - SBOM & provenance tracking
 
 ## 🔍 Advanced Logging & Security
 
@@ -170,7 +167,9 @@ yarn docker:build:sbom
    # ADMIN_USERS supports multiple user IDs: ADMIN_USERS=123456789,987654321
    # Then start the bot
    yarn start
-   ```5. **Test Your Bot**
+   ```
+
+5. **Test Your Bot**
    - Add your bot to a Telegram group
    - Send `/start` to see if it responds
    - Try creating a ticket with `/support`
@@ -204,6 +203,7 @@ BOT_USERNAME=your_bot_username  # Eliminates API calls for deep links and comman
 UNTHREAD_API_KEY=your_unthread_api_key
 UNTHREAD_SLACK_CHANNEL_ID=your_unthread_slack_channel_id
 UNTHREAD_WEBHOOK_SECRET=your_unthread_webhook_secret
+SLACK_TEAM_ID=your_slack_workspace_id  # Required for file attachment downloads
 
 # Required - Database (Docker will handle this automatically)
 POSTGRES_URL=postgresql://postgres:postgres@postgres-platform:5432/unthread_telegram_bot
@@ -380,14 +380,14 @@ Use the `/viewemail` command to view your current email settings and `/setemail`
 
 ```text
 User: /viewemail
-Bot: � Email Settings
+Bot: 📧 Email Settings
      
      ✅ Email address: john@example.com
      📅 Set on: 7/23/2025
      🏷️ Type: Personal email
      
      What would you like to do?
-     [� Update Email] [ℹ️ About]
+     [📝 Update Email] [ℹ️ About]
 
 User: /setemail john.doe@company.com
 Bot: ✅ Email Updated Successfully!

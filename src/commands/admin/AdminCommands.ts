@@ -339,10 +339,10 @@ export class SetupCommand extends BaseCommand {
                 "**Choose an option below:**";
 
             // Generate short callback IDs to stay within Telegram's 64-byte limit
-            const shortSuggestedId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
-            const shortCustomId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
-            const shortExistingId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
-            const shortCancelId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortSuggestedId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortCustomId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortExistingId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortCancelId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
 
             await ctx.telegram.editMessageText(dmChatId, messageId, undefined, customerSetupMessage, {
                 parse_mode: 'Markdown',

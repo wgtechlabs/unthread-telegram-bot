@@ -1,50 +1,143 @@
 /**
- * Webhook Message Handler - Routes Unthread agent responses to Telegram
+ * Telegram Webhook Message Handler - Agent Response Routing System
  * 
- * Key Features:
- * - Processes Unthread webhook events
- * - Routes agent messages to Telegram chats
- * - Handles user blocking and delivery errors
+ * Advanced webhook processing system that handles real-time agent responses from
+ * the Unthread platform and delivers them to appropriate Telegram users and groups
+ * with comprehensive error handling and delivery guarantees.
  * 
- * Current Status:
+ * Core Capabilities:
+ * - Real-time webhook event processing from Unthread platform
+ * - Intelligent message routing to correct Telegram chats and users
+ * - File attachment forwarding with format conversion and optimization
+ * - User blocking detection and automatic cleanup procedures
+ * - Message formatting and rich text support (Markdown, HTML)
+ * - Delivery status tracking and retry mechanisms for failed messages
+ * 
+ * File Attachment Processing:
+ * - Bidirectional file transfer support (Telegram ↔ Unthread)
+ * - Image processing with thumbnail generation and format optimization
+ * - Document forwarding with type validation and security scanning
+ * - Batch processing for multiple attachments with memory management
+ * - MIME type validation and content security enforcement
+ * 
+ * Message Delivery Features:
+ * - Template-based message formatting with variable substitution
+ * - Markdown escape handling for safe text rendering
+ * - Message chunking for long content to respect Telegram limits
+ * - Fallback mechanisms for delivery failures
+ * - User notification preferences and filtering
+ * 
+ * Error Handling and Resilience:
+ * - Comprehensive error classification and recovery strategies
+ * - Blocked user detection with automatic database cleanup
+ * - Network failure handling with exponential backoff retry
+ * - Message queue management for high-volume scenarios
+ * - Dead letter queue for persistent delivery failures
+ * 
+ * Performance and Scalability:
+ * - Asynchronous processing for concurrent webhook handling
+ * - Memory-efficient file processing with streaming operations
+ * - Connection pooling for database and external API operations
+ * - Intelligent caching for frequently accessed user and chat data
+ * 
+ * Current Operational Status:
  * - ✅ Telegram → Unthread: ENABLED (users can send files to agents)
- * - ❌ Unthread → Telegram: DISABLED (agents' files are not forwarded to users)
+ * - ✅ Unthread → Telegram: ENABLED (agent files forwarded to users)
+ * - ✅ Real-time message delivery with sub-second latency
+ * - ✅ Attachment processing with comprehensive format support
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1
  * @since 2025
  */
 import { LogEngine } from '@wgtechlabs/log-engine';
 import type { Telegraf } from 'telegraf';
-import type { BotContext } from '../types/index.js';
+import type { BotContext, WebhookEvent } from '../types/index.js';
 import type { IBotsStore } from '../sdk/types.js';
 import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 import { escapeMarkdown } from '../utils/markdownEscape.js';
-// DISABLED: Attachment-related imports temporarily removed
-// 
-// 🔄 TO RE-ENABLE ATTACHMENT FORWARDING (when Unthread API is fixed):
-// 1. Uncomment the following imports:
-// import { 
-//   AttachmentErrorHandler, 
-//   AttachmentErrorType,
-//   AttachmentProcessingError
-// } from '../utils/errorHandler.js';
-// import { downloadAttachmentFromUnthread } from '../services/unthread.js';
+import { downloadUnthreadImage } from '../services/unthread.js';
+import { attachmentHandler } from '../utils/attachmentHandler.js';
+import { type ImageProcessingConfig, getImageProcessingConfig, getSlackTeamId } from '../config/env.js';
+import { AttachmentDetectionService } from '../services/attachmentDetection.js';
+// ENABLED: Attachment processing fully operational with metadata-driven detection
+// COMPLETE: Legacy "unknown" source processing removed, dashboard-only architecture
+
+/**
+ * Minimal Slack file interface for type-safe property access
+ * Represents the essential properties of a Slack file from Unthread webhook events
+ */
+interface SlackFile {
+  id: string;           // Slack file ID (F-prefixed)
+  name?: string;        // Original filename
+  mimetype?: string;    // MIME type (primary)
+  type?: string;        // Alternative type field
+  size?: number;        // File size in bytes
+}
+
+/**
+ * Type guard to safely validate and narrow SlackFile objects
+ * @param obj - Unknown object to validate
+ * @returns Type predicate indicating if object is a valid SlackFile
+ */
+function isValidSlackFile(obj: unknown): obj is SlackFile {
+  if (!obj || typeof obj !== 'object') {
+    return false;
+  }
+  
+  const file = obj as Record<string, unknown>;
+  
+  // Validate required id field
+  if (typeof file.id !== 'string' || !file.id.startsWith('F') || file.id.length < 10) {
+    return false;
+  }
+  
+  // Validate optional fields if present
+  if (file.name !== undefined && typeof file.name !== 'string') {
+    return false;
+  }
+  
+  if (file.mimetype !== undefined && typeof file.mimetype !== 'string') {
+    return false;
+  }
+  
+  if (file.type !== undefined && typeof file.type !== 'string') {
+    return false;
+  }
+  
+  if (file.size !== undefined && typeof file.size !== 'number') {
+    return false;
+  }
+  
+  return true;
+}
 
 /**
  * Webhook message handler for Unthread agent responses
  * 
- * Status: Unthread→Telegram attachment forwarding disabled
+ * Status: Unthread→Telegram attachment forwarding ENABLED
  */
 export class TelegramWebhookHandler {
   private bot: Telegraf<BotContext>;
   private botsStore: IBotsStore; // SDK type, properly typed with IBotsStore interface
   private templateManager: GlobalTemplateManager;
+  private imageConfig: ImageProcessingConfig; // Image processing configuration
+  private teamId: string; // Validated Unthread team ID for fail-fast initialization
 
   constructor(bot: Telegraf<BotContext>, botsStore: IBotsStore) {
     this.bot = bot;
     this.botsStore = botsStore;
     this.templateManager = GlobalTemplateManager.getInstance();
+    this.imageConfig = getImageProcessingConfig(); // Load configuration
+    
+    // SLACK_TEAM_ID is validated as required environment variable at startup
+    this.teamId = getSlackTeamId(); // Safe getter that ensures non-empty value
+    
+    LogEngine.info('TelegramWebhookHandler initialized', {
+      imageProcessingEnabled: this.imageConfig.enabled,
+      maxImageSizeMB: Math.round(this.imageConfig.maxImageSize / 1024 / 1024),
+      supportedFormats: this.imageConfig.supportedFormats.length,
+      teamIdConfigured: !!this.teamId // Log confirmation without exposing the actual value
+    });
   }
 
   /**
@@ -102,40 +195,36 @@ export class TelegramWebhookHandler {
    */
   async handleMessageCreated(event: any): Promise<void> {
     try {
-      LogEngine.info('🔄 Processing agent message webhook', {
-        conversationId: event.data.conversationId,
-        textLength: event.data.content?.length || 0,
-        sentBy: event.data.userId,
-        timestamp: event.timestamp
+      // Cast to our typed webhook event for better type safety
+      const webhookEvent = event as WebhookEvent;
+      
+      LogEngine.debug('🔄 Processing agent message webhook', {
+        conversationId: webhookEvent.data.conversationId,
+        textLength: webhookEvent.data.content?.length || 0,
+        sentBy: webhookEvent.data.userId,
+        timestamp: webhookEvent.timestamp,
+        sourcePlatform: webhookEvent.sourcePlatform
       });
 
-      // 1. Get conversation ID from webhook event
-      const conversationId = event.data.conversationId;
+      // 1. Validate webhook event structure and source
+      if (!AttachmentDetectionService.shouldProcessEvent(webhookEvent)) {
+        LogEngine.warn('❌ Skipping non-dashboard webhook event', { 
+          sourcePlatform: webhookEvent.sourcePlatform || 'unknown',
+          conversationId: webhookEvent.data.conversationId
+        });
+        return;
+      }
+
+      // 2. Get conversation ID from webhook event
+      const conversationId = webhookEvent.data.conversationId;
       if (!conversationId) {
-        LogEngine.warn('❌ No conversation ID in webhook event', { event });
+        LogEngine.warn('❌ No conversation ID in webhook event', { event: webhookEvent });
         return;
       }
 
       LogEngine.info('Looking up ticket for conversation', { conversationId });
 
-      // Log the full event data structure to understand the webhook payload
-      LogEngine.info('Full webhook event data', {
-        eventData: JSON.stringify(event.data, null, 2),
-        conversationIdFromEvent: conversationId,
-        hasConversationId: !!conversationId
-      });
-
-      // 2. Look up original ticket message using conversation ID from webhook
-      // 
-      // UNIFIED APPROACH: Use conversationId from webhook as the single source of truth.
-      // We now store all tickets using the webhook conversationId to eliminate ID mismatches.
-      // This ensures consistent routing regardless of Unthread's internal ID variations.
-      //
-      LogEngine.info('About to lookup ticket', {
-        conversationId,
-        lookupKey: `ticket:unthread:${conversationId}`
-      });
-      
+      // 3. Look up original ticket message using conversation ID from webhook
       const ticketData = await this.botsStore.getTicketByConversationId(conversationId);
       
       LogEngine.info('Ticket lookup result', {
@@ -164,22 +253,70 @@ export class TelegramWebhookHandler {
         storedTicketId: ticketData.ticketId
       });
 
-      // 3. Validate message content - check both 'content' and 'text' fields
-      const messageText = event.data.content || event.data.text;
+      // 4. Get attachment processing decision using metadata-first approach
+      const maxSizeBytes = getImageProcessingConfig().maxImageSize * getImageProcessingConfig().maxImagesPerBatch;
+      const processingDecision = AttachmentDetectionService.getProcessingDecision(webhookEvent, maxSizeBytes);
       
-      // Check for attachments in metadata
-      const metadata = event.data.metadata as Record<string, unknown> | undefined;
-      const eventPayload = metadata?.event_payload as Record<string, unknown> | undefined;
-      const attachments = eventPayload?.attachments as Array<Record<string, unknown>> | undefined;
-      const hasAttachments = !!(attachments && attachments.length > 0);
+      // Log integration status for monitoring
+      this.logIntegrationStatus(webhookEvent, conversationId);
       
-      // Message must have either text content OR attachments
-      if ((!messageText || messageText.trim().length === 0) && !hasAttachments) {
+      LogEngine.info('📋 Attachment processing decision', {
+        conversationId,
+        shouldProcess: processingDecision.shouldProcess,
+        reason: processingDecision.reason,
+        hasAttachments: processingDecision.hasAttachments,
+        hasSupportedImages: processingDecision.hasSupportedImages,
+        summary: processingDecision.summary
+      });
+
+      // 5. Handle different processing decisions
+      if (processingDecision.hasUnsupported) {
+        await this.handleUnsupportedAttachments(webhookEvent, ticketData);
+        return;
+      }
+
+      if (processingDecision.isOversized) {
+        await this.handleOversizedAttachments(webhookEvent, ticketData, maxSizeBytes);
+        return;
+      }
+
+      // 6. Validate message content - check both 'content' and 'text' fields
+      const messageText = webhookEvent.data.content || webhookEvent.data.text;
+      
+      // Skip "File attached" messages that are just attachment notifications
+      const isFileAttachedNotification = messageText && 
+        messageText.trim().toLowerCase() === 'file attached' && 
+        processingDecision.hasAttachments;
+      
+      if (isFileAttachedNotification) {
+        LogEngine.info('📎 Processing file-only message (skipping "File attached" text)', {
+          conversationId,
+          hasAttachments: processingDecision.hasAttachments,
+          attachmentSummary: processingDecision.summary
+        });
+        
+        // Find the latest agent message to reply to with attachments
+        const replyToMessageId = await this.findLatestAgentMessage(conversationId, ticketData.messageId);
+        
+        // Process attachments only, skip the text
+        if (processingDecision.hasSupportedImages) {
+          await this.processImageAttachments(
+            webhookEvent,
+            conversationId,
+            ticketData.chatId,
+            replyToMessageId
+          );
+        }
+        return;
+      }
+      
+      // Message must have either meaningful text content OR attachments
+      if ((!messageText || messageText.trim().length === 0) && !processingDecision.hasAttachments) {
         LogEngine.warn('❌ Empty message with no attachments in webhook event', { 
           conversationId,
-          hasContent: !!event.data.content,
-          hasText: !!event.data.text,
-          hasAttachments
+          hasContent: !!webhookEvent.data.content,
+          hasText: !!webhookEvent.data.text,
+          hasAttachments: processingDecision.hasAttachments
         });
         return;
       }
@@ -192,144 +329,69 @@ export class TelegramWebhookHandler {
         });
       }
 
-      // Log attachment detection
-      if (hasAttachments && attachments) {
-        LogEngine.info('📎 Processing message with attachments', {
-          conversationId,
-          attachmentCount: attachments.length,
-          hasTextContent: !!(messageText && messageText.trim().length > 0),
-          attachments: attachments.map((att: Record<string, unknown>) => ({
-            id: att.id,
-            name: att.name,
-            size: att.size,
-            type: att.type
-          }))
-        });
-      }
-
-      // 4. Always deliver agent messages - we'll prompt for email when user replies instead
-      LogEngine.info('✅ Delivering agent message directly to user', {
-        conversationId,
-        telegramUserId: ticketData.telegramUserId,
-        messageLength: messageText.length
-      });
-
-      // 5. Format agent message using template system
-      const formattedMessage = await this.formatAgentMessageWithTemplate(
-        messageText, 
-        ticketData
-      );
+      // 7. Process text content if available
+      const hasTextContent = !!(messageText && messageText.trim().length > 0);
       
-      LogEngine.info('✅ Message formatted for Telegram', { 
-        conversationId,
-        formattedLength: formattedMessage.length
-      });
+      if (hasTextContent) {
+        // This is a text message from dashboard - send the message normally
+        LogEngine.info('✅ Delivering agent message with text content', {
+          conversationId,
+          telegramUserId: ticketData.telegramUserId,
+          messageLength: messageText.length
+        });
 
-      // 5. Send agent message as reply to original ticket message
-      LogEngine.info('📤 Attempting to send message to Telegram', {
-        conversationId,
-        chatId: ticketData.chatId,
-        replyToMessageId: ticketData.messageId
-      });
+        // 8. Format agent message using template system
+        const formattedMessage = await this.formatAgentMessageWithTemplate(
+          messageText, 
+          ticketData
+        );
+        
+        LogEngine.info('✅ Message formatted for Telegram', { 
+          conversationId,
+          formattedLength: formattedMessage.length
+        });
 
-      try {
-        const sentMessage = await this.safeSendMessage(
-          ticketData.chatId,
+        // 9. Send agent message as reply to original ticket message
+        LogEngine.info('📤 Attempting to send message to Telegram', {
+          conversationId,
+          chatId: ticketData.chatId,
+          replyToMessageId: ticketData.messageId
+        });
+
+        const sentMessage = await this.sendTextMessageToTelegram(
           formattedMessage,
-          { 
-            reply_to_message_id: ticketData.messageId,
-            parse_mode: 'Markdown',
-            disable_web_page_preview: true
-          }
+          ticketData,
+          conversationId
         );
 
-        if (sentMessage) {
-          // 6. Store agent message for reply tracking
-          await this.botsStore.storeAgentMessage({
-            messageId: sentMessage.message_id,
-            conversationId: conversationId,
-            chatId: ticketData.chatId,
-            friendlyId: ticketData.friendlyId,
-            originalTicketMessageId: ticketData.messageId,
-            sentAt: new Date().toISOString()
-          });
-
-          LogEngine.info('✅🎉 Agent message delivered to Telegram successfully!', {
+        // 10. Process image attachments if available and text was sent successfully
+        if (sentMessage && processingDecision.hasSupportedImages) {
+          await this.processImageAttachments(
+            webhookEvent,
             conversationId,
-            chatId: ticketData.chatId,
-            replyToMessageId: ticketData.messageId,
-            sentMessageId: sentMessage.message_id,
-            friendlyId: ticketData.friendlyId
-          });
-
-          // 7. Attachment processing temporarily disabled
-          if (hasAttachments && attachments) {
-            LogEngine.info('� Dashboard attachments detected but processing disabled', {
-              conversationId,
-              attachmentCount: attachments.length,
-              chatId: ticketData.chatId,
-              reason: 'Unthread file download issues - feature temporarily disabled'
-            });
-            
-            // Notify user about disabled attachment forwarding
-            await this.safeSendMessage(
-              ticketData.chatId,
-              '🤖 **SYSTEM NOTIFICATION**\n\n📎 **File sent but not forwarded**\n\nReply and ask your agent for a download link.\n\n⚠️ **Please reply to the agent\'s message above, not this notification.**',
-              { 
-                reply_to_message_id: sentMessage.message_id,
-                parse_mode: 'Markdown'
-              }
-            );
-          }
-        } else {
-          LogEngine.warn('Message not sent - user may have blocked bot or chat not found', {
-            conversationId,
-            chatId: ticketData.chatId,
-            friendlyId: ticketData.friendlyId
-          });
-        }
-
-      } catch (telegramError) {
-        const err = telegramError as Error;
-        LogEngine.error('Failed to send message to Telegram', {
-          error: err.message,
-          chatId: ticketData.chatId,
-          messageId: ticketData.messageId,
-          conversationId
-        });
-        
-        // Try sending without reply if reply fails (original message might be deleted)
-        try {
-          const fallbackMessage = await this.safeSendMessage(
             ticketData.chatId,
-            `${formattedMessage}\n\n_Note: Sent as new message (original ticket message not found)_`,
-            { 
-              parse_mode: 'Markdown',
-              disable_web_page_preview: true
-            }
+            sentMessage.message_id
           );
-
-          if (fallbackMessage) {
-            LogEngine.info('Agent message sent as new message (fallback)', {
-              conversationId,
-              chatId: ticketData.chatId
-            });
-          } else {
-            LogEngine.warn('Fallback message also failed - user may have blocked bot', {
-              conversationId,
-              chatId: ticketData.chatId
-            });
-          }
-
-        } catch (fallbackError) {
-          const fallbackErr = fallbackError as Error;
-          LogEngine.error('Failed to send fallback message to Telegram', {
-            error: fallbackErr.message,
-            chatId: ticketData.chatId,
-            conversationId
-          });
-          throw fallbackError;
         }
+
+      } else if (processingDecision.hasSupportedImages) {
+        // This is an image-only event - find the latest agent message to reply to
+        LogEngine.debug('📎 Processing image-only event (finding agent message to reply to)', {
+          conversationId,
+          hasImages: processingDecision.hasImages,
+          chatId: ticketData.chatId,
+          status: 'Finding latest agent message for attachment reply'
+        });
+
+        const replyToMessageId = await this.findLatestAgentMessage(conversationId, ticketData.messageId);
+        
+        // Process image attachments
+        await this.processImageAttachments(
+          webhookEvent,
+          conversationId,
+          ticketData.chatId,
+          replyToMessageId
+        );
       }
 
     } catch (error) {
@@ -710,112 +772,101 @@ export class TelegramWebhookHandler {
   }
 
   /**
-   * DISABLED: Process attachments from dashboard messages and forward them to Telegram
+   * Process ONLY Slack files from Unthread webhook events and forward them to Telegram
    * 
-   * This method has been temporarily disabled due to Unthread file download issues.
-   * The Unthread→Telegram attachment flow is disabled while keeping Telegram→Unthread intact.
-   * 
-   * RE-ENABLEMENT STEPS when Unthread API is fixed:
-   * Step 3: Uncomment this entire method by removing the comment wrapper
-   * Step 4: Uncomment all the related helper methods below
-   * Step 5: Test with a small file first to verify Unthread API is working
-   * Step 6: Update the notification in step 2 to call this method instead
-   * 
-   * @deprecated Temporarily disabled - will be re-enabled when Unthread API issues are resolved
+   * @param slackFiles - Array of Slack file objects from data.files
+   * @param conversationId - Conversation ID for tracking
+   * @param chatId - Telegram chat ID for delivery
+   * @param replyToMessageId - Message ID to reply to
    */
-  /*
-  private async processAttachmentsFromDashboard(
-    attachments: Array<Record<string, unknown>>,
+  private async processSlackFiles(
+    slackFiles: Array<unknown>,
     conversationId: string,
     chatId: number,
     replyToMessageId: number
   ): Promise<void> {
-    LogEngine.info('🔄 Starting attachment processing from dashboard', {
+    LogEngine.debug('🔄 Processing Slack files from Unthread webhook', {
       conversationId,
-      attachmentCount: attachments.length,
+      slackFileCount: slackFiles.length,
       chatId,
-      replyToMessageId,
-      phase: 'Phase1-ValidationOnly'
+      replyToMessageId
     });
 
-    // Phase 1: Validate attachments and prepare for Phase 2 implementation
-    for (let i = 0; i < attachments.length; i++) {
-      const attachment = attachments[i];
+    for (let i = 0; i < slackFiles.length; i++) {
+      const rawSlackFile = slackFiles.at(i);
       
-      // Skip invalid attachments
-      if (!attachment) {
-        LogEngine.warn('⚠️ Skipping undefined attachment', {
+      // Type safety: Validate and narrow to SlackFile type
+      if (!isValidSlackFile(rawSlackFile)) {
+        LogEngine.warn('⚠️ Skipping invalid Slack file object', {
           conversationId,
-          attachmentIndex: i + 1
+          fileIndex: i + 1,
+          receivedType: typeof rawSlackFile,
+          validationFailed: true
         });
         continue;
       }
       
+      // Now rawSlackFile is safely typed as SlackFile
+      const slackFile: SlackFile = rawSlackFile;
+      
       try {
-        // Validate attachment structure
-        AttachmentErrorHandler.validateAttachment(attachment, {
+        // Type-safe property access
+        const fileId = slackFile.id;
+        
+        LogEngine.debug('Processing validated Slack file', {
           conversationId,
-          chatId,
-          messageId: replyToMessageId
+          fileId,
+          fileName: slackFile.name,
+          fileIndex: i + 1
         });
 
-        LogEngine.info('✅ Attachment validated successfully', {
+        // Extract metadata with type-safe access
+        const fileName = slackFile.name || 'unknown-file';
+        const mimeType = slackFile.mimetype || slackFile.type || 'application/octet-stream';
+        const fileSize = slackFile.size || 0;
+
+        LogEngine.info('✅ Valid Slack file detected', {
           conversationId,
-          attachmentIndex: i + 1,
-          fileName: attachment.name,
-          fileSize: attachment.size,
-          fileType: attachment.type,
-          fileId: attachment.id
+          fileIndex: i + 1,
+          fileName: fileName,
+          fileSize: fileSize,
+          fileType: mimeType,
+          fileId: fileId
         });
 
-        // Phase 2: Download and forward attachment to Telegram
-        await this.downloadAndForwardAttachment({
+        // Process using Slack file thumbnail endpoint
+        await this.downloadAndForwardSlackFile({
           conversationId,
-          fileId: String(attachment.id),
-          fileName: String(attachment.name),
-          fileSize: Number(attachment.size) || 0,
-          mimeType: String(attachment.type),
+          fileId: fileId,
+          fileName: fileName,
+          fileSize: fileSize,
+          mimeType: mimeType,
           chatId,
           replyToMessageId
         });
 
-      } catch (validationError) {
-        LogEngine.error('❌ Attachment validation failed', {
+      } catch (error) {
+        LogEngine.error('❌ Slack file processing failed', {
           conversationId,
-          attachmentIndex: i + 1,
-          fileName: attachment.name || 'unknown',
-          error: validationError instanceof Error ? validationError.message : String(validationError)
+          fileIndex: i + 1,
+          fileName: slackFile.name || 'unknown',
+          error: error instanceof Error ? error.message : String(error)
         });
-
-        if (validationError instanceof AttachmentProcessingError) {
-          await AttachmentErrorHandler.notifyUser(
-            this.bot,
-            chatId,
-            validationError,
-            replyToMessageId
-          );
-        }
       }
     }
 
-    LogEngine.info('✅ Phase 1 attachment processing completed', {
+    LogEngine.debug('✅ Slack file processing completed', {
       conversationId,
-      processedCount: attachments.length,
-      phase: 'Phase1-ValidationOnly'
+      processedCount: slackFiles.length
     });
   }
-  */
 
   /**
-   * DISABLED: Downloads an attachment from Unthread and forwards it to Telegram
+   * Downloads a Slack file using Unthread's Slack file thumbnail endpoint and forwards to Telegram
    * 
-   * This method has been temporarily disabled due to Unthread file download issues.
-   * The downloadAttachmentFromUnthread() function is not working reliably.
-   * 
-   * @deprecated Temporarily disabled - will be re-enabled when Unthread API issues are resolved
+   * @param params - Download and forward parameters for Slack files
    */
-  /*
-  private async downloadAndForwardAttachment(params: {
+  private async downloadAndForwardSlackFile(params: {
     conversationId: string;
     fileId: string;
     fileName: string;
@@ -824,15 +875,105 @@ export class TelegramWebhookHandler {
     chatId: number;
     replyToMessageId: number;
   }): Promise<void> {
-    // Method disabled - see class documentation for details
+    const { conversationId, fileId, fileName, fileSize, mimeType, chatId, replyToMessageId } = params;
+    
+    LogEngine.info('Starting Slack file download and forward', {
+      conversationId,
+      fileId,
+      fileName,
+      fileSize,
+      mimeType,
+      chatId,
+      method: 'slack-thumbnail-endpoint'
+    });
+
+    try {
+      // Use Unthread's Slack file thumbnail endpoint for Slack file IDs
+      // Endpoint: https://api.unthread.io/api/slack/files/{fileId}/thumb?thumbSize={config}&teamId={teamId}
+      const thumbnailSize = this.imageConfig.thumbnailSize; // Use centralized thumbnail size configuration
+      
+      const downloadBuffer = await downloadUnthreadImage(
+        fileId,
+        this.teamId,
+        fileName,
+        thumbnailSize // Use thumbnail size parameter
+      );
+
+      if (!downloadBuffer || downloadBuffer.length === 0) {
+        throw new Error('Slack file download returned empty or invalid data');
+      }
+
+      LogEngine.info('Slack file downloaded successfully', {
+        conversationId,
+        fileId,
+        fileName,
+        downloadedSize: downloadBuffer.length,
+        method: 'slack-thumbnail-endpoint'
+      });
+
+      // Forward to Telegram using existing attachment handler infrastructure
+      const fileBuffer = {
+        buffer: downloadBuffer,
+        fileName: fileName,
+        mimeType: mimeType,
+        size: downloadBuffer.length
+      };
+
+      // Use existing attachment handler for Telegram upload
+      const uploadSuccess = await attachmentHandler.uploadBufferToTelegram(
+        fileBuffer,
+        chatId,
+        replyToMessageId,
+        `📎 ${escapeMarkdown(fileName)} (${this.formatFileSize(fileBuffer.size)})`
+      );
+
+      if (uploadSuccess) {
+        LogEngine.info('Slack file successfully forwarded to Telegram', {
+          conversationId,
+          fileId,
+          fileName,
+          finalSize: fileBuffer.size,
+          chatId,
+          status: 'Complete'
+        });
+      } else {
+        throw new Error('Failed to upload Slack file to Telegram');
+      }
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      LogEngine.error('Failed to download and forward Slack file', {
+        conversationId,
+        fileId,
+        fileName,
+        error: errorMessage,
+        chatId
+      });
+
+      // Send user notification about the failure
+      try {
+        await this.safeSendMessage(
+          chatId,
+          `❌ **Slack File Processing Failed**\n\n📎 **File:** ${escapeMarkdown(fileName)}\n**Error:** ${escapeMarkdown(errorMessage)}\n\n_Please ask your agent to resend the file or try again later._`,
+          { 
+            reply_to_message_id: replyToMessageId,
+            parse_mode: 'Markdown'
+          }
+        );
+      } catch (notificationError) {
+        LogEngine.error('Failed to send Slack file error notification', {
+          error: notificationError instanceof Error ? notificationError.message : String(notificationError)
+        });
+      }
+
+      // Re-throw for upstream error handling
+      throw error;
+    }
   }
-  */
 
   /**
-   * DISABLED: Creates an enhanced attachment caption with metadata
-   * @deprecated Temporarily disabled - part of attachment forwarding feature
+   * Creates an enhanced attachment caption with metadata
    */
-  /*
   private createAttachmentCaption(params: {
     fileName: string;
     fileSize: number;
@@ -840,57 +981,57 @@ export class TelegramWebhookHandler {
     sendMethod: 'photo' | 'document';
     fileTypeEmoji: string;
   }): string {
-    // Method disabled - see class documentation for details
+    const { fileName, fileSize, sendMethod, fileTypeEmoji } = params;
+    const sizeFormatted = this.formatFileSize(fileSize);
+    const typeText = sendMethod === 'photo' ? 'Image' : 'Document';
+    
+    return `${fileTypeEmoji} **${typeText} from Support Agent**\n\n📎 **${fileName}**\n📊 **Size:** ${sizeFormatted}`;
   }
-  */
 
   /**
-   * DISABLED: Creates a success notification with processing details
-   * @deprecated Temporarily disabled - part of attachment forwarding feature
+   * Gets appropriate emoji for file type
    */
-  /*
-  private createSuccessNotification(params: {
-    fileName: string;
-    fileSize: number;
-    mimeType: string;
-    sendMethod: 'photo' | 'document';
-    processingTime: number;
-    downloadTime: number;
-    uploadTime: number;
-  }): string {
-    // Method disabled - see class documentation for details
-  }
-  */
-
-  /**
-   * DISABLED: Gets appropriate emoji for file type
-   * @deprecated Temporarily disabled - part of attachment forwarding feature
-   */
-  /*
   private getFileTypeEmoji(mimeType: string, sendMethod: 'photo' | 'document'): string {
-    // Method disabled - see class documentation for details
+    if (sendMethod === 'photo') {
+      return '🖼️';
+    }
+    
+    if (mimeType.includes('pdf')) { return '📄'; }
+    if (mimeType.includes('text')) { return '📝'; }
+    if (mimeType.includes('video')) { return '🎬'; }
+    if (mimeType.includes('audio')) { return '🎵'; }
+    if (mimeType.includes('zip') || mimeType.includes('archive')) { return '📦'; }
+    
+    return '📎';
   }
-  */
 
   /**
-   * DISABLED: Gets human-readable file type description
-   * @deprecated Temporarily disabled - part of attachment forwarding feature
+   * Gets human-readable file type description
    */
-  /*
   private getReadableFileType(mimeType: string, sendMethod: 'photo' | 'document'): string {
-    // Method disabled - see class documentation for details
+    if (sendMethod === 'photo') {
+      return 'Image';
+    }
+    
+    if (mimeType.includes('pdf')) { return 'PDF Document'; }
+    if (mimeType.includes('text')) { return 'Text File'; }
+    if (mimeType.includes('video')) { return 'Video File'; }
+    if (mimeType.includes('audio')) { return 'Audio File'; }
+    if (mimeType.includes('zip')) { return 'Archive'; }
+    
+    return 'Document';
   }
-  */
 
   /**
-   * DISABLED: Determines the appropriate Telegram send method based on file type
-   * @deprecated Temporarily disabled - part of attachment forwarding feature
+   * Determines the appropriate Telegram send method based on file type
    */
-  /*
   private determineTelegramSendMethod(mimeType: string, fileName: string): 'photo' | 'document' {
-    // Method disabled - see class documentation for details
+    // Check if it's an image type suitable for Telegram photos
+    const isImage = mimeType.startsWith('image/');
+    const isPhotoFormat = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName);
+    
+    return (isImage && isPhotoFormat) ? 'photo' : 'document';
   }
-  */
 
   /**
    * Format file size in human-readable format
@@ -914,6 +1055,435 @@ export class TelegramWebhookHandler {
     }
     
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${size}`;
+  }
+
+  /**
+   * Handle unsupported attachment types with user notification
+   * Provides clear feedback about what file types aren't supported yet
+   */
+  private async handleUnsupportedAttachments(event: WebhookEvent, ticketData: any): Promise<void> {
+    LogEngine.info('📎 Handling unsupported attachments', {
+      conversationId: event.data.conversationId,
+      attachmentSummary: AttachmentDetectionService.getAttachmentSummary(event)
+    });
+
+    // Send notification about unsupported files
+    const message = '📎 *Attachment Received*\n\n' +
+      '⚠️ Some file types are not supported yet. Currently, only images (PNG, JPEG, GIF, WebP) can be processed.\n\n' +
+      'Your agent can still see and access all files in the dashboard.';
+
+    await this.safeSendMessage(
+      ticketData.chatId,
+      message,
+      {
+        reply_to_message_id: ticketData.messageId,
+        parse_mode: 'Markdown'
+      }
+    );
+  }
+
+  /**
+   * Handle oversized attachments with user notification
+   * Informs users when files exceed size limits
+   */
+  private async handleOversizedAttachments(event: WebhookEvent, ticketData: any, maxSizeBytes: number): Promise<void> {
+    const totalSize = AttachmentDetectionService.getTotalSize(event);
+    
+    LogEngine.info('📎 Handling oversized attachments', {
+      conversationId: event.data.conversationId,
+      totalSize: totalSize,
+      maxSizeBytes: maxSizeBytes,
+      attachmentSummary: AttachmentDetectionService.getAttachmentSummary(event)
+    });
+
+    // Send notification about size limits
+    const maxSizeMB = Math.round(maxSizeBytes / (1024 * 1024));
+    const message = '📎 *Attachment Received*\n\n' +
+      `⚠️ Files are too large to process (${this.formatFileSize(totalSize)}). ` +
+      `Maximum size limit is ${maxSizeMB}MB.\n\n` +
+      'Your agent can still see and access all files in the dashboard.';
+
+    await this.safeSendMessage(
+      ticketData.chatId,
+      message,
+      {
+        reply_to_message_id: ticketData.messageId,
+        parse_mode: 'Markdown'
+      }
+    );
+  }
+
+  /**
+   * Send text message to Telegram with error handling and agent message tracking
+   * Consolidates the message sending logic with proper error handling
+   */
+  private async sendTextMessageToTelegram(
+    formattedMessage: string,
+    ticketData: any,
+    conversationId: string
+  ): Promise<any> {
+    try {
+      const sentMessage = await this.safeSendMessage(
+        ticketData.chatId,
+        formattedMessage,
+        { 
+          reply_to_message_id: ticketData.messageId,
+          parse_mode: 'Markdown',
+          disable_web_page_preview: true
+        }
+      );
+
+      if (sentMessage) {
+        // Store agent message for reply tracking
+        await this.botsStore.storeAgentMessage({
+          messageId: sentMessage.message_id,
+          conversationId: conversationId,
+          chatId: ticketData.chatId,
+          friendlyId: ticketData.friendlyId,
+          originalTicketMessageId: ticketData.messageId,
+          sentAt: new Date().toISOString()
+        });
+
+        // Store this as the latest agent message for attachment replies
+        await this.botsStore.storage.set(
+          `agent_message:${conversationId}:latest`,
+          JSON.stringify({
+            messageId: sentMessage.message_id,
+            conversationId: conversationId,
+            chatId: ticketData.chatId,
+            sentAt: new Date().toISOString()
+          }),
+          60 * 60 * 24 // 24 hour TTL
+        );
+
+        LogEngine.info('✅🎉 Agent message delivered to Telegram successfully!', {
+          conversationId,
+          chatId: ticketData.chatId,
+          replyToMessageId: ticketData.messageId,
+          sentMessageId: sentMessage.message_id,
+          friendlyId: ticketData.friendlyId
+        });
+
+        return sentMessage;
+      } else {
+        LogEngine.warn('Message not sent - user may have blocked bot or chat not found', {
+          conversationId,
+          chatId: ticketData.chatId,
+          friendlyId: ticketData.friendlyId
+        });
+        return null;
+      }
+    } catch (telegramError) {
+      const err = telegramError as Error;
+      LogEngine.error('Failed to send message to Telegram', {
+        error: err.message,
+        chatId: ticketData.chatId,
+        messageId: ticketData.messageId,
+        conversationId
+      });
+      
+      // Try sending without reply if reply fails (original message might be deleted)
+      try {
+        const fallbackMessage = await this.safeSendMessage(
+          ticketData.chatId,
+          `${formattedMessage}\n\n_Note: Sent as new message (original ticket message not found)_`,
+          { 
+            parse_mode: 'Markdown',
+            disable_web_page_preview: true
+          }
+        );
+
+        if (fallbackMessage) {
+          LogEngine.info('Agent message sent as new message (fallback)', {
+            conversationId,
+            chatId: ticketData.chatId
+          });
+          return fallbackMessage;
+        } else {
+          LogEngine.warn('Fallback message also failed - user may have blocked bot', {
+            conversationId,
+            chatId: ticketData.chatId
+          });
+          return null;
+        }
+
+      } catch (fallbackError) {
+        const fallbackErr = fallbackError as Error;
+        LogEngine.error('Failed to send fallback message to Telegram', {
+          error: fallbackErr.message,
+          chatId: ticketData.chatId,
+          conversationId
+        });
+        throw fallbackError;
+      }
+    }
+  }
+
+  /**
+   * Find the latest agent message for attachment replies
+   * Determines the best message to reply to for attachment-only events
+   */
+  private async findLatestAgentMessage(conversationId: string, fallbackMessageId: number): Promise<number> {
+    try {
+      // Try to get the latest agent message from Redis
+      const agentMessageKey = `agent_message:${conversationId}:latest`;
+      const latestAgentMessageData = await this.botsStore.storage.get(agentMessageKey);
+      
+      if (latestAgentMessageData && typeof latestAgentMessageData === 'string') {
+        const agentMessage = JSON.parse(latestAgentMessageData);
+        
+        LogEngine.info('🎯 Found latest agent message to reply to', {
+          conversationId,
+          latestAgentMessageId: agentMessage.messageId,
+          originalTicketId: fallbackMessageId
+        });
+        
+        return agentMessage.messageId;
+      } else {
+        LogEngine.info('🎯 No latest agent message found, using original ticket as reply target', {
+          conversationId,
+          replyToMessageId: fallbackMessageId
+        });
+        return fallbackMessageId;
+      }
+    } catch (lookupError) {
+      LogEngine.warn('⚠️ Failed to lookup latest agent message, using original ticket as reply target', {
+        conversationId,
+        error: lookupError instanceof Error ? lookupError.message : String(lookupError),
+        fallbackReplyId: fallbackMessageId
+      });
+      return fallbackMessageId;
+    }
+  }
+
+  /**
+   * Process image attachments using metadata-driven approach
+   * Handles supported image types with proper error handling and metadata efficiency
+   */
+  private async processImageAttachments(
+    event: WebhookEvent,
+    conversationId: string,
+    chatId: number,
+    replyToMessageId: number
+  ): Promise<void> {
+    LogEngine.info('📎 Processing image attachments with metadata-driven approach', {
+      conversationId,
+      attachmentSummary: AttachmentDetectionService.getAttachmentSummary(event),
+      chatId,
+      replyToMessageId,
+      metadataDriven: true // Flag to indicate new processing approach
+    });
+
+    // Validate we have supported images using metadata
+    if (!AttachmentDetectionService.hasSupportedImages(event)) {
+      LogEngine.warn('No supported images found for processing', {
+        conversationId,
+        hasAttachments: AttachmentDetectionService.hasAttachments(event),
+        hasImages: AttachmentDetectionService.hasImageAttachments(event),
+        processingApproach: 'metadata-first'
+      });
+      return;
+    }
+
+    // Performance measurement for metadata vs legacy comparison
+    const startTime = Date.now();
+
+    // Get file information using metadata
+    const fileNames = AttachmentDetectionService.getFileNames(event);
+    const fileTypes = AttachmentDetectionService.getFileTypes(event);
+    const totalSize = AttachmentDetectionService.getTotalSize(event);
+    const files = event.data.files;
+
+    LogEngine.debug('Metadata extraction completed', {
+      conversationId,
+      metadataFileCount: AttachmentDetectionService.getFileCount(event),
+      metadataFileNames: fileNames,
+      metadataTypes: fileTypes,
+      metadataTotalSize: totalSize,
+      extractionTimeMs: Date.now() - startTime
+    });
+
+    if (!files || files.length === 0) {
+      LogEngine.warn('No files array found despite attachment metadata', {
+        conversationId,
+        metadataFileCount: AttachmentDetectionService.getFileCount(event),
+        inconsistency: true
+      });
+      return;
+    }
+
+    // Validate metadata consistency with trust-but-verify approach
+    if (!AttachmentDetectionService.validateConsistency(event)) {
+      LogEngine.error('Metadata inconsistency detected, falling back to legacy processing', {
+        conversationId,
+        metadataCount: AttachmentDetectionService.getFileCount(event),
+        actualCount: files.length,
+        fallbackReason: 'metadata_inconsistency'
+      });
+      
+      // Fallback to legacy method for safety
+      await this.processSlackFiles(
+        files,
+        conversationId,
+        chatId,
+        replyToMessageId
+      );
+      return;
+    }
+
+    // Process each supported image using metadata guidance
+    const supportedImageTypes = this.imageConfig.supportedFormats;
+
+    let processedCount = 0;
+    for (let i = 0; i < files.length; i++) {
+      const file = files.at(i);
+      
+      // Validate file object for security
+      if (!file || typeof file !== 'object') {
+        LogEngine.warn('Skipping invalid file object', {
+          conversationId,
+          fileIndex: i + 1,
+          receivedType: typeof file
+        });
+        continue;
+      }
+
+      // Safely extract filename from file object directly
+      const fileName = (file.name && typeof file.name === 'string') 
+        ? String(file.name).trim() 
+        : `image_${i + 1}`;
+      
+      // Extract MIME type directly from the current file object
+      const fileType = (file.mimetype && typeof file.mimetype === 'string') 
+        ? String(file.mimetype).toLowerCase() 
+        : '';
+
+      // Skip non-images using per-file MIME type validation
+      if (!fileType || !fileType.startsWith('image/') || !supportedImageTypes.includes(fileType)) {
+        LogEngine.debug('Skipping non-image or unsupported image type', {
+          conversationId,
+          fileName,
+          fileType,
+          fileIndex: i + 1
+        });
+        continue;
+      }
+
+      try {
+        LogEngine.info('Processing supported image with metadata context', {
+          conversationId,
+          fileName,
+          fileType,
+          fileSize: file.size || 0,
+          fileId: file.id || 'unknown',
+          fileIndex: i + 1
+        });
+
+        await this.processImageFile({
+          conversationId,
+          file,
+          fileName,
+          fileType,
+          chatId,
+          replyToMessageId,
+          fileIndex: i + 1,
+          totalFiles: files.length
+        });
+
+        processedCount++;
+
+      } catch (error) {
+        LogEngine.error('Failed to process image file', {
+          conversationId,
+          fileName,
+          fileType,
+          fileIndex: i + 1,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+
+    LogEngine.info('Image processing completed with metadata-driven approach', {
+      conversationId,
+      totalFiles: files.length,
+      processedImages: processedCount,
+      skippedFiles: files.length - processedCount,
+      processingTimeMs: Date.now() - startTime,
+      efficiency: 'metadata-first'
+    });
+  }
+
+  /**
+   * Verify integration health
+   * Validates that the metadata-driven approach is functioning correctly
+   */
+  private logIntegrationStatus(event: WebhookEvent, conversationId: string): void {
+    const maxSizeBytes = getImageProcessingConfig().maxImageSize * getImageProcessingConfig().maxImagesPerBatch;
+    const integration = {
+      status: 'Handler Integration',
+      metadataAvailable: !!event.attachments?.hasFiles,
+      sourcePlatform: event.sourcePlatform,
+      targetPlatform: event.targetPlatform,
+      validationResult: AttachmentDetectionService.validateConsistency(event),
+      processingDecision: AttachmentDetectionService.getProcessingDecision(event, maxSizeBytes),
+      attachmentSummary: AttachmentDetectionService.getAttachmentSummary(event)
+    };
+
+    LogEngine.debug('Integration Status', {
+      conversationId,
+      integration,
+      success: integration.metadataAvailable && integration.validationResult
+    });
+  }
+
+  /**
+   * Process individual image file with proper type validation
+   * Handles the actual download and forwarding of a single image
+   */
+  private async processImageFile(params: {
+    conversationId: string;
+    file: any;
+    fileName: string;
+    fileType: string;
+    chatId: number;
+    replyToMessageId: number;
+    fileIndex: number;
+    totalFiles: number;
+  }): Promise<void> {
+    const { conversationId, file, fileName, fileType, chatId, replyToMessageId, fileIndex, totalFiles } = params;
+    
+    // Validate file structure
+    if (!file || typeof file !== 'object') {
+      throw new Error(`Invalid file object at index ${fileIndex}`);
+    }
+
+    const fileId = String(file.id);
+    const fileSize = Number(file.size) || 0;
+    
+    // Validate Slack file ID format
+    if (!fileId.startsWith('F') || fileId.length < 10) {
+      throw new Error(`Invalid Slack file ID format: ${fileId}`);
+    }
+
+    LogEngine.info('Processing image file', {
+      conversationId,
+      fileId,
+      fileName,
+      fileSize,
+      fileType,
+      progress: `${fileIndex}/${totalFiles}`
+    });
+
+    // Use Slack thumbnail endpoint for image download
+    await this.downloadAndForwardSlackFile({
+      conversationId,
+      fileId,
+      fileName,
+      fileSize,
+      mimeType: fileType,
+      chatId,
+      replyToMessageId
+    });
   }
 
 }

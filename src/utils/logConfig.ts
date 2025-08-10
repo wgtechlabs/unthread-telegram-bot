@@ -5,7 +5,7 @@
  * Offers log level filtering, startup summary, and debugging context controls.
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1
+
  * @since 2025
  */
 import { LogEngine } from '@wgtechlabs/log-engine';

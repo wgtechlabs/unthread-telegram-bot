@@ -11,7 +11,7 @@
  * - Zero breaking changes to existing API
  * 
  * @author WG Code Builder
- * @version 1.0.0-rc1
+
  * @since 2025
  */
 

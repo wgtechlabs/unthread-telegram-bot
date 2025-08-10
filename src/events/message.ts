@@ -9,7 +9,7 @@
  * - Unified attachment handling for single and multiple files
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1
+
  * @since 2025
  */
 
@@ -126,7 +126,7 @@ async function handleMediaGroupMessage(ctx: BotContext): Promise<boolean> {
         return false; // No attachments to process
     }
     
-    LogEngine.info('📎 Media group message detected', {
+    LogEngine.debug('📎 Media group message detected', {
         mediaGroupId,
         fileCount: fileIds.length,
         messageId: ctx.message.message_id,
@@ -170,7 +170,7 @@ async function handleMediaGroupMessage(ctx: BotContext): Promise<boolean> {
         
         mediaGroupCollector.set(mediaGroupId, newCollection);
         
-        LogEngine.info('📦 Created new media group collection', {
+        LogEngine.debug('📦 Created new media group collection', {
             mediaGroupId,
             timeoutMs: MEDIA_GROUP_CONFIG.collectionTimeoutMs,
             isReply: newCollection.isReply,
@@ -184,14 +184,14 @@ async function handleMediaGroupMessage(ctx: BotContext): Promise<boolean> {
         if (item.replyToMessageId && !collection.replyToMessageId) {
             collection.isReply = true;
             collection.replyToMessageId = item.replyToMessageId;
-            LogEngine.info('📝 Updated media group collection with reply information', {
+            LogEngine.debug('📝 Updated media group collection with reply information', {
                 mediaGroupId,
                 replyToMessageId: item.replyToMessageId,
                 fromMessageId: item.messageId
             });
         }
         
-        LogEngine.info('➕ Added item to existing media group collection', {
+        LogEngine.debug('➕ Added item to existing media group collection', {
             mediaGroupId,
             currentItemCount: collection.items.length,
             maxItems: MEDIA_GROUP_CONFIG.maxItemsPerGroup,
@@ -223,7 +223,7 @@ async function processMediaGroupCollection(mediaGroupId: string): Promise<void> 
     mediaGroupCollector.delete(mediaGroupId);
     clearTimeout(collection.timeoutId);
     
-    LogEngine.info('🔄 Processing media group collection as batch', {
+    LogEngine.debug('🔄 Processing media group collection as batch', {
         mediaGroupId,
         itemCount: collection.items.length,
         isReply: collection.isReply,
@@ -308,11 +308,57 @@ async function processMediaGroupCollection(mediaGroupId: string): Promise<void> 
             });
         }
     } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        
         LogEngine.error('❌ Error processing media group collection', {
             mediaGroupId,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage,
             itemCount: collection.items.length
         });
+        
+        // Handle specific error types with user feedback
+        if (errorMessage === 'UNSUPPORTED_FILE_TYPES_MEDIA_GROUP') {
+            LogEngine.info('🚫 Providing user feedback for unsupported media group file types', {
+                mediaGroupId,
+                chatId: collection.chatId,
+                userId: collection.userId
+            });
+            
+            // Provide user-friendly feedback about unsupported file types
+            if (collection.ctx && collection.chatId) {
+                try {
+                    const messageOptions: Record<string, unknown> = { 
+                        parse_mode: 'Markdown' as const
+                    };
+                    
+                    // Add reply parameters if we have a message to reply to
+                    if (collection.replyToMessageId) {
+                        messageOptions.reply_parameters = {
+                            message_id: collection.replyToMessageId
+                        };
+                    }
+                    
+                    await collection.ctx.telegram.sendMessage(
+                        collection.chatId,
+                        '🚫 *Files Not Supported*\n\n' +
+                        'Some files in your media group are not supported. ' +
+                        'Only image files are currently supported:\n' +
+                        '• JPEG (.jpg, .jpeg)\n' +
+                        '• PNG (.png)\n' +
+                        '• GIF (.gif)\n' +
+                        '• WebP (.webp)\n\n' +
+                        'Please send your message again with supported image files only.',
+                        messageOptions
+                    );
+                } catch (notifyError) {
+                    LogEngine.error('Failed to send unsupported file type notification', {
+                        mediaGroupId,
+                        chatId: collection.chatId,
+                        notifyError: notifyError instanceof Error ? notifyError.message : String(notifyError)
+                    });
+                }
+            }
+        }
     }
 }
 
@@ -576,7 +622,15 @@ async function processMediaGroupTicketReply(collection: MediaGroupCollection, ti
         );
         
         if (!attachmentSuccess) {
-            throw new Error('Failed to process media group attachments');
+            // Log the attachment failure and throw special error for unsupported files
+            LogEngine.warn('Media group attachment processing failed for ticket reply', {
+                mediaGroupId: collection.groupId,
+                ticketId: ticketInfo.ticketId,
+                fileCount: fileIds.length,
+                reason: 'unsupported_file_types_or_processing_error'
+            });
+            
+            throw new Error('UNSUPPORTED_FILE_TYPES_MEDIA_GROUP');
         }
         
         // Update status message to success
@@ -698,7 +752,7 @@ async function processMediaGroupAgentReply(collection: MediaGroupCollection, age
         );
         
         if (!attachmentSuccess) {
-            throw new Error('Failed to process media group attachments');
+            throw new Error('UNSUPPORTED_FILE_TYPES_MEDIA_GROUP');
         }
         
         // Update status message to success
@@ -1175,7 +1229,45 @@ async function handleTicketConfirmationReply(ctx: BotContext, ticketInfo: Ticket
             
         } catch (error) {
             const err = error as Error;
-            // Handle API errors
+            
+            // Check if this is an unsupported file type error
+            if (err.message === 'UNSUPPORTED_FILE_TYPES') {
+                LogEngine.warn('Ticket reply failed due to unsupported file types', {
+                    conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
+                    telegramUserId,
+                    hasAttachments,
+                    attachmentCount: attachmentFileIds.length
+                });
+                
+                // Show user-friendly error message for unsupported files
+                if (ctx.chat && statusMsg) {
+                    await safeEditMessageText(
+                        ctx,
+                        ctx.chat.id,
+                        statusMsg.message_id,
+                        undefined,
+                        '🚫 **File Not Supported**\n\n' +
+                        'Only image files are currently supported:\n' +
+                        '• JPEG (.jpg, .jpeg)\n' +
+                        '• PNG (.png)\n' +
+                        '• GIF (.gif)\n' +
+                        '• WebP (.webp)\n\n' +
+                        'Please send your message again with supported image files only.',
+                        { parse_mode: 'Markdown' }
+                    );
+                    
+                    // Delete error message after 10 seconds (longer for user to read)
+                    setTimeout(() => {
+                        if (ctx.chat && statusMsg) {
+                            ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+                        }
+                    }, 10000);
+                }
+                
+                return true; // Message handled (with error), don't process further
+            }
+            
+            // Handle other API errors
             LogEngine.error('Error adding message to ticket', {
                 error: err.message,
                 stack: err.stack,
@@ -1290,7 +1382,15 @@ async function processTicketMessage(ticketInfo: TicketInfo, telegramUserId: numb
         );
         
         if (!attachmentSuccess) {
-            throw new Error('Failed to process file attachments using enhanced processing');
+            // Simple approach: Show error message and don't send text message
+            LogEngine.warn('Attachment processing failed - unsupported file types', {
+                ticketNumber: ticketInfo.friendlyId,
+                conversationId: ticketInfo.conversationId || ticketInfo.ticketId,
+                attachmentCount: attachmentFileIds.length,
+                reason: 'unsupported_file_types'
+            });
+            
+            throw new Error('UNSUPPORTED_FILE_TYPES'); // Special error code for unsupported files
         }
         
         LogEngine.info('File attachments processed successfully for ticket reply using enhanced processing', {
@@ -1486,7 +1586,41 @@ async function handleAgentMessageReply(ctx: BotContext, agentMessageInfo: AgentM
                 );
                 
                 if (!attachmentSuccess) {
-                    throw new Error('Failed to process file attachments using buffer processing');
+                    // Simple approach: Show error message and don't send text message
+                    LogEngine.warn('Attachment processing failed - unsupported file types', {
+                        conversationId: agentMessageInfo.conversationId,
+                        attachmentCount: attachmentFileIds.length,
+                        reason: 'unsupported_file_types'
+                    });
+                    
+                    if (!ctx.chat) {
+                        LogEngine.error('Chat context is null during attachment error message');
+                        return true;
+                    }
+                    
+                    await safeEditMessageText(
+                        ctx,
+                        ctx.chat.id,
+                        statusMsg.message_id,
+                        undefined,
+                        '🚫 **File Not Supported**\n\n' +
+                        'Only image files are currently supported:\n' +
+                        '• JPEG (.jpg, .jpeg)\n' +
+                        '• PNG (.png)\n' +
+                        '• GIF (.gif)\n' +
+                        '• WebP (.webp)\n\n' +
+                        'Please send your message again with supported image files only.',
+                        { parse_mode: 'Markdown' }
+                    );
+                    
+                    // Delete error message after 10 seconds
+                    setTimeout(() => {
+                        if (ctx.chat && statusMsg) {
+                            ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+                        }
+                    }, 10000);
+                    
+                    return true; // Message handled (with error), don't send text message
                 }
                 
                 LogEngine.info('File attachments processed successfully for agent reply using enhanced processing', {

@@ -1,18 +1,34 @@
 /**
- * Unthread Telegram Bot - Main Application
+ * Unthread Telegram Bot - Main Application Entry Point
  * 
- * Telegram bot that bridges conversations with the Unthread customer support platform.
- * Enables ticket creation, message routing, and agent response delivery.
+ * A comprehensive Telegram bot that bridges conversations with the Unthread customer 
+ * support platform, enabling seamless ticket management and agent communication.
  * 
- * Key Features:
- * - Support ticket creation from Telegram messages
- * - Message routing between Telegram and Unthread
- * - Email collection for support contacts
- * - Multi-chat support (private and group chats)
- * - Real-time webhook event processing
+ * Core Capabilities:
+ * - Automated support ticket creation from Telegram messages
+ * - Bidirectional message routing between Telegram and Unthread
+ * - File attachment processing and forwarding (images, documents)
+ * - Email collection and customer identity management
+ * - Multi-environment support (private chats, group chats)
+ * - Real-time webhook event processing for agent responses
+ * - Admin commands for bot configuration and management
+ * 
+ * Architecture:
+ * - Event-driven design with webhook processing
+ * - Redis-based state management and message queuing
+ * - PostgreSQL for persistent data storage
+ * - Modular command system with role-based permissions
+ * - Comprehensive error handling and logging
+ * 
+ * Environment Requirements:
+ * - Node.js runtime with TypeScript support
+ * - Redis instances for platform and webhook data
+ * - PostgreSQL database for persistent storage
+ * - Telegram Bot API access token
+ * - Unthread platform API credentials
+ * - Slack workspace integration for file downloads
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1
  * @since 2025
  */
 import dotenv from 'dotenv';
@@ -328,7 +344,8 @@ try {
         const botsStore = BotsStore.getInstance();
         webhookHandler = new TelegramWebhookHandler(bot, botsStore);
 
-        // Subscribe to agent message events from dashboard
+        // Subscribe to agent message events from dashboard only
+        // Simplified to dashboard → telegram flow exclusively
         webhookConsumer.subscribe('message_created', 'dashboard', 
             webhookHandler.handleMessageCreated.bind(webhookHandler)
         );
@@ -344,7 +361,16 @@ try {
 
         // Start the webhook consumer
         await webhookConsumer.start();
-        LogEngine.info('Webhook consumer started successfully');
+        
+        // Log consolidated subscription summary
+        const status = webhookConsumer.getStatus();
+        LogEngine.info('✅ Webhook event subscriptions configured (Dashboard-only architecture)', {
+            totalSubscriptions: status.subscribedEvents.length,
+            eventTypes: status.subscribedEvents,
+            queueName: status.queueName,
+            architecture: 'dashboard-only',
+            legacyEventsRemoved: true
+        });
     } else {
         LogEngine.warn('Webhook Redis URL not configured - webhook processing disabled');
         LogEngine.info('Bot will run in basic mode (ticket creation only)');

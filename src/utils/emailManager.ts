@@ -22,12 +22,52 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 import type { UserData } from '../sdk/types.js';
 
 /**
+ * Sanitizes and normalizes domain strings for consistent handling
+ * Trims whitespace, removes leading "@" characters, and converts to lowercase
+ * 
+ * @param domain - Raw domain string to sanitize
+ * @returns Sanitized domain string
+ */
+function sanitizeDomain(domain: string): string {
+    if (!domain || typeof domain !== 'string') {
+        return 'telegram.user'; // Fallback to default
+    }
+    
+    return domain
+        .trim()                    // Remove leading/trailing whitespace
+        .replace(/^@+/, '')        // Remove any leading "@" characters
+        .toLowerCase();            // Convert to lowercase for consistency
+}
+
+/**
+ * Safely extracts and sanitizes the domain part from an email address
+ * Handles multiple "@" characters gracefully by taking the last part
+ * 
+ * @param email - Email address to extract domain from
+ * @returns Sanitized domain string or undefined if email is invalid
+ */
+function extractEmailDomain(email: string): string | undefined {
+    if (!email || typeof email !== 'string') {
+        return undefined;
+    }
+    
+    const parts = email.split('@');
+    if (parts.length < 2) {
+        return undefined;
+    }
+    
+    // Take the last part in case there are multiple "@" characters
+    const domain = parts[parts.length - 1];
+    return domain ? sanitizeDomain(domain) : undefined;
+}
+
+/**
  * Configuration for email domain generation
  * Made configurable to support different environments and testing scenarios
  */
 const EMAIL_CONFIG = {
     // Default domain for dummy emails - can be overridden via environment variable
-    dummyEmailDomain: process.env.DUMMY_EMAIL_DOMAIN || 'telegram.user'
+    dummyEmailDomain: sanitizeDomain(process.env.DUMMY_EMAIL_DOMAIN || 'telegram.user')
 };
 
 /**
@@ -116,7 +156,7 @@ export function generateDummyEmail(userId: number, username?: string): string {
         .substring(0, 20); // Limit length
     
     // Generate email using configurable domain for better testing and environment flexibility
-    return `${cleanIdentifier}_${userId}@${EMAIL_CONFIG.dummyEmailDomain}`;
+    return `${cleanIdentifier}_${userId}@${sanitizeDomain(EMAIL_CONFIG.dummyEmailDomain)}`;
 }
 
 /**
@@ -133,7 +173,7 @@ export async function getUserEmailPreferences(userId: number): Promise<UserEmail
             userId,
             userExists: !!userData,
             hasUnthreadEmail: !!userData?.unthreadEmail,
-            unthreadEmail: userData?.unthreadEmail
+            emailDomain: userData?.unthreadEmail ? extractEmailDomain(userData.unthreadEmail) : undefined
         });
         
         if (!userData?.unthreadEmail) {
@@ -142,7 +182,7 @@ export async function getUserEmailPreferences(userId: number): Promise<UserEmail
 
         return {
             email: userData.unthreadEmail,
-            isDummy: userData.unthreadEmail.includes('@telegram.user'), // Auto-generated emails
+            isDummy: userData.unthreadEmail.toLowerCase().endsWith(`@${sanitizeDomain(EMAIL_CONFIG.dummyEmailDomain)}`), // Auto-generated emails
             setAt: userData.updatedAt || userData.createdAt || new Date().toISOString(),
             canModify: true
         };
@@ -214,7 +254,7 @@ export async function updateUserEmail(
             
             LogEngine.info('User created successfully with email', {
                 userId,
-                emailDomain: sanitizedEmail.split('@')[1],
+                emailDomain: extractEmailDomain(sanitizedEmail),
                 isDummy
             });
             
@@ -230,7 +270,7 @@ export async function updateUserEmail(
         LogEngine.info('User email update attempt', {
             userId,
             updateSuccess,
-            emailDomain: sanitizedEmail.split('@')[1],
+            emailDomain: extractEmailDomain(sanitizedEmail),
             isDummy
         });
         
@@ -328,7 +368,7 @@ export function formatEmailForDisplay(email: string, isDummy: boolean): string {
 
 /**
  * Delivers any pending agent messages for a user after they set their email
- * This completes the Phase 2 email collection flow
+ * This completes the email collection flow
  */
 export async function deliverPendingAgentMessages(telegramUserId: number): Promise<{
     delivered: number;

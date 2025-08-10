@@ -1,23 +1,40 @@
 /**
- * Unthread Telegram Bot - Type Definitions
+ * Unthread Telegram Bot - Core Type Definitions and Interfaces
  * 
- * Core TypeScript interfaces and type definitions for the Unthread Telegram Bot
- * project. Provides type safety and IntelliSense support across the entire
- * application codebase.
+ * Comprehensive TypeScript type definitions providing type safety, IntelliSense
+ * support, and compile-time validation across the entire Unthread Telegram Bot
+ * application ecosystem.
  * 
  * Type Categories:
- * - Bot Context: Extended Telegraf context with bot-specific properties
- * - Command Handlers: Function signatures for bot command implementations
- * - Support Form: Types for multi-step support ticket creation flow
- * - Error Handling: Telegram-specific error types and error handling
+ * - Bot Context: Extended Telegraf context with bot-specific properties and methods
+ * - Command Handlers: Function signatures and interfaces for bot command implementations
+ * - Support Forms: Types for multi-step support ticket creation and user interaction flows
+ * - Error Handling: Comprehensive Telegram-specific error types and error handling patterns
+ * - User Management: Types for user state, permissions, and profile management
+ * - Conversation State: Types for tracking conversation context and ticket associations
+ * 
+ * Framework Integration:
+ * - Telegraf framework extensions with custom context properties
+ * - Type-safe command handler implementations with parameter validation
+ * - Integration with Unthread API response types and data structures
+ * - Database entity types with proper ORM mapping support
  * 
  * Features:
- * - Type-safe bot context extensions
- * - Enum-based support form field definitions
- * - Comprehensive error type definitions * - Integration with Telegraf framework types
+ * - Type-safe bot context extensions with custom properties and methods
+ * - Enum-based support form field definitions with validation rules
+ * - Comprehensive error type hierarchies with actionable error handling
+ * - Integration with external API types (Telegram, Unthread, Redis, PostgreSQL)
+ * - Generic type patterns for reusable components and utilities
+ * - Strict null checking and optional property handling
+ * 
+ * Code Quality Benefits:
+ * - Compile-time type checking prevents runtime errors
+ * - IntelliSense support improves developer productivity
+ * - Self-documenting code through expressive type definitions
+ * - Refactoring safety with automatic type validation
+ * - API contract enforcement between modules and services
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1
  * @since 2025
  */
 import { Context } from 'telegraf';
@@ -70,6 +87,21 @@ export interface TelegramError extends Error {
   };
   on?: {
     method: string;
-    payload: any;
+    payload: unknown;
   };
 }
+
+// Webhook event types - new webhook attachment metadata structure
+export type {
+  WebhookEvent,
+  WebhookAttachments,
+  WebhookFileData,
+  AttachmentProcessingResult,
+  AttachmentConfig
+} from './webhookEvents.js';
+
+// Webhook event validation functions
+export {
+  isValidWebhookEvent,
+  hasValidAttachments
+} from './webhookEvents.js';

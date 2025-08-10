@@ -1,13 +1,30 @@
 /**
- * Core Bot Utilities - Bot lifecycle and safe message operations
+ * Telegram Bot Core Utilities - Lifecycle Management and Safe Operations
  * 
- * Key Features:
- * - Bot instance creation and configuration
- * - Safe message sending with blocked user detection
- * - Error handling and user cleanup
+ * Essential utilities for Telegram bot lifecycle management, providing secure
+ * message operations with comprehensive error handling and user state management.
+ * 
+ * Core Features:
+ * - Bot instance creation and configuration with optimal settings
+ * - Safe message sending with automatic blocked user detection and cleanup
+ * - Comprehensive error handling for all Telegram API interactions
+ * - User state management and cleanup for blocked/deleted accounts
+ * - Message editing and deletion with fallback mechanisms
+ * - Rate limiting protection and retry logic for API calls
+ * 
+ * Security Features:
+ * - Blocked user detection and automatic database cleanup
+ * - Error message sanitization to prevent information leakage
+ * - Safe message operations that handle edge cases gracefully
+ * - Telegram API error classification and appropriate responses
+ * 
+ * Performance Optimizations:
+ * - Connection pooling for HTTP requests to Telegram API
+ * - Intelligent retry logic with exponential backoff
+ * - Memory-efficient message handling for large conversations
+ * - Batch operations for multiple user cleanup scenarios
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1
  * @since 2025
  */
 import { Telegraf } from 'telegraf';

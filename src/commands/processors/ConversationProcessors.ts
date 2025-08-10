@@ -187,7 +187,7 @@ export class SupportConversationProcessor implements IConversationProcessor {
 
         // Generate short callback IDs for the three-button interface
         const { SupportCallbackProcessor } = await import('./CallbackProcessors.js');
-        const shortId = SupportCallbackProcessor.generateShortCallbackId(userId.toString());
+        const shortId = await SupportCallbackProcessor.generateShortCallbackId(userId.toString());
 
         await ctx.reply(confirmationMessage, {
             parse_mode: 'Markdown',
@@ -1032,8 +1032,8 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             if (!validation.isValid) {
                 // Generate short callback IDs to stay within Telegram's 64-byte limit
                 const { SetupCallbackProcessor } = await import('./CallbackProcessors.js');
-                const shortBackId = SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
-                const shortCancelId = SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
+                const shortBackId = await SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
+                const shortCancelId = await SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
                 
                 await ctx.reply(
                     `❌ **Invalid Customer Name**\n\n${validation.error}\n\n${validation.details}\n\nPlease try again:`,
@@ -1084,10 +1084,10 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                 sessionId: session.sessionId 
             });
             // Generate short callback IDs for error handling
-            const shortCustomId = SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
-            const shortExistingId = SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
-            const shortBackId = SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
-            const shortCancelId = SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
+            const shortCustomId = await SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
+            const shortExistingId = await SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
+            const shortBackId = await SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
+            const shortCancelId = await SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
             
             await ctx.reply(
                 "❌ **Customer Name Setup Failed**\n\nFailed to process your custom name. This could be due to:\n• Network connection issues\n• Invalid session state\n• System configuration problems\n\nWhat would you like to do?",
@@ -1117,6 +1117,10 @@ export class DmSetupInputProcessor implements IConversationProcessor {
      * Handle template content input during setup
      */
     private async handleTemplateContentInput(ctx: BotContext, session: DmSetupSession, templateContent: string): Promise<boolean> {
+        // Generate short callback ID for this session
+        const { SetupCallbackProcessor } = await import('./CallbackProcessors.js');
+        const shortCallbackId = await SetupCallbackProcessor.generateShortCallbackId(session.sessionId);
+        
         try {
             // Validate template content length
             if (templateContent.trim().length === 0) {
@@ -1127,7 +1131,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                         reply_markup: {
                             inline_keyboard: [
                                 [
-                                    { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${session.stepData?.editingTemplateType}_${session.sessionId}` }
+                                    { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${session.stepData?.editingTemplateType}_${shortCallbackId}` }
                                 ]
                             ]
                         }
@@ -1144,7 +1148,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                         reply_markup: {
                             inline_keyboard: [
                                 [
-                                    { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${session.stepData?.editingTemplateType}_${session.sessionId}` }
+                                    { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${session.stepData?.editingTemplateType}_${shortCallbackId}` }
                                 ]
                             ]
                         }
@@ -1157,29 +1161,36 @@ export class DmSetupInputProcessor implements IConversationProcessor {
             const { GlobalTemplateManager } = await import('../../utils/globalTemplateManager.js');
             const templateManager = GlobalTemplateManager.getInstance();
             
-            // Note: We'll use a basic validation here since GlobalTemplateManager's validateTemplate is private
+            // Note: Use the actual available variables from GlobalTemplateManager
+            // Get available variables from the template manager
+            const availableVariables = templateManager.getAvailableVariables();
+            const allValidVars = [
+                ...availableVariables.core.map(v => v.name),
+                ...availableVariables.agent.map(v => v.name),
+                ...availableVariables.time.map(v => v.name)
+            ];
+            
             // Check for basic variable syntax
             const variableMatches = templateContent.match(/\{\{[^}]+\}\}/g);
             if (variableMatches) {
                 const invalidVars: string[] = [];
-                const validVars = ['ticketId', 'summary', 'customerName', 'status', 'response', 'createdAt', 'updatedAt'];
                 
                 for (const match of variableMatches) {
                     const varName = match.replace(/[{}]/g, '').trim();
-                    if (!validVars.includes(varName)) {
+                    if (!allValidVars.includes(varName)) {
                         invalidVars.push(varName);
                     }
                 }
                 
                 if (invalidVars.length > 0) {
                     await ctx.reply(
-                        `❌ **Invalid Variables**\n\nThe following variables are not recognized:\n• ${invalidVars.join('\n• ')}\n\n**Valid variables:**\n• ticketId, summary, customerName, status\n• response, createdAt, updatedAt\n\nPlease fix your template:`,
+                        `❌ **Invalid Variables**\n\nThe following variables are not recognized:\n• ${invalidVars.join('\n• ')}\n\n**Valid variables:**\n• ${allValidVars.join(', ')}\n\nPlease fix your template:`,
                         {
                             parse_mode: 'Markdown',
                             reply_markup: {
                                 inline_keyboard: [
                                     [
-                                        { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${session.stepData?.editingTemplateType}_${session.sessionId}` }
+                                        { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${session.stepData?.editingTemplateType}_${shortCallbackId}` }
                                     ]
                                 ]
                             }
@@ -1206,7 +1217,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                         reply_markup: {
                             inline_keyboard: [
                                 [
-                                    { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${templateType}_${session.sessionId}` }
+                                    { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${templateType}_${shortCallbackId}` }
                                 ]
                             ]
                         }
@@ -1249,7 +1260,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
                     reply_markup: {
                         inline_keyboard: [
                             [
-                                { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${session.stepData?.editingTemplateType}_${session.sessionId}` }
+                                { text: "❌ Cancel Edit", callback_data: `template_cancel_edit_${session.stepData?.editingTemplateType}_${shortCallbackId}` }
                             ]
                         ]
                     }
@@ -1266,7 +1277,7 @@ export class DmSetupInputProcessor implements IConversationProcessor {
         isValid: boolean;
         customerName?: string;
         error?: string;
-        validationMsg?: any;
+        validationMsg?: { message_id: number };
     }> {
         // Validate customer ID format (UUID-like format)
         const customerIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

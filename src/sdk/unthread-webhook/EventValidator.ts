@@ -32,7 +32,7 @@ import type { WebhookEvent } from '../types.js';
  * - Silent rejection of malicious events
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1
+
  * @since 2025
  */
 
@@ -97,9 +97,21 @@ export class EventValidator {
       // Also check for attachments directly under data - attachment-only messages might not have text content
       const hasContent = !!(data.content || data.text);
       
-      // Type-safe attachment detection - attachments are directly under data.attachments
+      // Type-safe attachment detection - check multiple possible locations
+      // 1. metadata.event_payload.attachments (dashboard events) 
+      // 2. data.files (Slack format)
+      // 3. data.attachments (direct format)
+      const metadata = data.metadata as Record<string, unknown> | undefined;
+      const eventPayload = metadata?.event_payload as Record<string, unknown> | undefined;
+      const metadataAttachments = eventPayload?.attachments as Array<Record<string, unknown>> | undefined;
+      const files = data.files as Array<Record<string, unknown>> | undefined;
       const attachments = data.attachments as Array<Record<string, unknown>> | undefined;
-      const hasAttachments = !!(attachments && attachments.length > 0);
+      
+      const hasAttachments = !!(
+        (metadataAttachments && metadataAttachments.length > 0) ||
+        (files && files.length > 0) ||
+        (attachments && attachments.length > 0)
+      );
       
       // Message must have either text content OR attachments
       if (!hasContent && !hasAttachments) {
@@ -107,18 +119,25 @@ export class EventValidator {
           conversationId: data.conversationId || data.id,
           availableKeys: Object.keys(data || {}),
           hasAttachments: hasAttachments,
+          metadataAttachmentCount: metadataAttachments ? metadataAttachments.length : 0,
+          fileCount: files ? files.length : 0,
           attachmentCount: attachments ? attachments.length : 0
         });
         return false;
       }
       
       // Log attachment detection for monitoring
-      if (hasAttachments && attachments) {
+      if (hasAttachments) {
+        const totalAttachments = (metadataAttachments?.length || 0) + (files?.length || 0) + (attachments?.length || 0);
         LogEngine.info('📎 Attachment(s) detected in message event', {
           conversationId: data.conversationId || data.id,
-          attachmentCount: attachments.length,
+          attachmentCount: totalAttachments,
           hasTextContent: hasContent,
-          attachmentNames: attachments.map((att: Record<string, unknown>) => att.name as string || 'unnamed').join(', ')
+          attachmentNames: [
+            ...(metadataAttachments?.map((att: Record<string, unknown>) => att.name as string || 'unnamed') || []),
+            ...(files?.map((file: Record<string, unknown>) => file.name as string || 'unnamed') || []),
+            ...(attachments?.map((att: Record<string, unknown>) => att.name as string || 'unnamed') || [])
+          ].join(', ')
         });
       }
       
@@ -128,7 +147,7 @@ export class EventValidator {
           conversationId: data.conversationId || data.id,
           hasContent,
           hasAttachments,
-          attachmentCount: hasAttachments && attachments ? attachments.length : 0
+          attachmentCount: hasAttachments ? (metadataAttachments?.length || 0) + (files?.length || 0) + (attachments?.length || 0) : 0
         });
       }
       return true;

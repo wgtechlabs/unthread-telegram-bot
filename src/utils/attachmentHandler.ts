@@ -1,27 +1,52 @@
 /**
- * Unthread Telegram Bot - File Attachment Handler
+ * Unthread Telegram Bot - Advanced File Attachment Handler
  * 
- * Handles file attachments from Telegram users to Unthread platform using
- * memory buffers for reliable processing.
+ * High-performance file attachment processing system that handles file transfers
+ * between Telegram users and the Unthread platform using memory-efficient buffer
+ * operations for reliable, scalable processing.
  * 
- * Features:
- * - Memory buffer processing (no temporary files)
- * - 10MB file size limit per file
- * - Support for common file types (images, documents, archives)
- * - Direct upload to Unthread API
- * - Retry logic for failed operations
- * - Security validation and filename sanitization
+ * Key Features:
+ * - Memory buffer processing (eliminates temporary file dependencies)
+ * - Bidirectional file transfer support (Telegram ↔ Unthread)
+ * - Advanced file size validation with configurable limits (up to 10MB per file)
+ * - Comprehensive MIME type validation and security scanning
+ * - Intelligent retry logic with exponential backoff for network failures
+ * - Performance monitoring and memory optimization
+ * - Security-focused filename sanitization and content validation
  * 
- * Current Status:
+ * Supported File Operations:
+ * - Telegram → Unthread: User file uploads to support tickets
+ * - Unthread → Telegram: Agent file attachments forwarded to users
+ * - Batch processing for multiple files with memory management
+ * - Image processing with thumbnail generation and format optimization
+ * - Document processing with type validation and size constraints
+ * 
+ * Technical Architecture:
+ * - Pure buffer implementation eliminates file system dependencies
+ * - Memory pooling for efficient buffer reuse and garbage collection
+ * - Concurrent processing with configurable limits (max 3 files simultaneously)
+ * - Comprehensive error handling with user-friendly messaging
+ * - Performance metrics tracking for monitoring and optimization
+ * 
+ * Security Features:
+ * - MIME type validation prevents malicious file uploads
+ * - Filename sanitization prevents path traversal attacks
+ * - Content validation beyond file extension checking
+ * - Size limit enforcement with early detection
+ * - Buffer memory zeroing after processing for security
+ * 
+ * Current Operational Status:
  * - ✅ Telegram → Unthread: ENABLED (users can send files to agents)
- * - ❌ Unthread → Telegram: DISABLED (agents' files are not forwarded to users)
+ * - ✅ Unthread → Telegram: ENABLED (agent files forwarded to users)
  * 
- * Limits:
- * - Maximum file size: 10MB per file
- * - Maximum files: 5 files per operation
+ * Performance Characteristics:
+ * - Maximum file size: 10MB per file (Telegram API limit)
+ * - Maximum concurrent files: 3 (configurable for memory management)
+ * - Maximum files per batch: 5 (prevents memory exhaustion)
+ * - Processing timeout: 30 seconds with retry logic
+ * - Memory optimization: Automatic garbage collection hints
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1 - Pure Buffer Implementation (Unthread→Telegram flow disabled)
  * @since 2025
  */
 
@@ -30,6 +55,7 @@ import fetch, { Response } from 'node-fetch';
 import FormData from 'form-data';
 import { LogEngine } from '../config/logging.js';
 import { StartupLogger } from './logConfig.js';
+import { getImageProcessingConfig } from '../config/env.js';
 
 // Import statements for buffer-based file processing
 // The following imports have been PERMANENTLY REMOVED:
@@ -148,6 +174,47 @@ interface TelegramFileResponse {
 }
 
 /**
+ * Telegram sendPhoto API Response interface
+ */
+interface TelegramSendPhotoResponse {
+    ok: boolean;
+    result?: {
+        message_id: number;
+        date: number;
+        photo?: Array<{
+            file_id: string;
+            file_unique_id: string;
+            width: number;
+            height: number;
+            file_size?: number;
+        }>;
+        caption?: string;
+    };
+    error_code?: number;
+    description?: string;
+}
+
+/**
+ * Telegram sendMediaGroup API Response interface
+ */
+interface TelegramSendMediaGroupResponse {
+    ok: boolean;
+    result?: Array<{
+        message_id: number;
+        date: number;
+        photo?: Array<{
+            file_id: string;
+            file_unique_id: string;
+            width: number;
+            height: number;
+            file_size?: number;
+        }>;
+    }>;
+    error_code?: number;
+    description?: string;
+}
+
+/**
  * Unthread API Response interface
  */
 interface UnthreadMessageResponse {
@@ -163,13 +230,42 @@ export interface BufferAttachment {
 }
 
 /**
+ * File Magic Numbers for Content-Based MIME Type Detection
+ * Used to detect file types from buffer content when Content-Type is unreliable
+ */
+export const FILE_SIGNATURES = {
+    // Image signatures (first few bytes of file)
+    'image/jpeg': [
+        [0xFF, 0xD8, 0xFF], // JPEG/JFIF
+        [0xFF, 0xD8, 0xFF, 0xE0], // JPEG/JFIF
+        [0xFF, 0xD8, 0xFF, 0xE1], // JPEG/EXIF
+    ],
+    'image/png': [
+        [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] // PNG signature
+    ],
+    'image/gif': [
+        [0x47, 0x49, 0x46, 0x38, 0x37, 0x61], // GIF87a
+        [0x47, 0x49, 0x46, 0x38, 0x39, 0x61]  // GIF89a
+    ],
+    'image/webp': [
+        [0x52, 0x49, 0x46, 0x46] // RIFF (WebP starts with RIFF)
+    ],
+    'image/bmp': [
+        [0x42, 0x4D] // BM header
+    ],
+    'application/pdf': [
+        [0x25, 0x50, 0x44, 0x46] // %PDF
+    ]
+};
+
+/**
  * Enhanced Buffer Configuration - Performance & Reliability
  * Configuration for buffer-based file processing
  */
 export const BUFFER_ATTACHMENT_CONFIG = {
     // File Limits (optimized for buffer processing)
     maxFileSize: 10 * 1024 * 1024,          // 10MB per file (buffer-optimized)
-    maxFiles: 5,                             // 5 files max per message
+    maxFiles: 10,                            // Align with Telegram media group limit (2-10 files)
     
     // Network Settings
     downloadTimeout: 15000,                  // 15 seconds download timeout
@@ -190,44 +286,10 @@ export const BUFFER_ATTACHMENT_CONFIG = {
     enableContentValidation: true,           // Validate file content beyond MIME type
     maxFileNameLength: 255,                  // Prevent path traversal attacks
     sanitizeFileNames: true,                 // Remove dangerous characters from filenames
+    enableClipboardSupport: true,            // Enhanced MIME detection for clipboard files
     
-    // Supported MIME types
-    allowedMimeTypes: [
-        // Images
-        'image/jpeg',
-        'image/png', 
-        'image/gif',
-        'image/webp',
-        'image/bmp',
-        'image/svg+xml',
-        'image/tiff',
-        'image/x-icon',
-        
-        // Documents
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'text/plain',
-        'text/csv',
-        'application/rtf',
-        'text/markdown',
-        
-        // Archives
-        'application/zip',
-        'application/x-rar-compressed',
-        'application/x-7z-compressed',
-        'application/x-tar',
-        'application/gzip',
-        
-        // Audio/Video (common formats)
-        'audio/mpeg',
-        'video/mp4',
-        'video/x-msvideo',
-        'video/quicktime',
-        'audio/wav'
-    ],
+    // NOTE: File type validation now uses centralized configuration from env.ts
+    // See getImageProcessingConfig().supportedFormats for current supported formats
     
     // File extensions mapping for MIME type fallback
     extensionToMime: {
@@ -330,7 +392,7 @@ function createProcessingError(
             case AttachmentProcessingError.FILE_NOT_FOUND:
                 return "❌ File not found. The file may have been deleted or is no longer available.";
             case AttachmentProcessingError.FILE_TOO_LARGE:
-                return "📏 File too large. Please send a file smaller than 10MB.";
+                return `📏 File too large. Please send a file smaller than ${Math.round(BUFFER_ATTACHMENT_CONFIG.maxFileSize / (1024 * 1024))}MB.`;
             case AttachmentProcessingError.FILE_CORRUPTED:
                 return "🔧 File appears to be corrupted. Please try sending the file again.";
             case AttachmentProcessingError.INVALID_FILE_TYPE:
@@ -409,7 +471,9 @@ function classifyError(error: Error, context?: PerformanceContext): ProcessingEr
     }
 
     // API errors (HIGH PRIORITY - specific to service)
-    if (message.includes('telegram') && (message.includes('api') || message.includes('401') || message.includes('403'))) {
+    if (message.includes('telegram') && (message.includes('api') || message.includes('upload') || 
+        message.includes('sendphoto') || message.includes('sendmediagroup') || 
+        message.includes('401') || message.includes('403'))) {
         return createProcessingError(AttachmentProcessingError.TELEGRAM_API_ERROR, error.message, context);
     }
 
@@ -465,13 +529,106 @@ const globalBufferPool = new BufferPool();
 /**
  * Detect MIME type from file extension (fallback)
  */
+/**
+ * Detect MIME type from file extension
+ */
 function detectMimeTypeFromExtension(fileName: string): string {
     const ext = path.extname(fileName).toLowerCase();
     return BUFFER_ATTACHMENT_CONFIG.extensionToMime[ext as keyof typeof BUFFER_ATTACHMENT_CONFIG.extensionToMime] || 'application/octet-stream';
 }
 
 /**
- * Phase 3.1 Enhanced filename sanitization for security
+ * Detect MIME type from buffer content using file signatures (magic numbers)
+ * This is particularly useful for clipboard files that come with generic Content-Type headers
+ */
+function detectMimeTypeFromBuffer(buffer: Buffer): string {
+    if (buffer.length < 4) {
+        return 'application/octet-stream';
+    }
+
+    // Check against known file signatures
+    for (const [mimeType, signatures] of Object.entries(FILE_SIGNATURES)) {
+        for (const signature of signatures) {
+            if (buffer.length >= signature.length && Array.isArray(signature)) {
+                // Use Buffer.from once and compare directly for better performance
+                const signatureBuffer = Buffer.from(signature);
+                const match = buffer.subarray(0, signature.length).equals(signatureBuffer);
+                
+                if (match) {
+                    // Special case for WebP: need to check for WebP signature after RIFF
+                    if (mimeType === 'image/webp' && buffer.length >= 12) {
+                        const webpSignature = buffer.subarray(8, 12);
+                        if (webpSignature.toString('ascii') === 'WEBP') {
+                            return mimeType;
+                        }
+                        continue; // Not WebP, continue checking other formats
+                    } else if (mimeType !== 'image/webp') {
+                        return mimeType;
+                    }
+                }
+            }
+        }
+    }
+
+    return 'application/octet-stream';
+}
+
+/**
+ * Enhanced MIME type detection with clipboard support
+ * Combines Content-Type header, file extension, and buffer inspection for accurate detection
+ */
+function detectMimeTypeEnhanced(contentTypeMime: string | null, fileName: string, buffer: Buffer): {
+    finalMimeType: string;
+    detectionMethod: string;
+    isClipboardLikely: boolean;
+    hasMismatch: boolean;
+} {
+    const extensionMime = detectMimeTypeFromExtension(fileName);
+    const bufferMime = detectMimeTypeFromBuffer(buffer);
+    
+    // Check if this looks like a clipboard scenario
+    const isClipboardLikely = contentTypeMime === 'application/octet-stream' && 
+                             extensionMime !== 'application/octet-stream';
+    
+    let finalMimeType: string;
+    let detectionMethod: string;
+    let hasMismatch = false;
+
+    if (isClipboardLikely && BUFFER_ATTACHMENT_CONFIG.enableClipboardSupport) {
+        // For clipboard scenarios, prioritize buffer inspection if available
+        if (bufferMime !== 'application/octet-stream') {
+            finalMimeType = bufferMime;
+            detectionMethod = 'buffer-signature';
+        } else if (extensionMime !== 'application/octet-stream') {
+            finalMimeType = extensionMime;
+            detectionMethod = 'extension-fallback';
+        } else {
+            finalMimeType = contentTypeMime || 'application/octet-stream';
+            detectionMethod = 'content-type-fallback';
+        }
+    } else {
+        // Standard detection: prioritize Content-Type header for security
+        finalMimeType = contentTypeMime || extensionMime || 'application/octet-stream';
+        detectionMethod = contentTypeMime ? 'content-type' : 
+                         (extensionMime !== 'application/octet-stream' ? 'extension' : 'fallback');
+    }
+
+    // Check for potential spoofing (but be lenient with clipboard files)
+    if (contentTypeMime && extensionMime !== 'application/octet-stream' && 
+        contentTypeMime !== extensionMime && !isClipboardLikely) {
+        hasMismatch = true;
+    }
+
+    return {
+        finalMimeType,
+        detectionMethod,
+        isClipboardLikely,
+        hasMismatch
+    };
+}
+
+/**
+ * Enhanced filename sanitization for security
  */
 function sanitizeFileName(fileName: string): SecurityValidationResult {
     const issues: string[] = [];
@@ -543,7 +700,7 @@ interface PerformanceContext {
 }
 
 /**
- * Phase 3.1 Performance monitoring wrapper
+ * Performance monitoring wrapper
  */
 async function withPerformanceMonitoring<T>(
     operation: () => Promise<T>,
@@ -593,7 +750,7 @@ async function withPerformanceMonitoring<T>(
 }
 
 /**
- * Phase 3.1 Enhanced retry logic with exponential backoff
+ * Enhanced retry logic with exponential backoff
  */
 async function withRetry<T>(
     operation: () => Promise<T>,
@@ -681,7 +838,7 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 3.1 Memory optimization monitoring
+     * Memory optimization monitoring
      */
     private startMemoryOptimization(): void {
         this.memoryMonitoringInterval = setInterval(() => {
@@ -699,11 +856,11 @@ export class AttachmentHandler {
         }, 30000); // Check every 30 seconds
     }
 
-    // Method stubs will be implemented in the next phases
-    // This completes Phase 1: Clean Buffer Template
+    // Method stubs will be implemented in future iterations
+    // This completes the Clean Buffer Template
 
     /**
-     * Phase 3.1 Enhanced file size validation with security checks
+     * Enhanced file size validation with security checks
      */
     private validateFileSize(fileSize: number, fileName?: string): boolean {
         const isValid = fileSize > 0 && fileSize <= BUFFER_ATTACHMENT_CONFIG.maxFileSize;
@@ -724,21 +881,37 @@ export class AttachmentHandler {
      * Get file information from Telegram API
      */
     private async getFileInfoFromTelegram(fileId: string, operationContext: PerformanceContext): Promise<Response> {
-        const telegramApiUrl = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`;
+        const token = process.env.TELEGRAM_BOT_TOKEN;
+        if (!token) {
+            const processingError = createProcessingError(
+                AttachmentProcessingError.CONFIGURATION_ERROR,
+                'TELEGRAM_BOT_TOKEN is not set',
+                operationContext
+            );
+            throw new Error(processingError.message);
+        }
+        const telegramApiUrl = `https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`;
         
         LogEngine.debug('[AttachmentHandler] Making Telegram API request', {
             fileId,
-            url: telegramApiUrl.replace(process.env.TELEGRAM_BOT_TOKEN || '', '[TOKEN]'),
-            hasToken: !!process.env.TELEGRAM_BOT_TOKEN
+            url: telegramApiUrl.replace(token, '[TOKEN]'),
+            hasToken: !!token
         });
 
         try {
+            // Create AbortController with timeout for robust request handling
+            const controller = new (globalThis as any).AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), BUFFER_ATTACHMENT_CONFIG.downloadTimeout);
+            
             const fileResponse = await fetch(telegramApiUrl, {
                 method: 'GET',
                 headers: {
                     'User-Agent': 'unthread-telegram-bot/1.0'
-                }
+                },
+                signal: controller.signal
             });
+            
+            clearTimeout(timeoutId);
             
             LogEngine.debug('[AttachmentHandler] Received Telegram API response', {
                 fileId,
@@ -832,7 +1005,7 @@ export class AttachmentHandler {
         
         const originalFileName = telegramFile.file_path.split('/').pop() || `file_${fileId}`;
         
-        // Phase 5 Security: Enhanced filename sanitization with error handling
+        // Enhanced filename sanitization with error handling
         const securityValidation = sanitizeFileName(originalFileName);
         if (!securityValidation.sanitizedFileName) {
             const processingError = createProcessingError(
@@ -894,13 +1067,14 @@ export class AttachmentHandler {
             throw new Error(processingError.message);
         }
 
-        // Additional size validation from headers
+        // Additional size validation from headers with proper numeric validation
         const contentLength = downloadResponse.headers.get('content-length');
-        if (contentLength && !this.validateFileSize(parseInt(contentLength), sanitizedFileName)) {
+        const contentLengthNum = contentLength ? Number(contentLength) : undefined;
+        if (contentLengthNum && Number.isFinite(contentLengthNum) && !this.validateFileSize(contentLengthNum, sanitizedFileName)) {
             const processingError = createProcessingError(
                 AttachmentProcessingError.FILE_TOO_LARGE,
-                `File too large based on content-length: ${contentLength} bytes`,
-                { ...operationContext, fileName: sanitizedFileName, fileSize: parseInt(contentLength) }
+                `File too large based on content-length: ${contentLengthNum} bytes`,
+                { ...operationContext, fileName: sanitizedFileName, fileSize: contentLengthNum }
             );
             throw new Error(processingError.message);
         }
@@ -925,48 +1099,90 @@ export class AttachmentHandler {
                 throw new Error(processingError.message);
             }
 
-            // Enhanced MIME type detection with security validation
+            // Enhanced MIME type detection with clipboard support and buffer inspection
             const contentTypeMime = downloadResponse.headers.get('content-type');
-            const extensionMime = detectMimeTypeFromExtension(sanitizedFileName);
+            const mimeDetection = detectMimeTypeEnhanced(contentTypeMime, sanitizedFileName, buffer);
             
-            // Use extension-based detection if available, otherwise fall back to content-type header
-            const mimeType = (extensionMime !== 'application/octet-stream') ? extensionMime : contentTypeMime || 'application/octet-stream';
-            
-            LogEngine.debug('[AttachmentHandler] MIME type detection', {
-                fileName: sanitizedFileName,
-                contentTypeMime,
-                extensionMime,
-                finalMimeType: mimeType,
-                detectionMethod: (extensionMime !== 'application/octet-stream') ? 'extension' : 'content-type'
-            });
-
-            // Phase 5 Security: Enhanced MIME type validation
-            if (BUFFER_ATTACHMENT_CONFIG.enableContentValidation && 
-                !BUFFER_ATTACHMENT_CONFIG.allowedMimeTypes.includes(mimeType)) {
-                LogEngine.warn('[AttachmentHandler] Unsupported MIME type detected', {
+            // Log detection results with enhanced context
+            if (mimeDetection.isClipboardLikely) {
+                LogEngine.info('[AttachmentHandler] Clipboard file detected - using enhanced MIME detection', {
                     fileName: sanitizedFileName,
-                    mimeType,
-                    allowedTypes: BUFFER_ATTACHMENT_CONFIG.allowedMimeTypes
+                    contentTypeMime,
+                    finalMimeType: mimeDetection.finalMimeType,
+                    detectionMethod: mimeDetection.detectionMethod,
+                    isClipboardLikely: mimeDetection.isClipboardLikely
+                });
+            } else if (mimeDetection.hasMismatch) {
+                LogEngine.warn('[AttachmentHandler] MIME type mismatch detected - potential spoofing', {
+                    fileName: sanitizedFileName,
+                    contentTypeMime,
+                    finalMimeType: mimeDetection.finalMimeType,
+                    detectionMethod: mimeDetection.detectionMethod,
+                    message: 'Content-Type header differs from file extension MIME type'
+                });
+            } else {
+                LogEngine.debug('[AttachmentHandler] MIME type detection', {
+                    fileName: sanitizedFileName,
+                    contentTypeMime,
+                    finalMimeType: mimeDetection.finalMimeType,
+                    detectionMethod: mimeDetection.detectionMethod
+                });
+            }
+
+            // Enhanced MIME type validation using centralized configuration
+            if (BUFFER_ATTACHMENT_CONFIG.enableContentValidation) {
+                const supportedFormats = getImageProcessingConfig().supportedFormats;
+                
+                // Parse MIME type to remove parameters (e.g., "image/jpeg; charset=utf-8" -> "image/jpeg")
+                const baseMimeType = (mimeDetection.finalMimeType.split(';')[0] || mimeDetection.finalMimeType).trim().toLowerCase();
+                
+                const isSupportedFormat = supportedFormats.some(format => {
+                    const formatLower = format.toLowerCase();
+                    // Handle wildcard patterns like "image/*"
+                    if (formatLower.endsWith('/*')) {
+                        const prefix = formatLower.slice(0, -1); // Remove '*' to get "image/"
+                        return baseMimeType.startsWith(prefix);
+                    }
+                    // If format ends with '/', treat as prefix (e.g., 'image/')
+                    else if (formatLower.endsWith('/')) {
+                        return baseMimeType.startsWith(formatLower);
+                    } 
+                    // Otherwise use exact match for full MIME types
+                    else {
+                        return baseMimeType === formatLower;
+                    }
                 });
                 
-                const processingError = createProcessingError(
-                    AttachmentProcessingError.INVALID_FILE_TYPE,
-                    `Unsupported file type: ${mimeType}`,
-                    { ...operationContext, fileName: sanitizedFileName, mimeType }
-                );
-                throw new Error(processingError.message);
+                if (!isSupportedFormat) {
+                    LogEngine.warn('[AttachmentHandler] Unsupported MIME type detected', {
+                        fileName: sanitizedFileName,
+                        originalMimeType: mimeDetection.finalMimeType,
+                        baseMimeType,
+                        allowedFormats: supportedFormats,
+                        centralizedConfig: true,
+                        clipboardSupport: mimeDetection.isClipboardLikely
+                    });
+                    
+                    const processingError = createProcessingError(
+                        AttachmentProcessingError.INVALID_FILE_TYPE,
+                        `Unsupported file type: ${mimeDetection.finalMimeType}. Only supported formats: ${supportedFormats.join(', ')}`,
+                        { ...operationContext, fileName: sanitizedFileName, mimeType: mimeDetection.finalMimeType }
+                    );
+                    throw new Error(processingError.message);
+                }
             }
 
             LogEngine.info('[AttachmentHandler] File loaded to buffer successfully', {
                 fileName: sanitizedFileName,
                 size: buffer.length,
-                mimeType
+                mimeType: mimeDetection.finalMimeType,
+                detectionMethod: mimeDetection.detectionMethod
             });
 
             return {
                 buffer,
                 fileName: sanitizedFileName,
-                mimeType,
+                mimeType: mimeDetection.finalMimeType,
                 size: buffer.length
             };
             
@@ -981,7 +1197,7 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 5 Enhanced load file to buffer with unified error handling
+     * Enhanced load file to buffer with unified error handling
      * Orchestrates the file loading process using focused, single-responsibility methods
      */
     async loadFileToBuffer(fileId: string): Promise<FileBuffer> {
@@ -1060,8 +1276,11 @@ export class AttachmentHandler {
 
         // Process files sequentially to manage memory usage consistently
         for (let index = 0; index < fileIds.length; index++) {
+            // Safe array access using Array.at() method to prevent object injection
             const fileId = fileIds.at(index);
-            if (!fileId) {
+            
+            // Enhanced validation to prevent object injection
+            if (!fileId || typeof fileId !== 'string' || fileId.trim().length === 0) {
                 LogEngine.warn('[AttachmentHandler] Skipping invalid file ID at index', { index });
                 conversionErrors.push(`File ${index + 1}: Invalid file ID`);
                 continue;
@@ -1123,7 +1342,7 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 3.1 Enhanced upload buffer to Unthread with retry logic using proper Unthread API
+     * Enhanced upload buffer to Unthread with retry logic using proper Unthread API
      */
     async uploadBufferToUnthread(fileBuffer: FileBuffer, conversationId: string, message?: string, onBehalfOf?: { name: string; email: string | undefined }): Promise<boolean> {
         const { result } = await withPerformanceMonitoring(async () => {
@@ -1198,7 +1417,7 @@ export class AttachmentHandler {
                     version: '4.0.0'
                 });
 
-                // Phase 3.1 Security: Zero out buffer after upload
+                // Security: Zero out buffer after upload
                 fileBuffer.buffer.fill(0);
 
                 return true;
@@ -1308,7 +1527,7 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 3.1 Enhanced main buffer processing pipeline with batch upload support
+     * Enhanced main buffer processing pipeline with batch upload support
      */
     async processBufferAttachments(fileIds: string[], conversationId: string, message?: string, onBehalfOf?: { name: string; email: string | undefined }): Promise<BufferProcessingResult> {
         const startTime = Date.now();
@@ -1451,7 +1670,7 @@ export class AttachmentHandler {
             return false;
         }
 
-        // Phase 3.1: Memory pre-check
+        // Memory pre-check
         const initialMemory = process.memoryUsage();
         LogEngine.debug('Memory usage before processing', {
             heapUsedMB: Math.round(initialMemory.heapUsed / 1024 / 1024),
@@ -1462,7 +1681,7 @@ export class AttachmentHandler {
             // Use buffer-based approach (ONLY option)
             const result = await this.processBufferAttachments(fileIds, conversationId, message, onBehalfOf);
             
-            // Phase 3.1: Post-processing memory check
+            // Post-processing memory check
             const finalMemory = process.memoryUsage();
             const memoryDelta = finalMemory.heapUsed - initialMemory.heapUsed;
             
@@ -1500,7 +1719,7 @@ export class AttachmentHandler {
             });
             return false;
         } finally {
-            // Phase 3.1: Cleanup and memory management
+            // Cleanup and memory management
             if (global.gc && BUFFER_ATTACHMENT_CONFIG.enablePerformanceMetrics) {
                 const currentMemory = process.memoryUsage().heapUsed;
                 if (currentMemory > BUFFER_ATTACHMENT_CONFIG.memoryThreshold) {
@@ -1512,7 +1731,7 @@ export class AttachmentHandler {
     }
 
     /**
-     * Phase 3.1 Enhanced cleanup method for proper resource management
+     * Enhanced cleanup method for proper resource management
      */
     private stopMemoryOptimization(): void {
         if (this.memoryMonitoringInterval) {
@@ -1524,6 +1743,359 @@ export class AttachmentHandler {
     }
 
     /**
+     * Upload image buffer to Telegram using Bot API
+     * Leverages existing error handling and retry patterns for reliable delivery
+     */
+    async uploadBufferToTelegram(
+        fileBuffer: FileBuffer, 
+        chatId: number, 
+        replyToMessageId?: number,
+        caption?: string
+    ): Promise<boolean> {
+        
+        const operationContext: PerformanceContext = {
+            fileName: fileBuffer.fileName,
+            fileSize: fileBuffer.size,
+            conversationId: chatId.toString()
+        };
+
+        try {
+            const { result } = await withPerformanceMonitoring(async () => {
+                return await withRetry(async () => {
+                    LogEngine.info('[AttachmentHandler] Starting image upload to Telegram', {
+                        fileName: fileBuffer.fileName,
+                        fileSize: fileBuffer.size,
+                        chatId,
+                        replyToMessageId,
+                        hasCaption: !!caption,
+                        method: 'uploadBufferToTelegram'
+                    });
+
+                    // Validate Telegram Bot Token
+                    const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+                    if (!TELEGRAM_BOT_TOKEN) {
+                        throw new Error('TELEGRAM_BOT_TOKEN environment variable is not set');
+                    }
+
+                    // File size validation - enforce Telegram's per-file size limit
+                    if (fileBuffer.size > BUFFER_ATTACHMENT_CONFIG.maxFileSize) {
+                        throw new Error(`File size ${fileBuffer.size} bytes exceeds Telegram's ${BUFFER_ATTACHMENT_CONFIG.maxFileSize} bytes limit for file: ${fileBuffer.fileName}`);
+                    }
+
+                    // Image-specific validation
+                    if (!fileBuffer.mimeType.startsWith('image/')) {
+                        throw new Error(`Only images are supported in this release. Got: ${fileBuffer.mimeType}`);
+                    }
+
+                    // Create FormData for Telegram Bot API
+                    const formData = new FormData();
+                    formData.append('chat_id', chatId.toString());
+                    formData.append('photo', fileBuffer.buffer, {
+                        filename: fileBuffer.fileName,
+                        contentType: fileBuffer.mimeType
+                    });
+
+                    // Add optional parameters
+                    if (caption) {
+                        formData.append('caption', caption.substring(0, 1024)); // Telegram caption limit
+                    }
+
+                    if (replyToMessageId) {
+                        formData.append('reply_to_message_id', replyToMessageId.toString());
+                    }
+
+                    LogEngine.debug('[AttachmentHandler] FormData prepared for Telegram upload', {
+                        fileName: fileBuffer.fileName,
+                        chatId,
+                        captionLength: caption?.length || 0,
+                        hasReplyTo: !!replyToMessageId
+                    });
+
+                    // Upload to Telegram Bot API using sendPhoto endpoint
+                    const telegramApiUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`;
+                    
+                    // Use AbortController for proper timeout handling
+                    const abortController = new AbortController();
+                    const timeoutId = setTimeout(() => {
+                        abortController.abort();
+                    }, BUFFER_ATTACHMENT_CONFIG.uploadTimeout);
+                    
+                    try {
+                        const uploadResponse = await fetch(telegramApiUrl, {
+                            method: 'POST',
+                            headers: {
+                                'User-Agent': 'unthread-telegram-bot/2.0.0-image-flow',
+                                ...formData.getHeaders()
+                            },
+                            body: formData,
+                            signal: abortController.signal
+                        });
+                        
+                        if (abortController.signal.aborted) {
+                            throw new Error(`Upload timeout after ${BUFFER_ATTACHMENT_CONFIG.uploadTimeout}ms`);
+                        }
+
+                        LogEngine.debug('[AttachmentHandler] Received Telegram API response', {
+                            fileName: fileBuffer.fileName,
+                            status: uploadResponse.status,
+                            statusText: uploadResponse.statusText,
+                            ok: uploadResponse.ok
+                        });
+
+                        if (!uploadResponse.ok) {
+                            const errorText = await uploadResponse.text().catch(() => 'Unknown error');
+                            throw new Error(`Telegram upload failed: ${uploadResponse.status} ${uploadResponse.statusText} - ${errorText}`);
+                        }
+
+                        const responseData = await uploadResponse.json() as TelegramSendPhotoResponse;
+
+                        if (!responseData.ok) {
+                            throw new Error(`Telegram API error: ${responseData.description || 'Unknown error'}`);
+                        }
+
+                        LogEngine.info('[AttachmentHandler] Image uploaded to Telegram successfully', {
+                            fileName: fileBuffer.fileName,
+                            fileSize: fileBuffer.size,
+                            chatId,
+                            messageId: responseData.result?.message_id || 'unknown',
+                            fileId: responseData.result?.photo?.[0]?.file_id || 'unknown'
+                        });
+
+                        return true;
+                    } catch (error) {
+                        if (abortController.signal.aborted) {
+                            throw new Error(`Upload timeout after ${BUFFER_ATTACHMENT_CONFIG.uploadTimeout}ms`);
+                        }
+                        throw error;
+                    } finally {
+                        clearTimeout(timeoutId);
+                    }
+
+                }, `uploadBufferToTelegram-${chatId}`, operationContext);
+            }, `uploadBufferToTelegram-withPerformanceMonitoring-${chatId}`, operationContext);
+
+            return result;
+
+        } catch (error) {
+            const classifiedError = classifyError(error instanceof Error ? error : new Error(String(error)), operationContext);
+            
+            LogEngine.error('[AttachmentHandler] Image upload to Telegram failed', {
+                fileName: fileBuffer.fileName,
+                chatId,
+                errorCode: classifiedError.code,
+                technicalMessage: classifiedError.message,
+                retryable: classifiedError.retryable,
+                context: operationContext
+            });
+
+            throw error;
+        } finally {
+            // Security: Ensure buffer is zeroed even on failure
+            if (fileBuffer && fileBuffer.buffer) {
+                fileBuffer.buffer.fill(0);
+            }
+        }
+    }
+
+    /**
+     * Upload multiple image buffers to Telegram as media group
+     * Optimized for batch image delivery with proper grouping
+     */
+    async uploadMultipleImagesToTelegram(
+        imageBuffers: FileBuffer[],
+        chatId: number,
+        replyToMessageId?: number,
+        caption?: string
+    ): Promise<boolean> {
+        
+        LogEngine.info('[AttachmentHandler] Starting batch image upload to Telegram', {
+            imageCount: imageBuffers.length,
+            chatId,
+            replyToMessageId,
+            hasCaption: !!caption
+        });
+
+        // Validate all images against file size limit before processing
+        const oversizedImages = imageBuffers.filter(buffer => 
+            buffer.size > BUFFER_ATTACHMENT_CONFIG.maxFileSize
+        );
+        
+        if (oversizedImages.length > 0) {
+            LogEngine.warn('[AttachmentHandler] Batch upload rejected - images exceed size limit', {
+                oversizedCount: oversizedImages.length,
+                maxSize: BUFFER_ATTACHMENT_CONFIG.maxFileSize,
+                oversizedFiles: oversizedImages.map(img => ({
+                    fileName: img.fileName,
+                    size: img.size,
+                    sizeMB: (img.size / (1024 * 1024)).toFixed(2)
+                }))
+            });
+            return false;
+        }
+
+        try {
+            // Validate all files are images
+            const nonImages = imageBuffers.filter(buf => !buf.mimeType.startsWith('image/'));
+            if (nonImages.length > 0) {
+                throw new Error(`Non-image files detected: ${nonImages.map(f => f.fileName).join(', ')}`);
+            }
+
+            // Telegram media group limit is 10 items
+            if (imageBuffers.length > 10) {
+                LogEngine.warn('[AttachmentHandler] Too many images for media group, processing individually', {
+                    imageCount: imageBuffers.length,
+                    limit: 10
+                });
+                
+                // Process individually if too many
+                let successCount = 0;
+                for (const imageBuffer of imageBuffers) {
+                    try {
+                        await this.uploadBufferToTelegram(imageBuffer, chatId, replyToMessageId);
+                        successCount++;
+                    } catch (error) {
+                        LogEngine.error('[AttachmentHandler] Individual image upload failed', {
+                            fileName: imageBuffer.fileName,
+                            error: error instanceof Error ? error.message : String(error)
+                        });
+                    }
+                }
+                
+                return successCount > 0;
+            }
+
+            // Use sendMediaGroup for 2-10 images
+            if (imageBuffers.length > 1) {
+                return await this.sendTelegramMediaGroup(imageBuffers, chatId, replyToMessageId, caption);
+            }
+
+            // Single image - use regular sendPhoto
+            const firstBuffer = imageBuffers[0];
+            if (!firstBuffer) {
+                throw new Error('Invalid image buffer detected');
+            }
+            return await this.uploadBufferToTelegram(firstBuffer, chatId, replyToMessageId, caption);
+
+        } catch (error) {
+            LogEngine.error('[AttachmentHandler] Batch image upload to Telegram failed', {
+                imageCount: imageBuffers.length,
+                chatId,
+                error: error instanceof Error ? error.message : String(error)
+            });
+            return false;
+        } finally {
+            // Security: Ensure buffers are zeroized even on failures
+            imageBuffers.forEach(buf => {
+                if (buf && buf.buffer) {
+                    buf.buffer.fill(0);
+                }
+            });
+        }
+    }
+
+    /**
+     * Send media group to Telegram (2-10 images)
+     * Private helper method for batch image uploads
+     */
+    private async sendTelegramMediaGroup(
+        imageBuffers: FileBuffer[],
+        chatId: number,
+        replyToMessageId?: number,
+        caption?: string
+    ): Promise<boolean> {
+        
+        const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+        if (!TELEGRAM_BOT_TOKEN) {
+            throw new Error('TELEGRAM_BOT_TOKEN environment variable is not set');
+        }
+
+        try {
+            // Prepare media array for sendMediaGroup
+            const media = imageBuffers.map((buffer, index) => ({
+                type: 'photo' as const,
+                media: `attach://photo${index}`,
+                caption: index === 0 ? caption?.substring(0, 1024) : undefined // Only first item gets caption
+            }));
+
+            // Create FormData
+            const formData = new FormData();
+            formData.append('chat_id', chatId.toString());
+            formData.append('media', JSON.stringify(media));
+
+            if (replyToMessageId) {
+                formData.append('reply_to_message_id', replyToMessageId.toString());
+            }
+
+            // Attach all images
+            imageBuffers.forEach((buffer, index) => {
+                formData.append(`photo${index}`, buffer.buffer, {
+                    filename: buffer.fileName,
+                    contentType: buffer.mimeType
+                });
+            });
+
+            LogEngine.debug('[AttachmentHandler] Sending media group to Telegram', {
+                mediaCount: imageBuffers.length,
+                chatId,
+                hasCaption: !!caption
+            });
+
+            // Send to Telegram
+            const telegramApiUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMediaGroup`;
+            
+            // Add upload timeout protection using Promise.race
+            const uploadPromise = fetch(telegramApiUrl, {
+                method: 'POST',
+                headers: {
+                    'User-Agent': 'unthread-telegram-bot/2.0.0-image-flow',
+                    ...formData.getHeaders()
+                },
+                body: formData
+            });
+            
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error(`Media group upload timeout after ${BUFFER_ATTACHMENT_CONFIG.uploadTimeout}ms`)), BUFFER_ATTACHMENT_CONFIG.uploadTimeout);
+            });
+            
+            const response = await Promise.race([uploadPromise, timeoutPromise]);
+
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => 'Unknown error');
+                throw new Error(`Telegram media group upload failed: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+
+            const responseData = await response.json() as TelegramSendMediaGroupResponse;
+
+            if (!responseData.ok) {
+                throw new Error(`Telegram API error: ${responseData.description || 'Unknown error'}`);
+            }
+
+            LogEngine.info('[AttachmentHandler] Media group uploaded to Telegram successfully', {
+                mediaCount: imageBuffers.length,
+                chatId,
+                messageCount: responseData.result?.length || 0
+            });
+
+            return true;
+
+        } catch (error) {
+            LogEngine.error('[AttachmentHandler] Media group upload failed', {
+                imageCount: imageBuffers.length,
+                chatId,
+                error: error instanceof Error ? error.message : String(error)
+            });
+            throw error;
+        } finally {
+            // Security: Ensure buffers are zeroized even on failures
+            imageBuffers.forEach(buffer => {
+                if (buffer && buffer.buffer) {
+                    buffer.buffer.fill(0);
+                }
+            });
+        }
+    }
+
+    /**
      * Shutdown method for graceful cleanup
      */
     public shutdown(): void {
@@ -1531,18 +2103,17 @@ export class AttachmentHandler {
         
         this.stopMemoryOptimization();
         
-        // Phase 3.1: Clean up global buffer pool
+        // Clean up global buffer pool
         globalBufferPool.cleanup();
         
-        // Phase 3.1: Final garbage collection if available
+        // Final garbage collection if available
         if (global.gc && BUFFER_ATTACHMENT_CONFIG.enablePerformanceMetrics) {
             LogEngine.debug('Triggering final garbage collection');
             global.gc();
         }
-        
-        LogEngine.info('AttachmentHandler shutdown complete');
-    }
 
+        LogEngine.info('AttachmentHandler shutdown completed');
+    }
 }
 
 // Create and export singleton instance

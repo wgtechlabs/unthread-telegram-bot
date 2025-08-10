@@ -1,9 +1,10 @@
 /**
  * Unthread Telegram Bot - Environment Configuration and Validation
  * 
- * Validates and manages environment variables required for the Unthread Telegram Bot
- * to function properly. This module ensures all necessary API keys, database connections,
- * and service endpoints are configured before the bot starts.
+ * Comprehensive environment variable management system that validates and manages 
+ * all configuration required for the Unthread Telegram Bot to function properly. 
+ * This module ensures all necessary API keys, database connections, and service 
+ * endpoints are configured before the bot starts.
  * 
  * Required Environment Variables:
  * - TELEGRAM_BOT_TOKEN: Telegram Bot API authentication token (from @BotFather)
@@ -14,6 +15,7 @@
  * - PLATFORM_REDIS_URL: Redis connection for bot state management
  * - WEBHOOK_REDIS_URL: Redis connection for webhook event processing (required for agent responses)
  * - POSTGRES_URL: PostgreSQL database connection for persistent storage
+ * - SLACK_TEAM_ID: Slack workspace ID for file attachment downloads (required for image processing)
  * 
  * Optional Environment Variables:
  * - DATABASE_SSL_VALIDATE: SSL validation mode for database connections (true/false)
@@ -22,15 +24,23 @@
  * - MY_COMPANY_NAME: Company name for ticket attribution
  * - UNTHREAD_DEFAULT_PRIORITY: Default priority for new tickets (3, 5, 7, or 9)
  * - BOT_USERNAME: Bot username for performance optimization (eliminates API calls if set)
+ * - DUMMY_EMAIL_DOMAIN: Domain for generating placeholder email addresses
  * 
- * Security:
- * - Validates all critical environment variables at startup
+ * Validation Features:
+ * - Fail-fast validation prevents startup with incomplete configuration
+ * - Comprehensive error messages with setup instructions for each variable
+ * - Placeholder value detection prevents accidental deployment
+ * - Token format validation (e.g., Telegram bot token structure)
+ * - Environment-specific configuration support
+ * 
+ * Security Considerations:
+ * - No sensitive values are logged or exposed in error messages
+ * - Validates critical environment variables at startup
  * - Provides clear error messages for missing configuration 
  * - Prevents bot startup with incomplete configuration
  * - Detects placeholder values and prevents accidental deployment
  * 
  * @author Waren Gonzaga, WG Technology Labs
- * @version 1.0.0-rc1
  * @since 2025
  */
 
@@ -47,7 +57,8 @@ const REQUIRED_ENV_VARS = [
     'ADMIN_USERS',
     'PLATFORM_REDIS_URL',
     'WEBHOOK_REDIS_URL',
-    'POSTGRES_URL'
+    'POSTGRES_URL',
+    'SLACK_TEAM_ID'
 ] as const;
 
 /**
@@ -61,7 +72,8 @@ const ENV_VAR_HELP: Record<string, string> = {
     'ADMIN_USERS': 'Message @userinfobot on Telegram to get your user ID (comma-separated list)',
     'PLATFORM_REDIS_URL': 'Redis connection string for bot state management',
     'WEBHOOK_REDIS_URL': 'Redis connection string for webhook event processing (agent responses)',
-    'POSTGRES_URL': 'PostgreSQL connection string for persistent storage'
+    'POSTGRES_URL': 'PostgreSQL connection string for persistent storage',
+    'SLACK_TEAM_ID': 'Slack workspace ID for file attachment downloads (from Slack workspace URL or API)'
 };
 
 /**
@@ -106,6 +118,7 @@ export function validateEnvironment(): void {
         getAdminUsers(); // This will throw if placeholder values are detected
         validateRedisUrls(); // Validate Redis URL configurations
         validateRequiredTokens(); // Validate API tokens and secrets
+        validateImageProcessingConfig(); // Validate image processing configuration
     } catch (error) {
         LogEngine.error('❌ Environment configuration error:', {
             error: (error as Error).message
@@ -130,14 +143,25 @@ function validateRedisUrls(): void {
         { name: 'WEBHOOK_REDIS_URL', value: process.env.WEBHOOK_REDIS_URL }
     ];
 
+    // Different placeholder validation for development vs production
+    const isDevEnvironment = isDevelopment();
     const placeholderValues = [
         'your_redis_url_here',
         'redis://your-redis-host:6379',
-        'redis://localhost:6379', // Common placeholder that won't work in production
-        'redis://redis:6379', // Docker compose placeholder
         'your_redis_connection_string',
         'redis_url_here'
     ];
+
+    // Only treat localhost and docker redis as placeholders in production
+    if (!isDevEnvironment) {
+        placeholderValues.push(
+            'redis://localhost:6379', // Valid for dev, placeholder in production
+            'redis://redis:6379', // Valid for docker compose, placeholder in production
+            'redis://127.0.0.1:6379', // Localhost IP, placeholder in production
+            'rediss://localhost:6379', // TLS localhost, placeholder in production
+            'rediss://redis:6379' // TLS docker, placeholder in production
+        );
+    }
 
     for (const redis of redisUrls) {
         if (!redis.value) {continue;} // Already caught by required variable check
@@ -228,10 +252,10 @@ export function isProduction(): boolean {
 /**
  * Determines whether the application is running in development mode.
  *
- * @returns `true` if the `NODE_ENV` environment variable is set to 'development'; otherwise, `false`.
+ * @returns `true` if the `NODE_ENV` environment variable is undefined or set to 'development' or 'test'; otherwise, `false`.
  */
 export function isDevelopment(): boolean {
-    return process.env.NODE_ENV === 'development';
+    return process.env.NODE_ENV === undefined || process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
 }
 
 /**
@@ -393,4 +417,96 @@ export function getConfiguredBotUsername(): string | null {
     }
     
     return configuredUsername;
+}
+
+/**
+ * Image Processing Configuration
+ * Get image processing configuration with sensible defaults
+ */
+export interface ImageProcessingConfig {
+    enabled: boolean;
+    maxImageSize: number;
+    supportedFormats: string[];
+    maxImagesPerBatch: number;
+    downloadTimeout: number;
+    uploadTimeout: number;
+    enableThumbnails: boolean;
+    thumbnailSize: number;
+}
+
+export function getImageProcessingConfig(): ImageProcessingConfig {
+    // Image Processing Constants
+    const TELEGRAM_THUMBNAIL_SIZES = {
+        LOW_QUALITY: 160,   // Slack API low resolution
+        HIGH_QUALITY: 360,  // Slack API high resolution (Telegram optimal)
+    } as const;
+
+    const DEFAULT_THUMBNAIL_SIZE_PX = TELEGRAM_THUMBNAIL_SIZES.HIGH_QUALITY;
+
+    // Hardcoded sensible defaults - no environment configuration needed
+    const isEnabled = true; // Always enabled for image processing
+    const maxImageSize = 10 * 1024 * 1024; // 10MB (Telegram limit)
+    const maxImagesPerBatch = 10; // 10 images per batch (Telegram limit)
+    const downloadTimeout = 15000; // 15 seconds
+    const uploadTimeout = 30000; // 30 seconds
+    const enableThumbnails = true; // Always use thumbnails for better performance
+    const thumbnailSize = DEFAULT_THUMBNAIL_SIZE_PX;
+
+    const supportedFormats = [
+        'image/jpeg',
+        'image/jpg',   // Alternative JPEG MIME type for broader compatibility
+        'image/png', 
+        'image/gif',
+        'image/webp'
+    ];
+
+    return {
+        enabled: isEnabled,
+        maxImageSize,
+        supportedFormats,
+        maxImagesPerBatch,
+        downloadTimeout,
+        uploadTimeout,
+        enableThumbnails,
+        thumbnailSize
+    };
+}
+
+/**
+ * Validate image processing environment
+ * Image processing configuration is validated at startup through required environment variables
+ */
+export function validateImageProcessingConfig(): void {
+    const config = getImageProcessingConfig();
+    
+    if (!config.enabled) {
+        LogEngine.info('📸 Image processing disabled via configuration');
+        return;
+    }
+
+    LogEngine.info('📸 Image processing configuration validated', {
+        enabled: config.enabled,
+        maxImageSizeMB: Math.round(config.maxImageSize / 1024 / 1024),
+        supportedFormats: config.supportedFormats.length,
+        maxImagesPerBatch: config.maxImagesPerBatch,
+        timeouts: {
+            download: config.downloadTimeout,
+            upload: config.uploadTimeout
+        }
+    });
+}
+
+/**
+ * Get the Slack team ID for file attachment downloads.
+ * This function is safe to call after validateEnvironment() has run.
+ * 
+ * @returns The Slack team ID string
+ * @throws Error if SLACK_TEAM_ID is not configured (should not happen after startup validation)
+ */
+export function getSlackTeamId(): string {
+    const teamId = process.env.SLACK_TEAM_ID;
+    if (!teamId) {
+        throw new Error('SLACK_TEAM_ID environment variable is not configured');
+    }
+    return teamId;
 }

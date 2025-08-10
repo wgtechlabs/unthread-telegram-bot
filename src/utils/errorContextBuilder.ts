@@ -13,7 +13,7 @@
  * - Enhanced debugging capabilities
  * 
  * @author WG Code Builder
- * @version 1.0.0-rc1
+
  * @since 2025
  */
 

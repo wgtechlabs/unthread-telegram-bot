@@ -28,6 +28,7 @@ export default [
         clearInterval: 'readonly',
         NodeJS: 'readonly',
         URL: 'readonly',
+        AbortController: 'readonly',
         // Console (usually available in Node.js)
         console: 'readonly',
       },
