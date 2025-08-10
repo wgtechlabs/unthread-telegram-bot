@@ -43,9 +43,54 @@ const CALLBACK_CONSTANTS = {
  * Handles callbacks related to support ticket creation
  */
 export class SupportCallbackProcessor implements ICallbackProcessor {
-    // Callback ID mapping to handle Telegram's 64-byte limit (following setup pattern)
-    private static callbackSessionMap = new Map<string, string>();
+    // Static counter for generating unique callback IDs (no in-memory storage)
     private static callbackIdCounter = 1;
+    
+    // Persistent storage for callback mappings
+    private static async getCallbackMapping(shortId: string): Promise<string | undefined> {
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            const mapping = await BotsStore.getInstance().storage.get(`support_callback_mapping:${shortId}`);
+            return mapping?.userId;
+        } catch (error) {
+            LogEngine.warn('Failed to get support callback mapping from storage', { shortId, error });
+            return undefined;
+        }
+    }
+    
+    private static async setCallbackMapping(shortId: string, userId: string): Promise<void> {
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            // Store with shorter TTL for support flows (typical support interaction time + safety buffer)
+            const callbackTTL = 20 * 60; // 20 minutes 
+            await BotsStore.getInstance().storage.set(`support_callback_mapping:${shortId}`, { userId }, callbackTTL);
+        } catch (error) {
+            LogEngine.warn('Failed to set support callback mapping in storage', { shortId, userId, error });
+        }
+    }
+    
+    private static async checkExistingMapping(userId: string): Promise<string | undefined> {
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            // Check if we already have a callback ID for this user
+            const reverseMapping = await BotsStore.getInstance().storage.get(`user_to_support_callback:${userId}`);
+            return reverseMapping?.shortId;
+        } catch (_error) {
+            LogEngine.debug('No existing support callback mapping found', { userId });
+            return undefined;
+        }
+    }
+    
+    private static async setReverseMapping(userId: string, shortId: string): Promise<void> {
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            // Store reverse mapping with same TTL as forward mapping
+            const callbackTTL = 20 * 60; // 20 minutes
+            await BotsStore.getInstance().storage.set(`user_to_support_callback:${userId}`, { shortId }, callbackTTL);
+        } catch (error) {
+            LogEngine.warn('Failed to set reverse support callback mapping', { userId, shortId, error });
+        }
+    }
 
     canHandle(callbackData: string): boolean {
         return callbackData.startsWith('support_');
@@ -53,36 +98,32 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
 
     /**
      * Generate a short callback ID for long user IDs to work within Telegram's 64-byte limit
-     * Following the same pattern as SetupCallbackProcessor
+     * Uses purely persistent storage (no in-memory cache)
      */
-    public static generateShortCallbackId(userId: string): string {
-        // Check if we already have a mapping for this user
-        for (const [shortId, fullId] of SupportCallbackProcessor.callbackSessionMap.entries()) {
-            if (fullId === userId) {
-                return shortId;
-            }
+    public static async generateShortCallbackId(userId: string): Promise<string> {
+        // Check if we already have a callback ID for this user
+        const existingShortId = await SupportCallbackProcessor.checkExistingMapping(userId);
+        if (existingShortId) {
+            return existingShortId;
         }
         
-        // Generate new short ID
-        const shortId = `cb${SupportCallbackProcessor.callbackIdCounter++}`;
-        SupportCallbackProcessor.callbackSessionMap.set(shortId, userId);
+        // Generate new short ID using timestamp-based approach for uniqueness across restarts
+        const timestamp = Date.now().toString(36); // Convert to base36 for shorter string
+        const shortId = `cb${timestamp}`;
         
-        // Clean up old mappings (keep only last 100)
-        if (SupportCallbackProcessor.callbackSessionMap.size > CALLBACK_CONSTANTS.SESSION.MAX_CACHED_MAPPINGS) {
-            const firstKey = SupportCallbackProcessor.callbackSessionMap.keys().next().value;
-            if (firstKey) {
-                SupportCallbackProcessor.callbackSessionMap.delete(firstKey);
-            }
-        }
+        // Store both mappings in persistent storage
+        await SupportCallbackProcessor.setCallbackMapping(shortId, userId);
+        await SupportCallbackProcessor.setReverseMapping(userId, shortId);
         
         return shortId;
     }
     
     /**
      * Resolve short callback ID back to full user ID
+     * Uses purely persistent storage with UnifiedStorage caching
      */
-    private static resolveCallbackId(shortId: string): string | undefined {
-        return SupportCallbackProcessor.callbackSessionMap.get(shortId);
+    private static async resolveCallbackId(shortId: string): Promise<string | undefined> {
+        return await SupportCallbackProcessor.getCallbackMapping(shortId);
     }
 
     async process(ctx: BotContext, callbackData: string): Promise<boolean> {
@@ -97,7 +138,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                     return true;
                 }
                 
-                const userId = SupportCallbackProcessor.resolveCallbackId(shortId);
+                const userId = await SupportCallbackProcessor.resolveCallbackId(shortId);
                 
                 if (!userId || parseInt(userId) !== ctx.from?.id) {
                     await ctx.answerCbQuery("❌ Session expired. Please start again.");
@@ -116,7 +157,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                     return true;
                 }
                 
-                const userId = SupportCallbackProcessor.resolveCallbackId(shortId);
+                const userId = await SupportCallbackProcessor.resolveCallbackId(shortId);
                 
                 if (!userId || parseInt(userId) !== ctx.from?.id) {
                     await ctx.answerCbQuery("❌ Session expired. Please start again.");
@@ -135,7 +176,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                     return true;
                 }
                 
-                const userId = SupportCallbackProcessor.resolveCallbackId(shortId);
+                const userId = await SupportCallbackProcessor.resolveCallbackId(shortId);
                 
                 if (!userId || parseInt(userId) !== ctx.from?.id) {
                     await ctx.answerCbQuery("❌ Session expired. Please start again.");
@@ -469,7 +510,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                     preservedSummary: userState.summary  // CRITICAL: Preserve the summary!
                 });
 
-                const shortId = SupportCallbackProcessor.generateShortCallbackId(userId.toString());
+                const shortId = await SupportCallbackProcessor.generateShortCallbackId(userId.toString());
 
                 await ctx.editMessageText(
                     "📧 **Email Setup Required**\n\n" +
@@ -846,9 +887,56 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
  * Handles callbacks related to DM-based group setup flow
  */
 export class SetupCallbackProcessor implements ICallbackProcessor {
-    // Callback ID mapping to handle Telegram's 64-byte limit
-    private static callbackSessionMap = new Map<string, string>();
+    // Static counter for generating unique callback IDs (no in-memory storage)
     private static callbackIdCounter = 1;
+    
+    // Persistent storage for callback mappings
+    private static async getCallbackMapping(shortId: string): Promise<string | undefined> {
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            const mapping = await BotsStore.getInstance().storage.get(`callback_mapping:${shortId}`);
+            return mapping?.sessionId;
+        } catch (error) {
+            LogEngine.warn('Failed to get callback mapping from storage', { shortId, error });
+            return undefined;
+        }
+    }
+    
+    private static async setCallbackMapping(shortId: string, sessionId: string): Promise<void> {
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            // Store with 2 hour TTL to accommodate multiple session extensions
+            // Sessions can be extended multiple times: 20 min base + 30 min + 30 min template editing = ~80 min
+            // Using 2 hours provides safety buffer for complex template editing flows
+            const callbackTTL = 2 * 60 * 60; // 2 hours
+            await BotsStore.getInstance().storage.set(`callback_mapping:${shortId}`, { sessionId }, callbackTTL);
+        } catch (error) {
+            LogEngine.warn('Failed to set callback mapping in storage', { shortId, sessionId, error });
+        }
+    }
+    
+    private static async checkExistingMapping(sessionId: string): Promise<string | undefined> {
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            // Check if we already have a callback ID for this session
+            const reverseMapping = await BotsStore.getInstance().storage.get(`session_to_callback:${sessionId}`);
+            return reverseMapping?.shortId;
+        } catch (error) {
+            LogEngine.debug('No existing callback mapping found', { sessionId });
+            return undefined;
+        }
+    }
+    
+    private static async setReverseMapping(sessionId: string, shortId: string): Promise<void> {
+        try {
+            const { BotsStore } = await import('../../sdk/bots-brain/index.js');
+            // Store reverse mapping with same TTL as forward mapping (2 hours)
+            const callbackTTL = 2 * 60 * 60; // 2 hours  
+            await BotsStore.getInstance().storage.set(`session_to_callback:${sessionId}`, { shortId }, callbackTTL);
+        } catch (error) {
+            LogEngine.warn('Failed to set reverse callback mapping', { sessionId, shortId, error });
+        }
+    }
 
     canHandle(callbackData: string): boolean {
         // Only handle setup-related and session-based template editing (during setup flow)
@@ -890,35 +978,46 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
 
     /**
      * Generate a short callback ID for long session IDs to work within Telegram's 64-byte limit
+     * Uses purely persistent storage (no in-memory cache)
      */
-    public static generateShortCallbackId(sessionId: string): string {
-        // Check if we already have a mapping for this session
-        for (const [shortId, fullId] of SetupCallbackProcessor.callbackSessionMap.entries()) {
-            if (fullId === sessionId) {
-                return shortId;
-            }
+    public static async generateShortCallbackId(sessionId: string): Promise<string> {
+        // Check if we already have a callback ID for this session
+        const existingShortId = await SetupCallbackProcessor.checkExistingMapping(sessionId);
+        if (existingShortId) {
+            return existingShortId;
         }
         
-        // Generate new short ID
-        const shortId = `cb${SetupCallbackProcessor.callbackIdCounter++}`;
-        SetupCallbackProcessor.callbackSessionMap.set(shortId, sessionId);
+        // Generate new short ID using timestamp-based approach for uniqueness across restarts
+        const timestamp = Date.now().toString(36); // Convert to base36 for shorter string
+        const shortId = `cb${timestamp}`;
         
-        // Clean up old mappings (keep only last 100)
-        if (SetupCallbackProcessor.callbackSessionMap.size > CALLBACK_CONSTANTS.SESSION.MAX_CACHED_MAPPINGS) {
-            const firstKey = SetupCallbackProcessor.callbackSessionMap.keys().next().value;
-            if (firstKey) {
-                SetupCallbackProcessor.callbackSessionMap.delete(firstKey);
-            }
-        }
+        // Store both mappings in persistent storage
+        await SetupCallbackProcessor.setCallbackMapping(shortId, sessionId);
+        await SetupCallbackProcessor.setReverseMapping(sessionId, shortId);
+        
+        LogEngine.info('Generated new callback mapping', { 
+            shortId, 
+            sessionId, 
+            storageKey: `callback_mapping:${shortId}`,
+            reverseKey: `session_to_callback:${sessionId}`
+        });
         
         return shortId;
     }
     
     /**
      * Resolve short callback ID back to full session ID
+     * Uses purely persistent storage with UnifiedStorage caching
      */
-    private static resolveCallbackId(shortId: string): string | undefined {
-        return SetupCallbackProcessor.callbackSessionMap.get(shortId);
+    private static async resolveCallbackId(shortId: string): Promise<string | undefined> {
+        const sessionId = await SetupCallbackProcessor.getCallbackMapping(shortId);
+        LogEngine.info('Callback ID resolution', { 
+            shortId, 
+            sessionId, 
+            storageKey: `callback_mapping:${shortId}`,
+            found: !!sessionId 
+        });
+        return sessionId;
     }
 
     /**
@@ -989,7 +1088,7 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                 }
                 
                 // Resolve short callback ID to full session ID
-                const sessionId = SetupCallbackProcessor.resolveCallbackId(shortCallbackId);
+                const sessionId = await SetupCallbackProcessor.resolveCallbackId(shortCallbackId);
                 if (!sessionId) {
                     await ctx.answerCbQuery("❌ Session expired. Please start setup again.");
                     return true;
@@ -1008,9 +1107,29 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             // Handle template_start_edit_ prefixed callbacks (shortened)
             if (callbackData.startsWith('template_start_edit_')) {
                 const parts = callbackData.split('_');
-                // Format: template_start_edit_shortCode_shortCallbackId
-                const shortCode = parts[3]; // tc, ar, or ts  
-                const shortCallbackId = parts[4]; // Short callback ID
+                // Format: template_start_edit_templateType_shortCallbackId
+                // e.g., template_start_edit_ticket_created_cbme5fuwqa
+                
+                let templateType: string;
+                let shortCallbackId: string;
+                
+                if (parts.length === 6 && parts[3] === 'created') {
+                    // Format: template_start_edit_ticket_created_shortCallbackId
+                    templateType = 'ticket_created';
+                    shortCallbackId = parts[5] || '';
+                } else if (parts.length === 6 && parts[3] === 'response') {
+                    // Format: template_start_edit_agent_response_shortCallbackId
+                    templateType = 'agent_response';
+                    shortCallbackId = parts[5] || '';
+                } else if (parts.length === 6 && parts[3] === 'status') {
+                    // Format: template_start_edit_ticket_status_shortCallbackId
+                    templateType = 'ticket_status';
+                    shortCallbackId = parts[5] || '';
+                } else {
+                    // Fallback: assume last part is shortCallbackId and reconstruct template type
+                    shortCallbackId = parts[parts.length - 1] || '';
+                    templateType = parts.slice(3, -1).join('_');
+                }
                 
                 // Ensure we have the shortCallbackId
                 if (!shortCallbackId) {
@@ -1019,16 +1138,9 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                 }
                 
                 // Resolve short callback ID to full session ID
-                const sessionId = SetupCallbackProcessor.resolveCallbackId(shortCallbackId);
+                const sessionId = await SetupCallbackProcessor.resolveCallbackId(shortCallbackId);
                 if (!sessionId) {
                     await ctx.answerCbQuery("❌ Session expired. Please start setup again.");
-                    return true;
-                }
-                
-                // Clean Code: Use helper method instead of duplicated mapping  
-                const templateType = shortCode ? this.getTemplateTypeFromCode(shortCode) : undefined;
-                if (!templateType) {
-                    await ctx.answerCbQuery("❌ Invalid template edit request.");
                     return true;
                 }
                 
@@ -1049,7 +1161,7 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
                 }
                 
                 // Resolve short callback ID to full session ID
-                const sessionId = SetupCallbackProcessor.resolveCallbackId(shortCallbackId);
+                const sessionId = await SetupCallbackProcessor.resolveCallbackId(shortCallbackId);
                 if (!sessionId) {
                     await ctx.answerCbQuery("❌ Session expired. Please start setup again.");
                     return true;
@@ -1074,8 +1186,8 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             
             // Check if this is a short callback ID (starts with 'cb') that needs resolution
             let sessionId: string;
-            if (rawSessionId.startsWith('cb') && /^cb\d+$/.test(rawSessionId)) {
-                sessionId = SetupCallbackProcessor.resolveCallbackId(rawSessionId) || '';
+            if (rawSessionId.startsWith('cb') && /^cb[a-z0-9]+$/i.test(rawSessionId)) {
+                sessionId = await SetupCallbackProcessor.resolveCallbackId(rawSessionId) || '';
                 if (!sessionId) {
                     await ctx.answerCbQuery("❌ Session expired. Please start setup again.");
                     return true;
@@ -1264,8 +1376,8 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
         }
         
         // Generate short callback IDs to stay within Telegram's 64-byte limit
-        const shortBackId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
-        const shortCancelId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+        const shortBackId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
+        const shortCancelId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
         
         await ctx.editMessageText(
             `✏️ **Custom Customer Name**
@@ -1315,8 +1427,8 @@ Please type the customer name you'd like to use:
             });
             
             // Generate short callback IDs to stay within Telegram's 64-byte limit
-            const shortBackId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
-            const shortCancelId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortBackId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortCancelId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
             
             const customerIdMsg = await ctx.editMessageText(
                 `🔗 **Enter Existing Customer ID**
@@ -1519,7 +1631,7 @@ Group setup has been cancelled. You can start over anytime by using \`/setup\` i
 Choose how you'd like to handle message templates:`;
 
         // Generate short callback ID for this session
-        const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+        const shortId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
 
         try {
             await ctx.editMessageText(successMessage, {
@@ -1746,7 +1858,7 @@ We'll respond soon!
 Choose your preferred approach:`;
 
         // Generate short callback ID for this session
-        const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+        const shortId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
 
         await ctx.editMessageText(infoMessage, {
             parse_mode: 'Markdown',
@@ -1800,7 +1912,7 @@ Choose your preferred approach:`;
 Choose how you'd like to handle message templates:`;
 
             // Generate short callback ID for this session
-            const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
 
             await ctx.editMessageText(successMessage, {
                 parse_mode: 'Markdown',
@@ -2051,7 +2163,7 @@ Please return to the group and run \`/setup\` again to retry the validation proc
             const _templates = await templateManager.getGlobalTemplates();
             
             // Generate short callback ID for this session
-            const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
             
             const customizationMessage = `🎨 **Template Customization**
 
@@ -2202,7 +2314,7 @@ ${timeVars}
 **Ready to customize? Click "Edit Template" to start!**`;
 
             // Generate short callback ID for this session
-            const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
 
             await ctx.editMessageText(editMessage, {
                 parse_mode: 'Markdown',
@@ -2323,7 +2435,7 @@ ${currentTemplate?.content || 'Loading...'}
 **Type your new template content:**`;
 
             // Generate short callback ID for this session
-            const shortId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
 
             await ctx.editMessageText(editPromptMessage, {
                 parse_mode: 'Markdown',
@@ -2410,10 +2522,10 @@ Please choose how you'd like to set up the customer for this group:
 **Choose your preferred option:**`;
 
             // Generate short callback IDs to stay within Telegram's 64-byte limit
-            const shortSuggestedId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
-            const shortCustomId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
-            const shortExistingId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
-            const shortCancelId = SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortSuggestedId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortCustomId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortExistingId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
+            const shortCancelId = await SetupCallbackProcessor.generateShortCallbackId(sessionId);
 
             await ctx.editMessageText(customerSetupMessage, {
                 parse_mode: 'Markdown',
