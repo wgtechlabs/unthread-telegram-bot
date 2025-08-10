@@ -12,8 +12,16 @@ import {
 } from '../utils/messageContentExtractor';
 import type { BotContext } from '../types/index';
 
-// Mock BotContext for testing
-const createMockContext = (message: any): BotContext => ({
+// Type for message objects that our extractor functions expect
+type TestMessage = 
+  | { text: string }
+  | { caption: string }
+  | { photo: unknown; caption?: string }
+  | { document: unknown; caption?: string }
+  | undefined;
+
+// Mock BotContext for testing  
+const createMockContext = (message: TestMessage): BotContext => ({
   message,
   // Add minimal required properties for BotContext
   chat: { id: 123, type: 'private' },
