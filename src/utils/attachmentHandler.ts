@@ -1816,6 +1816,11 @@ export class AttachmentHandler {
                         throw new Error('TELEGRAM_BOT_TOKEN environment variable is not set');
                     }
 
+                    // File size validation - enforce Telegram's per-file size limit
+                    if (fileBuffer.size > BUFFER_ATTACHMENT_CONFIG.maxFileSize) {
+                        throw new Error(`File size ${fileBuffer.size} bytes exceeds Telegram's ${BUFFER_ATTACHMENT_CONFIG.maxFileSize} bytes limit for file: ${fileBuffer.fileName}`);
+                    }
+
                     // Image-specific validation
                     if (!fileBuffer.mimeType.startsWith('image/')) {
                         throw new Error(`Only images are supported in this release. Got: ${fileBuffer.mimeType}`);
@@ -1848,49 +1853,62 @@ export class AttachmentHandler {
                     // Upload to Telegram Bot API using sendPhoto endpoint
                     const telegramApiUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`;
                     
-                    // Add upload timeout protection using Promise.race
-                    const uploadPromise = fetch(telegramApiUrl, {
-                        method: 'POST',
-                        headers: {
-                            'User-Agent': 'unthread-telegram-bot/2.0.0-image-flow',
-                            ...formData.getHeaders()
-                        },
-                        body: formData
-                    });
+                    // Use AbortController for proper timeout handling
+                    const abortController = new AbortController();
+                    const timeoutId = setTimeout(() => {
+                        abortController.abort();
+                    }, BUFFER_ATTACHMENT_CONFIG.uploadTimeout);
                     
-                    const timeoutPromise = new Promise<never>((_, reject) => {
-                        setTimeout(() => reject(new Error(`Upload timeout after ${BUFFER_ATTACHMENT_CONFIG.uploadTimeout}ms`)), BUFFER_ATTACHMENT_CONFIG.uploadTimeout);
-                    });
-                    
-                    const uploadResponse = await Promise.race([uploadPromise, timeoutPromise]);
+                    try {
+                        const uploadResponse = await fetch(telegramApiUrl, {
+                            method: 'POST',
+                            headers: {
+                                'User-Agent': 'unthread-telegram-bot/2.0.0-image-flow',
+                                ...formData.getHeaders()
+                            },
+                            body: formData,
+                            signal: abortController.signal
+                        });
+                        
+                        if (abortController.signal.aborted) {
+                            throw new Error(`Upload timeout after ${BUFFER_ATTACHMENT_CONFIG.uploadTimeout}ms`);
+                        }
 
-                    LogEngine.debug('[AttachmentHandler] Received Telegram API response', {
-                        fileName: fileBuffer.fileName,
-                        status: uploadResponse.status,
-                        statusText: uploadResponse.statusText,
-                        ok: uploadResponse.ok
-                    });
+                        LogEngine.debug('[AttachmentHandler] Received Telegram API response', {
+                            fileName: fileBuffer.fileName,
+                            status: uploadResponse.status,
+                            statusText: uploadResponse.statusText,
+                            ok: uploadResponse.ok
+                        });
 
-                    if (!uploadResponse.ok) {
-                        const errorText = await uploadResponse.text().catch(() => 'Unknown error');
-                        throw new Error(`Telegram upload failed: ${uploadResponse.status} ${uploadResponse.statusText} - ${errorText}`);
+                        if (!uploadResponse.ok) {
+                            const errorText = await uploadResponse.text().catch(() => 'Unknown error');
+                            throw new Error(`Telegram upload failed: ${uploadResponse.status} ${uploadResponse.statusText} - ${errorText}`);
+                        }
+
+                        const responseData = await uploadResponse.json() as TelegramSendPhotoResponse;
+
+                        if (!responseData.ok) {
+                            throw new Error(`Telegram API error: ${responseData.description || 'Unknown error'}`);
+                        }
+
+                        LogEngine.info('[AttachmentHandler] Image uploaded to Telegram successfully', {
+                            fileName: fileBuffer.fileName,
+                            fileSize: fileBuffer.size,
+                            chatId,
+                            messageId: responseData.result?.message_id || 'unknown',
+                            fileId: responseData.result?.photo?.[0]?.file_id || 'unknown'
+                        });
+
+                        return true;
+                    } catch (error) {
+                        if (abortController.signal.aborted) {
+                            throw new Error(`Upload timeout after ${BUFFER_ATTACHMENT_CONFIG.uploadTimeout}ms`);
+                        }
+                        throw error;
+                    } finally {
+                        clearTimeout(timeoutId);
                     }
-
-                    const responseData = await uploadResponse.json() as TelegramSendPhotoResponse;
-
-                    if (!responseData.ok) {
-                        throw new Error(`Telegram API error: ${responseData.description || 'Unknown error'}`);
-                    }
-
-                    LogEngine.info('[AttachmentHandler] Image uploaded to Telegram successfully', {
-                        fileName: fileBuffer.fileName,
-                        fileSize: fileBuffer.size,
-                        chatId,
-                        messageId: responseData.result?.message_id || 'unknown',
-                        fileId: responseData.result?.photo?.[0]?.file_id || 'unknown'
-                    });
-
-                    return true;
 
                 }, `uploadBufferToTelegram-${chatId}`, operationContext);
             }, `uploadBufferToTelegram-withPerformanceMonitoring-${chatId}`, operationContext);
@@ -1935,6 +1953,24 @@ export class AttachmentHandler {
             replyToMessageId,
             hasCaption: !!caption
         });
+
+        // Validate all images against file size limit before processing
+        const oversizedImages = imageBuffers.filter(buffer => 
+            buffer.size > BUFFER_ATTACHMENT_CONFIG.maxFileSize
+        );
+        
+        if (oversizedImages.length > 0) {
+            LogEngine.warn('[AttachmentHandler] Batch upload rejected - images exceed size limit', {
+                oversizedCount: oversizedImages.length,
+                maxSize: BUFFER_ATTACHMENT_CONFIG.maxFileSize,
+                oversizedFiles: oversizedImages.map(img => ({
+                    fileName: img.fileName,
+                    size: img.size,
+                    sizeMB: (img.size / (1024 * 1024)).toFixed(2)
+                }))
+            });
+            return false;
+        }
 
         try {
             // Validate all files are images
