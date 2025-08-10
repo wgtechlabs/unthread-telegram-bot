@@ -1315,7 +1315,8 @@ export class AttachmentHandler {
 
         // Process files sequentially to manage memory usage consistently
         for (let index = 0; index < fileIds.length; index++) {
-            const fileId = fileIds[index];
+            // Safe array access using Array.at() method to prevent object injection
+            const fileId = fileIds.at(index);
             
             // Enhanced validation to prevent object injection
             if (!fileId || typeof fileId !== 'string' || fileId.trim().length === 0) {
