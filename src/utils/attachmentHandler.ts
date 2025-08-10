@@ -538,51 +538,12 @@ function detectMimeTypeFromExtension(fileName: string): string {
 }
 
 /**
- * Detect HEIC and AVIF files using proper ISO Base Media File Format detection
- * These formats use a variable-size box header, so we check for 'ftyp' at bytes 4-7
- * and the brand identifier at bytes 8-11 instead of assuming null bytes at the start.
- */
-function detectHeicAvifMimeType(buffer: Buffer): string | null {
-    if (buffer.length < 12) {
-        return null;
-    }
-
-    // Check for 'ftyp' signature at bytes 4-7
-    const ftypSignature = buffer.subarray(4, 8).toString('ascii');
-    if (ftypSignature !== 'ftyp') {
-        return null;
-    }
-
-    // Check brand identifier at bytes 8-11
-    const brandIdentifier = buffer.subarray(8, 12).toString('ascii');
-    
-    switch (brandIdentifier) {
-        case 'heic':
-        case 'heix':
-        case 'heim':
-        case 'heis':
-            return 'image/heic';
-        case 'avif':
-        case 'avis':
-            return 'image/avif';
-        default:
-            return null;
-    }
-}
-
-/**
  * Detect MIME type from buffer content using file signatures (magic numbers)
  * This is particularly useful for clipboard files that come with generic Content-Type headers
  */
 function detectMimeTypeFromBuffer(buffer: Buffer): string {
     if (buffer.length < 4) {
         return 'application/octet-stream';
-    }
-
-    // First, try specialized HEIC/AVIF detection
-    const heicAvifType = detectHeicAvifMimeType(buffer);
-    if (heicAvifType) {
-        return heicAvifType;
     }
 
     // Check against known file signatures
