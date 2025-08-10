@@ -107,9 +107,31 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
             return existingShortId;
         }
         
-        // Generate new short ID using timestamp-based approach for uniqueness across restarts
-        const timestamp = Date.now().toString(36); // Convert to base36 for shorter string
-        const shortId = `cb${timestamp}`;
+        // Generate new short ID with collision prevention
+        let shortId: string;
+        let attempts = 0;
+        const maxAttempts = 10;
+        
+        do {
+            // Generate timestamp-based ID with random suffix for collision prevention
+            const timestamp = Date.now().toString(36); // Convert to base36 for shorter string
+            const randomSuffix = Math.random().toString(36).substr(2, 3); // 3-char random suffix
+            shortId = `cb${timestamp}${randomSuffix}`;
+            
+            // Check if this ID already exists
+            const existingMapping = await SupportCallbackProcessor.getCallbackMapping(shortId);
+            if (!existingMapping) {
+                break; // Found unique ID
+            }
+            
+            attempts++;
+            if (attempts >= maxAttempts) {
+                throw new Error(`Failed to generate unique callback ID after ${maxAttempts} attempts`);
+            }
+            
+            // Add small delay to ensure timestamp changes on retry
+            await new Promise(resolve => setTimeout(resolve, 1));
+        } while (attempts < maxAttempts);
         
         // Store both mappings in persistent storage
         await SupportCallbackProcessor.setCallbackMapping(shortId, userId);
@@ -921,7 +943,7 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             // Check if we already have a callback ID for this session
             const reverseMapping = await BotsStore.getInstance().storage.get(`session_to_callback:${sessionId}`);
             return reverseMapping?.shortId;
-        } catch (error) {
+        } catch (_error) {
             LogEngine.debug('No existing callback mapping found', { sessionId });
             return undefined;
         }
@@ -987,9 +1009,31 @@ export class SetupCallbackProcessor implements ICallbackProcessor {
             return existingShortId;
         }
         
-        // Generate new short ID using timestamp-based approach for uniqueness across restarts
-        const timestamp = Date.now().toString(36); // Convert to base36 for shorter string
-        const shortId = `cb${timestamp}`;
+        // Generate new short ID with collision prevention
+        let shortId: string;
+        let attempts = 0;
+        const maxAttempts = 10;
+        
+        do {
+            // Generate timestamp-based ID with random suffix for collision prevention
+            const timestamp = Date.now().toString(36); // Convert to base36 for shorter string
+            const randomSuffix = Math.random().toString(36).substr(2, 3); // 3-char random suffix
+            shortId = `cb${timestamp}${randomSuffix}`;
+            
+            // Check if this ID already exists
+            const existingMapping = await SetupCallbackProcessor.getCallbackMapping(shortId);
+            if (!existingMapping) {
+                break; // Found unique ID
+            }
+            
+            attempts++;
+            if (attempts >= maxAttempts) {
+                throw new Error(`Failed to generate unique callback ID after ${maxAttempts} attempts`);
+            }
+            
+            // Add small delay to ensure timestamp changes on retry
+            await new Promise(resolve => setTimeout(resolve, 1));
+        } while (attempts < maxAttempts);
         
         // Store both mappings in persistent storage
         await SetupCallbackProcessor.setCallbackMapping(shortId, sessionId);
