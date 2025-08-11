@@ -146,7 +146,7 @@ User: /viewemail
 Bot: 📧 Email Settings
      
      ✅ Email address: john@example.com
-     📅 Set on: 7/23/2025
+     📅 Set on: {date}
      🏷️ Type: Personal email
      
      What would you like to do?
