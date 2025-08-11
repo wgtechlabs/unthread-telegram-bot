@@ -1,7 +1,7 @@
 /**
  * Unit tests for messageContentExtractor utilities
  */
-import { describe, expect, it } from '@jest/globals';
+import { describe, expect, it } from 'vitest';
 import {
   getCommand,
   getCommandArgs,
