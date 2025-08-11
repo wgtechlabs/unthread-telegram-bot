@@ -22,11 +22,13 @@
 
 4. **Deploy Instantly**
 
-   **Option A: Railway (One-Click Deploy)**
+   **Option A: Railway (One-Click Deploy)** ⭐ **RECOMMENDED**
 
-   [![deploy on railway](https://railway.com/button.svg)](https://railway.com/deploy/unthread-telegram-bot?referralCode=dTwT-i)
+   **[Deploy on Railway](https://railway.com/deploy/unthread-telegram-bot?referralCode=dTwT-i)**
 
-   **Option B: Docker (Recommended)**
+   > ⚠️ **Important**: While Railway provides one-click deployment, you must supply the required environment variables (bot token, user ID, API keys) to make the bot functional. After deployment, configure the environment variables in your Railway project settings.
+
+   **Option B: Docker (Advanced)**
 
    ```bash
    # Clone and setup

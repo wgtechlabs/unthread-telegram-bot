@@ -19,6 +19,7 @@ Comprehensive documentation is organized into focused guides:
 - **[🕹️ Usage Guide](./docs/usage.md)** - User Guide, Commands & Workflows
 - **[🔧 Troubleshooting](./docs/troubleshooting.md)** - Common Issues & Solutions
 - **[🏗️ Architecture](./docs/architecture.md)** - Technical Details & System Architecture
+- **[🛡️ Security & Supply Chain](./docs/security.md)** - Security Features & Best Practices
 
 ## 🚀 Quick Start
 
@@ -26,8 +27,9 @@ Ready to get started? Here's the fastest way to deploy your bot:
 
 1. **Get Bot Token**: Message [@BotFather](https://t.me/botfather) → `/newbot`
 2. **Get User ID**: Message [@userinfobot](https://t.me/userinfobot) (required for admin access)
-3. **One-Click Deploy**: [![deploy on railway](https://railway.com/button.svg)](https://railway.com/deploy/unthread-telegram-bot?referralCode=dTwT-i)
+3. **[One-Click Deploy on Railway](https://railway.com/deploy/unthread-telegram-bot?referralCode=dTwT-i)** 
 4. **Configure Environment**: Add your tokens and user ID to the Railway environment
+   > ⚠️ **Important**: While Railway provides one-click deployment, you must supply the required environment variables (bot token, user ID, API keys) to make the bot functional.
 5. **Test**: Add bot to a group and try `/support`
 
 For detailed setup instructions, Docker deployment, and manual installation, see the complete [Installation Guide](./docs/installation.md).
@@ -57,51 +59,18 @@ Join our community discussions to get help, share ideas, and connect with other 
 
 ## 🛟 Help & Support
 
-### Getting Help
+Need help? Check our [Help & Support](https://github.com/wgtechlabs/unthread-telegram-bot/discussions/categories/help-support) discussions, review the [Documentation](./docs/), or [create a new issue](https://github.com/wgtechlabs/unthread-telegram-bot/issues/new/choose).
 
-Need assistance with the bot? Here's how to get help:
-
-- **Community Support**: Check the [Help & Support](https://github.com/wgtechlabs/unthread-telegram-bot/discussions/categories/help-support) category in our GitHub Discussions for answers to common questions.
-- **Ask a Question**: Create a [new discussion](https://github.com/wgtechlabs/unthread-telegram-bot/discussions/new?category=help-support) if you can't find answers to your specific issue.
-- **Documentation**: Review our comprehensive [Documentation](./docs/) for detailed guides and instructions.
-- **Troubleshooting**: Check the [Troubleshooting Guide](./docs/troubleshooting.md) for common issues and solutions.
-- **Known Issues**: Browse [existing issues](https://github.com/wgtechlabs/unthread-telegram-bot/issues) to see if your problem has already been reported.
-
-### Reporting Issues
-
-Please report any issues, bugs, or improvement suggestions by [creating a new issue](https://github.com/wgtechlabs/unthread-telegram-bot/issues/new/choose). Before submitting, please check if a similar issue already exists to avoid duplicates.
-
-### Security Vulnerabilities
-
-For security vulnerabilities, please do not report them publicly. Follow the guidelines in our [security policy](./SECURITY.md) to responsibly disclose security issues.
-
-Your contributions to improving this project are greatly appreciated! 🙏✨
+For security vulnerabilities, follow our [security policy](./SECURITY.md).
 
 ## 🎯 Contributing
 
 **Important**: All pull requests must be submitted to the `dev` branch. PRs to `main` will be automatically rejected.
 
-Contributions are welcome! Create a pull request to the `dev` branch and your code will be reviewed. All code must pass build and type checks before merging.
+Contributions are welcome! Your code must pass `yarn build` and `yarn type-check` before merging.
 
-**Requirements:**
+For detailed setup instructions, development guidelines, and security practices, see our comprehensive [Contributing Guide](./CONTRIBUTING.md).
 
-- Code must pass `yarn build` and `yarn type-check`
-- Follow existing code style and patterns
-- Test your changes thoroughly
-- Submit PRs to `dev` branch only
-
-For detailed setup instructions, technical documentation, architecture details, and development guidelines, see our comprehensive [Contributing Guide](./CONTRIBUTING.md).
-
-### **🛡️ Security & Supply Chain**
-
-This project implements comprehensive supply chain security measures including:
-
-- **SBOM generation** for all container images
-- **Build provenance attestations** for transparency
-- **Automated vulnerability scanning** with Trivy
-- **Multi-layer security** from development to production
-
-For complete security documentation, see the [Contributing Guide](./CONTRIBUTING.md#-supply-chain-security).
 
 ## 💖 Sponsors
 
