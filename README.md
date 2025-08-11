@@ -10,6 +10,19 @@ This bot is designed for businesses managing customer support through private Te
 
 > **🔄 Upgrading from v1.0.0-beta.x?** Check our comprehensive [Migration Guide](./MIGRATION.md) for step-by-step instructions on breaking changes and new features.
 
+## 🤗 Special Thanks
+
+### 🤝 Partner Organizations
+
+These outstanding organizations partner with us to support our open-source work:
+
+<!-- markdownlint-disable MD033 -->
+| <div align="center">💎 Platinum Sponsor</div> |
+|:-------------------------------------------:|
+| <a href="https://unthread.com"><img src="https://raw.githubusercontent.com/wgtechlabs/unthread-discord-bot/main/.github/assets/sponsors/platinum_unthread.png" width="250" alt="Unthread"></a> |
+| <div align="center"><a href="https://unthread.com" target="_blank"><b>Unthread</b></a><br/>Streamlined support ticketing for modern teams.</div> |
+<!-- markdownlint-enable MD033 -->
+
 ## 📖 Documentation
 
 Comprehensive documentation is organized into focused guides:
@@ -19,7 +32,7 @@ Comprehensive documentation is organized into focused guides:
 - **[🕹️ Usage Guide](./docs/usage.md)** - User Guide, Commands & Workflows
 - **[🔧 Troubleshooting](./docs/troubleshooting.md)** - Common Issues & Solutions
 - **[🏗️ Architecture](./docs/architecture.md)** - Technical Details & System Architecture
-- **[🛡️ Security & Supply Chain](./docs/security.md)** - Security Features & Best Practices
+- **[🛡️ Security Policy](./SECURITY.md)** - Security Features & Vulnerability Reporting
 
 ## 🚀 Quick Start
 
@@ -33,19 +46,6 @@ Ready to get started? Here's the fastest way to deploy your bot:
 5. **Test**: Add bot to a group and try `/support`
 
 For detailed setup instructions, Docker deployment, and manual installation, see the complete [Installation Guide](./docs/installation.md).
-
-## 🤗 Special Thanks
-
-### 🤝 Partner Organizations
-
-These outstanding organizations partner with us to support our open-source work:
-
-<!-- markdownlint-disable MD033 -->
-| <div align="center">💎 Platinum Sponsor</div> |
-|:-------------------------------------------:|
-| <a href="https://unthread.com"><img src="https://raw.githubusercontent.com/wgtechlabs/unthread-discord-bot/main/.github/assets/sponsors/platinum_unthread.png" width="250" alt="Unthread"></a> |
-| <div align="center"><a href="https://unthread.com" target="_blank"><b>Unthread</b></a><br/>Streamlined support ticketing for modern teams.</div> |
-<!-- markdownlint-enable MD033 -->
 
 ## 💬 Community Discussions
 
