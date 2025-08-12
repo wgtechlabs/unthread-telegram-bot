@@ -16,6 +16,8 @@ vi.mock('../sdk/bots-brain/index.js', () => ({
         storeUserState: vi.fn(),
         clearUserState: vi.fn(),
         setUserState: vi.fn(),
+        getGroupConfig: vi.fn(),
+        getUserByTelegramId: vi.fn(),
     }
 }));
 
@@ -46,6 +48,16 @@ describe('SupportCommand', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         supportCommand = new SupportCommand();
+        
+        // Mock default group config for setup validation
+        vi.mocked(BotsStore.getGroupConfig).mockResolvedValue({
+            isConfigured: true,
+            chatId: -67890,
+            customerId: 'customer-123'
+        });
+        
+        // Mock default user state (no active session)
+        vi.mocked(BotsStore.getUserState).mockResolvedValue(null);
         
         mockContext = {
             from: {
@@ -115,8 +127,7 @@ describe('SupportCommand', () => {
             await supportCommand.execute(mockContext as BotContext);
 
             expect(mockContext.reply).toHaveBeenCalledWith(
-                expect.stringContaining('Support tickets can only be created in group chats'),
-                { parse_mode: 'Markdown' }
+                '❌ Invalid command context. Please try again.'
             );
         });
 
@@ -126,8 +137,7 @@ describe('SupportCommand', () => {
             await supportCommand.execute(mockContext as BotContext);
 
             expect(mockContext.reply).toHaveBeenCalledWith(
-                expect.stringContaining('Support tickets can only be created in group chats'),
-                { parse_mode: 'Markdown' }
+                '❌ Invalid command context. Please try again.'
             );
         });
 
@@ -146,14 +156,8 @@ describe('SupportCommand', () => {
     describe('Existing Session Handling', () => {
         it('should handle existing active session', async () => {
             const existingState: UserState = {
-                userId: 12345,
-                currentState: 'awaiting_ticket_subject',
-                stateData: {
-                    ticketType: 'general',
-                    createdAt: '2023-01-01T00:00:00.000Z'
-                },
-                lastUpdated: '2023-01-01T00:00:00.000Z',
-                expiresAt: '2023-01-01T01:00:00.000Z'
+                field: 'summary',
+                summary: 'Test issue description'
             };
 
             vi.mocked(BotsStore.getUserState).mockResolvedValue(existingState);
@@ -174,15 +178,8 @@ describe('SupportCommand', () => {
 
         it('should handle existing session with different state types', async () => {
             const existingState: UserState = {
-                userId: 12345,
-                currentState: 'awaiting_ticket_description',
-                stateData: {
-                    ticketType: 'technical',
-                    subject: 'Technical Issue',
-                    createdAt: '2023-01-01T00:00:00.000Z'
-                },
-                lastUpdated: '2023-01-01T00:00:00.000Z',
-                expiresAt: '2023-01-01T01:00:00.000Z'
+                field: 'email',
+                summary: 'Test technical issue'
             };
 
             vi.mocked(BotsStore.getUserState).mockResolvedValue(existingState);
@@ -190,7 +187,7 @@ describe('SupportCommand', () => {
             await supportCommand.execute(mockContext as BotContext);
 
             expect(mockContext.reply).toHaveBeenCalledWith(
-                expect.stringContaining('Active Session Found'),
+                expect.stringContaining('Support Ticket in Progress'),
                 expect.objectContaining({
                     parse_mode: 'Markdown'
                 })
@@ -210,49 +207,23 @@ describe('SupportCommand', () => {
                 expect.objectContaining({
                     parse_mode: 'Markdown',
                     reply_markup: expect.objectContaining({
-                        inline_keyboard: expect.arrayContaining([
-                            expect.arrayContaining([
-                                expect.objectContaining({
-                                    text: expect.stringContaining('General Support'),
-                                    callback_data: 'ticket_type_general'
-                                })
-                            ])
-                        ])
+                        force_reply: true,
+                        input_field_placeholder: 'Describe your issue in detail...'
                     })
                 })
             );
         });
 
-        it('should include all ticket type options', async () => {
+        it('should set user state for new ticket creation', async () => {
             vi.mocked(BotsStore.getUserState).mockResolvedValue(null);
 
             await supportCommand.execute(mockContext as BotContext);
 
-            const replyCall = vi.mocked(mockContext.reply).mock.calls[0];
-            const replyMarkup = replyCall[1]?.reply_markup as { inline_keyboard: any[][] };
-            
-            // Flatten the keyboard to check all buttons
-            const allButtons = replyMarkup.inline_keyboard.flat();
-            const buttonTexts = allButtons.map(btn => btn.text);
-            
-            expect(buttonTexts).toContain('🎫 General Support');
-            expect(buttonTexts).toContain('🔧 Technical Issue');
-            expect(buttonTexts).toContain('💳 Billing Question');
-            expect(buttonTexts).toContain('✨ Feature Request');
-        });
-
-        it('should include cancel option', async () => {
-            vi.mocked(BotsStore.getUserState).mockResolvedValue(null);
-
-            await supportCommand.execute(mockContext as BotContext);
-
-            const replyCall = vi.mocked(mockContext.reply).mock.calls[0];
-            const replyMarkup = replyCall[1]?.reply_markup as { inline_keyboard: any[][] };
-            
-            const allButtons = replyMarkup.inline_keyboard.flat();
-            const buttonTexts = allButtons.map(btn => btn.text);
-            
-            expect(buttonTexts).toContain('❌ Cancel');
+            expect(BotsStore.setUserState).toHaveBeenCalledWith(12345, expect.objectContaining({
+                processor: 'support',
+                field: 'summary',
+                step: 1
+            }));
         });
     });
 
