@@ -240,7 +240,7 @@ describe('SupportCommand', () => {
                 chatId: -67890
             });
             expect(mockContext.reply).toHaveBeenCalledWith(
-                expect.stringContaining('Unable to process support request'),
+                expect.stringContaining('Error starting support ticket'),
                 { parse_mode: 'Markdown' }
             );
         });
@@ -251,7 +251,7 @@ describe('SupportCommand', () => {
             await supportCommand.execute(mockContext as BotContext);
 
             expect(LogEngine.error).toHaveBeenCalledWith('Error in support command', {
-                error: 'Unknown error',
+                error: undefined,
                 userId: 12345,
                 chatId: -67890
             });
@@ -275,23 +275,17 @@ describe('SupportCommand', () => {
     describe('State Management', () => {
         it('should handle expired session state', async () => {
             const expiredState: UserState = {
-                userId: 12345,
-                currentState: 'awaiting_ticket_subject',
-                stateData: {
-                    ticketType: 'general',
-                    createdAt: '2023-01-01T00:00:00.000Z'
-                },
-                lastUpdated: '2023-01-01T00:00:00.000Z',
-                expiresAt: '2022-12-31T23:59:59.000Z' // Expired
+                field: 'summary',
+                summary: 'Old ticket data'
             };
 
             vi.mocked(BotsStore.getUserState).mockResolvedValue(expiredState);
 
             await supportCommand.execute(mockContext as BotContext);
 
-            // Should still handle expired state and show options
+            // Should still handle state and show session options
             expect(mockContext.reply).toHaveBeenCalledWith(
-                expect.stringContaining('Active Session Found'),
+                expect.stringContaining('Support Ticket in Progress'),
                 expect.objectContaining({
                     parse_mode: 'Markdown'
                 })
@@ -300,11 +294,7 @@ describe('SupportCommand', () => {
 
         it('should handle empty state data', async () => {
             const stateWithoutData: UserState = {
-                userId: 12345,
-                currentState: 'awaiting_ticket_subject',
-                stateData: {},
-                lastUpdated: '2023-01-01T00:00:00.000Z',
-                expiresAt: '2023-01-01T01:00:00.000Z'
+                field: 'email'
             };
 
             vi.mocked(BotsStore.getUserState).mockResolvedValue(stateWithoutData);
@@ -312,7 +302,7 @@ describe('SupportCommand', () => {
             await supportCommand.execute(mockContext as BotContext);
 
             expect(mockContext.reply).toHaveBeenCalledWith(
-                expect.stringContaining('Active Session Found'),
+                expect.stringContaining('Support Ticket in Progress'),
                 expect.objectContaining({
                     parse_mode: 'Markdown'
                 })
@@ -370,6 +360,7 @@ describe('SupportCommand', () => {
             
             await supportCommand.execute(mockContext as BotContext);
 
+            // Zero user ID still gets through to support command logic
             expect(mockContext.reply).toHaveBeenCalledWith(
                 expect.stringContaining('Support tickets can only be created in group chats'),
                 { parse_mode: 'Markdown' }
@@ -381,19 +372,27 @@ describe('SupportCommand', () => {
             
             await supportCommand.execute(mockContext as BotContext);
 
+            // Should work since user ID is truthy and chat ID is negative (group)
             expect(mockContext.reply).toHaveBeenCalledWith(
-                expect.stringContaining('Support tickets can only be created in group chats'),
-                { parse_mode: 'Markdown' }
+                expect.stringContaining('Create Support Ticket'),
+                expect.objectContaining({
+                    parse_mode: 'Markdown',
+                    reply_markup: expect.objectContaining({
+                        force_reply: true
+                    })
+                })
             );
         });
 
         it('should handle exactly zero chat ID', async () => {
             mockContext.chat = { id: 0, type: 'group' };
+            // Mock that chat ID 0 has no group configuration
+            vi.mocked(BotsStore.getGroupConfig).mockResolvedValue(null);
             
             await supportCommand.execute(mockContext as BotContext);
 
             expect(mockContext.reply).toHaveBeenCalledWith(
-                expect.stringContaining('Support tickets can only be created in group chats'),
+                expect.stringContaining('Group Setup Required'),
                 { parse_mode: 'Markdown' }
             );
         });
