@@ -178,7 +178,10 @@ If migration fails, you can quickly rollback:
 cp .env.backup .env
 
 # Or use git to revert to previous version:
-git checkout <previous-version-tag>  # Replace with your previous version
+# List available version tags:
+git tag --list
+# Then checkout your previous version, e.g.:
+git checkout v0.9.x
 ```
 
 ## ✨ New Features After Migration
