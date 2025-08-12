@@ -187,7 +187,7 @@ Once successfully migrated, you'll have access to:
 
 - **🛡️ Enhanced Security**: Admin-only bot configuration
 - **⚡ Performance Boost**: 200x faster with BOT_USERNAME
-- **📧 Profile Management**: User email preferences with `/profile`
+- **📧 Email Management**: User email preferences with `/viewemail` and `/setemail`
 - **🎨 Template System**: Customizable message templates
 - **📊 Advanced Logging**: Enterprise-grade logging with PII redaction
 
