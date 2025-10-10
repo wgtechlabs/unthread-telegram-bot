@@ -36,20 +36,14 @@
    cd unthread-telegram-bot
    cp .env.example .env
    
-   # IMPORTANT: Create the external network first
-   docker network create unthread-integration-network
-   
    # Edit .env with your tokens AND your Telegram user ID
    # ADMIN_USERS=your_telegram_user_id_here  # Replace with actual ID!
    # For multiple admins: ADMIN_USERS=123456789,987654321,555666777
-   # Then start everything
+   
+   # Start everything (docker compose will auto-create the required network)
    docker compose up -d
    ```
 
-   > **⚠️ IMPORTANT**: If you don't create the external network first, Docker will fail with:
-   >
-   > `ERROR: Network unthread-integration-network declared as external, but could not be found`
-   >
    > **For Local Development**: If you're running Docker on your local machine, add this to your `.env` file:
    >
    > ```bash
