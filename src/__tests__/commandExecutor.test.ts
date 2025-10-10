@@ -1,12 +1,12 @@
 /**
  * Unit tests for commands/utils/commandExecutor.ts
  */
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import type { BotContext } from '../../types/index.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BotContext } from '../types/index.js';
 import { 
+  type CommandExecutorOptions,
   createCommandExecutor, 
-  createProcessorExecutor,
-  type CommandExecutorOptions 
+  createProcessorExecutor
 } from '../commands/utils/commandExecutor.js';
 
 // Mock dependencies

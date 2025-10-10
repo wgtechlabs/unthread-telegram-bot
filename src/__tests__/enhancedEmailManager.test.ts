@@ -36,9 +36,7 @@ import {
     formatEmailForDisplay,
     getUserEmailPreferences,
     updateUserEmail,
-    deliverPendingAgentMessages,
-    type EmailValidationResult,
-    type UserEmailPreferences
+    deliverPendingAgentMessages
 } from '../utils/emailManager.js';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
@@ -404,7 +402,6 @@ describe('Email Manager', () => {
 
         it('should handle delivery errors', async () => {
             // Mock an error by making the function throw
-            const originalConsole = console.error;
             vi.spyOn(LogEngine, 'info').mockImplementationOnce(() => {
                 throw new Error('Delivery failed');
             });

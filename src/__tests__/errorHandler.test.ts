@@ -8,8 +8,7 @@ import {
   createUserErrorMessage,
   ErrorCategory,
   ErrorSeverity,
-  ERROR_CODES,
-  type ErrorDetails
+  ERROR_CODES
 } from '../commands/utils/errorHandler.js';
 
 // Mock LogEngine

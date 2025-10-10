@@ -1,13 +1,13 @@
 /**
  * Unit tests for commands/basic/InfoCommands.ts
  */
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import type { BotContext } from '../../types/index.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BotContext } from '../types/index.js';
 import { 
-  StartCommand, 
-  HelpCommand, 
-  VersionCommand, 
-  AboutCommand 
+  AboutCommand,
+  HelpCommand,
+  StartCommand,
+  VersionCommand
 } from '../commands/basic/InfoCommands.js';
 
 // Mock dependencies

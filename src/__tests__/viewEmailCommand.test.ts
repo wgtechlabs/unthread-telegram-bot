@@ -1,8 +1,8 @@
 /**
  * Unit tests for commands/basic/ViewEmailCommand.ts
  */
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import type { BotContext } from '../../types/index.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BotContext } from '../types/index.js';
 import { ViewEmailCommand } from '../commands/basic/ViewEmailCommand.js';
 
 // Mock dependencies
