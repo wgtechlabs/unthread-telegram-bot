@@ -8,7 +8,7 @@
     "coverage/**/*",
     ".git/**/*"
   ],
-  "exec": "yarn build && yarn start",
+  "exec": "pnpm build && pnpm start",
   "env": {
     "NODE_ENV": "development"
   },

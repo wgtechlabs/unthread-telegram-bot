@@ -67,7 +67,7 @@ For security vulnerabilities, follow our [security policy](./SECURITY.md).
 
 **Important**: All pull requests must be submitted to the `dev` branch. PRs to `main` will be automatically rejected.
 
-Contributions are welcome! Your code must pass `yarn build` and `yarn type-check` before merging.
+Contributions are welcome! Your code must pass `pnpm build` and `pnpm type-check` before merging.
 
 For detailed setup instructions, development guidelines, and security practices, see our comprehensive [Contributing Guide](./CONTRIBUTING.md).
 

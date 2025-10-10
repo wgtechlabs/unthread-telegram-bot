@@ -109,7 +109,7 @@ WEBHOOK_REDIS_URL="${{Redis.REDIS_URL}}"  # If using Railway Redis
 
 ```bash
 # Check if bot starts without errors:
-yarn start
+pnpm start
 
 # Look for these success messages:
 # ✅ Environment configuration validated successfully

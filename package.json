@@ -22,13 +22,13 @@
   "main": "dist/index.js",
   "type": "module",
   "private": true,
-  "packageManager": "yarn@1.22.22",
+  "packageManager": "pnpm@9.12.3",
   "engines": {
     "node": ">=20.0.0",
-    "yarn": ">=1.22.22"
+    "pnpm": ">=9.0.0"
   },
   "scripts": {
-    "preinstall": "npx only-allow yarn",
+    "preinstall": "npx only-allow pnpm",
     "clean": "rm -rf dist",
     "build": "tsc",
     "type-check": "tsc --noEmit",
@@ -58,7 +58,6 @@
     "redis": "^5.5.6",
     "telegraf": "^4.16.3",
     "uuid": "11.1.0",
-    "yarn": "1.22.22",
     "zod": "3.25.76"
   },
   "devDependencies": {
