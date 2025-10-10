@@ -58,6 +58,20 @@
    >
    > This prevents SSL validation issues with local PostgreSQL connections.
 
+   **Resetting Your Local Environment**
+
+   If you need to start fresh with a clean database (e.g., after PostgreSQL version upgrades or testing):
+
+   ```bash
+   # Stop all services and remove volumes (⚠️ This deletes all data!)
+   docker compose down -v
+   
+   # Start fresh with clean databases
+   docker compose up -d
+   ```
+
+   > **📝 Note**: This is for **local development only**. The `-v` flag removes all volumes including your PostgreSQL data, Redis cache, and webhook queue. This is perfectly fine for development where test data is disposable. For production, Railway manages database migrations separately.
+
    **Option C: Manual Installation**
 
    ```bash

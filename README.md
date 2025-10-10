@@ -47,6 +47,23 @@ Ready to get started? Here's the fastest way to deploy your bot:
 
 For detailed setup instructions, Docker deployment, and manual installation, see the complete [Installation Guide](./docs/installation.md).
 
+### 🐳 Docker Quick Reference
+
+For local development with Docker Compose:
+
+```bash
+# Start all services
+docker compose up -d
+
+# View logs
+docker compose logs -f server
+
+# Reset everything (fresh start with clean databases)
+docker compose down -v && docker compose up -d
+```
+
+> **💡 Tip**: Use `docker compose down -v` to completely reset your local environment. This is safe for development and useful after version upgrades or when you need a clean slate.
+
 ## 💬 Community Discussions
 
 Join our community discussions to get help, share ideas, and connect with other users:
