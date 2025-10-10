@@ -1,194 +1,274 @@
 /**
- * ValidationService Test Suite
- * 
- * Tests for the validation service types and interfaces.
+ * Unit tests for services/validationService.ts
  */
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import type { BotContext } from '../types/index.js';
+import { 
+  ValidationService,
+  type ValidationCheck,
+  type ValidationResult
+} from '../services/validationService.js';
 
-import { describe, it, expect } from 'vitest';
-import type { ValidationCheck, ValidationResult } from '../services/validationService.js';
+describe('ValidationService', () => {
+  let mockCtx: BotContext;
 
-describe('ValidationService types', () => {
-    describe('ValidationCheck interface', () => {
-        it('should create a validation check with required properties', () => {
-            const check: ValidationCheck = {
-                name: 'Test Check',
-                passed: true,
-                details: 'Test details'
-            };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    
+    mockCtx = {
+      from: { id: 123, first_name: 'Test', is_bot: false },
+      chat: { id: 456, type: 'private' },
+      message: { text: '/test', message_id: 789 },
+      reply: vi.fn(),
+      telegram: {
+        getMe: vi.fn(),
+        getChatMember: vi.fn(),
+        sendChatAction: vi.fn()
+      }
+    } as any;
+  });
 
-            expect(check.name).toBe('Test Check');
-            expect(check.passed).toBe(true);
-            expect(check.details).toBe('Test details');
-            expect(check.warning).toBeUndefined();
-        });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
-        it('should create a validation check with warning', () => {
-            const check: ValidationCheck = {
-                name: 'Warning Check',
-                passed: false,
-                details: 'Warning details',
-                warning: true
-            };
+  describe('performSetupValidation', () => {
+    const groupChatId = -1001234567890;
+    const groupTitle = 'Test Support Group';
 
-            expect(check.name).toBe('Warning Check');
-            expect(check.passed).toBe(false);
-            expect(check.details).toBe('Warning details');
-            expect(check.warning).toBe(true);
-        });
+    it('should return successful validation when all checks pass', async () => {
+      // Mock successful bot admin check
+      vi.mocked(mockCtx.telegram.getMe).mockResolvedValue({ id: 999, is_bot: true, first_name: 'TestBot' } as any);
+      vi.mocked(mockCtx.telegram.getChatMember).mockResolvedValue({ status: 'administrator' } as any);
+      vi.mocked(mockCtx.telegram.sendChatAction).mockResolvedValue(true as any);
 
-        it('should allow boolean values for passed property', () => {
-            const passedCheck: ValidationCheck = {
-                name: 'Passed',
-                passed: true,
-                details: 'Success'
-            };
+      const result = await ValidationService.performSetupValidation(mockCtx, groupChatId, groupTitle);
 
-            const failedCheck: ValidationCheck = {
-                name: 'Failed',
-                passed: false,
-                details: 'Failure'
-            };
+      expect(result.allPassed).toBe(true);
+      expect(result.checks).toHaveLength(2);
+      
+      // Check bot admin status
+      expect(result.checks[0].name).toBe('Bot Admin Status');
+      expect(result.checks[0].passed).toBe(true);
+      expect(result.checks[0].details).toBe('Bot has admin privileges');
+      
+      // Check message sending capability
+      expect(result.checks[1].name).toBe('Message Sending');
+      expect(result.checks[1].passed).toBe(true);
+      expect(result.checks[1].details).toBe('Bot can send messages to group');
 
-            expect(passedCheck.passed).toBe(true);
-            expect(failedCheck.passed).toBe(false);
-        });
+      // Check message content
+      expect(result.message).toContain('🔍 **Setup Validation Results**');
+      expect(result.message).toContain(groupTitle);
+      expect(result.message).toContain(`${groupChatId}`);
+      expect(result.message).toContain('🎉 **All Checks Passed!**');
+      expect(result.message).toContain('Ready to proceed with customer configuration');
     });
 
-    describe('ValidationResult interface', () => {
-        it('should create a validation result with all properties', () => {
-            const checks: ValidationCheck[] = [
-                {
-                    name: 'Check 1',
-                    passed: true,
-                    details: 'Success'
-                },
-                {
-                    name: 'Check 2',
-                    passed: false,
-                    details: 'Failed'
-                }
-            ];
+    it('should handle bot admin check failure', async () => {
+      // Mock failed bot admin check
+      vi.mocked(mockCtx.telegram.getMe).mockResolvedValue({ id: 999, is_bot: true, first_name: 'TestBot' } as any);
+      vi.mocked(mockCtx.telegram.getChatMember).mockResolvedValue({ status: 'member' } as any);
+      vi.mocked(mockCtx.telegram.sendChatAction).mockResolvedValue(true as any);
 
-            const result: ValidationResult = {
-                checks,
-                allPassed: false,
-                message: 'Validation completed with issues'
-            };
+      const result = await ValidationService.performSetupValidation(mockCtx, groupChatId, groupTitle);
 
-            expect(result.checks).toHaveLength(2);
-            expect(result.allPassed).toBe(false);
-            expect(result.message).toBe('Validation completed with issues');
-        });
-
-        it('should handle empty checks array', () => {
-            const result: ValidationResult = {
-                checks: [],
-                allPassed: true,
-                message: 'No checks performed'
-            };
-
-            expect(result.checks).toHaveLength(0);
-            expect(result.allPassed).toBe(true);
-            expect(result.message).toBe('No checks performed');
-        });
-
-        it('should handle all passed scenario', () => {
-            const checks: ValidationCheck[] = [
-                {
-                    name: 'Check 1',
-                    passed: true,
-                    details: 'Success'
-                },
-                {
-                    name: 'Check 2',
-                    passed: true,
-                    details: 'Success'
-                }
-            ];
-
-            const result: ValidationResult = {
-                checks,
-                allPassed: true,
-                message: 'All validations passed'
-            };
-
-            expect(result.checks.every(check => check.passed)).toBe(true);
-            expect(result.allPassed).toBe(true);
-            expect(result.message).toBe('All validations passed');
-        });
-
-        it('should handle mixed validation results', () => {
-            const checks: ValidationCheck[] = [
-                {
-                    name: 'Required Check',
-                    passed: true,
-                    details: 'Success'
-                },
-                {
-                    name: 'Optional Check',
-                    passed: false,
-                    details: 'Failed but not critical',
-                    warning: true
-                },
-                {
-                    name: 'Critical Check',
-                    passed: false,
-                    details: 'Critical failure'
-                }
-            ];
-
-            const result: ValidationResult = {
-                checks,
-                allPassed: false,
-                message: 'Validation failed with critical issues'
-            };
-
-            expect(result.checks).toHaveLength(3);
-            expect(result.checks.filter(c => c.passed)).toHaveLength(1);
-            expect(result.checks.filter(c => c.warning)).toHaveLength(1);
-            expect(result.allPassed).toBe(false);
-        });
+      expect(result.allPassed).toBe(false);
+      expect(result.checks[0].passed).toBe(false);
+      expect(result.checks[0].details).toBe('Bot needs admin privileges');
+      expect(result.message).toContain('❌ **Setup Requirements Not Met**');
+      expect(result.message).toContain('Make the bot an administrator in the group');
     });
 
-    describe('validation check scenarios', () => {
-        it('should represent bot admin status check', () => {
-            const adminCheck: ValidationCheck = {
-                name: 'Bot Admin Status',
-                passed: true,
-                details: 'Bot has administrator privileges in the group'
-            };
+    it('should handle bot admin check error', async () => {
+      // Mock error in bot admin check
+      vi.mocked(mockCtx.telegram.getMe).mockRejectedValue(new Error('API Error'));
+      vi.mocked(mockCtx.telegram.sendChatAction).mockResolvedValue(true as any);
 
-            expect(adminCheck.name).toBe('Bot Admin Status');
-            expect(adminCheck.passed).toBe(true);
-            expect(adminCheck.details).toContain('administrator privileges');
-        });
+      const result = await ValidationService.performSetupValidation(mockCtx, groupChatId, groupTitle);
 
-        it('should represent message sending capability check', () => {
-            const messageCheck: ValidationCheck = {
-                name: 'Message Sending',
-                passed: false,
-                details: 'Bot cannot send messages to the group',
-                warning: false
-            };
-
-            expect(messageCheck.name).toBe('Message Sending');
-            expect(messageCheck.passed).toBe(false);
-            expect(messageCheck.details).toContain('cannot send messages');
-            expect(messageCheck.warning).toBe(false);
-        });
-
-        it('should represent permission check with warning', () => {
-            const permissionCheck: ValidationCheck = {
-                name: 'Delete Messages Permission',
-                passed: false,
-                details: 'Bot lacks delete messages permission but can still function',
-                warning: true
-            };
-
-            expect(permissionCheck.name).toBe('Delete Messages Permission');
-            expect(permissionCheck.passed).toBe(false);
-            expect(permissionCheck.warning).toBe(true);
-            expect(permissionCheck.details).toContain('can still function');
-        });
+      expect(result.allPassed).toBe(false);
+      expect(result.checks[0].passed).toBe(false);
+      expect(result.checks[0].details).toBe('Unable to check bot permissions');
     });
+
+    it('should handle message sending failure', async () => {
+      // Mock successful admin check but failed message sending
+      vi.mocked(mockCtx.telegram.getMe).mockResolvedValue({ id: 999, is_bot: true, first_name: 'TestBot' } as any);
+      vi.mocked(mockCtx.telegram.getChatMember).mockResolvedValue({ status: 'administrator' } as any);
+      vi.mocked(mockCtx.telegram.sendChatAction).mockRejectedValue(new Error('Cannot send message'));
+
+      const result = await ValidationService.performSetupValidation(mockCtx, groupChatId, groupTitle);
+
+      expect(result.allPassed).toBe(false);
+      expect(result.checks[1].passed).toBe(false);
+      expect(result.checks[1].details).toBe('Bot cannot send messages to group');
+    });
+
+    it('should handle bot creator status as admin', async () => {
+      // Mock bot as creator (should pass admin check)
+      vi.mocked(mockCtx.telegram.getMe).mockResolvedValue({ id: 999, is_bot: true, first_name: 'TestBot' } as any);
+      vi.mocked(mockCtx.telegram.getChatMember).mockResolvedValue({ status: 'creator' } as any);
+      vi.mocked(mockCtx.telegram.sendChatAction).mockResolvedValue(true as any);
+
+      const result = await ValidationService.performSetupValidation(mockCtx, groupChatId, groupTitle);
+
+      expect(result.checks[0].passed).toBe(true);
+      expect(result.checks[0].details).toBe('Bot has admin privileges');
+    });
+
+    it('should handle multiple failures', async () => {
+      // Mock both checks failing
+      vi.mocked(mockCtx.telegram.getMe).mockRejectedValue(new Error('Bot check failed'));
+      vi.mocked(mockCtx.telegram.sendChatAction).mockRejectedValue(new Error('Cannot send'));
+
+      const result = await ValidationService.performSetupValidation(mockCtx, groupChatId, groupTitle);
+
+      expect(result.allPassed).toBe(false);
+      expect(result.checks).toHaveLength(2);
+      expect(result.checks[0].passed).toBe(false);
+      expect(result.checks[1].passed).toBe(false);
+      expect(result.message).toContain('❌ **Setup Requirements Not Met**');
+    });
+  });
+
+  describe('buildValidationMessage', () => {
+    it('should build message for successful validation', () => {
+      const checks: ValidationCheck[] = [
+        { name: 'Check 1', passed: true, details: 'Success detail 1' },
+        { name: 'Check 2', passed: true, details: 'Success detail 2' }
+      ];
+
+      // Access private method through the class
+      const result = (ValidationService as any).buildValidationMessage(
+        'Test Group',
+        -123456,
+        checks,
+        true
+      );
+
+      expect(result).toContain('🔍 **Setup Validation Results**');
+      expect(result).toContain('**Group:** Test Group');
+      expect(result).toContain('**Chat ID:** `-123456`');
+      expect(result).toContain('✅ **Check 1**');
+      expect(result).toContain('Success detail 1');
+      expect(result).toContain('✅ **Check 2**');
+      expect(result).toContain('Success detail 2');
+      expect(result).toContain('🎉 **All Checks Passed!**');
+      expect(result).toContain('Ready to proceed with customer configuration');
+    });
+
+    it('should build message for failed validation', () => {
+      const checks: ValidationCheck[] = [
+        { name: 'Check 1', passed: false, details: 'Failure detail 1' },
+        { name: 'Check 2', passed: true, details: 'Success detail 2' }
+      ];
+
+      const result = (ValidationService as any).buildValidationMessage(
+        'Test Group',
+        -123456,
+        checks,
+        false
+      );
+
+      expect(result).toContain('❌ **Check 1**');
+      expect(result).toContain('Failure detail 1');
+      expect(result).toContain('✅ **Check 2**');
+      expect(result).toContain('❌ **Setup Requirements Not Met**');
+      expect(result).toContain('Make the bot an administrator in the group');
+      expect(result).toContain('🔄 **Retry Validation**');
+    });
+
+    it('should build message for warnings only', () => {
+      const checks: ValidationCheck[] = [
+        { name: 'Check 1', passed: true, details: 'Success detail 1' },
+        { name: 'Check 2', passed: false, details: 'Warning detail 2', warning: true }
+      ];
+
+      const result = (ValidationService as any).buildValidationMessage(
+        'Test Group',
+        -123456,
+        checks,
+        false
+      );
+
+      expect(result).toContain('⚠️ **Minor Issues Detected**');
+      expect(result).toContain('Setup can proceed, but some optimizations are recommended');
+      expect(result).toContain("won't prevent functionality but may affect performance");
+    });
+
+    it('should handle empty checks array', () => {
+      const checks: ValidationCheck[] = [];
+
+      const result = (ValidationService as any).buildValidationMessage(
+        'Empty Group',
+        -999999,
+        checks,
+        true
+      );
+
+      expect(result).toContain('🔍 **Setup Validation Results**');
+      expect(result).toContain('**Group:** Empty Group');
+      expect(result).toContain('🎉 **All Checks Passed!**');
+    });
+
+    it('should format check details correctly', () => {
+      const checks: ValidationCheck[] = [
+        { name: 'Special Check', passed: true, details: 'Very detailed success message' },
+        { name: 'Another Check', passed: false, details: 'Very detailed failure message' }
+      ];
+
+      const result = (ValidationService as any).buildValidationMessage(
+        'Test Group',
+        -123456,
+        checks,
+        false
+      );
+
+      expect(result).toContain('✅ **Special Check**');
+      expect(result).toContain('   Very detailed success message');
+      expect(result).toContain('❌ **Another Check**');
+      expect(result).toContain('   Very detailed failure message');
+    });
+  });
+
+  describe('ValidationCheck interface', () => {
+    it('should support all required properties', () => {
+      const check: ValidationCheck = {
+        name: 'Test Check',
+        passed: true,
+        details: 'Test details'
+      };
+
+      expect(check.name).toBe('Test Check');
+      expect(check.passed).toBe(true);
+      expect(check.details).toBe('Test details');
+      expect(check.warning).toBeUndefined();
+    });
+
+    it('should support optional warning property', () => {
+      const check: ValidationCheck = {
+        name: 'Warning Check',
+        passed: false,
+        details: 'Warning details',
+        warning: true
+      };
+
+      expect(check.warning).toBe(true);
+    });
+  });
+
+  describe('ValidationResult interface', () => {
+    it('should support all required properties', () => {
+      const result: ValidationResult = {
+        checks: [],
+        allPassed: true,
+        message: 'Test message'
+      };
+
+      expect(result.checks).toEqual([]);
+      expect(result.allPassed).toBe(true);
+      expect(result.message).toBe('Test message');
+    });
+  });
 });
