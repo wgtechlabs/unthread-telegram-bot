@@ -70,7 +70,7 @@ describe('StateCommands', () => {
 
       expect(BotsStore.clearUserState).not.toHaveBeenCalled();
       expect(mockCtx.reply).toHaveBeenCalledWith(
-        "❌ Unable to process cancellation request."
+        "❌ Invalid command context. Please try again."
       );
     });
 
@@ -131,7 +131,7 @@ describe('StateCommands', () => {
 
       expect(BotsStore.clearUserState).not.toHaveBeenCalled();
       expect(mockCtx.reply).toHaveBeenCalledWith(
-        "❌ Unable to process reset request."
+        "❌ Invalid command context. Please try again."
       );
     });
 
