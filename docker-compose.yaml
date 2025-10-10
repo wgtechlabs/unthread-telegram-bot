@@ -71,7 +71,7 @@ services:
   # =============================================================================
   # PostgreSQL database for storing tickets, customers, and user states
   postgres-platform:
-    image: postgres:15-alpine  # Alpine for smaller image size
+    image: ghcr.io/railwayapp-templates/postgres-ssl:17  # Railway's PostgreSQL 17 with SSL support
     restart: always
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-unthread_telegram_bot}    # Database name (with fallback)
@@ -94,7 +94,7 @@ services:
   # =============================================================================
   # Redis instance for bot caching, session management, and general operations
   redis-platform:
-    image: redis:7-alpine  # Latest stable Redis
+    image: redis:8-alpine  # Latest Redis with Alpine for smaller image size
     restart: always
     ports:
       - "6379:6379"  # Standard Redis port
@@ -114,7 +114,7 @@ services:
   # =============================================================================
   # Dedicated Redis instance for webhook message queuing and communication
   redis-webhook:
-    image: redis:7-alpine
+    image: redis:8-alpine  # Latest Redis with Alpine for smaller image size
     ports:
       - "6380:6379"  # Different external port to avoid conflicts
     volumes:
@@ -141,11 +141,9 @@ volumes:
 # =============================================================================
 # NETWORKING
 # =============================================================================
-# External network for communication between services
-# Create with: docker network create unthread-integration-network
-
-# ⚠️ IMPORTANT: If you don't create this network first, Docker will fail with:
-# "ERROR: Network unthread-integration-network declared as external, but could not be found"
+# Shared network for communication between services
+# Will be created automatically if it doesn't exist
 networks:
   unthread-integration-network:
-    external: true
+    driver: bridge
+    name: unthread-integration-network

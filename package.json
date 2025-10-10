@@ -28,7 +28,7 @@
     "pnpm": ">=9.0.0"
   },
   "scripts": {
-    "preinstall": "npx only-allow pnpm",
+    "preinstall": "pnpm dlx only-allow pnpm",
     "clean": "rm -rf dist",
     "build": "tsc",
     "type-check": "tsc --noEmit",
