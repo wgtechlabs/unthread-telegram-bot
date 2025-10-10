@@ -60,7 +60,7 @@ describe('ValidationService', () => {
       // Check message content
       expect(result.message).toContain('🔍 **Setup Validation Results**');
       expect(result.message).toContain(groupTitle);
-      expect(result.message).toContain(groupChatId.toString());
+      expect(result.message).toContain(`${groupChatId}`);
       expect(result.message).toContain('🎉 **All Checks Passed!**');
       expect(result.message).toContain('Ready to proceed with customer configuration');
     });
