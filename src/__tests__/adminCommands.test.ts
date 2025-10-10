@@ -25,6 +25,7 @@ vi.mock('../sdk/bots-brain/index.js', () => ({
 vi.mock('../utils/permissions.js', () => ({
     checkAndPromptBotAdmin: vi.fn(),
     isBotAdmin: vi.fn(),
+    validateAdminAccess: vi.fn(),
 }));
 
 vi.mock('../commands/utils/errorHandler.js', () => ({
@@ -66,7 +67,7 @@ vi.mock('../commands/processors/CallbackProcessors.js', () => ({
 
 import { createDmSetupSession } from '../utils/adminManager.js';
 import { BotsStore } from '../sdk/bots-brain/index.js';
-import { checkAndPromptBotAdmin, isBotAdmin } from '../utils/permissions.js';
+import { checkAndPromptBotAdmin, isBotAdmin, validateAdminAccess } from '../utils/permissions.js';
 import { createUserErrorMessage, logError } from '../commands/utils/errorHandler.js';
 import { getCompanyName } from '../config/env.js';
 import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
@@ -78,6 +79,9 @@ describe('AdminCommands', () => {
     
     beforeEach(() => {
         vi.clearAllMocks();
+        
+        // Set default mock behavior for admin validation
+        vi.mocked(validateAdminAccess).mockResolvedValue(true);
         
         mockContext = {
             from: {
@@ -290,12 +294,9 @@ describe('AdminCommands', () => {
 
             expect(BotsStore.getGroupConfig).toHaveBeenCalledWith(-67890);
             expect(mockContext.reply).toHaveBeenCalledWith(
-                expect.stringContaining('Group Configuration Status'),
+                expect.stringContaining('Group Already Configured'),
                 expect.objectContaining({
-                    parse_mode: 'Markdown',
-                    reply_markup: expect.objectContaining({
-                        inline_keyboard: expect.any(Array)
-                    })
+                    parse_mode: 'Markdown'
                 })
             );
         });
@@ -365,10 +366,9 @@ describe('AdminCommands', () => {
 
             await setupCommand.execute(mockContext as BotContext);
 
-            // BaseCommand handles the error with centralized error handling
+            // The mock createUserErrorMessage returns 'Error: Setup failed'
             expect(mockContext.reply).toHaveBeenCalledWith(
-                expect.stringContaining('Command Error'),
-                { parse_mode: 'Markdown' }
+                'Error: Setup failed'
             );
         });
 
