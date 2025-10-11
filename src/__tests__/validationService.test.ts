@@ -4,9 +4,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BotContext } from '../types/index.js';
 import { 
-  ValidationService,
   type ValidationCheck,
-  type ValidationResult
+  type ValidationResult,
+  ValidationService
 } from '../services/validationService.js';
 
 describe('ValidationService', () => {

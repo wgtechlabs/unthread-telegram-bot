@@ -100,7 +100,8 @@ docker-compose up -d
 ADMIN_USERS=123456789,987654321
 BOT_USERNAME=your_bot_username
 MY_COMPANY_NAME=Your Company Name
-WEBHOOK_REDIS_URL="${{Redis.REDIS_URL}}"  # If using Railway Redis
+PLATFORM_REDIS_URL="redis://redis-platform:6379"  # For BotsStore
+WEBHOOK_REDIS_URL="redis://redis-webhook:6379"  # For webhook consumer
 ```
 
 ## 🧪 Testing Your Migration

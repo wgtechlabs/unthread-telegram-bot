@@ -293,7 +293,7 @@ export abstract class BaseCommand implements ICommand {
                     inline_keyboard: [
                         [
                             {
-                                text: "🚀 Start Activation",
+                                text: "🚀 Activate Admin Access",
                                 url: `https://t.me/${botUsername}?start=admin_activate`
                             }
                         ]

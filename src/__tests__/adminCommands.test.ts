@@ -475,7 +475,7 @@ describe('AdminCommands', () => {
                         inline_keyboard: expect.arrayContaining([
                             expect.arrayContaining([
                                 expect.objectContaining({
-                                    text: '🚀 Start Activation'
+                                    text: '🚀 Activate Admin Access'
                                 })
                             ])
                         ])
