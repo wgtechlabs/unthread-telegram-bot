@@ -1,14 +1,14 @@
 /**
  * Unit tests for commands/base/BaseCommand.ts
  */
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BotContext } from '../../types/index.js';
 import { 
   BaseCommand, 
   type CommandMetadata,
+  type ICallbackProcessor,
   type ICommand,
-  type IConversationProcessor,
-  type ICallbackProcessor
+  type IConversationProcessor
 } from '../commands/base/BaseCommand.js';
 
 // Mock dependencies
@@ -129,7 +129,6 @@ class SetupRequiredCommand extends BaseCommand {
 describe('BaseCommand', () => {
   let mockCtx: BotContext;
   let testCommand: TestCommand;
-  let adminCommand: AdminCommand;
   let setupRequiredCommand: SetupRequiredCommand;
 
   beforeEach(() => {
@@ -143,7 +142,6 @@ describe('BaseCommand', () => {
     } as BotContext;
 
     testCommand = new TestCommand();
-    adminCommand = new AdminCommand();
     setupRequiredCommand = new SetupRequiredCommand();
   });
 

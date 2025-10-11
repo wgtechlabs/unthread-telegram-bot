@@ -1,8 +1,8 @@
 /**
  * Unit tests for commands/basic/StateCommands.ts
  */
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import type { BotContext } from '../../types/index.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BotContext } from '../types/index.js';
 import { CancelCommand, ResetCommand } from '../commands/basic/StateCommands.js';
 
 // Mock dependencies

@@ -1,33 +1,33 @@
 /**
  * Unit tests for commands/index.ts
  */
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BotContext } from '../types/index.js';
 import { 
-  initializeCommands,
-  processConversation,
-  processCallback,
-  executeCommand,
-  generateHelp,
-  commandRegistry,
-  startCommand,
-  helpCommand,
-  versionCommand,
   aboutCommand,
   activateCommand,
-  supportCommand,
   cancelCommand,
-  resetCommand,
-  setupCommand,
-  templatesCommand,
-  processSupportConversation,
+  commandRegistry,
+  executeCommand,
+  generateHelp,
   handleCallbackQuery,
-  processSetupTextInput,
-  processTemplateEditInput,
-  handleTemplateEditCallback,
+  handleTemplateBackMenuCallback,
   handleTemplateCancelCallback,
   handleTemplateCancelEditCallback,
-  handleTemplateBackMenuCallback
+  handleTemplateEditCallback,
+  helpCommand,
+  initializeCommands,
+  processCallback,
+  processConversation,
+  processSetupTextInput,
+  processSupportConversation,
+  processTemplateEditInput,
+  resetCommand,
+  setupCommand,
+  startCommand,
+  supportCommand,
+  templatesCommand,
+  versionCommand
 } from '../commands/index.js';
 
 // Mock dependencies

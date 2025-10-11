@@ -1,15 +1,14 @@
 /**
  * Unit tests for commands/utils/errorHandler.ts
  */
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  getErrorDetails,
-  logError,
-  createUserErrorMessage,
+  ERROR_CODES,
   ErrorCategory,
   ErrorSeverity,
-  ERROR_CODES,
-  type ErrorDetails
+  createUserErrorMessage,
+  getErrorDetails,
+  logError
 } from '../commands/utils/errorHandler.js';
 
 // Mock LogEngine

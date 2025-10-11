@@ -1,7 +1,7 @@
 /**
  * Unit tests for services/validationService.ts
  */
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BotContext } from '../types/index.js';
 import { 
   ValidationService,

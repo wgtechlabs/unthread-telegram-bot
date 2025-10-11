@@ -1,16 +1,16 @@
 /**
  * Unit tests for commands/base/CommandRegistry.ts
  */
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import type { BotContext } from '../../types/index.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BotContext } from '../types';
 import { 
   CommandRegistry
 } from '../commands/base/CommandRegistry.js';
 import type { 
-  ICommand, 
-  IConversationProcessor,
+  CommandMetadata,
   ICallbackProcessor,
-  CommandMetadata 
+  ICommand, 
+  IConversationProcessor
 } from '../commands/base/BaseCommand.js';
 
 // Mock dependencies

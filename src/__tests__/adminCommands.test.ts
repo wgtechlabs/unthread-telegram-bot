@@ -5,7 +5,7 @@
  * activation, setup, and templates management.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActivateCommand, SetupCommand, TemplatesCommand } from '../commands/admin/AdminCommands.js';
 import type { BotContext } from '../types/index.js';
 import type { AdminProfile, GroupConfig } from '../sdk/types.js';
@@ -69,10 +69,7 @@ import { createDmSetupSession } from '../utils/adminManager.js';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import { checkAndPromptBotAdmin, isBotAdmin, validateAdminAccess } from '../utils/permissions.js';
 import { createUserErrorMessage, logError } from '../commands/utils/errorHandler.js';
-import { getCompanyName } from '../config/env.js';
 import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
-import { ValidationService } from '../services/validationService.js';
-import { SetupCallbackProcessor } from '../commands/processors/CallbackProcessors.js';
 
 describe('AdminCommands', () => {
     let mockContext: Partial<BotContext>;
@@ -278,11 +275,12 @@ describe('AdminCommands', () => {
             };
             
             const mockGroupConfig: GroupConfig = {
-                telegramGroupId: -67890,
-                unthreadWebhookUrl: 'https://api.unthread.io/webhook/test',
+                chatId: -67890,
+                chatTitle: 'Test Group',
                 isConfigured: true,
-                configuredAt: '2023-01-01T00:00:00.000Z',
-                configuredBy: 12345
+                botIsAdmin: true,
+                setupBy: 12345,
+                setupAt: '2023-01-01T00:00:00.000Z'
             };
 
             vi.mocked(BotsStore.getAdminProfile).mockResolvedValue(mockAdminProfile);
