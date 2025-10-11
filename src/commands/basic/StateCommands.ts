@@ -20,7 +20,7 @@ export class CancelCommand extends BaseCommand {
     };
 
     // Override to allow execution even without ctx.from (handled in executeCommand)
-    protected validateContext(ctx: BotContext): boolean {
+    protected override validateContext(ctx: BotContext): boolean {
         return !!ctx.chat;
     }
 
@@ -56,7 +56,7 @@ export class ResetCommand extends BaseCommand {
     };
 
     // Override to allow execution even without ctx.from (handled in executeCommand)
-    protected validateContext(ctx: BotContext): boolean {
+    protected override validateContext(ctx: BotContext): boolean {
         return !!ctx.chat;
     }
 
