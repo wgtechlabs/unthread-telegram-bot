@@ -5,7 +5,7 @@
  * validation, direct setting, and usage instructions.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SetEmailCommand } from '../commands/basic/SetEmailCommand.js';
 import type { BotContext } from '../types/index.js';
 

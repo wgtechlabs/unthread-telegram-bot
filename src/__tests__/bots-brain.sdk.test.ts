@@ -5,7 +5,7 @@
  * including UnifiedStorage and BotsStore functionality.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock Redis and PostgreSQL dependencies
 vi.mock('redis', () => ({

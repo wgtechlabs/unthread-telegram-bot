@@ -2,7 +2,7 @@
  * Unit tests for commands/base/BaseCommand.ts
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { BotContext } from '../../types/index.js';
+import type { BotContext } from '../types/index.js';
 import { 
   BaseCommand, 
   type CommandMetadata,

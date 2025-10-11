@@ -5,7 +5,7 @@
  * type safety and proper structure definitions.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { 
     DatabaseConnection, 
     StorageConfig, 

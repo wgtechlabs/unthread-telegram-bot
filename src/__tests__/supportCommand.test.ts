@@ -4,7 +4,7 @@
  * Comprehensive test coverage for support ticket creation functionality.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SupportCommand } from '../commands/support/SupportCommandClean.js';
 import type { BotContext } from '../types/index.js';
 import type { UserState } from '../sdk/types.js';

@@ -5,7 +5,7 @@
  * improve coverage from current 22.7% to near 100%.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UserData } from '../sdk/types.js';
 
 // Mock external dependencies

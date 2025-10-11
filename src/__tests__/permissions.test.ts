@@ -5,7 +5,7 @@
  * admin validation, bot permissions, and access control.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { validateAdminAccess } from '../utils/permissions.js';
 import type { BotContext } from '../types/index.js';
 

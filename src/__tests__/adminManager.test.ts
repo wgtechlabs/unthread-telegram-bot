@@ -4,7 +4,7 @@
  * Tests for basic admin utility functions that don't require complex mocking.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isValidAdmin } from '../utils/adminManager.js';
 
 // Mock dependencies
