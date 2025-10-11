@@ -31,12 +31,12 @@ vi.mock('@wgtechlabs/log-engine', () => ({
 }));
 
 import { 
-    validateEmail,
-    generateDummyEmail,
+    deliverPendingAgentMessages,
     formatEmailForDisplay,
+    generateDummyEmail,
     getUserEmailPreferences,
     updateUserEmail,
-    deliverPendingAgentMessages
+    validateEmail
 } from '../utils/emailManager.js';
 import { BotsStore } from '../sdk/bots-brain/index.js';
 import { LogEngine } from '@wgtechlabs/log-engine';

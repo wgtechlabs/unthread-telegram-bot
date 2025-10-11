@@ -31,7 +31,8 @@ vi.mock('../utils/logConfig.js', () => ({
 }));
 
 vi.mock('../config/env.js', () => ({
-  isAdminUser: vi.fn(() => false)
+  isAdminUser: vi.fn(() => false),
+  getAdminUsers: vi.fn(() => [])
 }));
 
 import { LogEngine } from '@wgtechlabs/log-engine';

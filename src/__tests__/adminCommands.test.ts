@@ -433,6 +433,11 @@ describe('AdminCommands', () => {
                         content: 'Agent response', 
                         lastModifiedBy: null,
                         lastModifiedAt: null
+                    },
+                    ticket_status: {
+                        content: 'Ticket status',
+                        lastModifiedBy: null,
+                        lastModifiedAt: null
                     }
                 },
                 lastUpdated: '2023-01-01T00:00:00.000Z'
@@ -449,8 +454,11 @@ describe('AdminCommands', () => {
 
             expect(BotsStore.getAdminProfile).toHaveBeenCalledWith(12345);
             expect(mockContext.reply).toHaveBeenCalledWith(
-                expect.stringContaining('Template management interface is being prepared'),
-                { parse_mode: 'Markdown' }
+                expect.stringContaining('📝 **Message Template Manager**'),
+                expect.objectContaining({
+                    parse_mode: 'Markdown',
+                    reply_markup: expect.any(Object)
+                })
             );
         });
 
