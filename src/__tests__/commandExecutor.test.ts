@@ -12,6 +12,8 @@ import {
 // Mock dependencies
 vi.mock('@wgtechlabs/log-engine', () => ({
   LogEngine: {
+    info: vi.fn(),
+    warn: vi.fn(),
     error: vi.fn()
   }
 }));

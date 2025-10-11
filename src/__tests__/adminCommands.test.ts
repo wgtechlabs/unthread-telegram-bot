@@ -433,6 +433,11 @@ describe('AdminCommands', () => {
                         content: 'Agent response', 
                         lastModifiedBy: null,
                         lastModifiedAt: null
+                    },
+                    ticket_status: {
+                        content: 'Ticket status',
+                        lastModifiedBy: null,
+                        lastModifiedAt: null
                     }
                 },
                 lastUpdated: '2023-01-01T00:00:00.000Z'

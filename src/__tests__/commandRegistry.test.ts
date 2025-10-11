@@ -35,8 +35,8 @@ vi.mock('../../config/env.js', () => ({
 }));
 
 import { LogEngine } from '@wgtechlabs/log-engine';
-import { StartupLogger } from '../../utils/logConfig.js';
-import { isAdminUser } from '../../config/env.js';
+import { StartupLogger } from '../utils/logConfig.js';
+import { isAdminUser } from '../config/env.js';
 
 // Mock command implementations
 class MockCommand implements ICommand {
