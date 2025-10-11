@@ -16,13 +16,13 @@ vi.mock('@wgtechlabs/log-engine', () => ({
   }
 }));
 
-vi.mock('../commands/base/CommandRegistry.js', () => ({
+vi.mock('../base/CommandRegistry.js', () => ({
   commandRegistry: {
     execute: vi.fn()
   }
 }));
 
-vi.mock('../utils/errorContextBuilder.js', () => ({
+vi.mock('../../utils/errorContextBuilder.js', () => ({
   ErrorContextBuilder: {
     forCommand: vi.fn(() => ({ errorType: 'test-error' }))
   }
@@ -30,8 +30,8 @@ vi.mock('../utils/errorContextBuilder.js', () => ({
 
 // Import mocked modules for type checking
 import { LogEngine } from '@wgtechlabs/log-engine';
-import { commandRegistry } from '../commands/base/CommandRegistry.js';
-import { ErrorContextBuilder } from '../utils/errorContextBuilder.js';
+import { commandRegistry } from '../base/CommandRegistry.js';
+import { ErrorContextBuilder } from '../../utils/errorContextBuilder.js';
 
 describe('commandExecutor utilities', () => {
   let mockCtx: BotContext;

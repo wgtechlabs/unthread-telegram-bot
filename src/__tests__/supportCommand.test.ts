@@ -35,7 +35,12 @@ vi.mock('../config/env.js', () => ({
 }));
 
 vi.mock('../utils/emailManager.js', () => ({
-    getUserEmailPreferences: vi.fn(),
+    getUserEmailPreferences: vi.fn(() => Promise.resolve({
+        email: 'test@example.com',
+        isDummy: false,
+        setAt: new Date().toISOString(),
+        canModify: true
+    })),
 }));
 
 import { BotsStore } from '../sdk/bots-brain/index.js';

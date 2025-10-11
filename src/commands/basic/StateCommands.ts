@@ -19,6 +19,11 @@ export class CancelCommand extends BaseCommand {
         usage: '/cancel'
     };
 
+    // Override to allow execution even without ctx.from (handled in executeCommand)
+    protected validateContext(ctx: BotContext): boolean {
+        return !!ctx.chat;
+    }
+
     protected async executeCommand(ctx: BotContext): Promise<void> {
         const userId = ctx.from?.id;
         if (!userId) {
@@ -49,6 +54,11 @@ export class ResetCommand extends BaseCommand {
         description: 'Reset user conversation state and clear form data',
         usage: '/reset'
     };
+
+    // Override to allow execution even without ctx.from (handled in executeCommand)
+    protected validateContext(ctx: BotContext): boolean {
+        return !!ctx.chat;
+    }
 
     protected async executeCommand(ctx: BotContext): Promise<void> {
         const userId = ctx.from?.id;

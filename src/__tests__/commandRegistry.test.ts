@@ -23,20 +23,20 @@ vi.mock('@wgtechlabs/log-engine', () => ({
   }
 }));
 
-vi.mock('../utils/logConfig.js', () => ({
+vi.mock('../../utils/logConfig.js', () => ({
   StartupLogger: {
     logCommandRegistration: vi.fn(),
     logProcessorRegistration: vi.fn()
   }
 }));
 
-vi.mock('../config/env.js', () => ({
+vi.mock('../../config/env.js', () => ({
   isAdminUser: vi.fn(() => false)
 }));
 
 import { LogEngine } from '@wgtechlabs/log-engine';
-import { StartupLogger } from '../utils/logConfig.js';
-import { isAdminUser } from '../config/env.js';
+import { StartupLogger } from '../../utils/logConfig.js';
+import { isAdminUser } from '../../config/env.js';
 
 // Mock command implementations
 class MockCommand implements ICommand {
