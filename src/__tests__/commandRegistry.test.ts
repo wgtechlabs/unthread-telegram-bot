@@ -23,15 +23,16 @@ vi.mock('@wgtechlabs/log-engine', () => ({
   }
 }));
 
-vi.mock('../../utils/logConfig.js', () => ({
+vi.mock('../utils/logConfig.js', () => ({
   StartupLogger: {
     logCommandRegistration: vi.fn(),
     logProcessorRegistration: vi.fn()
   }
 }));
 
-vi.mock('../../config/env.js', () => ({
-  isAdminUser: vi.fn(() => false)
+vi.mock('../config/env.js', () => ({
+  isAdminUser: vi.fn(() => false),
+  getAdminUsers: vi.fn(() => [])
 }));
 
 import { LogEngine } from '@wgtechlabs/log-engine';
