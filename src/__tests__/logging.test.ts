@@ -1,7 +1,7 @@
 /**
  * Unit tests for logging configuration
  */
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('logging configuration', () => {
   beforeEach(() => {

@@ -5,7 +5,7 @@
  * user messages and attachments for appropriate status notifications.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { 
     analyzeMessage, 
     analyzeAttachments,

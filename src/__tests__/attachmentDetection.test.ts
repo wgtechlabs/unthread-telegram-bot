@@ -5,7 +5,7 @@
  * event validation, attachment detection, image processing, and metadata handling.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AttachmentDetectionService } from '../services/attachmentDetection.js';
 import { WebhookEvent } from '../types/webhookEvents.js';
 
