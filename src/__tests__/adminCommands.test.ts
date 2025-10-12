@@ -317,7 +317,7 @@ describe('AdminCommands', () => {
             // Mock telegram.sendMessage for DM setup
             mockContext.telegram = {
                 sendMessage: vi.fn().mockResolvedValue({ message_id: 123 })
-            } as any;
+            } as { sendMessage: (_chatId: number | string, _text: string, _options?: unknown) => Promise<{ message_id: number }> };
 
             await setupCommand.execute(mockContext as BotContext);
 
