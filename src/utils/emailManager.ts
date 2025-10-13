@@ -209,6 +209,14 @@ export async function updateUserEmail(
     isDummy: boolean = false
 ): Promise<{ success: boolean; error?: string }> {
     try {
+        // Validate user ID
+        if (userId === null || userId === undefined || !Number.isInteger(userId) || userId <= 0 || Number.isNaN(userId)) {
+            return {
+                success: false,
+                error: 'Invalid user ID'
+            };
+        }
+
         // Validate email format (even for dummy emails)
         const validation = validateEmail(email);
         

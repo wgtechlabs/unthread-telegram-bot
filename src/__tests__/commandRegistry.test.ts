@@ -41,13 +41,19 @@ import { isAdminUser } from '../config/env.js';
 
 // Mock command implementations
 class MockCommand implements ICommand {
-  constructor(
-    public metadata: CommandMetadata,
-    public executeImpl: (ctx: BotContext) => Promise<void> = vi.fn()
-  ) {}
+  public metadata: CommandMetadata;
+  public executeImpl: (_ctx: BotContext) => Promise<void>;
 
-  async execute(ctx: BotContext): Promise<void> {
-    return this.executeImpl(ctx);
+  constructor(
+    metadata: CommandMetadata,
+    executeImpl: (_ctx: BotContext) => Promise<void> = vi.fn()
+  ) {
+    this.metadata = metadata;
+    this.executeImpl = executeImpl;
+  }
+
+  async execute(_ctx: BotContext): Promise<void> {
+    return this.executeImpl(_ctx);
   }
 
   generateHelp(): string {
@@ -56,32 +62,44 @@ class MockCommand implements ICommand {
 }
 
 class MockConversationProcessor implements IConversationProcessor {
-  constructor(
-    public canHandleImpl: (ctx: BotContext) => Promise<boolean> = vi.fn(() => Promise.resolve(true)),
-    public processImpl: (ctx: BotContext) => Promise<boolean> = vi.fn(() => Promise.resolve(true))
-  ) {}
+  public canHandleImpl: (_ctx: BotContext) => Promise<boolean>;
+  public processImpl: (_ctx: BotContext) => Promise<boolean>;
 
-  async canHandle(ctx: BotContext): Promise<boolean> {
-    return this.canHandleImpl(ctx);
+  constructor(
+    canHandleImpl: (_ctx: BotContext) => Promise<boolean> = vi.fn(() => Promise.resolve(true)),
+    processImpl: (_ctx: BotContext) => Promise<boolean> = vi.fn(() => Promise.resolve(true))
+  ) {
+    this.canHandleImpl = canHandleImpl;
+    this.processImpl = processImpl;
   }
 
-  async process(ctx: BotContext): Promise<boolean> {
-    return this.processImpl(ctx);
+  async canHandle(_ctx: BotContext): Promise<boolean> {
+    return this.canHandleImpl(_ctx);
+  }
+
+  async process(_ctx: BotContext): Promise<boolean> {
+    return this.processImpl(_ctx);
   }
 }
 
 class MockCallbackProcessor implements ICallbackProcessor {
+  public canHandleImpl: (_data: string) => boolean;
+  public processImpl: (_ctx: BotContext, _data: string) => Promise<boolean>;
+
   constructor(
-    public canHandleImpl: (data: string) => boolean = vi.fn(() => true),
-    public processImpl: (ctx: BotContext, data: string) => Promise<boolean> = vi.fn(() => Promise.resolve(true))
-  ) {}
+    canHandleImpl: (_data: string) => boolean = vi.fn(() => true),
+    processImpl: (_ctx: BotContext, _data: string) => Promise<boolean> = vi.fn(() => Promise.resolve(true))
+  ) {
+    this.canHandleImpl = canHandleImpl;
+    this.processImpl = processImpl;
+  }
 
   canHandle(callbackData: string): boolean {
     return this.canHandleImpl(callbackData);
   }
 
-  async process(ctx: BotContext, callbackData: string): Promise<boolean> {
-    return this.processImpl(ctx, callbackData);
+  async process(_ctx: BotContext, callbackData: string): Promise<boolean> {
+    return this.processImpl(_ctx, callbackData);
   }
 }
 
