@@ -19,7 +19,7 @@ vi.mock('../utils/emailManager.js', () => ({
 
 vi.mock('../utils/markdownEscape.js', () => ({
     escapeMarkdown: vi.fn((text) => text),
-    formatEmailForDisplay: vi.fn(),
+    formatEmailForDisplay: vi.fn((email) => email),
 }));
 
 vi.mock('../utils/messageContentExtractor.js', () => ({
@@ -45,7 +45,7 @@ import {
     updateUserEmail,
     validateEmail
 } from '../utils/emailManager.js';
-import { formatEmailForDisplay } from '../utils/markdownEscape.js';
+import { escapeMarkdown, formatEmailForDisplay } from '../utils/markdownEscape.js';
 import { getMessageText } from '../utils/messageContentExtractor.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 
