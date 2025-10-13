@@ -224,9 +224,9 @@ describe('ErrorContextBuilder', () => {
             
             // These properties should not have been set to 'malicious'
             // The original properties should remain unchanged
-            expect(context.hasOwnProperty('__proto__')).toBe(false);
+            expect(Object.prototype.hasOwnProperty.call(context, '__proto__')).toBe(false);
             expect(context.constructor).not.toBe('malicious');
-            expect(context.hasOwnProperty('prototype')).toBe(false);
+            expect(Object.prototype.hasOwnProperty.call(context, 'prototype')).toBe(false);
         });
 
         it('should reject keys starting and ending with double underscores', () => {
@@ -237,9 +237,9 @@ describe('ErrorContextBuilder', () => {
                 .withCustom('dangerous_end__', 'value')
                 .build();
             
-            expect(context.hasOwnProperty('__dangerous__')).toBe(false);
-            expect(context.hasOwnProperty('__start_dangerous')).toBe(false);
-            expect(context.hasOwnProperty('dangerous_end__')).toBe(false);
+            expect(Object.prototype.hasOwnProperty.call(context, '__dangerous__')).toBe(false);
+            expect(Object.prototype.hasOwnProperty.call(context, '__start_dangerous')).toBe(false);
+            expect(Object.prototype.hasOwnProperty.call(context, 'dangerous_end__')).toBe(false);
         });
 
         it('should reject empty string keys', () => {
@@ -294,7 +294,7 @@ describe('ErrorContextBuilder', () => {
             
             expect(context.safeKey).toBe('safe');
             expect(context.validProp).toBe('valid');
-            expect(context.hasOwnProperty('__proto__')).toBe(false);
+            expect(Object.prototype.hasOwnProperty.call(context, '__proto__')).toBe(false);
             expect(context.constructor).not.toBe('dangerous');
         });
     });

@@ -3,12 +3,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  createSafeMarkdownMessage,
   escapeMarkdown,
   escapeMarkdownCode,
-  truncateText,
-  createSafeMarkdownMessage,
   formatEmailForDisplay,
-  lightEscapeMarkdown
+  lightEscapeMarkdown,
+  truncateText
 } from '../utils/markdownEscape';
 
 describe('markdownEscape utilities', () => {

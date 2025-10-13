@@ -8,8 +8,8 @@
 import { describe, expect, it } from 'vitest';
 import type { 
     DatabaseConnection, 
-    StorageConfig, 
-    Storage
+    Storage, 
+    StorageConfig
 } from '../sdk/types.js';
 
 describe('SDK types', () => {
@@ -192,7 +192,7 @@ describe('SDK types', () => {
 
             const mockStorage: Storage = {
                 get: async (key: string) => {
-                    if (key === 'complex-data') return complexData;
+                    if (key === 'complex-data') {return complexData;}
                     return null;
                 },
                 set: async () => {},

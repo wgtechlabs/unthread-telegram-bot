@@ -63,8 +63,8 @@ describe('logging configuration', () => {
     const { LogEngine } = await import('../config/logging');
     
     // Use other methods
-    if (LogEngine.info) LogEngine.info('test');
-    if (LogEngine.error) LogEngine.error('test');
+    if (LogEngine.info) {LogEngine.info('test');}
+    if (LogEngine.error) {LogEngine.error('test');}
 
     expect(configureOrder[0]).toBe('configure');
   });

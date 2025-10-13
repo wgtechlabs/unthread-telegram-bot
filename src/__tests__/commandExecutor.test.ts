@@ -33,7 +33,7 @@ vi.mock('../utils/errorContextBuilder.js', () => ({
 // Import mocked modules 
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { commandRegistry } from '../commands/base/CommandRegistry.js';
-import { ErrorContextBuilder, type ErrorContext } from '../utils/errorContextBuilder.js';
+import { ErrorContextBuilder } from '../utils/errorContextBuilder.js';
 
 describe('commandExecutor utilities', () => {
   let mockCtx: BotContext;

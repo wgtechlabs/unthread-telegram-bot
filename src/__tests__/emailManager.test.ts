@@ -3,9 +3,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  validateEmail,
   generateDummyEmail,
-  type EmailValidationResult
+  validateEmail
 } from '../utils/emailManager';
 
 describe('emailManager utilities', () => {

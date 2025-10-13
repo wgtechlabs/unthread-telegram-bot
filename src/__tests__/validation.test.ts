@@ -4,11 +4,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   isValidUUID,
+  validateCustomerId,
   validateCustomerName,
   validateEmail,
-  validateCustomerId,
-  validateSupportSummary,
-  type ValidationResult
+  validateSupportSummary
 } from '../commands/utils/validation';
 
 describe('validation utilities', () => {

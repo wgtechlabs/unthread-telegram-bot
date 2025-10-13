@@ -188,7 +188,6 @@ describe('Permissions Module', () => {
   describe('Error Handling', () => {
     it('should handle isAdminUser throwing an error', async () => {
       const { isAdminUser } = await import('../config/env.js');
-      const { safeReply } = await import('../bot.js');
       
       vi.mocked(isAdminUser).mockImplementation(() => {
         throw new Error('Configuration error');

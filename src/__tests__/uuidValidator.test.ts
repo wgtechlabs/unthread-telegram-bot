@@ -3,9 +3,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  isUUID,
   isValidUUID,
-  validateAndSanitizeUUID,
-  isUUID
+  validateAndSanitizeUUID
 } from '../commands/utils/uuidValidator';
 
 describe('uuidValidator utilities', () => {
