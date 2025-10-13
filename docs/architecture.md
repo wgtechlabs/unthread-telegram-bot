@@ -30,10 +30,10 @@ Generate Software Bill of Materials for security analysis:
 
 ```bash
 # Generate SBOM locally
-yarn sbom:generate
+pnpm sbom:generate
 
 # Docker build with SBOM and provenance
-yarn docker:build:sbom
+pnpm docker:build:sbom
 ```
 
 ## 🔗 System Architecture & Integration

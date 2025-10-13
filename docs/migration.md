@@ -1,15 +1,14 @@
 # 🔄 Migration Guide
 
-> **Upgrading from v1.0.0-beta.x to v1.0.0-rc1**
+> **Upgrading from Beta to v1.0.0 (Major Release)**
 
-If you're upgrading from an earlier version (main branch), there are **important breaking changes** that require environment configuration updates. This guide will help you migrate smoothly.
+If you're upgrading from an earlier beta version, there are **important breaking changes** that require environment configuration updates. This guide will help you migrate smoothly to the stable major release.
 
 ## ⚠️ Breaking Changes Summary
 
 ### **New Required Environment Variables:**
 
 - `ADMIN_USERS` - Telegram user IDs for bot administration (CRITICAL)
-- `WEBHOOK_REDIS_URL` - Now required for agent responses (was optional)
 
 ### **Variable Changes:**
 
@@ -44,9 +43,8 @@ Before starting the migration, gather these details:
 Add these **required** variables to your existing `.env` file:
 
 ```bash
-# 🚨 CRITICAL - Add these NEW REQUIRED variables:
+# 🚨 CRITICAL - Add this NEW REQUIRED variable:
 ADMIN_USERS=123456789,987654321  # Your Telegram user ID(s) from @userinfobot
-WEBHOOK_REDIS_URL=redis://redis-webhook:6379  # Ensure this is properly set
 
 # 🚀 OPTIONAL - Performance optimization:
 BOT_USERNAME=your_bot_username  # Your bot's username (without @)
@@ -86,9 +84,9 @@ MY_COMPANY_NAME=Acme Corporation
 ### **For Docker Users:**
 
 ```bash
-# Ensure both Redis services are running:
+# Ensure Redis services are running:
 PLATFORM_REDIS_URL=redis://redis-platform:6379
-WEBHOOK_REDIS_URL=redis://redis-webhook:6379  # Now REQUIRED
+WEBHOOK_REDIS_URL=redis://redis-webhook:6379
 
 # Update docker-compose if needed
 docker-compose down
@@ -102,7 +100,8 @@ docker-compose up -d
 ADMIN_USERS=123456789,987654321
 BOT_USERNAME=your_bot_username
 MY_COMPANY_NAME=Your Company Name
-WEBHOOK_REDIS_URL="${{Redis.REDIS_URL}}"  # If using Railway Redis
+PLATFORM_REDIS_URL="redis://redis-platform:6379"  # For BotsStore
+WEBHOOK_REDIS_URL="redis://redis-webhook:6379"  # For webhook consumer
 ```
 
 ## 🧪 Testing Your Migration
@@ -111,7 +110,7 @@ WEBHOOK_REDIS_URL="${{Redis.REDIS_URL}}"  # If using Railway Redis
 
 ```bash
 # Check if bot starts without errors:
-yarn start
+pnpm start
 
 # Look for these success messages:
 # ✅ Environment configuration validated successfully
@@ -158,10 +157,10 @@ Error: ADMIN_USERS contains placeholder values
 ### Issue 3: Agent Responses Not Working
 
 ```bash
-Error: WEBHOOK_REDIS_URL connection failed
+Error: Redis connection failed
 ```
 
-**Solution**: Ensure Redis is running and URL is correct
+**Solution**: Ensure Redis is running and both URLs are configured correctly
 
 ### Issue 4: Admin Commands Not Working
 
@@ -179,8 +178,11 @@ If migration fails, you can quickly rollback:
 # Restore backup configuration:
 cp .env.backup .env
 
-# Or use git to revert:
-git checkout main  # Switch back to main branch
+# Or use git to revert to previous version:
+# List available version tags:
+git tag --list
+# Then checkout your previous version, e.g.:
+git checkout v0.9.x
 ```
 
 ## ✨ New Features After Migration
@@ -189,7 +191,7 @@ Once successfully migrated, you'll have access to:
 
 - **🛡️ Enhanced Security**: Admin-only bot configuration
 - **⚡ Performance Boost**: 200x faster with BOT_USERNAME
-- **📧 Profile Management**: User email preferences with `/profile`
+- **📧 Email Management**: User email preferences with `/viewemail` and `/setemail`
 - **🎨 Template System**: Customizable message templates
 - **📊 Advanced Logging**: Enterprise-grade logging with PII redaction
 

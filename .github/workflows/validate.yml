@@ -16,27 +16,31 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'yarn'
+          node-version: '24'
+          
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.3
           
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
         
       - name: Type checking
-        run: yarn type-check
+        run: pnpm type-check
         
       - name: Build TypeScript
-        run: yarn build
+        run: pnpm build
         
       - name: Validate unused code
         run: |
           echo "🔍 Checking for unused exports and dependencies..."
-          yarn validate:deadcode || echo "⚠️ Found potential unused code - review recommended"
+          pnpm validate:deadcode || echo "⚠️ Found potential unused code - review recommended"
         
       - name: Validate unused imports
         run: |
           echo "🔧 Checking for unused imports..."
-          yarn validate:unused || echo "⚠️ Found unused imports - consider cleanup"
+          pnpm validate:unused || echo "⚠️ Found unused imports - consider cleanup"
         
       - name: Test Docker build (no push)
         run: |

@@ -4,10 +4,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_GLOBAL_TEMPLATES,
-  TEMPLATE_VARIABLES,
   type GlobalTemplate,
+  type GlobalTemplateConfig,
   type GlobalTemplateEvent,
-  type GlobalTemplateConfig
+  TEMPLATE_VARIABLES
 } from '../config/globalTemplates';
 
 describe('globalTemplates', () => {
@@ -339,7 +339,7 @@ describe('globalTemplates', () => {
     it('should have non-empty content for all templates', () => {
       const templates = DEFAULT_GLOBAL_TEMPLATES.templates;
       
-      Object.entries(templates).forEach(([event, template]) => {
+      Object.entries(templates).forEach(([_event, template]) => {
         expect(template.content.trim().length).toBeGreaterThan(0);
         expect(template.content).not.toBe('');
       });

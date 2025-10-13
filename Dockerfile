@@ -24,10 +24,12 @@ ARG NODE_VERSION=22.16-alpine3.21
 # Alpine Linux 3.21 base for minimal image size with latest security updates
 FROM node:${NODE_VERSION} AS base
 
-# Install security updates for Alpine packages
+# Install security updates for Alpine packages and pnpm
 RUN apk update && apk upgrade && \
     apk add --no-cache dumb-init && \
-    rm -rf /var/cache/apk/*
+    rm -rf /var/cache/apk/* && \
+    corepack enable && \
+    corepack prepare pnpm@9.12.3 --activate
 
 # Set working directory for all subsequent stages
 WORKDIR /usr/src/app
@@ -41,9 +43,9 @@ FROM base AS deps
 # Use bind mounts and cache for faster builds
 # Downloads dependencies without copying package files into the layer
 RUN --mount=type=bind,source=package.json,target=package.json \
-    --mount=type=bind,source=yarn.lock,target=yarn.lock \
-    --mount=type=cache,target=/root/.yarn \
-    yarn install --production --frozen-lockfile
+    --mount=type=bind,source=pnpm-lock.yaml,target=pnpm-lock.yaml \
+    --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --prod --frozen-lockfile
 
 # =============================================================================
 # STAGE 3: Build Application  
@@ -53,13 +55,13 @@ FROM deps AS build
 
 # Install all dependencies (including devDependencies for building)
 RUN --mount=type=bind,source=package.json,target=package.json \
-    --mount=type=bind,source=yarn.lock,target=yarn.lock \
-    --mount=type=cache,target=/root/.yarn \
-    yarn install --frozen-lockfile
+    --mount=type=bind,source=pnpm-lock.yaml,target=pnpm-lock.yaml \
+    --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile
 
 # Copy source code and build the application
 COPY . .
-RUN yarn run build
+RUN pnpm run build
 
 # Copy non-TypeScript files that need to be in the final build
 RUN cp src/database/schema.sql dist/database/

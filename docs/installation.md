@@ -36,20 +36,14 @@
    cd unthread-telegram-bot
    cp .env.example .env
    
-   # IMPORTANT: Create the external network first
-   docker network create unthread-integration-network
-   
    # Edit .env with your tokens AND your Telegram user ID
    # ADMIN_USERS=your_telegram_user_id_here  # Replace with actual ID!
    # For multiple admins: ADMIN_USERS=123456789,987654321,555666777
-   # Then start everything
+   
+   # Start everything (docker compose will auto-create the required network)
    docker compose up -d
    ```
 
-   > **⚠️ IMPORTANT**: If you don't create the external network first, Docker will fail with:
-   >
-   > `ERROR: Network unthread-integration-network declared as external, but could not be found`
-   >
    > **For Local Development**: If you're running Docker on your local machine, add this to your `.env` file:
    >
    > ```bash
@@ -58,23 +52,37 @@
    >
    > This prevents SSL validation issues with local PostgreSQL connections.
 
+   **Resetting Your Local Environment**
+
+   If you need to start fresh with a clean database (e.g., after PostgreSQL version upgrades or testing):
+
+   ```bash
+   # Stop all services and remove volumes (⚠️ This deletes all data!)
+   docker compose down -v
+   
+   # Start fresh with clean databases
+   docker compose up -d
+   ```
+
+   > **📝 Note**: This is for **local development only**. The `-v` flag removes all volumes including your PostgreSQL data, Redis cache, and webhook queue. This is perfectly fine for development where test data is disposable. For production, Railway manages database migrations separately.
+
    **Option C: Manual Installation**
 
    ```bash
-   # Prerequisites: Node.js >=20.0.0 and Yarn >=1.22.22
+   # Prerequisites: Node.js >=20.0.0 and pnpm >=9.0.0
    node --version  # Should be v20.0.0 or higher
-   yarn --version  # Should be 1.22.22 or higher
+   pnpm --version  # Should be 9.0.0 or higher
 
    # Clone and setup
    git clone https://github.com/wgtechlabs/unthread-telegram-bot.git
    cd unthread-telegram-bot
-   yarn install
+   pnpm install
    cp .env.example .env
 
    # Edit .env with ALL required values including ADMIN_USERS
    # ADMIN_USERS supports multiple user IDs: ADMIN_USERS=123456789,987654321
    # Then start the bot
-   yarn start
+   pnpm start
    ```
 
 5. **Test Your Bot**

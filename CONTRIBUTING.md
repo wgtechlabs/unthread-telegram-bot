@@ -28,10 +28,10 @@ To get started with development:
 2. **Install dependencies**
 
    ```bash
-   yarn install
+   pnpm install
    ```
 
-   > ⚠️ **Important**: This project enforces the use of Yarn. npm install will be blocked automatically.
+   > ⚠️ **Important**: This project enforces the use of pnpm. npm and yarn will be blocked automatically.
 
 3. **Set up environment variables**
    - Copy `.env.example` to `.env`
@@ -74,33 +74,33 @@ To get started with development:
 7. **Start the project in development mode**
 
    ```bash
-   yarn dev
+   pnpm dev
    ```
 
 #### 🏗️ Development Commands
 
 ```bash
 # Development with auto-reload
-yarn dev
+pnpm dev
 
 # Build for production
-yarn build
+pnpm build
 
 # Type checking only
-yarn type-check
+pnpm type-check
 
 # Clean build artifacts
-yarn clean
+pnpm clean
 
 # Start production build
-yarn start
+pnpm start
 
 # Docker commands
-yarn docker:build                    # Build Docker image
-yarn docker:build:secure            # Build with security updates
-yarn docker:build:sbom              # Build with SBOM generation
-yarn docker:run                     # Run Docker container
-yarn sbom:generate                  # Generate SBOM locally
+pnpm docker:build                    # Build Docker image
+pnpm docker:build:secure            # Build with security updates
+pnpm docker:build:sbom              # Build with SBOM generation
+pnpm docker:run                     # Run Docker container
+pnpm sbom:generate                  # Generate SBOM locally
 ```
 
 #### 🏛️ Project Structure
@@ -141,7 +141,7 @@ src/
 - **TypeScript First**: All code must be written in TypeScript with strict type checking
 - **Structured Logging**: Use `@wgtechlabs/log-engine` for all logging with built-in PII protection and security features
 - **Error Handling**: Implement comprehensive error handling with detailed logging
-- **Package Manager**: Use Yarn exclusively (enforced via preinstall script)
+- **Package Manager**: Use pnpm exclusively (enforced via preinstall script)
 - **Code Style**: Follow existing patterns and maintain consistency
 - **Environment**: Use Node.js 20+ for development
 - **Database**: PostgreSQL 12+ required, Redis 6+ optional but recommended
@@ -163,9 +163,9 @@ While this project doesn't currently have a comprehensive test suite, when contr
 #### 🔍 Code Review Process
 
 1. **Pre-submission checks**:
-   - [ ] Code builds without errors (`yarn build`)
-   - [ ] TypeScript type checking passes (`yarn type-check`)
-   - [ ] Development server starts successfully (`yarn dev`)
+   - [ ] Code builds without errors (`pnpm build`)
+   - [ ] TypeScript type checking passes (`pnpm type-check`)
+   - [ ] Development server starts successfully (`pnpm dev`)
    - [ ] Database connection works properly
    - [ ] Bot responds to basic commands (`/start`, `/help`)
    - [ ] Ticket creation flow works end-to-end
@@ -418,11 +418,11 @@ When modifying username-related code, verify:
 #### **Prerequisites**
 
 - **Node.js 20+** (ES6 modules support required)
-- **Yarn 1.22.22+** (package manager - npm not supported)
+- **pnpm 9+** (package manager - npm and yarn not supported)
 - **PostgreSQL 12+** (primary database)
 - **Redis 6+** (optional, for enhanced performance)
 
-> **⚠️ Package Manager Notice:** This project enforces the use of Yarn and will prevent npm installation attempts. If you try to use `npm install`, you'll receive an error message with instructions to use Yarn instead.
+> **⚠️ Package Manager Notice:** This project enforces the use of pnpm and will prevent npm/yarn installation attempts. If you try to use `npm install` or `yarn install`, you'll receive an error message with instructions to use pnpm instead.
 
 #### **Step-by-Step Installation**
 

@@ -5,7 +5,7 @@
  * SSL configuration, connection pooling, error handling, and schema operations.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseConnection } from '../database/connection.js';
 
 // Mock dependencies

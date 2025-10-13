@@ -8,7 +8,7 @@
 
 This bot is designed for businesses managing customer support through private Telegram groups or dedicated partner channels - optimized for professional support workflows rather than public community groups.
 
-> **🔄 Upgrading from v1.0.0-beta.x?** Check our comprehensive [Migration Guide](./MIGRATION.md) for step-by-step instructions on breaking changes and new features.
+> **🔄 Upgrading from Beta to v1.0.0?** Check our comprehensive [Migration Guide](./docs/migration.md) for step-by-step instructions on breaking changes and new features.
 
 ## 🤗 Special Thanks
 
@@ -47,6 +47,23 @@ Ready to get started? Here's the fastest way to deploy your bot:
 
 For detailed setup instructions, Docker deployment, and manual installation, see the complete [Installation Guide](./docs/installation.md).
 
+### 🐳 Docker Quick Reference
+
+For local development with Docker Compose:
+
+```bash
+# Start all services
+docker compose up -d
+
+# View logs
+docker compose logs -f server
+
+# Reset everything (fresh start with clean databases)
+docker compose down -v && docker compose up -d
+```
+
+> **💡 Tip**: Use `docker compose down -v` to completely reset your local environment. This is safe for development and useful after version upgrades or when you need a clean slate.
+
 ## 💬 Community Discussions
 
 Join our community discussions to get help, share ideas, and connect with other users:
@@ -67,7 +84,7 @@ For security vulnerabilities, follow our [security policy](./SECURITY.md).
 
 **Important**: All pull requests must be submitted to the `dev` branch. PRs to `main` will be automatically rejected.
 
-Contributions are welcome! Your code must pass `yarn build` and `yarn type-check` before merging.
+Contributions are welcome! Your code must pass `pnpm build` and `pnpm type-check` before merging.
 
 For detailed setup instructions, development guidelines, and security practices, see our comprehensive [Contributing Guide](./CONTRIBUTING.md).
 

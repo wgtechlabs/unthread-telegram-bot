@@ -5,7 +5,7 @@
  * including UnifiedStorage and BotsStore functionality.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock Redis and PostgreSQL dependencies
 vi.mock('redis', () => ({
@@ -237,7 +237,7 @@ describe('Bots Brain SDK', () => {
   describe('Error Handling', () => {
     it('should handle connection errors gracefully', async () => {
       // Test error handling for connection failures
-      const { LogEngine } = await import('@wgtechlabs/log-engine');
+      await import('@wgtechlabs/log-engine');
       
       // Simulate connection error
       const mockError = new Error('Connection failed');
@@ -356,7 +356,7 @@ describe('Bots Brain SDK', () => {
         {} // Empty config
       ];
 
-      edgeCaseConfigs.forEach((config, index) => {
+      edgeCaseConfigs.forEach((config) => {
         expect(config).toBeDefined();
         expect(typeof config).toBe('object');
       });

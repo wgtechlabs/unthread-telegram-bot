@@ -1,11 +1,10 @@
 /**
  * Unit tests for emailManager utilities
  */
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  validateEmail,
   generateDummyEmail,
-  type EmailValidationResult
+  validateEmail
 } from '../utils/emailManager';
 
 describe('emailManager utilities', () => {

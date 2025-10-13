@@ -3,9 +3,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  messageExamples,
   benefits,
-  implementation
+  implementation,
+  messageExamples
 } from '../utils/messageExamples';
 
 describe('messageExamples', () => {
@@ -236,8 +236,9 @@ describe('messageExamples', () => {
         // Should not contain profanity or unprofessional language
         expect(message).not.toMatch(/\b(damn|hell|crap|stupid|dumb)\b/i);
         
-        // Should be properly capitalized
-        expect(message.charAt(0)).toMatch(/[A-Z⏳🎫]/);
+        // Should be properly capitalized (use Array.from to properly handle multi-byte Unicode)
+        const firstChar = Array.from(message)[0];
+        expect(firstChar).toMatch(/[A-Z⏳🎫]/u);
         
         // Should not be too long
         expect(message.length).toBeLessThan(200);
@@ -246,7 +247,7 @@ describe('messageExamples', () => {
 
     it('should maintain consistency in emoji usage', () => {
       const newMessages = Object.values(messageExamples.new);
-      const emojiPattern = /^[⏳🎫]/;
+      const emojiPattern = /^[⏳🎫]/u;
       
       newMessages.forEach(message => {
         expect(message).toMatch(emojiPattern);

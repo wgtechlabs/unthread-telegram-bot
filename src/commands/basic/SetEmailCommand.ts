@@ -11,12 +11,11 @@ import { BaseCommand, type CommandMetadata } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
 import { 
     deliverPendingAgentMessages, 
-    formatEmailForDisplay, 
     getUserEmailPreferences,
     updateUserEmail,
     validateEmail
 } from '../../utils/emailManager.js';
-import { escapeMarkdown } from '../../utils/markdownEscape.js';
+import { escapeMarkdown, formatEmailForDisplay } from '../../utils/markdownEscape.js';
 import { getMessageText } from '../../utils/messageContentExtractor.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 
@@ -160,7 +159,7 @@ export class SetEmailCommand extends BaseCommand {
             let message = "📧 **Set Email Address**\n\n";
             
             if (currentPrefs) {
-                const displayEmail = formatEmailForDisplay(currentPrefs.email, currentPrefs.isDummy);
+                const displayEmail = formatEmailForDisplay(currentPrefs.email);
                 message += `**Current email:** ${escapeMarkdown(displayEmail)}\n\n`;
                 
                 if (currentPrefs.isDummy) {

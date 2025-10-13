@@ -1,6 +1,6 @@
 {
   "name": "unthread-telegram-bot",
-  "version": "1.0.0-rc2",
+  "version": "1.0.1",
   "description": "Official Unthread integration for Telegram - Transform private groups into comprehensive support ticket hubs with real-time bidirectional communication.",
   "keywords": [
     "telegram",
@@ -22,13 +22,13 @@
   "main": "dist/index.js",
   "type": "module",
   "private": true,
-  "packageManager": "yarn@1.22.22",
+  "packageManager": "pnpm@9.12.3",
   "engines": {
     "node": ">=20.0.0",
-    "yarn": ">=1.22.22"
+    "pnpm": ">=9.0.0"
   },
   "scripts": {
-    "preinstall": "npx only-allow yarn",
+    "preinstall": "pnpm dlx only-allow pnpm",
     "clean": "rm -rf dist",
     "build": "tsc",
     "type-check": "tsc --noEmit",
@@ -52,21 +52,20 @@
     "@wgtechlabs/log-engine": "2.2.0",
     "dotenv": "^16.5.0",
     "form-data": "^4.0.4",
-    "global": "4.4.0",
     "node-fetch": "3.3.2",
     "pg": "^8.16.2",
     "redis": "^5.5.6",
     "telegraf": "^4.16.3",
     "uuid": "11.1.0",
-    "yarn": "1.22.22",
     "zod": "3.25.76"
   },
   "devDependencies": {
+    "@eslint/js": "9.37.0",
     "@types/node": "24.0.3",
     "@types/pg": "8.15.4",
     "@typescript-eslint/eslint-plugin": "^8.18.1",
     "@typescript-eslint/parser": "^8.18.1",
-    "@vitest/coverage-v8": "^2.1.8",
+    "@vitest/coverage-v8": "^3.2.4",
     "concurrently": "9.2.0",
     "depcheck": "^1.4.7",
     "eslint": "9.30.1",
@@ -75,7 +74,7 @@
     "nodemon": "^3.1.10",
     "ts-prune": "^0.10.3",
     "typescript": "5.8.3",
-    "vitest": "^2.1.8"
+    "vitest": "^3.2.4"
   },
   "resolutions": {
     "cross-spawn": "7.0.6",

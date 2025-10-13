@@ -5,8 +5,8 @@
  * and error handling functionality.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createBot, startPolling, safeReply } from '../bot.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createBot, safeReply, startPolling } from '../bot.js';
 import type { BotContext, TelegramError } from '../types/index.js';
 
 // Mock dependencies

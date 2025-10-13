@@ -5,7 +5,7 @@
  * admin validation, bot permissions, and access control.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { validateAdminAccess } from '../utils/permissions.js';
 import type { BotContext } from '../types/index.js';
 
@@ -188,7 +188,6 @@ describe('Permissions Module', () => {
   describe('Error Handling', () => {
     it('should handle isAdminUser throwing an error', async () => {
       const { isAdminUser } = await import('../config/env.js');
-      const { safeReply } = await import('../bot.js');
       
       vi.mocked(isAdminUser).mockImplementation(() => {
         throw new Error('Configuration error');
