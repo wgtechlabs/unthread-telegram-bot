@@ -12,7 +12,6 @@ import type { BotContext } from '../types/index.js';
 // Mock external dependencies
 vi.mock('../utils/emailManager.js', () => ({
     deliverPendingAgentMessages: vi.fn(),
-    formatEmailForDisplay: vi.fn(),
     getUserEmailPreferences: vi.fn(),
     updateUserEmail: vi.fn(),
     validateEmail: vi.fn(),
@@ -20,6 +19,7 @@ vi.mock('../utils/emailManager.js', () => ({
 
 vi.mock('../utils/markdownEscape.js', () => ({
     escapeMarkdown: vi.fn((text) => text),
+    formatEmailForDisplay: vi.fn(),
 }));
 
 vi.mock('../utils/messageContentExtractor.js', () => ({
@@ -41,12 +41,11 @@ vi.mock('../config/env.js', () => ({
 
 import { 
     deliverPendingAgentMessages, 
-    formatEmailForDisplay, 
     getUserEmailPreferences,
     updateUserEmail,
     validateEmail
 } from '../utils/emailManager.js';
-import { escapeMarkdown } from '../utils/markdownEscape.js';
+import { escapeMarkdown, formatEmailForDisplay } from '../utils/markdownEscape.js';
 import { getMessageText } from '../utils/messageContentExtractor.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 
@@ -323,7 +322,7 @@ describe('SetEmailCommand', () => {
 
             await setEmailCommand.execute(mockContext as BotContext);
 
-            expect(formatEmailForDisplay).toHaveBeenCalledWith('current@example.com', false);
+            expect(formatEmailForDisplay).toHaveBeenCalledWith('current@example.com');
             expect(mockContext.reply).toHaveBeenCalledWith(
                 expect.stringContaining('**Current email:** current@example.com'),
                 { parse_mode: 'Markdown' }
