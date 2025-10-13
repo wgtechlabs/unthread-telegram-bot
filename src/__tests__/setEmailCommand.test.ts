@@ -45,7 +45,7 @@ import {
     updateUserEmail,
     validateEmail
 } from '../utils/emailManager.js';
-import { escapeMarkdown, formatEmailForDisplay } from '../utils/markdownEscape.js';
+import { formatEmailForDisplay } from '../utils/markdownEscape.js';
 import { getMessageText } from '../utils/messageContentExtractor.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 
