@@ -1,6 +1,6 @@
 {
   "name": "unthread-telegram-bot",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Official Unthread integration for Telegram - Transform private groups into comprehensive support ticket hubs with real-time bidirectional communication.",
   "keywords": [
     "telegram",
@@ -30,7 +30,7 @@
   "scripts": {
     "preinstall": "pnpm dlx only-allow pnpm",
     "clean": "rm -rf dist",
-    "build": "tsc",
+    "build": "tsc && cp src/database/schema.sql dist/database/",
     "type-check": "tsc --noEmit",
     "start": "node dist/index.js",
     "dev": "nodemon",
