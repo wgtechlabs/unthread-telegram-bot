@@ -63,9 +63,6 @@ RUN --mount=type=bind,source=package.json,target=package.json \
 COPY . .
 RUN pnpm run build
 
-# Copy non-TypeScript files that need to be in the final build
-RUN cp src/database/schema.sql dist/database/
-
 # =============================================================================
 # STAGE 4: Final Runtime Image
 # =============================================================================
