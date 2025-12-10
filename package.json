@@ -1,6 +1,6 @@
 {
   "name": "unthread-telegram-bot",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Official Unthread integration for Telegram - Transform private groups into comprehensive support ticket hubs with real-time bidirectional communication.",
   "keywords": [
     "telegram",
