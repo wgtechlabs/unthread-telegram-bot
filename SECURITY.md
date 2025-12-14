@@ -2,18 +2,18 @@
 
 ## 🚨 Reporting Security Vulnerabilities
 
-We take security seriously. If you discover a security vulnerability, please report it responsibly: 
+We take security seriously. If you discover a security vulnerability, please report it responsibly:
 
 ### Private Vulnerability Reporting (Recommended)
 
-This repository has **private vulnerability reporting** enabled.  You can securely report vulnerabilities directly through GitHub: 
+This repository has **private vulnerability reporting** enabled. You can securely report vulnerabilities directly through GitHub:
 
 1. Navigate to the [**Security**](../../security) tab
 2. Click [**Advisories**](../../security/advisories)
 3. Click **"Report a vulnerability"** button
 4. Fill out the vulnerability details
 
-This allows us to discuss and fix the issue privately before any public disclosure. 
+This allows us to discuss and fix the issue privately before any public disclosure.
 
 ### Email Reporting
 
@@ -36,7 +36,7 @@ Alternatively, you can email us at **[security@wgtechlabs.com](mailto:security@w
 
 ## 🛡️ Supported Versions
 
-We provide security updates for the following versions.  If you're using an unsupported version, please upgrade to receive security patches. 
+We provide security updates for the following versions. If you're using an unsupported version, please upgrade to receive security patches.
 
 | Version | Supported          |
 | ------- | ------------------ |
@@ -45,7 +45,7 @@ We provide security updates for the following versions.  If you're using an unsu
 
 ## 🔐 Security Best Practices
 
-When contributing or deploying:  
+When contributing or deploying:
 
 - ✅ Never commit secrets, API keys, or credentials
 - ✅ Always use environment variables for sensitive data
@@ -55,13 +55,13 @@ When contributing or deploying:
 
 ## 🏆 Recognition
 
-While we don't offer monetary rewards, we deeply value security researchers and provide:  
+While we don't offer monetary rewards, we deeply value security researchers and provide:
 
 - Public acknowledgment in security advisories (with permission)
 - Recognition in our security contributors hall of fame
 - Professional references for your security work
 
-Thank you for helping keep our projects secure!  🙏
+Thank you for helping keep our projects secure! 🙏
 
 ---
 
