@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import { DatabaseConnection } from '../database/connection.js';
+import { LogEngine } from '../config/logging.js';
 
 // Mock dependencies
 mock.module('pg', () => {
@@ -46,7 +47,7 @@ describe('DatabaseConnection', () => {
   beforeEach(() => {
     clearAllMocks();
     // Reset environment variables
-    delete process.env.DATABASE_URL;
+    delete process.env.POSTGRES_URL;
     delete process.env.DATABASE_SSL_CA;
     delete process.env.NODE_ENV;
   });
@@ -61,13 +62,13 @@ describe('DatabaseConnection', () => {
       expect(db).toBeInstanceOf(DatabaseConnection);
     });
 
-    it('should handle missing DATABASE_URL', () => {
+    it('should handle missing POSTGRES_URL', () => {
       expect(() => new DatabaseConnection()).not.toThrow();
     });
 
     it('should handle production environment', () => {
       process.env.NODE_ENV = 'production';
-      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
+      process.env.POSTGRES_URL = 'postgresql://user:pass@host:5432/db';
       
       expect(() => new DatabaseConnection()).not.toThrow();
     });
@@ -76,7 +77,7 @@ describe('DatabaseConnection', () => {
   describe('SSL Configuration', () => {
     it('should handle SSL configuration in production', () => {
       process.env.NODE_ENV = 'production';
-      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
+      process.env.POSTGRES_URL = 'postgresql://user:pass@host:5432/db';
       
       const db = new DatabaseConnection();
       expect(db).toBeInstanceOf(DatabaseConnection);
@@ -84,7 +85,7 @@ describe('DatabaseConnection', () => {
 
     it('should handle custom SSL CA certificate', () => {
       process.env.DATABASE_SSL_CA = '/path/to/ca.pem';
-      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
+      process.env.POSTGRES_URL = 'postgresql://user:pass@host:5432/db';
       
       const db = new DatabaseConnection();
       expect(db).toBeInstanceOf(DatabaseConnection);
@@ -92,7 +93,7 @@ describe('DatabaseConnection', () => {
 
     it('should handle development environment', () => {
       process.env.NODE_ENV = 'development';
-      process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
+      process.env.POSTGRES_URL = 'postgresql://user:pass@localhost:5432/db';
       
       const db = new DatabaseConnection();
       expect(db).toBeInstanceOf(DatabaseConnection);
@@ -101,7 +102,7 @@ describe('DatabaseConnection', () => {
 
   describe('Connection Management', () => {
     it('should handle connection initialization', async () => {
-      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
+      process.env.POSTGRES_URL = 'postgresql://user:pass@host:5432/db';
       
       const db = new DatabaseConnection();
       
@@ -110,7 +111,7 @@ describe('DatabaseConnection', () => {
     });
 
     it('should handle connection errors gracefully', () => {
-      process.env.DATABASE_URL = 'invalid://connection:string';
+      process.env.POSTGRES_URL = 'invalid://connection:string';
       
       expect(() => new DatabaseConnection()).not.toThrow();
     });
@@ -126,7 +127,7 @@ describe('DatabaseConnection', () => {
       ];
 
       validUrls.forEach(url => {
-        process.env.DATABASE_URL = url;
+        process.env.POSTGRES_URL = url;
         expect(() => new DatabaseConnection()).not.toThrow();
       });
     });
@@ -139,7 +140,7 @@ describe('DatabaseConnection', () => {
       ];
 
       invalidUrls.forEach(url => {
-        process.env.DATABASE_URL = url;
+        process.env.POSTGRES_URL = url;
         expect(() => new DatabaseConnection()).not.toThrow();
       });
     });
@@ -148,7 +149,7 @@ describe('DatabaseConnection', () => {
   describe('Environment Handling', () => {
     it('should handle Railway environment', () => {
       process.env.RAILWAY_ENVIRONMENT = 'production';
-      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
+      process.env.POSTGRES_URL = 'postgresql://user:pass@host:5432/db';
       
       const db = new DatabaseConnection();
       expect(db).toBeInstanceOf(DatabaseConnection);
@@ -156,7 +157,7 @@ describe('DatabaseConnection', () => {
 
     it('should handle local development', () => {
       process.env.NODE_ENV = 'development';
-      process.env.DATABASE_URL = 'postgresql://localhost:5432/testdb';
+      process.env.POSTGRES_URL = 'postgresql://localhost:5432/testdb';
       
       const db = new DatabaseConnection();
       expect(db).toBeInstanceOf(DatabaseConnection);
@@ -166,13 +167,13 @@ describe('DatabaseConnection', () => {
   describe('Error Scenarios', () => {
     it('should handle certificate file reading errors', () => {
       process.env.DATABASE_SSL_CA = '/nonexistent/ca.pem';
-      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
+      process.env.POSTGRES_URL = 'postgresql://user:pass@host:5432/db';
       
       expect(() => new DatabaseConnection()).not.toThrow();
     });
 
     it('should handle malformed connection strings', () => {
-      process.env.DATABASE_URL = 'malformed-connection-string';
+      process.env.POSTGRES_URL = 'malformed-connection-string';
       
       expect(() => new DatabaseConnection()).not.toThrow();
     });
@@ -180,14 +181,14 @@ describe('DatabaseConnection', () => {
 
   describe('Pool Configuration', () => {
     it('should configure connection pool with defaults', () => {
-      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
+      process.env.POSTGRES_URL = 'postgresql://user:pass@host:5432/db';
       
       const db = new DatabaseConnection();
       expect(db).toBeInstanceOf(DatabaseConnection);
     });
 
     it('should handle custom pool settings', () => {
-      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
+      process.env.POSTGRES_URL = 'postgresql://user:pass@host:5432/db';
       process.env.DATABASE_POOL_MAX = '20';
       process.env.DATABASE_POOL_IDLE_TIMEOUT = '30000';
       
@@ -198,7 +199,7 @@ describe('DatabaseConnection', () => {
 
   describe('Schema Operations', () => {
     it('should handle schema initialization', () => {
-      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
+      process.env.POSTGRES_URL = 'postgresql://user:pass@host:5432/db';
       
       const db = new DatabaseConnection();
       
@@ -209,21 +210,33 @@ describe('DatabaseConnection', () => {
 
   describe('Logging Integration', () => {
     it('should log connection attempts', () => {
-      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
-      
+      process.env.POSTGRES_URL = 'postgresql://user:pass@host:5432/db';
+
       new DatabaseConnection();
-      
-      // Verify logging calls would be made
-      expect(mock).toBeDefined();
+
+      expect(LogEngine.info).toHaveBeenCalledWith(
+        'Database connection pool initialized',
+        expect.objectContaining({
+          maxConnections: expect.any(Number),
+          sslEnabled: expect.any(Boolean),
+          environment: 'development'
+        })
+      );
     });
 
     it('should log SSL configuration', () => {
       process.env.NODE_ENV = 'production';
-      process.env.DATABASE_URL = 'postgresql://user:pass@host:5432/db';
-      
+      process.env.POSTGRES_URL = 'postgresql://user:pass@host:5432/db';
+
       new DatabaseConnection();
-      
-      expect(mock).toBeDefined();
+
+      expect(LogEngine.info).toHaveBeenCalledWith(
+        'Database connection pool initialized',
+        expect.objectContaining({
+          sslEnabled: true,
+          environment: 'production'
+        })
+      );
     });
   });
 });

@@ -6,10 +6,10 @@ This project uses Bun's built-in test runner (`bun:test`) for unit tests.
 
 ```bash
 # Run all tests
-bun test
+bun run test
 
 # Run tests in watch mode
-bun test --watch
+bun run test:watch
 
 # Run tests with coverage
 bun run test:coverage
