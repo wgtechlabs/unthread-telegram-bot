@@ -60,7 +60,7 @@ const GroupConfigSchema = z.object({
   botIsAdmin: z.boolean(),
   lastAdminCheck: z.string().optional(),
   setupVersion: z.string().optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
   // Additional fields that might be added during storage
   lastUpdatedAt: z.string().optional(),
   version: z.string().optional()
@@ -74,7 +74,7 @@ const SetupStateSchema = z.object({
   suggestedCustomerName: z.string().optional(),
   userInput: z.string().optional(),
   retryCount: z.number().optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
   // Additional fields that might be added during storage
   lastUpdatedAt: z.string().optional(),
   version: z.string().optional()
