@@ -21,9 +21,12 @@ package-lock.json
 dist/
 *.tsbuildinfo
 
-# pnpm
+# pnpm (legacy)
 .pnpm-store/
 .pnpm-debug.log
+
+# Bun
+.bun/
 
 # Yarn v2 (legacy)
 .yarn/cache

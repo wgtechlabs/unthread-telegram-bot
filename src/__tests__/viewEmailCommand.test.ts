@@ -1,24 +1,25 @@
 /**
  * Unit tests for commands/basic/ViewEmailCommand.ts
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import type { BotContext } from '../types/index.js';
 import { ViewEmailCommand } from '../commands/basic/ViewEmailCommand.js';
 
 // Mock dependencies
-vi.mock('@wgtechlabs/log-engine', () => ({
+mock.module('@wgtechlabs/log-engine', () => ({
   LogEngine: {
-    info: vi.fn(),
-    error: vi.fn()
+    info: createMock(),
+    error: createMock()
   }
 }));
 
-vi.mock('../utils/emailManager.js', () => ({
-  getUserEmailPreferences: vi.fn()
+mock.module('../utils/emailManager.js', () => ({
+  getUserEmailPreferences: createMock()
 }));
 
-vi.mock('../utils/markdownEscape.js', () => ({
-  formatEmailForDisplay: vi.fn((email: string) => email)
+mock.module('../utils/markdownEscape.js', () => ({
+  formatEmailForDisplay: createMock((email: string) => email)
 }));
 
 import { LogEngine } from '@wgtechlabs/log-engine';
@@ -30,7 +31,7 @@ describe('ViewEmailCommand', () => {
   let mockCtx: BotContext;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    clearAllMocks();
     
     viewEmailCommand = new ViewEmailCommand();
     
@@ -38,12 +39,12 @@ describe('ViewEmailCommand', () => {
       from: { id: 123, first_name: 'Test', is_bot: false },
       chat: { id: 456, type: 'private' },
       message: { text: '/viewemail', message_id: 789 },
-      reply: vi.fn()
+      reply: mock()
     } as BotContext;
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    restoreAllMocks();
   });
 
   describe('metadata', () => {
@@ -72,7 +73,7 @@ describe('ViewEmailCommand', () => {
     });
 
     it('should show no email message when no preferences exist', async () => {
-      vi.mocked(getUserEmailPreferences).mockResolvedValue(null);
+      (getUserEmailPreferences as any).mockResolvedValue(null);
 
       await viewEmailCommand.execute(mockCtx);
 
@@ -85,7 +86,7 @@ describe('ViewEmailCommand', () => {
         isDummy: undefined
       });
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       expect(replyCall[0]).toContain('📧 **Email Settings**');
       expect(replyCall[0]).toContain('❌ **No email address set**');
       expect(replyCall[0]).toContain('/setemail');
@@ -100,13 +101,13 @@ describe('ViewEmailCommand', () => {
         setAt: '2024-01-01T00:00:00.000Z',
         isDummy: true
       };
-      vi.mocked(getUserEmailPreferences).mockResolvedValue(mockEmailPrefs);
+      (getUserEmailPreferences as any).mockResolvedValue(mockEmailPrefs);
 
       await viewEmailCommand.execute(mockCtx);
 
       expect(formatEmailForDisplay).toHaveBeenCalledWith('temp123@example.com');
       
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       
       expect(message).toContain('📧 **Email Settings**');
@@ -129,13 +130,13 @@ describe('ViewEmailCommand', () => {
         setAt: '2024-01-01T00:00:00.000Z',
         isDummy: false
       };
-      vi.mocked(getUserEmailPreferences).mockResolvedValue(mockEmailPrefs);
+      (getUserEmailPreferences as any).mockResolvedValue(mockEmailPrefs);
 
       await viewEmailCommand.execute(mockCtx);
 
       expect(formatEmailForDisplay).toHaveBeenCalledWith('user@real.com');
       
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       
       expect(message).toContain('📧 **Email Settings**');
@@ -154,7 +155,7 @@ describe('ViewEmailCommand', () => {
 
     it('should handle errors gracefully', async () => {
       const error = new Error('Database error');
-      vi.mocked(getUserEmailPreferences).mockRejectedValue(error);
+      (getUserEmailPreferences as any).mockRejectedValue(error);
 
       await viewEmailCommand.execute(mockCtx);
 
@@ -170,7 +171,7 @@ describe('ViewEmailCommand', () => {
     });
 
     it('should handle non-Error exceptions', async () => {
-      vi.mocked(getUserEmailPreferences).mockRejectedValue('String error');
+      (getUserEmailPreferences as any).mockRejectedValue('String error');
 
       await viewEmailCommand.execute(mockCtx);
 
@@ -186,11 +187,11 @@ describe('ViewEmailCommand', () => {
         setAt: '2024-01-15T10:30:00.000Z',
         isDummy: false
       };
-      vi.mocked(getUserEmailPreferences).mockResolvedValue(mockEmailPrefs);
+      (getUserEmailPreferences as any).mockResolvedValue(mockEmailPrefs);
 
       await viewEmailCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       
       // Check that date is formatted and included
@@ -200,11 +201,11 @@ describe('ViewEmailCommand', () => {
     });
 
     it('should include setup instructions in no email message', async () => {
-      vi.mocked(getUserEmailPreferences).mockResolvedValue(null);
+      (getUserEmailPreferences as any).mockResolvedValue(null);
 
       await viewEmailCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       
       expect(message).toContain('**Available actions:**');
@@ -221,15 +222,15 @@ describe('ViewEmailCommand', () => {
         setAt: '2024-01-01T00:00:00.000Z',
         isDummy: true
       };
-      vi.mocked(getUserEmailPreferences).mockResolvedValue(tempEmailPrefs);
+      (getUserEmailPreferences as any).mockResolvedValue(tempEmailPrefs);
 
       await viewEmailCommand.execute(mockCtx);
 
-      let replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      let replyCall = (mockCtx.reply as any).mock.calls[0];
       expect(replyCall[0]).toContain('**Recommended actions:**');
       expect(replyCall[0]).toContain('Keep temporary email if you prefer privacy');
 
-      vi.clearAllMocks();
+      clearAllMocks();
 
       // Test real email actions
       const realEmailPrefs = {
@@ -237,11 +238,11 @@ describe('ViewEmailCommand', () => {
         setAt: '2024-01-01T00:00:00.000Z',
         isDummy: false
       };
-      vi.mocked(getUserEmailPreferences).mockResolvedValue(realEmailPrefs);
+      (getUserEmailPreferences as any).mockResolvedValue(realEmailPrefs);
 
       await viewEmailCommand.execute(mockCtx);
 
-      replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      replyCall = (mockCtx.reply as any).mock.calls[0];
       expect(replyCall[0]).toContain('**Available actions:**');
       expect(replyCall[0]).toContain('Email is automatically used in new tickets');
     });

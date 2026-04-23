@@ -5,36 +5,37 @@
  * and error handling functionality.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import { createBot, safeReply, startPolling } from '../bot.js';
 import type { BotContext, TelegramError } from '../types/index.js';
 
 // Mock dependencies
-vi.mock('telegraf', () => ({
-  Telegraf: vi.fn().mockImplementation((token) => ({
+mock.module('telegraf', () => ({
+  Telegraf: createMock().mockImplementation((token) => ({
     token,
-    launch: vi.fn(),
-    stop: vi.fn(),
-    use: vi.fn(),
-    command: vi.fn(),
-    on: vi.fn()
+    launch: createMock(),
+    stop: createMock(),
+    use: createMock(),
+    command: createMock(),
+    on: createMock()
   }))
 }));
 
-vi.mock('@wgtechlabs/log-engine', () => ({
+mock.module('@wgtechlabs/log-engine', () => ({
   LogEngine: {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn()
+    info: createMock(),
+    error: createMock(),
+    warn: createMock(),
+    debug: createMock()
   }
 }));
 
-vi.mock('./sdk/bots-brain/index.js', () => ({
+mock.module('./sdk/bots-brain/index.js', () => ({
   BotsStore: {
-    removeUser: vi.fn(),
-    clearUserData: vi.fn(),
-    getUserState: vi.fn()
+    removeUser: createMock(),
+    clearUserData: createMock(),
+    getUserState: createMock()
   }
 }));
 
@@ -42,7 +43,7 @@ describe('Bot Core Utilities', () => {
   let mockContext: Partial<BotContext>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    clearAllMocks();
     
     mockContext = {
       from: {
@@ -55,16 +56,16 @@ describe('Bot Core Utilities', () => {
         id: -67890,
         type: 'group'
       },
-      reply: vi.fn(),
-      replyWithMarkdown: vi.fn(),
-      replyWithHTML: vi.fn(),
-      editMessageText: vi.fn(),
-      deleteMessage: vi.fn()
+      reply: mock(),
+      replyWithMarkdown: mock(),
+      replyWithHTML: mock(),
+      editMessageText: mock(),
+      deleteMessage: mock()
     };
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    restoreAllMocks();
   });
 
   describe('createBot', () => {
@@ -101,8 +102,8 @@ describe('Bot Core Utilities', () => {
   describe('startPolling', () => {
     it('should start bot polling', () => {
       const mockBot = {
-        launch: vi.fn(),
-        stop: vi.fn()
+        launch: mock(),
+        stop: mock()
       };
 
       startPolling(mockBot as any);
@@ -112,7 +113,7 @@ describe('Bot Core Utilities', () => {
 
     it('should handle launch errors gracefully', () => {
       const mockBot = {
-        launch: vi.fn().mockRejectedValue(new Error('Network error'))
+        launch: mock().mockRejectedValue(new Error('Network error'))
       };
 
       expect(() => startPolling(mockBot as any)).not.toThrow();
@@ -123,7 +124,7 @@ describe('Bot Core Utilities', () => {
   describe('safeReply', () => {
     it('should send reply successfully', async () => {
       const expectedMessage = { message_id: 123, text: 'Hello' };
-      vi.mocked(mockContext.reply).mockResolvedValue(expectedMessage);
+      (mockContext.reply as any).mockResolvedValue(expectedMessage);
 
       const result = await safeReply(mockContext as BotContext, 'Hello');
       
@@ -135,7 +136,7 @@ describe('Bot Core Utilities', () => {
       const expectedMessage = { message_id: 123, text: 'Hello' };
       const options = { parse_mode: 'Markdown' as const };
       
-      vi.mocked(mockContext.reply).mockResolvedValue(expectedMessage);
+      (mockContext.reply as any).mockResolvedValue(expectedMessage);
 
       const result = await safeReply(mockContext as BotContext, 'Hello', options);
       
@@ -153,7 +154,7 @@ describe('Bot Core Utilities', () => {
         }
       } as TelegramError;
 
-      vi.mocked(mockContext.reply).mockRejectedValue(blockedError);
+      (mockContext.reply as any).mockRejectedValue(blockedError);
 
       const result = await safeReply(mockContext as BotContext, 'Hello');
       
@@ -174,7 +175,7 @@ describe('Bot Core Utilities', () => {
         }
       } as TelegramError;
 
-      vi.mocked(mockContext.reply).mockRejectedValue(chatNotFoundError);
+      (mockContext.reply as any).mockRejectedValue(chatNotFoundError);
 
       const result = await safeReply(mockContext as BotContext, 'Hello');
       
@@ -195,7 +196,7 @@ describe('Bot Core Utilities', () => {
         }
       } as TelegramError;
 
-      vi.mocked(mockContext.reply).mockRejectedValue(rateLimitError);
+      (mockContext.reply as any).mockRejectedValue(rateLimitError);
 
       const result = await safeReply(mockContext as BotContext, 'Hello');
       
@@ -216,7 +217,7 @@ describe('Bot Core Utilities', () => {
         }
       } as TelegramError;
 
-      vi.mocked(mockContext.reply).mockRejectedValue(otherForbiddenError);
+      (mockContext.reply as any).mockRejectedValue(otherForbiddenError);
 
       await expect(safeReply(mockContext as BotContext, 'Hello')).rejects.toThrow();
       expect(LogEngine.error).toHaveBeenCalled();
@@ -226,7 +227,7 @@ describe('Bot Core Utilities', () => {
       const { LogEngine } = await import('@wgtechlabs/log-engine');
       
       const networkError = new Error('Network timeout');
-      vi.mocked(mockContext.reply).mockRejectedValue(networkError);
+      (mockContext.reply as any).mockRejectedValue(networkError);
 
       await expect(safeReply(mockContext as BotContext, 'Hello')).rejects.toThrow('Network timeout');
       expect(LogEngine.error).toHaveBeenCalled();
@@ -247,7 +248,7 @@ describe('Bot Core Utilities', () => {
         }
       } as TelegramError;
 
-      vi.mocked(contextWithoutChat.reply).mockRejectedValue(blockedError);
+      (contextWithoutChat.reply as any).mockRejectedValue(blockedError);
 
       const result = await safeReply(contextWithoutChat as BotContext, 'Hello');
       
@@ -270,7 +271,7 @@ describe('Bot Core Utilities', () => {
         }
       } as TelegramError;
 
-      vi.mocked(contextWithoutUser.reply).mockRejectedValue(blockedError);
+      (contextWithoutUser.reply as any).mockRejectedValue(blockedError);
 
       const result = await safeReply(contextWithoutUser as BotContext, 'Hello');
       
@@ -287,7 +288,7 @@ describe('Bot Core Utilities', () => {
       const { LogEngine } = await import('@wgtechlabs/log-engine');
       
       const errorWithoutResponse = new Error('Generic error');
-      vi.mocked(mockContext.reply).mockRejectedValue(errorWithoutResponse);
+      (mockContext.reply as any).mockRejectedValue(errorWithoutResponse);
 
       await expect(safeReply(mockContext as BotContext, 'Hello')).rejects.toThrow('Generic error');
       expect(LogEngine.error).toHaveBeenCalled();
@@ -303,7 +304,7 @@ describe('Bot Core Utilities', () => {
         }
       };
 
-      vi.mocked(mockContext.reply).mockRejectedValue(malformedError);
+      (mockContext.reply as any).mockRejectedValue(malformedError);
 
       await expect(safeReply(mockContext as BotContext, 'Hello')).rejects.toThrow();
       expect(LogEngine.error).toHaveBeenCalled();
@@ -319,7 +320,7 @@ describe('Bot Core Utilities', () => {
         }
       } as TelegramError;
 
-      vi.mocked(mockContext.reply).mockRejectedValue(badRequestError);
+      (mockContext.reply as any).mockRejectedValue(badRequestError);
 
       await expect(safeReply(mockContext as BotContext, 'Hello')).rejects.toThrow();
       expect(LogEngine.error).toHaveBeenCalled();
@@ -335,7 +336,7 @@ describe('Bot Core Utilities', () => {
         }
       } as TelegramError;
 
-      vi.mocked(mockContext.reply).mockRejectedValue(serverError);
+      (mockContext.reply as any).mockRejectedValue(serverError);
 
       await expect(safeReply(mockContext as BotContext, 'Hello')).rejects.toThrow();
       expect(LogEngine.error).toHaveBeenCalled();
@@ -345,7 +346,7 @@ describe('Bot Core Utilities', () => {
   describe('Message Content Handling', () => {
     it('should handle empty message text', async () => {
       const expectedMessage = { message_id: 123, text: '' };
-      vi.mocked(mockContext.reply).mockResolvedValue(expectedMessage);
+      (mockContext.reply as any).mockResolvedValue(expectedMessage);
 
       const result = await safeReply(mockContext as BotContext, '');
       
@@ -357,7 +358,7 @@ describe('Bot Core Utilities', () => {
       const longText = 'a'.repeat(5000);
       const expectedMessage = { message_id: 123, text: longText };
       
-      vi.mocked(mockContext.reply).mockResolvedValue(expectedMessage);
+      (mockContext.reply as any).mockResolvedValue(expectedMessage);
 
       const result = await safeReply(mockContext as BotContext, longText);
       
@@ -369,7 +370,7 @@ describe('Bot Core Utilities', () => {
       const specialText = '🎉 Hello *World* _test_ `code` [link](url)';
       const expectedMessage = { message_id: 123, text: specialText };
       
-      vi.mocked(mockContext.reply).mockResolvedValue(expectedMessage);
+      (mockContext.reply as any).mockResolvedValue(expectedMessage);
 
       const result = await safeReply(mockContext as BotContext, specialText);
       
@@ -381,7 +382,7 @@ describe('Bot Core Utilities', () => {
       const htmlText = '&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;';
       const expectedMessage = { message_id: 123, text: htmlText };
       
-      vi.mocked(mockContext.reply).mockResolvedValue(expectedMessage);
+      (mockContext.reply as any).mockResolvedValue(expectedMessage);
 
       const result = await safeReply(mockContext as BotContext, htmlText);
       
@@ -401,7 +402,7 @@ describe('Bot Core Utilities', () => {
       };
 
       const expectedMessage = { message_id: 123, text: 'Hello' };
-      vi.mocked(privateChatContext.reply).mockResolvedValue(expectedMessage);
+      (privateChatContext.reply as any).mockResolvedValue(expectedMessage);
 
       const result = await safeReply(privateChatContext as BotContext, 'Hello');
       
@@ -418,7 +419,7 @@ describe('Bot Core Utilities', () => {
       };
 
       const expectedMessage = { message_id: 123, text: 'Hello' };
-      vi.mocked(supergroupContext.reply).mockResolvedValue(expectedMessage);
+      (supergroupContext.reply as any).mockResolvedValue(expectedMessage);
 
       const result = await safeReply(supergroupContext as BotContext, 'Hello');
       
@@ -435,7 +436,7 @@ describe('Bot Core Utilities', () => {
       };
 
       const expectedMessage = { message_id: 123, text: 'Hello' };
-      vi.mocked(channelContext.reply).mockResolvedValue(expectedMessage);
+      (channelContext.reply as any).mockResolvedValue(expectedMessage);
 
       const result = await safeReply(channelContext as BotContext, 'Hello');
       

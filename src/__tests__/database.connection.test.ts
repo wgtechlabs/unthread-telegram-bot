@@ -5,48 +5,46 @@
  * SSL configuration, connection pooling, error handling, and schema operations.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import { DatabaseConnection } from '../database/connection.js';
 
 // Mock dependencies
-vi.mock('pg', async () => {
-  const actual = await vi.importActual('pg');
+mock.module('pg', () => {
+  const PoolMock = createMock().mockImplementation(() => ({
+    connect: createMock(),
+    query: createMock(),
+    end: createMock(),
+    on: createMock()
+  }));
   return {
-    ...actual,
-    Pool: vi.fn().mockImplementation(() => ({
-      connect: vi.fn(),
-      query: vi.fn(),
-      end: vi.fn(),
-      on: vi.fn()
-    }))
+    default: { Pool: PoolMock },
+    Pool: PoolMock
   };
 });
 
-vi.mock('../config/logging.js', () => ({
+mock.module('../config/logging.js', () => ({
   LogEngine: {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn()
+    info: createMock(),
+    error: createMock(),
+    warn: createMock(),
+    debug: createMock()
   }
 }));
 
-vi.mock('dotenv', async () => {
-  const actual = await vi.importActual('dotenv');
-  return {
-    ...actual,
-    config: vi.fn()
-  };
-});
+mock.module('dotenv', () => ({
+  default: { config: createMock() },
+  config: createMock()
+}));
 
-vi.mock('fs', () => ({
-  readFileSync: vi.fn(),
-  existsSync: vi.fn()
+mock.module('fs', () => ({
+  readFileSync: createMock(),
+  existsSync: createMock()
 }));
 
 describe('DatabaseConnection', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    clearAllMocks();
     // Reset environment variables
     delete process.env.DATABASE_URL;
     delete process.env.DATABASE_SSL_CA;
@@ -54,7 +52,7 @@ describe('DatabaseConnection', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    restoreAllMocks();
   });
 
   describe('constructor', () => {
@@ -216,7 +214,7 @@ describe('DatabaseConnection', () => {
       new DatabaseConnection();
       
       // Verify logging calls would be made
-      expect(vi.mocked).toBeDefined();
+      expect(mock).toBeDefined();
     });
 
     it('should log SSL configuration', () => {
@@ -225,7 +223,7 @@ describe('DatabaseConnection', () => {
       
       new DatabaseConnection();
       
-      expect(vi.mocked).toBeDefined();
+      expect(mock).toBeDefined();
     });
   });
 });

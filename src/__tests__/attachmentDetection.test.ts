@@ -5,22 +5,23 @@
  * event validation, attachment detection, image processing, and metadata handling.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import { AttachmentDetectionService } from '../services/attachmentDetection.js';
 import { WebhookEvent } from '../types/webhookEvents.js';
 
 // Mock dependencies
-vi.mock('@wgtechlabs/log-engine', () => ({
+mock.module('@wgtechlabs/log-engine', () => ({
   LogEngine: {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn()
+    info: createMock(),
+    error: createMock(),
+    warn: createMock(),
+    debug: createMock()
   }
 }));
 
-vi.mock('../config/env.js', () => ({
-  getImageProcessingConfig: vi.fn().mockReturnValue({
+mock.module('../config/env.js', () => ({
+  getImageProcessingConfig: createMock().mockReturnValue({
     enabled: true,
     maxSize: 10485760, // 10MB
     supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
@@ -30,11 +31,11 @@ vi.mock('../config/env.js', () => ({
 
 describe('AttachmentDetectionService', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    clearAllMocks();
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    restoreAllMocks();
   });
 
   describe('shouldProcessEvent', () => {

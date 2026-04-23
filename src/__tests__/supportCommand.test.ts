@@ -4,38 +4,39 @@
  * Comprehensive test coverage for support ticket creation functionality.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import { SupportCommand } from '../commands/support/SupportCommandClean.js';
 import type { BotContext } from '../types/index.js';
 import type { UserState } from '../sdk/types.js';
 
 // Mock external dependencies
-vi.mock('../sdk/bots-brain/index.js', () => ({
+mock.module('../sdk/bots-brain/index.js', () => ({
     BotsStore: {
-        getUserState: vi.fn(),
-        storeUserState: vi.fn(),
-        clearUserState: vi.fn(),
-        setUserState: vi.fn(),
-        getGroupConfig: vi.fn(),
-        getUserByTelegramId: vi.fn(),
+        getUserState: createMock(),
+        storeUserState: createMock(),
+        clearUserState: createMock(),
+        setUserState: createMock(),
+        getGroupConfig: createMock(),
+        getUserByTelegramId: createMock(),
     }
 }));
 
-vi.mock('@wgtechlabs/log-engine', () => ({
+mock.module('@wgtechlabs/log-engine', () => ({
     LogEngine: {
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
+        info: createMock(),
+        warn: createMock(),
+        error: createMock(),
     }
 }));
 
-vi.mock('../config/env.js', () => ({
-    isAdminUser: vi.fn(() => true),
-    getAdminUsers: vi.fn(() => [12345]),
+mock.module('../config/env.js', () => ({
+    isAdminUser: createMock(() => true),
+    getAdminUsers: createMock(() => [12345]),
 }));
 
-vi.mock('../utils/emailManager.js', () => ({
-    getUserEmailPreferences: vi.fn(() => Promise.resolve({
+mock.module('../utils/emailManager.js', () => ({
+    getUserEmailPreferences: createMock(() => Promise.resolve({
         email: 'test@example.com',
         isDummy: false,
         setAt: new Date().toISOString(),
@@ -51,18 +52,18 @@ describe('SupportCommand', () => {
     let mockContext: Partial<BotContext>;
     
     beforeEach(() => {
-        vi.clearAllMocks();
+        clearAllMocks();
         supportCommand = new SupportCommand();
         
         // Mock default group config for setup validation
-        vi.mocked(BotsStore.getGroupConfig).mockResolvedValue({
+        (BotsStore.getGroupConfig as any).mockResolvedValue({
             isConfigured: true,
             chatId: -67890,
             customerId: 'customer-123'
         });
         
         // Mock default user state (no active session)
-        vi.mocked(BotsStore.getUserState).mockResolvedValue(null);
+        (BotsStore.getUserState as any).mockResolvedValue(null);
         
         mockContext = {
             from: {
@@ -76,7 +77,7 @@ describe('SupportCommand', () => {
                 type: 'supergroup',
                 title: 'Test Support Group'
             },
-            reply: vi.fn().mockResolvedValue({}),
+            reply: mock().mockResolvedValue({}),
             message: {
                 message_id: 1,
                 date: Date.now() / 1000,
@@ -97,7 +98,7 @@ describe('SupportCommand', () => {
     });
 
     afterEach(() => {
-        vi.restoreAllMocks();
+        restoreAllMocks();
     });
 
     describe('Metadata', () => {
@@ -165,7 +166,7 @@ describe('SupportCommand', () => {
                 summary: 'Test issue description'
             };
 
-            vi.mocked(BotsStore.getUserState).mockResolvedValue(existingState);
+            (BotsStore.getUserState as any).mockResolvedValue(existingState);
 
             await supportCommand.execute(mockContext as BotContext);
 
@@ -187,7 +188,7 @@ describe('SupportCommand', () => {
                 summary: 'Test technical issue'
             };
 
-            vi.mocked(BotsStore.getUserState).mockResolvedValue(existingState);
+            (BotsStore.getUserState as any).mockResolvedValue(existingState);
 
             await supportCommand.execute(mockContext as BotContext);
 
@@ -202,7 +203,7 @@ describe('SupportCommand', () => {
 
     describe('New Ticket Creation', () => {
         it('should start new ticket creation when no existing session', async () => {
-            vi.mocked(BotsStore.getUserState).mockResolvedValue(null);
+            (BotsStore.getUserState as any).mockResolvedValue(null);
 
             await supportCommand.execute(mockContext as BotContext);
 
@@ -220,7 +221,7 @@ describe('SupportCommand', () => {
         });
 
         it('should set user state for new ticket creation', async () => {
-            vi.mocked(BotsStore.getUserState).mockResolvedValue(null);
+            (BotsStore.getUserState as any).mockResolvedValue(null);
 
             await supportCommand.execute(mockContext as BotContext);
 
@@ -235,7 +236,7 @@ describe('SupportCommand', () => {
     describe('Error Handling', () => {
         it('should handle errors in getting user state', async () => {
             const error = new Error('Database connection failed');
-            vi.mocked(BotsStore.getUserState).mockRejectedValue(error);
+            (BotsStore.getUserState as any).mockRejectedValue(error);
 
             await supportCommand.execute(mockContext as BotContext);
 
@@ -251,7 +252,7 @@ describe('SupportCommand', () => {
         });
 
         it('should handle non-Error exceptions', async () => {
-            vi.mocked(BotsStore.getUserState).mockRejectedValue('String error');
+            (BotsStore.getUserState as any).mockRejectedValue('String error');
 
             await supportCommand.execute(mockContext as BotContext);
 
@@ -263,9 +264,9 @@ describe('SupportCommand', () => {
         });
 
         it('should handle error when starting new ticket creation', async () => {
-            vi.mocked(BotsStore.getUserState).mockResolvedValue(null);
+            (BotsStore.getUserState as any).mockResolvedValue(null);
             // Mock reply to throw error to simulate ticket creation start failure
-            vi.mocked(mockContext.reply).mockRejectedValueOnce(new Error('Reply failed'));
+            (mockContext.reply as any).mockRejectedValueOnce(new Error('Reply failed'));
 
             await supportCommand.execute(mockContext as BotContext);
 
@@ -284,7 +285,7 @@ describe('SupportCommand', () => {
                 summary: 'Old ticket data'
             };
 
-            vi.mocked(BotsStore.getUserState).mockResolvedValue(expiredState);
+            (BotsStore.getUserState as any).mockResolvedValue(expiredState);
 
             await supportCommand.execute(mockContext as BotContext);
 
@@ -302,7 +303,7 @@ describe('SupportCommand', () => {
                 field: 'email'
             };
 
-            vi.mocked(BotsStore.getUserState).mockResolvedValue(stateWithoutData);
+            (BotsStore.getUserState as any).mockResolvedValue(stateWithoutData);
 
             await supportCommand.execute(mockContext as BotContext);
 
@@ -318,7 +319,7 @@ describe('SupportCommand', () => {
     describe('Integration', () => {
         it('should work correctly in supergroup chat', async () => {
             mockContext.chat = { id: -67890, type: 'supergroup', title: 'Support Group' };
-            vi.mocked(BotsStore.getUserState).mockResolvedValue(null);
+            (BotsStore.getUserState as any).mockResolvedValue(null);
 
             await supportCommand.execute(mockContext as BotContext);
 
@@ -332,7 +333,7 @@ describe('SupportCommand', () => {
 
         it('should work correctly in regular group chat', async () => {
             mockContext.chat = { id: -67890, type: 'group', title: 'Support Group' };
-            vi.mocked(BotsStore.getUserState).mockResolvedValue(null);
+            (BotsStore.getUserState as any).mockResolvedValue(null);
 
             await supportCommand.execute(mockContext as BotContext);
 
@@ -346,7 +347,7 @@ describe('SupportCommand', () => {
 
         it('should handle missing chat title gracefully', async () => {
             mockContext.chat = { id: -67890, type: 'supergroup' };
-            vi.mocked(BotsStore.getUserState).mockResolvedValue(null);
+            (BotsStore.getUserState as any).mockResolvedValue(null);
 
             await supportCommand.execute(mockContext as BotContext);
 
@@ -392,7 +393,7 @@ describe('SupportCommand', () => {
         it('should handle exactly zero chat ID', async () => {
             mockContext.chat = { id: 0, type: 'group' };
             // Mock that chat ID 0 has no group configuration
-            vi.mocked(BotsStore.getGroupConfig).mockResolvedValue(null);
+            (BotsStore.getGroupConfig as any).mockResolvedValue(null);
             
             await supportCommand.execute(mockContext as BotContext);
 

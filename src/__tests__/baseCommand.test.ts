@@ -1,7 +1,8 @@
 /**
  * Unit tests for commands/base/BaseCommand.ts
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import type { BotContext } from '../types/index.js';
 import { 
   BaseCommand, 
@@ -12,28 +13,28 @@ import {
 } from '../commands/base/BaseCommand.js';
 
 // Mock dependencies
-vi.mock('@wgtechlabs/log-engine', () => ({
+mock.module('@wgtechlabs/log-engine', () => ({
   LogEngine: {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn()
+    info: createMock(),
+    error: createMock(),
+    warn: createMock(),
+    debug: createMock()
   }
 }));
 
-vi.mock('../config/env.js', () => ({
-  getConfiguredBotUsername: vi.fn(() => 'test-bot'),
-  isAdminUser: vi.fn(() => false)
+mock.module('../config/env.js', () => ({
+  getConfiguredBotUsername: createMock(() => 'test-bot'),
+  isAdminUser: createMock(() => false)
 }));
 
-vi.mock('../utils/permissions.js', () => ({
-  validateAdminAccess: vi.fn(() => Promise.resolve(true))
+mock.module('../utils/permissions.js', () => ({
+  validateAdminAccess: createMock(() => Promise.resolve(true))
 }));
 
 // Mock dynamic import of BotsStore
-vi.mock('../sdk/bots-brain/index.js', () => ({
+mock.module('../sdk/bots-brain/index.js', () => ({
   BotsStore: {
-    getAdminProfile: vi.fn(() => Promise.resolve({ isActivated: true }))
+    getAdminProfile: createMock(() => Promise.resolve({ isActivated: true }))
   }
 }));
 
@@ -54,11 +55,11 @@ class TestCommand extends BaseCommand {
     requiresSetup: false
   };
 
-  public executeCommandSpy = vi.fn();
-  public handleInvalidContextSpy = vi.fn();
-  public handleUnauthorizedSpy = vi.fn();
-  public handleSetupRequiredSpy = vi.fn();
-  public handleErrorSpy = vi.fn();
+  public executeCommandSpy = mock();
+  public handleInvalidContextSpy = mock();
+  public handleUnauthorizedSpy = mock();
+  public handleSetupRequiredSpy = mock();
+  public handleErrorSpy = mock();
 
   protected async executeCommand(ctx: BotContext): Promise<void> {
     this.executeCommandSpy(ctx);
@@ -132,13 +133,13 @@ describe('BaseCommand', () => {
   let setupRequiredCommand: SetupRequiredCommand;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    clearAllMocks();
     
     mockCtx = {
       from: { id: 123, first_name: 'Test', is_bot: false },
       chat: { id: 456, type: 'private' },
       message: { text: '/test', message_id: 789 },
-      reply: vi.fn()
+      reply: mock()
     } as BotContext;
 
     testCommand = new TestCommand();
@@ -146,7 +147,7 @@ describe('BaseCommand', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    restoreAllMocks();
   });
 
   describe('interfaces', () => {
@@ -172,8 +173,8 @@ describe('BaseCommand', () => {
 
     it('should define IConversationProcessor interface', () => {
       const processor: IConversationProcessor = {
-        canHandle: vi.fn(),
-        process: vi.fn()
+        canHandle: mock(),
+        process: mock()
       };
       
       expect(typeof processor.canHandle).toBe('function');
@@ -182,8 +183,8 @@ describe('BaseCommand', () => {
 
     it('should define ICallbackProcessor interface', () => {
       const processor: ICallbackProcessor = {
-        canHandle: vi.fn(),
-        process: vi.fn()
+        canHandle: mock(),
+        process: mock()
       };
       
       expect(typeof processor.canHandle).toBe('function');
@@ -209,8 +210,8 @@ describe('BaseCommand', () => {
     });
 
     it('should handle unauthorized access for admin commands', async () => {
-      vi.mocked(isAdminUser).mockReturnValue(false);
-      vi.mocked(validateAdminAccess).mockResolvedValue(false);
+      (isAdminUser as any).mockReturnValue(false);
+      (validateAdminAccess as any).mockResolvedValue(false);
 
       const adminCommand = new AdminCommand();
       await adminCommand.execute(mockCtx);
@@ -231,7 +232,7 @@ describe('BaseCommand', () => {
       const error = new Error('Test error');
       testCommand.executeCommandSpy.mockRejectedValue(error);
 
-      const handleErrorSpy = vi.spyOn(testCommand, 'handleError' as any);
+      const handleErrorSpy = spyOn(testCommand, 'handleError' as any);
       
       await testCommand.execute(mockCtx);
 
@@ -241,7 +242,7 @@ describe('BaseCommand', () => {
     it('should log execution time on completion', async () => {
       await testCommand.execute(mockCtx);
 
-      const logCalls = vi.mocked(LogEngine.info).mock.calls;
+      const logCalls = (LogEngine.info as any).mock.calls;
       const completionLog = logCalls.find(call => call[0].includes('completed'));
       expect(completionLog).toBeDefined();
       expect(completionLog![1]).toHaveProperty('executionTime');
@@ -291,8 +292,8 @@ describe('BaseCommand', () => {
     it('should validate admin access for admin commands in group context', async () => {
       // Change chat type to group to trigger validateAdminAccess
       mockCtx.chat = { id: 456, type: 'group' } as any;
-      vi.mocked(isAdminUser).mockReturnValue(true);
-      vi.mocked(validateAdminAccess).mockResolvedValue(true);
+      (isAdminUser as any).mockReturnValue(true);
+      (validateAdminAccess as any).mockResolvedValue(true);
 
       const adminCommand = new AdminCommand();
       await adminCommand.execute(mockCtx);
