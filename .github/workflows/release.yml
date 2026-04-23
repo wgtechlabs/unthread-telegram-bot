@@ -24,8 +24,7 @@ jobs:
         uses: wgtechlabs/release-build-flow-action@v1.7.0
         with:
           # Use GH_PAT to allow downstream release-triggered workflows.
-          # Falls back to github.token if GH_PAT is not set.
-          github-token: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
+          github-token: ${{ secrets.GH_PAT }}
           commit-convention: clean-commit
 
       - name: Release summary
