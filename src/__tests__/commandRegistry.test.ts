@@ -1,7 +1,8 @@
 /**
  * Unit tests for commands/base/CommandRegistry.ts
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import type { BotContext } from '../types';
 import { 
   CommandRegistry
@@ -14,25 +15,25 @@ import type {
 } from '../commands/base/BaseCommand.js';
 
 // Mock dependencies
-vi.mock('@wgtechlabs/log-engine', () => ({
+mock.module('@wgtechlabs/log-engine', () => ({
   LogEngine: {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn()
+    info: createMock(),
+    error: createMock(),
+    warn: createMock(),
+    debug: createMock()
   }
 }));
 
-vi.mock('../utils/logConfig.js', () => ({
+mock.module('../utils/logConfig.js', () => ({
   StartupLogger: {
-    logCommandRegistration: vi.fn(),
-    logProcessorRegistration: vi.fn()
+    logCommandRegistration: createMock(),
+    logProcessorRegistration: createMock()
   }
 }));
 
-vi.mock('../config/env.js', () => ({
-  isAdminUser: vi.fn(() => false),
-  getAdminUsers: vi.fn(() => [])
+mock.module('../config/env.js', () => ({
+  isAdminUser: createMock(() => false),
+  getAdminUsers: createMock(() => [])
 }));
 
 import { LogEngine } from '@wgtechlabs/log-engine';
@@ -46,7 +47,7 @@ class MockCommand implements ICommand {
 
   constructor(
     metadata: CommandMetadata,
-    executeImpl: (_ctx: BotContext) => Promise<void> = vi.fn()
+    executeImpl: (_ctx: BotContext) => Promise<void> = mock()
   ) {
     this.metadata = metadata;
     this.executeImpl = executeImpl;
@@ -66,8 +67,8 @@ class MockConversationProcessor implements IConversationProcessor {
   public processImpl: (_ctx: BotContext) => Promise<boolean>;
 
   constructor(
-    canHandleImpl: (_ctx: BotContext) => Promise<boolean> = vi.fn(() => Promise.resolve(true)),
-    processImpl: (_ctx: BotContext) => Promise<boolean> = vi.fn(() => Promise.resolve(true))
+    canHandleImpl: (_ctx: BotContext) => Promise<boolean> = mock(() => Promise.resolve(true)),
+    processImpl: (_ctx: BotContext) => Promise<boolean> = mock(() => Promise.resolve(true))
   ) {
     this.canHandleImpl = canHandleImpl;
     this.processImpl = processImpl;
@@ -87,8 +88,8 @@ class MockCallbackProcessor implements ICallbackProcessor {
   public processImpl: (_ctx: BotContext, _data: string) => Promise<boolean>;
 
   constructor(
-    canHandleImpl: (_data: string) => boolean = vi.fn(() => true),
-    processImpl: (_ctx: BotContext, _data: string) => Promise<boolean> = vi.fn(() => Promise.resolve(true))
+    canHandleImpl: (_data: string) => boolean = mock(() => true),
+    processImpl: (_ctx: BotContext, _data: string) => Promise<boolean> = mock(() => Promise.resolve(true))
   ) {
     this.canHandleImpl = canHandleImpl;
     this.processImpl = processImpl;
@@ -113,7 +114,7 @@ describe('CommandRegistry', () => {
   let setupCommand: MockCommand;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    clearAllMocks();
     
     registry = new CommandRegistry();
     
@@ -121,7 +122,7 @@ describe('CommandRegistry', () => {
       from: { id: 123, first_name: 'Test', is_bot: false },
       chat: { id: 456, type: 'private' },
       message: { text: '/test', message_id: 789 },
-      reply: vi.fn()
+      reply: mock()
     } as BotContext;
 
     basicCommand = new MockCommand({
@@ -160,7 +161,7 @@ describe('CommandRegistry', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    restoreAllMocks();
   });
 
   describe('register', () => {
@@ -248,7 +249,7 @@ describe('CommandRegistry', () => {
 
     it('should return false when no processor can handle conversation', async () => {
       const processor = new MockConversationProcessor(
-        vi.fn(() => Promise.resolve(false))
+        mock(() => Promise.resolve(false))
       );
       registry.registerConversationProcessor(processor);
 
@@ -259,7 +260,7 @@ describe('CommandRegistry', () => {
 
     it('should handle processor errors gracefully', async () => {
       const processor = new MockConversationProcessor(
-        vi.fn(() => Promise.reject(new Error('Processor error')))
+        mock(() => Promise.reject(new Error('Processor error')))
       );
       registry.registerConversationProcessor(processor);
 
@@ -294,7 +295,7 @@ describe('CommandRegistry', () => {
 
     it('should return false when no processor can handle callback', async () => {
       const processor = new MockCallbackProcessor(
-        vi.fn(() => false)
+        mock(() => false)
       );
       registry.registerCallbackProcessor(processor);
 
@@ -305,8 +306,8 @@ describe('CommandRegistry', () => {
 
     it('should handle callback processor errors gracefully', async () => {
       const processor = new MockCallbackProcessor(
-        vi.fn(() => true),
-        vi.fn(() => Promise.reject(new Error('Callback error')))
+        mock(() => true),
+        mock(() => Promise.reject(new Error('Callback error')))
       );
       registry.registerCallbackProcessor(processor);
 
@@ -337,7 +338,7 @@ describe('CommandRegistry', () => {
     it('should handle command execution errors', async () => {
       const errorCommand = new MockCommand(
         { name: 'error', description: 'Error command', usage: '/error' },
-        vi.fn(() => Promise.reject(new Error('Command failed')))
+        mock(() => Promise.reject(new Error('Command failed')))
       );
       registry.register(errorCommand);
 
@@ -379,7 +380,7 @@ describe('CommandRegistry', () => {
     });
 
     it('should include admin commands for admin users', () => {
-      vi.mocked(isAdminUser).mockReturnValue(true);
+      (isAdminUser as any).mockReturnValue(true);
 
       const available = registry.getAvailableCommands(mockCtx);
 

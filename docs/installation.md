@@ -69,20 +69,20 @@
    **Option C: Manual Installation**
 
    ```bash
-   # Prerequisites: Node.js >=20.0.0 and pnpm >=9.0.0
+   # Prerequisites: Node.js >=20.0.0 and Bun >=1.3.0
    node --version  # Should be v20.0.0 or higher
-   pnpm --version  # Should be 9.0.0 or higher
+   bun --version   # Should be 1.3.0 or higher
 
    # Clone and setup
    git clone https://github.com/wgtechlabs/unthread-telegram-bot.git
    cd unthread-telegram-bot
-   pnpm install
+   bun install
    cp .env.example .env
 
    # Edit .env with ALL required values including ADMIN_USERS
    # ADMIN_USERS supports multiple user IDs: ADMIN_USERS=123456789,987654321
    # Then start the bot
-   pnpm start
+   bun run start
    ```
 
 5. **Test Your Bot**

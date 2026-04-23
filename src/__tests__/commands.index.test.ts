@@ -1,7 +1,8 @@
 /**
  * Unit tests for commands/index.ts
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import type { BotContext } from '../types/index.js';
 import { 
   aboutCommand,
@@ -31,39 +32,39 @@ import {
 } from '../commands/index.js';
 
 // Mock dependencies
-vi.mock('@wgtechlabs/log-engine', () => ({
+mock.module('@wgtechlabs/log-engine', () => ({
   LogEngine: {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn()
+    info: createMock(),
+    error: createMock(),
+    warn: createMock(),
+    debug: createMock()
   }
 }));
 
-vi.mock('../utils/logConfig.js', () => ({
+mock.module('../utils/logConfig.js', () => ({
   StartupLogger: {
-    showCommandRegistrationSummary: vi.fn(),
-    logArchitectureSuccess: vi.fn(),
-    logCommandRegistration: vi.fn()
+    showCommandRegistrationSummary: createMock(),
+    logArchitectureSuccess: createMock(),
+    logCommandRegistration: createMock()
   }
 }));
 
-vi.mock('../commands/base/CommandRegistry.js', () => {
+mock.module('../commands/base/CommandRegistry.js', () => {
   const mockRegistry = {
-    register: vi.fn(),
-    registerConversationProcessor: vi.fn(),
-    registerCallbackProcessor: vi.fn(),
-    getStats: vi.fn(() => ({
+    register: createMock(),
+    registerConversationProcessor: createMock(),
+    registerCallbackProcessor: createMock(),
+    getStats: createMock(() => ({
       totalCommands: 8,
       adminCommands: 3,
       conversationProcessors: 2,
       callbackProcessors: 4,
       setupRequiredCommands: 1
     })),
-    processConversation: vi.fn(),
-    processCallback: vi.fn(),
-    execute: vi.fn(),
-    generateHelpText: vi.fn()
+    processConversation: createMock(),
+    processCallback: createMock(),
+    execute: createMock(),
+    generateHelpText: createMock()
   };
   
   return {
@@ -72,58 +73,58 @@ vi.mock('../commands/base/CommandRegistry.js', () => {
 });
 
 // Mock all command classes
-vi.mock('../commands/basic/InfoCommands.js', () => ({
+mock.module('../commands/basic/InfoCommands.js', () => ({
   AboutCommand: class { constructor() {} },
   HelpCommand: class { constructor() {} },
   StartCommand: class { constructor() {} },
   VersionCommand: class { constructor() {} }
 }));
 
-vi.mock('../commands/basic/StateCommands.js', () => ({
+mock.module('../commands/basic/StateCommands.js', () => ({
   CancelCommand: class { constructor() {} },
   ResetCommand: class { constructor() {} }
 }));
 
-vi.mock('../commands/basic/SetEmailCommand.js', () => ({
+mock.module('../commands/basic/SetEmailCommand.js', () => ({
   SetEmailCommand: class { constructor() {} }
 }));
 
-vi.mock('../commands/basic/ViewEmailCommand.js', () => ({
+mock.module('../commands/basic/ViewEmailCommand.js', () => ({
   ViewEmailCommand: class { constructor() {} }
 }));
 
-vi.mock('../commands/support/SupportCommandClean.js', () => ({
+mock.module('../commands/support/SupportCommandClean.js', () => ({
   SupportCommand: class { constructor() {} }
 }));
 
-vi.mock('../commands/admin/AdminCommands.js', () => ({
+mock.module('../commands/admin/AdminCommands.js', () => ({
   ActivateCommand: class { constructor() {} },
   SetupCommand: class { constructor() {} },
   TemplatesCommand: class { constructor() {} }
 }));
 
-vi.mock('../commands/processors/ConversationProcessors.js', () => ({
+mock.module('../commands/processors/ConversationProcessors.js', () => ({
   DmSetupInputProcessor: class { constructor() {} },
   SupportConversationProcessor: class { constructor() {} }
 }));
 
-vi.mock('../commands/processors/CallbackProcessors.js', () => ({
+mock.module('../commands/processors/CallbackProcessors.js', () => ({
   AdminCallbackProcessor: class { constructor() {} },
   SetupCallbackProcessor: class { constructor() {} },
   SupportCallbackProcessor: class { constructor() {} },
   TemplateCallbackProcessor: class { constructor() {} }
 }));
 
-vi.mock('../commands/utils/commandExecutor.js', () => ({
-  createCommandExecutor: vi.fn(() => vi.fn()),
-  createProcessorExecutor: vi.fn(() => vi.fn())
+mock.module('../commands/utils/commandExecutor.js', () => ({
+  createCommandExecutor: createMock(() => createMock()),
+  createProcessorExecutor: createMock(() => createMock())
 }));
 
 describe('commands/index.ts', () => {
   let mockCtx: BotContext;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    clearAllMocks();
     mockCtx = {
       message: { text: 'test' },
       callbackQuery: { data: 'test_data' }
@@ -131,7 +132,7 @@ describe('commands/index.ts', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    restoreAllMocks();
   });
 
   describe('initializeCommands', () => {
@@ -155,7 +156,7 @@ describe('commands/index.ts', () => {
   describe('processConversation', () => {
     it('should delegate to commandRegistry.processConversation', async () => {
       const mockResult = true;
-      vi.mocked(commandRegistry.processConversation).mockResolvedValue(mockResult);
+      (commandRegistry.processConversation as any).mockResolvedValue(mockResult);
 
       const result = await processConversation(mockCtx);
 
@@ -167,7 +168,7 @@ describe('commands/index.ts', () => {
   describe('processCallback', () => {
     it('should process callback with data and return result', async () => {
       const mockResult = true;
-      vi.mocked(commandRegistry.processCallback).mockResolvedValue(mockResult);
+      (commandRegistry.processCallback as any).mockResolvedValue(mockResult);
 
       const result = await processCallback(mockCtx);
 
@@ -200,7 +201,7 @@ describe('commands/index.ts', () => {
     it('should delegate to commandRegistry.execute', async () => {
       const mockResult = true;
       const commandName = 'test_command';
-      vi.mocked(commandRegistry.execute).mockResolvedValue(mockResult);
+      (commandRegistry.execute as any).mockResolvedValue(mockResult);
 
       const result = await executeCommand(commandName, mockCtx);
 
@@ -212,7 +213,7 @@ describe('commands/index.ts', () => {
   describe('generateHelp', () => {
     it('should delegate to commandRegistry.generateHelpText', () => {
       const mockHelpText = 'Test help text';
-      vi.mocked(commandRegistry.generateHelpText).mockReturnValue(mockHelpText);
+      (commandRegistry.generateHelpText as any).mockReturnValue(mockHelpText);
 
       const result = generateHelp(mockCtx);
 

@@ -1,0 +1,13 @@
+[test]
+root = "src/__tests__"
+timeout = 10000
+coverage = true
+coverageDir = "coverage"
+coverageReporter = ["text", "lcov"]
+coveragePathIgnorePatterns = [
+  "src/__tests__/",
+  "src/index.ts",
+  "src/types/",
+  "dist/",
+  "node_modules/",
+]

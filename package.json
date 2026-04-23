@@ -22,19 +22,17 @@
   "main": "dist/index.js",
   "type": "module",
   "private": true,
-  "packageManager": "pnpm@9.12.3",
   "engines": {
-    "node": ">=20.0.0",
-    "pnpm": ">=9.0.0"
+    "node": ">=20.0.0"
   },
   "scripts": {
-    "preinstall": "pnpm dlx only-allow pnpm",
+    "preinstall": "npx only-allow bun",
     "clean": "rm -rf dist",
     "build": "tsc && cp src/database/schema.sql dist/database/",
     "type-check": "tsc --noEmit",
     "start": "node dist/index.js",
     "dev": "nodemon",
-    "dev:watch": "concurrently \"tsc --watch\" \"nodemon dist/index.js\"",
+    "dev:watch": "concurrently \"bunx tsc --watch\" \"nodemon dist/index.js\"",
     "docker:build": "docker build -t unthread-telegram-bot .",
     "docker:build:secure": "docker build --no-cache --pull -t unthread-telegram-bot .",
     "docker:build:sbom": "docker build --sbom=true --provenance=mode=max -t unthread-telegram-bot .",
@@ -42,11 +40,11 @@
     "sbom:generate": "bash scripts/generate-sbom.sh unthread-telegram-bot:latest",
     "lint": "eslint src/ --ext .ts",
     "lint:fix": "eslint src/ --ext .ts --fix",
-    "validate:deadcode": "npx ts-prune && npx depcheck",
+    "validate:deadcode": "bunx ts-prune && bunx depcheck",
     "validate:unused": "eslint src/ --ext .ts --rule 'unused-imports/no-unused-imports: error' --rule 'unused-imports/no-unused-vars: error'",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test": "bun test --isolate",
+    "test:watch": "bun test --watch --isolate",
+    "test:coverage": "bun test --coverage --isolate"
   },
   "dependencies": {
     "@wgtechlabs/log-engine": "2.2.0",
@@ -65,7 +63,6 @@
     "@types/pg": "8.15.4",
     "@typescript-eslint/eslint-plugin": "^8.18.1",
     "@typescript-eslint/parser": "^8.18.1",
-    "@vitest/coverage-v8": "^3.2.4",
     "concurrently": "9.2.0",
     "depcheck": "^1.4.7",
     "eslint": "9.30.1",
@@ -73,16 +70,14 @@
     "eslint-plugin-unused-imports": "4.1.4",
     "nodemon": "^3.1.10",
     "ts-prune": "^0.10.3",
-    "typescript": "5.8.3",
-    "vitest": "^3.2.4"
+    "typescript": "5.8.3"
   },
-  "resolutions": {
+  "overrides": {
     "cross-spawn": "7.0.6",
     "brace-expansion": "2.0.2",
     "form-data": "^4.0.4",
     "eslint": "9.30.1",
     "@eslint/plugin-kit": "0.3.4",
-    "vite": "7.1.11",
     "glob": "10.5.0",
     "js-yaml": "4.1.1"
   }

@@ -1,18 +1,18 @@
-# Jest Unit Testing Setup
+# Unit Testing Setup
 
-This project now includes Jest unit tests for core utility functions.
+This project uses Bun's built-in test runner (`bun:test`) for unit tests.
 
 ## Quick Start
 
 ```bash
 # Run all tests
-yarn test
+bun run test
 
 # Run tests in watch mode
-yarn test:watch
+bun run test:watch
 
-# Note: Coverage reporting has dependency issues with minimatch
-# but tests work perfectly and achieve ~29% coverage estimate
+# Run tests with coverage
+bun run test:coverage
 ```
 
 ## Test Coverage
@@ -65,13 +65,10 @@ src/
 
 ```bash
 # Install dependencies
-yarn install
+bun install
 
 # Run tests
-yarn test
-
-# Tests pass: 71 passed, 3 test suites
-# All tests validate core business logic
+bun test
 ```
 
 ## Test Philosophy

@@ -8,7 +8,7 @@
     "coverage/**/*",
     ".git/**/*"
   ],
-  "exec": "pnpm build && pnpm start",
+  "exec": "bun run build && bun run start",
   "env": {
     "NODE_ENV": "development"
   },

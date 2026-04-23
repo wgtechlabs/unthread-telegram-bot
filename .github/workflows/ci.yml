@@ -6,10 +6,10 @@ on:
     paths:
       - 'src/**'
       - 'package.json'
-      - 'pnpm-lock.yaml'
+      - 'bun.lock'
       - '.npmrc'
       - 'tsconfig.json'
-      - 'vitest.config.ts'
+      - 'bunfig.toml'
       - 'eslint.config.js'
       - '.github/workflows/ci.yml'
   pull_request:
@@ -17,10 +17,10 @@ on:
     paths:
       - 'src/**'
       - 'package.json'
-      - 'pnpm-lock.yaml'
+      - 'bun.lock'
       - '.npmrc'
       - 'tsconfig.json'
-      - 'vitest.config.ts'
+      - 'bunfig.toml'
       - 'eslint.config.js'
       - '.github/workflows/ci.yml'
 
@@ -33,28 +33,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          version: 9.12.3
+          bun-version: 1.3.13
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Run linter
-        run: pnpm lint
+        run: bun run lint
 
       - name: Run type checking
-        run: pnpm type-check
+        run: bun run type-check
 
       - name: Run tests with coverage
-        run: pnpm test:coverage
+        run: bun run test:coverage
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

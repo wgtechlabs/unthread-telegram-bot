@@ -5,28 +5,29 @@
  * improve coverage from current 22.7% to near 100%.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import type { UserData } from '../sdk/types.js';
 
 // Mock external dependencies
-vi.mock('../sdk/bots-brain/index.js', () => ({
+mock.module('../sdk/bots-brain/index.js', () => ({
     BotsStore: {
-        getUserData: vi.fn(),
-        getUserByTelegramId: vi.fn(),
-        storeUser: vi.fn(),
-        updateUser: vi.fn(),
-        storeUserData: vi.fn(),
-        getPendingAgentMessages: vi.fn(),
-        clearPendingAgentMessages: vi.fn(),
+        getUserData: createMock(),
+        getUserByTelegramId: createMock(),
+        storeUser: createMock(),
+        updateUser: createMock(),
+        storeUserData: createMock(),
+        getPendingAgentMessages: createMock(),
+        clearPendingAgentMessages: createMock(),
     }
 }));
 
-vi.mock('@wgtechlabs/log-engine', () => ({
+mock.module('@wgtechlabs/log-engine', () => ({
     LogEngine: {
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        debug: vi.fn(),
+        info: createMock(),
+        warn: createMock(),
+        error: createMock(),
+        debug: createMock(),
     }
 }));
 
@@ -43,13 +44,13 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 
 describe('Email Manager', () => {
     beforeEach(() => {
-        vi.clearAllMocks();
+        clearAllMocks();
         // Reset environment variables
         process.env.DUMMY_EMAIL_DOMAIN = undefined;
     });
 
     afterEach(() => {
-        vi.restoreAllMocks();
+        restoreAllMocks();
     });
 
     describe('validateEmail', () => {
@@ -223,7 +224,7 @@ describe('Email Manager', () => {
                 updatedAt: '2023-01-01T00:00:00.000Z'
             };
 
-            vi.mocked(BotsStore.getUserByTelegramId).mockResolvedValue(mockUserData);
+            (BotsStore.getUserByTelegramId as any).mockResolvedValue(mockUserData);
 
             const result = await getUserEmailPreferences(12345);
 
@@ -244,7 +245,7 @@ describe('Email Manager', () => {
                 updatedAt: '2023-01-01T00:00:00.000Z'
             };
 
-            vi.mocked(BotsStore.getUserByTelegramId).mockResolvedValue(mockUserData);
+            (BotsStore.getUserByTelegramId as any).mockResolvedValue(mockUserData);
 
             const result = await getUserEmailPreferences(12345);
 
@@ -257,7 +258,7 @@ describe('Email Manager', () => {
         });
 
         it('should return null for user without data', async () => {
-            vi.mocked(BotsStore.getUserByTelegramId).mockResolvedValue(null);
+            (BotsStore.getUserByTelegramId as any).mockResolvedValue(null);
 
             const result = await getUserEmailPreferences(12345);
 
@@ -265,7 +266,7 @@ describe('Email Manager', () => {
         });
 
         it('should handle database errors', async () => {
-            vi.mocked(BotsStore.getUserByTelegramId).mockRejectedValue(new Error('Database error'));
+            (BotsStore.getUserByTelegramId as any).mockRejectedValue(new Error('Database error'));
 
             const result = await getUserEmailPreferences(12345);
 
@@ -288,7 +289,7 @@ describe('Email Manager', () => {
                 // No unthreadEmail field
             } as any;
 
-            vi.mocked(BotsStore.getUserByTelegramId).mockResolvedValue(mockUserData);
+            (BotsStore.getUserByTelegramId as any).mockResolvedValue(mockUserData);
 
             const result = await getUserEmailPreferences(12345);
 
@@ -306,8 +307,8 @@ describe('Email Manager', () => {
                 updatedAt: '2023-01-01T00:00:00.000Z'
             };
 
-            vi.mocked(BotsStore.getUserByTelegramId).mockResolvedValue(existingUserData);
-            vi.mocked(BotsStore.updateUser).mockResolvedValue(true);
+            (BotsStore.getUserByTelegramId as any).mockResolvedValue(existingUserData);
+            (BotsStore.updateUser as any).mockResolvedValue(true);
 
             const result = await updateUserEmail(12345, 'new@example.com');
 
@@ -320,8 +321,8 @@ describe('Email Manager', () => {
         });
 
         it('should create new user data for first-time email setting', async () => {
-            vi.mocked(BotsStore.getUserByTelegramId).mockResolvedValue(null);
-            vi.mocked(BotsStore.storeUser).mockResolvedValue(true);
+            (BotsStore.getUserByTelegramId as any).mockResolvedValue(null);
+            (BotsStore.storeUser as any).mockResolvedValue(true);
 
             const result = await updateUserEmail(12345, 'new@example.com');
 
@@ -338,8 +339,8 @@ describe('Email Manager', () => {
         });
 
         it('should handle database storage errors', async () => {
-            vi.mocked(BotsStore.getUserByTelegramId).mockResolvedValue(null);
-            vi.mocked(BotsStore.storeUser).mockResolvedValue(false);
+            (BotsStore.getUserByTelegramId as any).mockResolvedValue(null);
+            (BotsStore.storeUser as any).mockResolvedValue(false);
 
             const result = await updateUserEmail(12345, 'new@example.com');
 
@@ -348,7 +349,7 @@ describe('Email Manager', () => {
         });
 
         it('should handle database retrieval errors', async () => {
-            vi.mocked(BotsStore.getUserByTelegramId).mockRejectedValue(new Error('Retrieval failed'));
+            (BotsStore.getUserByTelegramId as any).mockRejectedValue(new Error('Retrieval failed'));
 
             const result = await updateUserEmail(12345, 'new@example.com');
 
@@ -402,7 +403,7 @@ describe('Email Manager', () => {
 
         it('should handle delivery errors', async () => {
             // Mock an error by making the function throw
-            vi.spyOn(LogEngine, 'info').mockImplementationOnce(() => {
+            spyOn(LogEngine, 'info').mockImplementationOnce(() => {
                 throw new Error('Delivery failed');
             });
 
@@ -458,8 +459,8 @@ describe('Email Manager', () => {
                 updatedAt: '2023-01-01T00:00:00.000Z'
             };
 
-            vi.mocked(BotsStore.getUserByTelegramId).mockResolvedValue(existingUserData);
-            vi.mocked(BotsStore.updateUser).mockResolvedValue(true);
+            (BotsStore.getUserByTelegramId as any).mockResolvedValue(existingUserData);
+            (BotsStore.updateUser as any).mockResolvedValue(true);
 
             const result = await updateUserEmail(12345, 'same@example.com');
 
@@ -469,8 +470,8 @@ describe('Email Manager', () => {
         });
 
         it('should handle concurrent email updates', async () => {
-            vi.mocked(BotsStore.getUserByTelegramId).mockResolvedValue(null);
-            vi.mocked(BotsStore.storeUser).mockResolvedValue(true);
+            (BotsStore.getUserByTelegramId as any).mockResolvedValue(null);
+            (BotsStore.storeUser as any).mockResolvedValue(true);
 
             // Simulate concurrent updates
             const promises = [
