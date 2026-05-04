@@ -1,7 +1,8 @@
 /**
  * Unit tests for commands/utils/commandExecutor.ts
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { clearAllMocks, createMock } from './_helpers/mockLifecycle';
 import type { BotContext } from '../types/index.js';
 import { 
   type CommandExecutorOptions,
@@ -10,23 +11,23 @@ import {
 } from '../commands/utils/commandExecutor.js';
 
 // Mock dependencies
-vi.mock('@wgtechlabs/log-engine', () => ({
+mock.module('@wgtechlabs/log-engine', () => ({
   LogEngine: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn()
+    info: createMock(),
+    warn: createMock(),
+    error: createMock()
   }
 }));
 
-vi.mock('../commands/base/CommandRegistry.js', () => ({
+mock.module('../commands/base/CommandRegistry.js', () => ({
   commandRegistry: {
-    execute: vi.fn()
+    execute: createMock()
   }
 }));
 
-vi.mock('../utils/errorContextBuilder.js', () => ({
+mock.module('../utils/errorContextBuilder.js', () => ({
   ErrorContextBuilder: {
-    forCommand: vi.fn()
+    forCommand: createMock()
   }
 }));
 
@@ -39,9 +40,9 @@ describe('commandExecutor utilities', () => {
   let mockCtx: BotContext;
 
   beforeEach(() => {
-    vi.mocked(commandRegistry.execute).mockReset();
-    vi.mocked(ErrorContextBuilder.forCommand).mockReset();
-    vi.mocked(LogEngine.error).mockReset();
+    (commandRegistry.execute as any).mockReset();
+    (ErrorContextBuilder.forCommand as any).mockReset();
+    (LogEngine.error as any).mockReset();
     
     mockCtx = {
       message: { text: 'test command' },
@@ -50,19 +51,19 @@ describe('commandExecutor utilities', () => {
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    clearAllMocks();
   });
 
   describe('createCommandExecutor', () => {
     describe('void return type (default)', () => {
       it('should execute command successfully and return void', async () => {
         const commandName = 'testCommand';
-        vi.mocked(commandRegistry.execute).mockResolvedValue(true);
+        (commandRegistry.execute as any).mockResolvedValue(true);
 
         const executor = createCommandExecutor(commandName);
         const result = await executor(mockCtx);
 
-        expect(vi.mocked(commandRegistry.execute)).toHaveBeenCalledWith(commandName, mockCtx);
+        expect((commandRegistry.execute as any)).toHaveBeenCalledWith(commandName, mockCtx);
         expect(result).toBeUndefined();
       });
 
@@ -70,8 +71,8 @@ describe('commandExecutor utilities', () => {
         const commandName = 'failingCommand';
         const error = new Error('Command failed');
         
-        vi.mocked(commandRegistry.execute).mockRejectedValue(error);
-        vi.mocked(ErrorContextBuilder.forCommand).mockReturnValue({ 
+        (commandRegistry.execute as any).mockRejectedValue(error);
+        (ErrorContextBuilder.forCommand as any).mockReturnValue({ 
           error: 'Command failed',
           errorType: 'command-error'
         });
@@ -79,8 +80,8 @@ describe('commandExecutor utilities', () => {
         const executor = createCommandExecutor(commandName);
         const result = await executor(mockCtx);
 
-        expect(vi.mocked(commandRegistry.execute)).toHaveBeenCalledWith(commandName, mockCtx);
-        expect(vi.mocked(ErrorContextBuilder.forCommand)).toHaveBeenCalledWith(error, mockCtx, commandName);
+        expect((commandRegistry.execute as any)).toHaveBeenCalledWith(commandName, mockCtx);
+        expect((ErrorContextBuilder.forCommand as any)).toHaveBeenCalledWith(error, mockCtx, commandName);
         expect(LogEngine.error).toHaveBeenCalledWith(
           'Command failingCommand failed', 
           { error: 'Command failed', errorType: 'command-error' }
@@ -96,8 +97,8 @@ describe('commandExecutor utilities', () => {
           additionalContext: { customKey: 'customValue' }
         };
 
-        vi.mocked(commandRegistry.execute).mockRejectedValue(error);
-        vi.mocked(ErrorContextBuilder.forCommand).mockReturnValue({ 
+        (commandRegistry.execute as any).mockRejectedValue(error);
+        (ErrorContextBuilder.forCommand as any).mockReturnValue({ 
           error: 'Command failed',
           errorType: 'command-error' 
         });
@@ -120,12 +121,12 @@ describe('commandExecutor utilities', () => {
       it('should execute command successfully and return boolean result', async () => {
         const commandName = 'testCommand';
         const expectedResult = true;
-        vi.mocked(commandRegistry.execute).mockResolvedValue(expectedResult);
+        (commandRegistry.execute as any).mockResolvedValue(expectedResult);
 
         const executor = createCommandExecutor(commandName, { returnType: 'boolean' });
         const result = await executor(mockCtx);
 
-        expect(vi.mocked(commandRegistry.execute)).toHaveBeenCalledWith(commandName, mockCtx);
+        expect((commandRegistry.execute as any)).toHaveBeenCalledWith(commandName, mockCtx);
         expect(result).toBe(expectedResult);
       });
 
@@ -134,8 +135,8 @@ describe('commandExecutor utilities', () => {
         const error = new Error('Command failed');
         const defaultReturn = true;
         
-        vi.mocked(commandRegistry.execute).mockRejectedValue(error);
-        vi.mocked(ErrorContextBuilder.forCommand).mockReturnValue({ 
+        (commandRegistry.execute as any).mockRejectedValue(error);
+        (ErrorContextBuilder.forCommand as any).mockReturnValue({ 
           error: 'Command failed',
           errorType: 'command-error' 
         });
@@ -153,8 +154,8 @@ describe('commandExecutor utilities', () => {
         const commandName = 'testCommand';
         const error = new Error('Command failed');
         
-        vi.mocked(commandRegistry.execute).mockRejectedValue(error);
-        vi.mocked(ErrorContextBuilder.forCommand).mockReturnValue({ 
+        (commandRegistry.execute as any).mockRejectedValue(error);
+        (ErrorContextBuilder.forCommand as any).mockReturnValue({ 
           error: 'Command failed',
           errorType: 'command-error' 
         });
@@ -171,8 +172,8 @@ describe('commandExecutor utilities', () => {
         const commandName = 'testCommand';
         const error = new Error('Command failed');
         
-        vi.mocked(commandRegistry.execute).mockRejectedValue(error);
-        vi.mocked(ErrorContextBuilder.forCommand).mockReturnValue({ 
+        (commandRegistry.execute as any).mockRejectedValue(error);
+        (ErrorContextBuilder.forCommand as any).mockReturnValue({ 
           error: 'Command failed',
           errorType: 'command-error' 
         });
@@ -195,12 +196,12 @@ describe('commandExecutor utilities', () => {
       const processorName = 'testProcessor';
       const logDescription = 'Test processor description';
       
-      vi.mocked(commandRegistry.execute).mockResolvedValue(true);
+      (commandRegistry.execute as any).mockResolvedValue(true);
 
       const processor = createProcessorExecutor(processorName, logDescription);
       const result = await processor(mockCtx);
 
-      expect(vi.mocked(commandRegistry.execute)).toHaveBeenCalledWith(processorName, mockCtx);
+      expect((commandRegistry.execute as any)).toHaveBeenCalledWith(processorName, mockCtx);
       expect(result).toBe(true);
     });
 
@@ -209,8 +210,8 @@ describe('commandExecutor utilities', () => {
       const logDescription = 'Test processor description';
       const error = new Error('Processor failed');
       
-      vi.mocked(commandRegistry.execute).mockRejectedValue(error);
-      vi.mocked(ErrorContextBuilder.forCommand).mockReturnValue({ 
+      (commandRegistry.execute as any).mockRejectedValue(error);
+      (ErrorContextBuilder.forCommand as any).mockReturnValue({ 
         error: 'Processor failed',
         errorType: 'processor-error' 
       });
@@ -218,7 +219,7 @@ describe('commandExecutor utilities', () => {
       const processor = createProcessorExecutor(processorName, logDescription);
       const result = await processor(mockCtx);
 
-      expect(vi.mocked(ErrorContextBuilder.forCommand)).toHaveBeenCalledWith(error, mockCtx, processorName);
+      expect((ErrorContextBuilder.forCommand as any)).toHaveBeenCalledWith(error, mockCtx, processorName);
       expect(LogEngine.error).toHaveBeenCalledWith(
         'Test processor description testProcessor failed', 
         { 
@@ -235,7 +236,7 @@ describe('commandExecutor utilities', () => {
       const processorName = 'successProcessor';
       const logDescription = 'Success processor';
       
-      vi.mocked(commandRegistry.execute).mockResolvedValue(true);
+      (commandRegistry.execute as any).mockResolvedValue(true);
 
       const processor = createProcessorExecutor(processorName, logDescription);
       const result = await processor(mockCtx);

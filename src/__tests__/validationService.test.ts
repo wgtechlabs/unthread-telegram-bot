@@ -1,7 +1,7 @@
 /**
  * Unit tests for services/validationService.ts
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import type { BotContext } from '../types/index.js';
 import { 
   type ValidationCheck,
@@ -13,23 +13,23 @@ describe('ValidationService', () => {
   let mockCtx: BotContext;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
     
     mockCtx = {
       from: { id: 123, first_name: 'Test', is_bot: false },
       chat: { id: 456, type: 'private' },
       message: { text: '/test', message_id: 789 },
-      reply: vi.fn(),
+      reply: mock(),
       telegram: {
-        getMe: vi.fn(),
-        getChatMember: vi.fn(),
-        sendChatAction: vi.fn()
+        getMe: mock(),
+        getChatMember: mock(),
+        sendChatAction: mock()
       }
     } as any;
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    mock.restore();
   });
 
   describe('performSetupValidation', () => {
@@ -38,9 +38,9 @@ describe('ValidationService', () => {
 
     it('should return successful validation when all checks pass', async () => {
       // Mock successful bot admin check
-      vi.mocked(mockCtx.telegram.getMe).mockResolvedValue({ id: 999, is_bot: true, first_name: 'TestBot' } as any);
-      vi.mocked(mockCtx.telegram.getChatMember).mockResolvedValue({ status: 'administrator' } as any);
-      vi.mocked(mockCtx.telegram.sendChatAction).mockResolvedValue(true as any);
+      (mockCtx.telegram.getMe as any).mockResolvedValue({ id: 999, is_bot: true, first_name: 'TestBot' } as any);
+      (mockCtx.telegram.getChatMember as any).mockResolvedValue({ status: 'administrator' } as any);
+      (mockCtx.telegram.sendChatAction as any).mockResolvedValue(true as any);
 
       const result = await ValidationService.performSetupValidation(mockCtx, groupChatId, groupTitle);
 
@@ -67,9 +67,9 @@ describe('ValidationService', () => {
 
     it('should handle bot admin check failure', async () => {
       // Mock failed bot admin check
-      vi.mocked(mockCtx.telegram.getMe).mockResolvedValue({ id: 999, is_bot: true, first_name: 'TestBot' } as any);
-      vi.mocked(mockCtx.telegram.getChatMember).mockResolvedValue({ status: 'member' } as any);
-      vi.mocked(mockCtx.telegram.sendChatAction).mockResolvedValue(true as any);
+      (mockCtx.telegram.getMe as any).mockResolvedValue({ id: 999, is_bot: true, first_name: 'TestBot' } as any);
+      (mockCtx.telegram.getChatMember as any).mockResolvedValue({ status: 'member' } as any);
+      (mockCtx.telegram.sendChatAction as any).mockResolvedValue(true as any);
 
       const result = await ValidationService.performSetupValidation(mockCtx, groupChatId, groupTitle);
 
@@ -82,8 +82,8 @@ describe('ValidationService', () => {
 
     it('should handle bot admin check error', async () => {
       // Mock error in bot admin check
-      vi.mocked(mockCtx.telegram.getMe).mockRejectedValue(new Error('API Error'));
-      vi.mocked(mockCtx.telegram.sendChatAction).mockResolvedValue(true as any);
+      (mockCtx.telegram.getMe as any).mockRejectedValue(new Error('API Error'));
+      (mockCtx.telegram.sendChatAction as any).mockResolvedValue(true as any);
 
       const result = await ValidationService.performSetupValidation(mockCtx, groupChatId, groupTitle);
 
@@ -94,9 +94,9 @@ describe('ValidationService', () => {
 
     it('should handle message sending failure', async () => {
       // Mock successful admin check but failed message sending
-      vi.mocked(mockCtx.telegram.getMe).mockResolvedValue({ id: 999, is_bot: true, first_name: 'TestBot' } as any);
-      vi.mocked(mockCtx.telegram.getChatMember).mockResolvedValue({ status: 'administrator' } as any);
-      vi.mocked(mockCtx.telegram.sendChatAction).mockRejectedValue(new Error('Cannot send message'));
+      (mockCtx.telegram.getMe as any).mockResolvedValue({ id: 999, is_bot: true, first_name: 'TestBot' } as any);
+      (mockCtx.telegram.getChatMember as any).mockResolvedValue({ status: 'administrator' } as any);
+      (mockCtx.telegram.sendChatAction as any).mockRejectedValue(new Error('Cannot send message'));
 
       const result = await ValidationService.performSetupValidation(mockCtx, groupChatId, groupTitle);
 
@@ -107,9 +107,9 @@ describe('ValidationService', () => {
 
     it('should handle bot creator status as admin', async () => {
       // Mock bot as creator (should pass admin check)
-      vi.mocked(mockCtx.telegram.getMe).mockResolvedValue({ id: 999, is_bot: true, first_name: 'TestBot' } as any);
-      vi.mocked(mockCtx.telegram.getChatMember).mockResolvedValue({ status: 'creator' } as any);
-      vi.mocked(mockCtx.telegram.sendChatAction).mockResolvedValue(true as any);
+      (mockCtx.telegram.getMe as any).mockResolvedValue({ id: 999, is_bot: true, first_name: 'TestBot' } as any);
+      (mockCtx.telegram.getChatMember as any).mockResolvedValue({ status: 'creator' } as any);
+      (mockCtx.telegram.sendChatAction as any).mockResolvedValue(true as any);
 
       const result = await ValidationService.performSetupValidation(mockCtx, groupChatId, groupTitle);
 
@@ -119,8 +119,8 @@ describe('ValidationService', () => {
 
     it('should handle multiple failures', async () => {
       // Mock both checks failing
-      vi.mocked(mockCtx.telegram.getMe).mockRejectedValue(new Error('Bot check failed'));
-      vi.mocked(mockCtx.telegram.sendChatAction).mockRejectedValue(new Error('Cannot send'));
+      (mockCtx.telegram.getMe as any).mockRejectedValue(new Error('Bot check failed'));
+      (mockCtx.telegram.sendChatAction as any).mockRejectedValue(new Error('Cannot send'));
 
       const result = await ValidationService.performSetupValidation(mockCtx, groupChatId, groupTitle);
 

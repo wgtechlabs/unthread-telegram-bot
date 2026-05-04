@@ -1,7 +1,8 @@
 /**
  * Unit tests for commands/basic/InfoCommands.ts
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import type { BotContext } from '../types/index.js';
 import { 
   AboutCommand,
@@ -11,30 +12,30 @@ import {
 } from '../commands/basic/InfoCommands.js';
 
 // Mock dependencies
-vi.mock('@wgtechlabs/log-engine', () => ({
+mock.module('@wgtechlabs/log-engine', () => ({
   LogEngine: {
-    debug: vi.fn(),
-    error: vi.fn(),
-    info: vi.fn()
+    debug: createMock(),
+    error: createMock(),
+    info: createMock()
   }
 }));
 
-vi.mock('../config/env.js', () => ({
-  getCompanyName: vi.fn(() => 'Test Company'),
-  isAdminUser: vi.fn(() => false)
+mock.module('../config/env.js', () => ({
+  getCompanyName: createMock(() => 'Test Company'),
+  isAdminUser: createMock(() => false)
 }));
 
-vi.mock('fs', () => ({
-  readFileSync: vi.fn()
+mock.module('fs', () => ({
+  readFileSync: createMock()
 }));
 
-vi.mock('url', () => ({
-  fileURLToPath: vi.fn(() => '/mock/path/to/file.js')
+mock.module('url', () => ({
+  fileURLToPath: createMock(() => '/mock/path/to/file.js')
 }));
 
-vi.mock('path', () => ({
-  dirname: vi.fn(() => '/mock/path/to'),
-  join: vi.fn(() => '/mock/path/to/package.json')
+mock.module('path', () => ({
+  dirname: createMock(() => '/mock/path/to'),
+  join: createMock(() => '/mock/path/to/package.json')
 }));
 
 import { LogEngine } from '@wgtechlabs/log-engine';
@@ -45,17 +46,17 @@ describe('InfoCommands', () => {
   let mockCtx: BotContext;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    clearAllMocks();
     
     mockCtx = {
       from: { id: 123, first_name: 'Test', is_bot: false },
       chat: { id: 456, type: 'private' },
       message: { text: '/start', message_id: 789 },
-      reply: vi.fn()
+      reply: mock()
     } as BotContext;
 
     // Mock successful package.json reading by default
-    vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
+    (readFileSync as any).mockReturnValue(JSON.stringify({
       name: 'test-bot',
       version: '1.0.0',
       description: 'Test bot',
@@ -65,7 +66,7 @@ describe('InfoCommands', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    restoreAllMocks();
   });
 
   describe('Package.json loading', () => {
@@ -78,7 +79,7 @@ describe('InfoCommands', () => {
 
     it('should handle package.json loading errors', () => {
       // Re-import module with failing readFileSync to test error handling
-      vi.mocked(readFileSync).mockImplementation(() => {
+      (readFileSync as any).mockImplementation(() => {
         throw new Error('File not found');
       });
 
@@ -111,7 +112,7 @@ describe('InfoCommands', () => {
         { parse_mode: 'Markdown' }
       );
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       expect(message).toContain('Use /support to create a new ticket');
       expect(message).toContain('Use /help to see all available commands');
@@ -119,7 +120,7 @@ describe('InfoCommands', () => {
     });
 
     it('should use fallback when company name is not available', async () => {
-      vi.mocked(getCompanyName).mockReturnValue(null);
+      (getCompanyName as any).mockReturnValue(null);
 
       await startCommand.execute(mockCtx);
 
@@ -132,7 +133,7 @@ describe('InfoCommands', () => {
     it('should include quick start instructions', async () => {
       await startCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       expect(message).toContain('**Quick Start:**');
       expect(message).toContain("Let's get started! 🚀");
@@ -166,7 +167,7 @@ describe('InfoCommands', () => {
     });
 
     it('should show regular help for non-admin users', async () => {
-      vi.mocked(isAdminUser).mockReturnValue(false);
+      (isAdminUser as any).mockReturnValue(false);
 
       await helpCommand.execute(mockCtx);
 
@@ -176,7 +177,7 @@ describe('InfoCommands', () => {
         { parse_mode: 'Markdown' }
       );
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       expect(message).toContain('/start - Welcome message');
       expect(message).toContain('/help - Show this help message');
@@ -187,12 +188,12 @@ describe('InfoCommands', () => {
     });
 
     it('should show admin help for admin users', async () => {
-      vi.mocked(isAdminUser).mockReturnValue(true);
+      (isAdminUser as any).mockReturnValue(true);
 
       await helpCommand.execute(mockCtx);
 
       expect(isAdminUser).toHaveBeenCalledWith(123);
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       
       // Admin help should include admin-specific commands
@@ -223,7 +224,7 @@ describe('InfoCommands', () => {
 
       await versionCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       
       expect(message).toContain('📊 **Bot Version Information**');
@@ -245,7 +246,7 @@ describe('InfoCommands', () => {
 
       await versionCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       
       expect(message).toContain('📊 **Bot Version Information**');
@@ -259,7 +260,7 @@ describe('InfoCommands', () => {
 
       await versionCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       
       expect(message).toContain('Environment: development');
@@ -268,7 +269,7 @@ describe('InfoCommands', () => {
     it('should include repository information', async () => {
       await versionCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       
       expect(message).toContain('**Repository:**');
@@ -294,7 +295,7 @@ describe('InfoCommands', () => {
       await aboutCommand.execute(mockCtx);
 
       expect(getCompanyName).toHaveBeenCalled();
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       
       expect(message).toContain('ℹ️ **About Test Company Support Bot**');
@@ -306,11 +307,11 @@ describe('InfoCommands', () => {
     });
 
     it('should use fallback when company name is not available', async () => {
-      vi.mocked(getCompanyName).mockReturnValue(null);
+      (getCompanyName as any).mockReturnValue(null);
 
       await aboutCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       
       expect(message).toContain('ℹ️ **About Support Support Bot**');
@@ -319,7 +320,7 @@ describe('InfoCommands', () => {
     it('should include all key features and capabilities', async () => {
       await aboutCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       
       expect(message).toContain('This bot helps you create and manage support tickets efficiently');

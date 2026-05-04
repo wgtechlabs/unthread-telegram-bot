@@ -128,35 +128,14 @@ export class HelpCommand extends BaseCommand {
 export class VersionCommand extends BaseCommand {
     readonly metadata: CommandMetadata = {
         name: 'version',
-        description: 'Show bot version and build information',
+        description: 'Show bot version information',
         usage: '/version'
     };
 
     protected async executeCommand(ctx: BotContext): Promise<void> {
-        const isProduction = process.env.NODE_ENV === 'production';
-        
-        let versionInfo = `📊 **Bot Version Information**\n\n` +
-            `**Version:** ${packageJSON.version}\n` +
-            `**Name:** ${packageJSON.name}\n` +
-            `**Description:** ${packageJSON.description}\n` +
-            `**Author:** ${packageJSON.author}\n` +
-            `**License:** ${packageJSON.license}\n\n`;
-        
-        // Only show detailed system information in non-production environments
-        if (!isProduction) {
-            versionInfo += `**Build Info:**\n` +
-                `• Node.js: ${process.version}\n` +
-                `• Platform: ${process.platform}\n` +
-                `• Architecture: ${process.arch}\n` +
-                `• Environment: ${process.env.NODE_ENV || 'development'}\n\n`;
-        } else {
-            versionInfo += `**Build Info:**\n` +
-                `• Environment: Production\n\n`;
-        }
-        
-        versionInfo += `**Repository:**\n` +
-            `Check our GitHub for updates and documentation\n\n` +
-            `Built with ❤️ by ${packageJSON.author}`;
+        const versionInfo = `📊 **Bot Version Information**\n\n` +
+            `**Version:** ${packageJSON.version}\n\n` +
+            `📋 [Changelog](https://github.com/wgtechlabs/unthread-telegram-bot/releases)`;
 
         await ctx.reply(versionInfo, { parse_mode: 'Markdown' });
     }

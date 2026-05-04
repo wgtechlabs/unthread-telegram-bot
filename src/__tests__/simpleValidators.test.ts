@@ -1,7 +1,7 @@
 /**
  * Unit tests for simpleValidators utilities
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { SimpleInputValidator } from '../utils/simpleValidators';
 
 describe('SimpleInputValidator', () => {

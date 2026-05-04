@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'bun.lock'
+      - '.npmrc'
+      - 'tsconfig.json'
+      - 'bunfig.toml'
+      - 'eslint.config.js'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'bun.lock'
+      - '.npmrc'
+      - 'tsconfig.json'
+      - 'bunfig.toml'
+      - 'eslint.config.js'
+      - '.github/workflows/ci.yml'
+
+jobs:
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run linter
+        run: bun run lint
+
+      - name: Run type checking
+        run: bun run type-check
+
+      - name: Run tests with coverage
+        run: bun run test:coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage/lcov.info
+          flags: unittests
+          name: telegram-bot-coverage
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

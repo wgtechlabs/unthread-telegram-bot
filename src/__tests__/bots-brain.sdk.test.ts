@@ -5,52 +5,53 @@
  * including UnifiedStorage and BotsStore functionality.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 
 // Mock Redis and PostgreSQL dependencies
-vi.mock('redis', () => ({
-  createClient: vi.fn().mockReturnValue({
-    connect: vi.fn(),
-    disconnect: vi.fn(),
-    get: vi.fn(),
-    set: vi.fn(),
-    del: vi.fn(),
-    exists: vi.fn(),
-    expire: vi.fn(),
-    on: vi.fn(),
+mock.module('redis', () => ({
+  createClient: createMock().mockReturnValue({
+    connect: createMock(),
+    disconnect: createMock(),
+    get: createMock(),
+    set: createMock(),
+    del: createMock(),
+    exists: createMock(),
+    expire: createMock(),
+    on: createMock(),
     isReady: true
   })
 }));
 
-vi.mock('pg', async () => {
-  const actual = await vi.importActual('pg');
+mock.module('pg', () => {
+  const PoolMock = createMock().mockImplementation(() => ({
+    connect: createMock(),
+    query: createMock(),
+    end: createMock(),
+    on: createMock()
+  }));
   return {
-    ...actual,
-    Pool: vi.fn().mockImplementation(() => ({
-      connect: vi.fn(),
-      query: vi.fn(),
-      end: vi.fn(),
-      on: vi.fn()
-    }))
+    default: { Pool: PoolMock },
+    Pool: PoolMock
   };
 });
 
-vi.mock('@wgtechlabs/log-engine', () => ({
+mock.module('@wgtechlabs/log-engine', () => ({
   LogEngine: {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn()
+    info: createMock(),
+    error: createMock(),
+    warn: createMock(),
+    debug: createMock()
   }
 }));
 
 describe('Bots Brain SDK', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    clearAllMocks();
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    restoreAllMocks();
   });
 
   describe('SDK Exports', () => {

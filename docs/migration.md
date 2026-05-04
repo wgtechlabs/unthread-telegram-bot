@@ -110,7 +110,7 @@ WEBHOOK_REDIS_URL="redis://redis-webhook:6379"  # For webhook consumer
 
 ```bash
 # Check if bot starts without errors:
-pnpm start
+bun run start
 
 # Look for these success messages:
 # ✅ Environment configuration validated successfully

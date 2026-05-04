@@ -1,19 +1,20 @@
 /**
  * Unit tests for commands/basic/StateCommands.ts
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import type { BotContext } from '../types/index.js';
 import { CancelCommand, ResetCommand } from '../commands/basic/StateCommands.js';
 
 // Mock dependencies
-vi.mock('../sdk/bots-brain/index.js', () => ({
+mock.module('../sdk/bots-brain/index.js', () => ({
   BotsStore: {
-    clearUserState: vi.fn(() => Promise.resolve())
+    clearUserState: createMock(() => Promise.resolve())
   }
 }));
 
-vi.mock('../commands/utils/errorHandler.js', () => ({
-  logError: vi.fn()
+mock.module('../commands/utils/errorHandler.js', () => ({
+  logError: createMock()
 }));
 
 import { BotsStore } from '../sdk/bots-brain/index.js';
@@ -23,18 +24,18 @@ describe('StateCommands', () => {
   let mockCtx: BotContext;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    clearAllMocks();
     
     mockCtx = {
       from: { id: 123, first_name: 'Test', is_bot: false },
       chat: { id: 456, type: 'private' },
       message: { text: '/cancel', message_id: 789 },
-      reply: vi.fn()
+      reply: mock()
     } as BotContext;
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    restoreAllMocks();
   });
 
   describe('CancelCommand', () => {
@@ -76,7 +77,7 @@ describe('StateCommands', () => {
 
     it('should handle BotsStore errors gracefully', async () => {
       const error = new Error('BotsStore error');
-      vi.mocked(BotsStore.clearUserState).mockRejectedValue(error);
+      (BotsStore.clearUserState as any).mockRejectedValue(error);
 
       await cancelCommand.execute(mockCtx);
 
@@ -93,7 +94,7 @@ describe('StateCommands', () => {
     it('should include help text in cancel message', async () => {
       await cancelCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       expect(replyCall[0]).toContain('Use /help to see available options');
     });
   });
@@ -137,7 +138,7 @@ describe('StateCommands', () => {
 
     it('should handle BotsStore errors gracefully', async () => {
       const error = new Error('BotsStore error');
-      vi.mocked(BotsStore.clearUserState).mockRejectedValue(error);
+      (BotsStore.clearUserState as any).mockRejectedValue(error);
 
       await resetCommand.execute(mockCtx);
 
@@ -154,7 +155,7 @@ describe('StateCommands', () => {
     it('should include detailed reset information', async () => {
       await resetCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       
       expect(message).toContain('Support form progress');
@@ -167,7 +168,7 @@ describe('StateCommands', () => {
     it('should use correct markdown formatting', async () => {
       await resetCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       expect(replyCall[1]).toEqual({ parse_mode: 'Markdown' });
     });
   });
