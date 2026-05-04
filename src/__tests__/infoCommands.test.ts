@@ -215,66 +215,28 @@ describe('InfoCommands', () => {
 
     it('should have correct metadata', () => {
       expect(versionCommand.metadata.name).toBe('version');
-      expect(versionCommand.metadata.description).toBe('Show bot version and build information');
+      expect(versionCommand.metadata.description).toBe('Show bot version information');
       expect(versionCommand.metadata.usage).toBe('/version');
     });
 
-    it('should show version information in development', async () => {
-      process.env.NODE_ENV = 'development';
-
+    it('should show version information with changelog link', async () => {
       await versionCommand.execute(mockCtx);
 
       const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
-      
+
       expect(message).toContain('📊 **Bot Version Information**');
       expect(message).toContain('**Version:**');
-      expect(message).toContain('**Name:**');
-      expect(message).toContain('**Description:**');
-      expect(message).toContain('**Author:**');
-      expect(message).toContain('**License:**');
-      expect(message).toContain('**Build Info:**');
-      expect(message).toContain(`Node.js: ${process.version}`);
-      expect(message).toContain(`Platform: ${process.platform}`);
-      expect(message).toContain(`Architecture: ${process.arch}`);
-      expect(message).toContain('Environment: development');
-      expect(message).toContain('**Repository:**');
+      // Verify the displayed version looks like a semver string
+      expect(message).toMatch(/\*\*Version:\*\*\s+\d+\.\d+\.\d+/);
+      expect(message).toContain('[Changelog](https://github.com/wgtechlabs/unthread-telegram-bot/releases)');
     });
 
-    it('should show limited information in production', async () => {
-      process.env.NODE_ENV = 'production';
-
+    it('should reply using Markdown parse mode', async () => {
       await versionCommand.execute(mockCtx);
 
       const replyCall = (mockCtx.reply as any).mock.calls[0];
-      const message = replyCall[0];
-      
-      expect(message).toContain('📊 **Bot Version Information**');
-      expect(message).toContain('Environment: Production');
-      expect(message).not.toContain(`Node.js: ${process.version}`);
-      expect(message).not.toContain(`Platform: ${process.platform}`);
-    });
-
-    it('should use default environment when NODE_ENV is not set', async () => {
-      delete process.env.NODE_ENV;
-
-      await versionCommand.execute(mockCtx);
-
-      const replyCall = (mockCtx.reply as any).mock.calls[0];
-      const message = replyCall[0];
-      
-      expect(message).toContain('Environment: development');
-    });
-
-    it('should include repository information', async () => {
-      await versionCommand.execute(mockCtx);
-
-      const replyCall = (mockCtx.reply as any).mock.calls[0];
-      const message = replyCall[0];
-      
-      expect(message).toContain('**Repository:**');
-      expect(message).toContain('Check our GitHub for updates and documentation');
-      expect(message).toContain('Built with ❤️ by');
+      expect(replyCall[1]).toEqual({ parse_mode: 'Markdown' });
     });
   });
 
