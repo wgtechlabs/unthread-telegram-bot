@@ -9,15 +9,35 @@ on:
     types: [published]
   workflow_dispatch:
 
+concurrency:
+  group: Container-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   packages: write
-  security-events: write
   pull-requests: write
 
 jobs:
+  ci:
+    name: CI Gate
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+    permissions:
+      contents: read
+
+  codeql:
+    name: CodeQL Gate
+    uses: ./.github/workflows/codeql.yml
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
   build:
+    name: Build Container Images
     runs-on: ubuntu-latest
+    needs: [ci, codeql]
 
     steps:
       - name: Checkout code
@@ -42,3 +62,7 @@ jobs:
           dockerhub-token: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
           ghcr-token: ${{ github.token }}
           floating-tags: true
+          pre-build-scan-enabled: false
+          image-scan-enabled: false
+          upload-sarif: false
+          vulnerability-comment-enabled: false
