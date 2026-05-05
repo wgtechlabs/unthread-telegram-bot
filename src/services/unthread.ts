@@ -45,7 +45,7 @@
  * @since 2025
  */
 
-import fetch from 'node-fetch';
+import fetch, { type Response as FetchResponse } from 'node-fetch';
 import FormData from 'form-data';
 import fs from 'fs';
 import path from 'path';
@@ -312,6 +312,105 @@ class LRUCache<K, V> {
 
 // URLSearchParams cache for image download requests with size limit
 const downloadQueryCache = new LRUCache<string, string>(50);
+const ATTACHMENT_DOWNLOAD_RETRY_ATTEMPTS = 8;
+const ATTACHMENT_DOWNLOAD_RETRY_DELAY_MS = 1000;
+
+function isUnthreadApiUrl(downloadUrl: string): boolean {
+    try {
+        const target = new URL(downloadUrl);
+        const apiOrigin = new URL(API_BASE_URL);
+        return target.origin === apiOrigin.origin;
+    } catch {
+        return false;
+    }
+}
+
+function shouldRetryAttachmentDownload(status: number): boolean {
+    return status === 404 || status === 409 || status === 425;
+}
+
+async function delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchUnthreadFileWithRetry(
+    downloadUrl: string,
+    headers: Record<string, string>,
+    fileLabel: string
+): Promise<FetchResponse> {
+    for (let attempt = 1; attempt <= ATTACHMENT_DOWNLOAD_RETRY_ATTEMPTS; attempt++) {
+        const response = await fetch(downloadUrl, { headers });
+
+        if (
+            response.ok ||
+            !shouldRetryAttachmentDownload(response.status) ||
+            attempt === ATTACHMENT_DOWNLOAD_RETRY_ATTEMPTS
+        ) {
+            return response;
+        }
+
+        LogEngine.debug('Unthread file not ready yet, retrying', {
+            status: response.status,
+            fileLabel,
+            attempt,
+            maxAttempts: ATTACHMENT_DOWNLOAD_RETRY_ATTEMPTS
+        });
+        await delay(ATTACHMENT_DOWNLOAD_RETRY_DELAY_MS);
+    }
+
+    throw new Error('Unthread file retry loop exhausted unexpectedly');
+}
+
+async function downloadUnthreadFileBuffer(
+    downloadUrl: string,
+    fileLabel: string,
+    maxSizeBytes: number
+): Promise<Buffer> {
+    if (!UNTHREAD_API_KEY) {
+        throw new Error('UNTHREAD_API_KEY environment variable is not set');
+    }
+
+    const response = await fetchUnthreadFileWithRetry(
+        downloadUrl,
+        {
+            'X-API-KEY': UNTHREAD_API_KEY,
+            'User-Agent': 'unthread-telegram-bot/2.0.0-image-flow'
+        },
+        fileLabel
+    );
+
+    if (!response.ok) {
+        let errorMessage = `Unthread API error: ${response.status} ${response.statusText}`;
+        try {
+            const errorBody = await response.text();
+            if (errorBody) {
+                errorMessage += ` - Response body: ${errorBody}`;
+            }
+        } catch (bodyError) {
+            LogEngine.warn('Failed to read Unthread file error response body', { bodyError });
+        }
+        throw new Error(errorMessage);
+    }
+
+    const contentLengthHeader = response.headers.get('content-length');
+    if (contentLengthHeader) {
+        const contentLength = Number.parseInt(contentLengthHeader, 10);
+        if (Number.isFinite(contentLength) && contentLength > maxSizeBytes) {
+            throw new Error(`File too large: ${contentLength} bytes (max: ${maxSizeBytes})`);
+        }
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length === 0) {
+        throw new Error('Downloaded file is empty');
+    }
+
+    if (buffer.length > maxSizeBytes) {
+        throw new Error(`File too large: ${buffer.length} bytes (max: ${maxSizeBytes})`);
+    }
+
+    return buffer;
+}
 
 /**
  * Creates a new customer in Unthread using the extracted company name from a Telegram group chat title.
@@ -1373,27 +1472,63 @@ export async function downloadUnthreadImage(
     }
 }
 
-/**
- * @deprecated Use downloadUnthreadImage for image files specifically
- * Legacy function maintained for backward compatibility
- */
 export async function downloadAttachmentFromUnthread(
     conversationId: string,
     fileId: string,
-    expectedFileName?: string
+    expectedFileName?: string,
+    maxSizeBytes: number = getImageProcessingConfig().maxImageSize
 ): Promise<Buffer> {
-    
-    LogEngine.warn('downloadAttachmentFromUnthread called - redirecting to image-specific function', {
+    LogEngine.info('Starting conversation-scoped Unthread attachment download', {
         conversationId,
         fileId,
         expectedFileName,
-        recommendation: 'Use downloadUnthreadImage for better image handling'
+        maxSizeBytes,
+        method: 'conversation-file-endpoint'
     });
-    
-    throw new Error(
-        'This function is deprecated. Use downloadUnthreadImage() for image files. ' +
-        'Generic file download is not implemented - images only for this release.'
-    );
+
+    if (!conversationId || !fileId) {
+        throw new Error('conversationId and fileId are required for Unthread attachment download');
+    }
+
+    const endpoint = `${API_BASE_URL}/conversations/${encodeURIComponent(conversationId)}/files/${encodeURIComponent(fileId)}/full`;
+    const buffer = await downloadUnthreadFileBuffer(endpoint, expectedFileName || fileId, maxSizeBytes);
+
+    LogEngine.info('Conversation-scoped Unthread attachment download successful', {
+        conversationId,
+        fileId,
+        expectedFileName,
+        size: buffer.length,
+        method: 'conversation-file-endpoint'
+    });
+
+    return buffer;
+}
+
+export async function downloadUnthreadFileFromUrl(
+    downloadUrl: string,
+    expectedFileName?: string,
+    maxSizeBytes: number = getImageProcessingConfig().maxImageSize
+): Promise<Buffer> {
+    LogEngine.info('Starting direct Unthread file download', {
+        downloadUrl,
+        expectedFileName,
+        maxSizeBytes,
+        method: 'direct-url'
+    });
+
+    if (!downloadUrl || !isUnthreadApiUrl(downloadUrl)) {
+        throw new Error('Download URL must target the Unthread API origin');
+    }
+
+    const buffer = await downloadUnthreadFileBuffer(downloadUrl, expectedFileName || downloadUrl, maxSizeBytes);
+
+    LogEngine.info('Direct Unthread file download successful', {
+        expectedFileName,
+        size: buffer.length,
+        method: 'direct-url'
+    });
+
+    return buffer;
 }
 
 /**
