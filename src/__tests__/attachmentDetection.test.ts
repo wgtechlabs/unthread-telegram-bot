@@ -24,7 +24,7 @@ mock.module('../config/env.js', () => ({
   getImageProcessingConfig: createMock().mockReturnValue({
     enabled: true,
     maxSize: 10485760, // 10MB
-    supportedFormats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+    supportedFormats: ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'],
     quality: 85
   })
 }));
@@ -405,6 +405,44 @@ describe('AttachmentDetectionService', () => {
         const result = AttachmentDetectionService.hasImageAttachments(event);
         expect(result).toBe(false);
       });
+    });
+
+    it('should treat extension-style type values as image attachments', () => {
+      const event: WebhookEvent = {
+        sourcePlatform: 'dashboard',
+        targetPlatform: 'telegram',
+        eventType: 'message',
+        timestamp: new Date().toISOString(),
+        data: {},
+        attachments: {
+          hasFiles: true,
+          count: 1,
+          totalSize: 2048,
+          types: ['png']
+        }
+      } as unknown as WebhookEvent;
+
+      expect(AttachmentDetectionService.normalizeType('png')).toBe('image/png');
+      expect(AttachmentDetectionService.hasImageAttachments(event)).toBe(true);
+    });
+
+    it('should still reject unsupported extension-style attachment types', () => {
+      const event: WebhookEvent = {
+        sourcePlatform: 'dashboard',
+        targetPlatform: 'telegram',
+        eventType: 'message',
+        timestamp: new Date().toISOString(),
+        data: {},
+        attachments: {
+          hasFiles: true,
+          count: 1,
+          totalSize: 2048,
+          types: ['pdf']
+        }
+      } as unknown as WebhookEvent;
+
+      expect(AttachmentDetectionService.normalizeType('pdf')).toBe('');
+      expect(AttachmentDetectionService.hasImageAttachments(event)).toBe(false);
     });
   });
 });

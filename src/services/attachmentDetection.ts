@@ -20,7 +20,35 @@ import { WebhookEvent } from '../types/webhookEvents.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { getImageProcessingConfig } from '../config/env.js';
 
+const IMAGE_EXTENSION_TO_MIME: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp'
+};
+
 export class AttachmentDetectionService {
+  /**
+   * Normalize incoming attachment type into canonical MIME format.
+   * Supports both MIME values (image/png) and extension values (png).
+   */
+  static normalizeType(rawType: string | undefined): string {
+    if (!rawType || typeof rawType !== 'string') {
+      return '';
+    }
+
+    const normalized = rawType.trim().toLowerCase();
+    if (!normalized) {
+      return '';
+    }
+
+    if (normalized.startsWith('image/')) {
+      return normalized;
+    }
+
+    return IMAGE_EXTENSION_TO_MIME[normalized] || '';
+  }
   
   /**
    * Primary event validation - only process dashboard → telegram events
@@ -49,8 +77,8 @@ export class AttachmentDetectionService {
       return false;
     }
     
-    return event.attachments?.types?.some(type => 
-      type.startsWith('image/')
+    return event.attachments?.types?.some(type =>
+      this.normalizeType(type).startsWith('image/')
     ) ?? false;
   }
   
@@ -65,8 +93,8 @@ export class AttachmentDetectionService {
     
     const supportedTypes = getImageProcessingConfig().supportedFormats;
     
-    return event.attachments?.types?.some(type => 
-      supportedTypes.includes(type.toLowerCase())
+    return event.attachments?.types?.some(type =>
+      supportedTypes.includes(this.normalizeType(type))
     ) ?? false;
   }
   
