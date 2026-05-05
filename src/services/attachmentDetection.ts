@@ -20,14 +20,6 @@ import { WebhookEvent } from '../types/webhookEvents.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { getImageProcessingConfig } from '../config/env.js';
 
-const IMAGE_EXTENSION_TO_MIME: Record<string, string> = {
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  png: 'image/png',
-  gif: 'image/gif',
-  webp: 'image/webp'
-};
-
 export class AttachmentDetectionService {
   /**
    * Normalize incoming attachment type into canonical MIME format.
@@ -47,7 +39,19 @@ export class AttachmentDetectionService {
       return normalized;
     }
 
-    return IMAGE_EXTENSION_TO_MIME[normalized] || '';
+    switch (normalized) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      default:
+        return '';
+    }
   }
   
   /**
