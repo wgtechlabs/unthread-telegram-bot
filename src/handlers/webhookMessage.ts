@@ -67,9 +67,11 @@ import { AttachmentDetectionService } from '../services/attachmentDetection.js';
  * Represents the essential properties of a Slack file from Unthread webhook events
  */
 interface SlackFile {
-  id: string;           // Slack file ID (F-prefixed)
+  id: string;           // Unthread file ID
   name?: string;        // Original filename
+  title?: string;       // Alternative display filename
   mimetype?: string;    // MIME type (primary)
+  filetype?: string;    // MIME fallback or extension
   type?: string;        // Alternative type field
   size?: number;        // File size in bytes
 }
@@ -87,7 +89,7 @@ function isValidSlackFile(obj: unknown): obj is SlackFile {
   const file = obj as Record<string, unknown>;
   
   // Validate required id field
-  if (typeof file.id !== 'string' || !file.id.startsWith('F') || file.id.length < 10) {
+  if (typeof file.id !== 'string' || file.id.trim().length === 0) {
     return false;
   }
   
@@ -95,8 +97,16 @@ function isValidSlackFile(obj: unknown): obj is SlackFile {
   if (file.name !== undefined && typeof file.name !== 'string') {
     return false;
   }
+
+  if (file.title !== undefined && typeof file.title !== 'string') {
+    return false;
+  }
   
   if (file.mimetype !== undefined && typeof file.mimetype !== 'string') {
+    return false;
+  }
+
+  if (file.filetype !== undefined && typeof file.filetype !== 'string') {
     return false;
   }
   
@@ -122,6 +132,14 @@ export class TelegramWebhookHandler {
   private templateManager: GlobalTemplateManager;
   private imageConfig: ImageProcessingConfig; // Image processing configuration
   private teamId: string; // Validated Unthread team ID for fail-fast initialization
+
+  /**
+   * Normalize MIME type from webhook file fields.
+   * Supports canonical MIME values and extension-style fallbacks.
+   */
+  private normalizeImageMimeType(rawType: string | undefined): string {
+    return AttachmentDetectionService.normalizeType(rawType);
+  }
 
   constructor(bot: Telegraf<BotContext>, botsStore: IBotsStore) {
     this.bot = bot;
@@ -1349,14 +1367,28 @@ export class TelegramWebhookHandler {
       }
 
       // Safely extract filename from file object directly
-      const fileName = (file.name && typeof file.name === 'string') 
-        ? String(file.name).trim() 
+      const fileName = (file.name && typeof file.name === 'string')
+        ? String(file.name).trim()
+        : (file.title && typeof file.title === 'string')
+          ? String(file.title).trim()
         : `image_${i + 1}`;
       
-      // Extract MIME type directly from the current file object
-      const fileType = (file.mimetype && typeof file.mimetype === 'string') 
-        ? String(file.mimetype).toLowerCase() 
-        : '';
+      const rawMimeType = (typeof file.mimetype === 'string') ? file.mimetype : undefined;
+      const rawFileType = (typeof file.filetype === 'string') ? file.filetype : undefined;
+
+      // Extract and normalize MIME type from available fields
+      const fileType = this.normalizeImageMimeType(rawMimeType || rawFileType);
+
+      // Temporary debug signal for payload compatibility on Railway.
+      LogEngine.debug('Attachment type normalization', {
+        conversationId,
+        fileIndex: i + 1,
+        fileId: file.id || 'unknown',
+        fileName,
+        rawMimeType: rawMimeType || 'missing',
+        rawFileType: rawFileType || 'missing',
+        normalizedType: fileType || 'unrecognized'
+      });
 
       // Skip non-images using per-file MIME type validation
       if (!fileType || !fileType.startsWith('image/') || !supportedImageTypes.includes(fileType)) {
@@ -1457,12 +1489,12 @@ export class TelegramWebhookHandler {
       throw new Error(`Invalid file object at index ${fileIndex}`);
     }
 
-    const fileId = String(file.id);
+    const fileId = (typeof file.id === 'string') ? file.id.trim() : '';
     const fileSize = Number(file.size) || 0;
     
-    // Validate Slack file ID format
-    if (!fileId.startsWith('F') || fileId.length < 10) {
-      throw new Error(`Invalid Slack file ID format: ${fileId}`);
+    // Validate only for non-empty identifier to stay compatible with evolving upstream formats.
+    if (!fileId) {
+      throw new Error('Missing file identifier from webhook payload');
     }
 
     LogEngine.info('Processing image file', {
