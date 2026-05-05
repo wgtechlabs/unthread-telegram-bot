@@ -186,8 +186,6 @@ export class WebhookConsumer {
     }
 
     try {
-      LogEngine.debug(`Polling Redis queue: ${this.queueName}`);
-      
       // Check queue length first for debugging
       if (this.redisClient?.isOpen) {
         const queueLength = await this.redisClient.lLen(this.queueName);
@@ -203,8 +201,6 @@ export class WebhookConsumer {
         LogEngine.info(`Received event from queue: ${this.queueName}`);
         const eventData = result.element;
         await this.processEvent(eventData);
-      } else {
-        LogEngine.debug(`No events in queue: ${this.queueName}`);
       }
     } catch (error) {
       LogEngine.error('Error polling for events:', error);
