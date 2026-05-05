@@ -1,17 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches: [dev]
-    paths:
-      - 'src/**'
-      - 'package.json'
-      - 'bun.lock'
-      - '.npmrc'
-      - 'tsconfig.json'
-      - 'bunfig.toml'
-      - 'eslint.config.js'
-      - '.github/workflows/ci.yml'
   pull_request:
     branches: [dev, main]
     paths:
@@ -23,10 +12,27 @@ on:
       - 'bunfig.toml'
       - 'eslint.config.js'
       - '.github/workflows/ci.yml'
+  push:
+    branches: [dev, main]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'bun.lock'
+      - '.npmrc'
+      - 'tsconfig.json'
+      - 'bunfig.toml'
+      - 'eslint.config.js'
+      - '.github/workflows/ci.yml'
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: CI-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
-    name: Lint & Test
+  validate:
+    name: Lint Test Validate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -43,7 +49,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '22'
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
