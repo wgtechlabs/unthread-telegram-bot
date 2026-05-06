@@ -533,7 +533,7 @@ export async function getBotPermissionSummary(ctx: BotContext): Promise<{
   chatType: string;
   botStatus: string;
   isAdmin: boolean;
-  permissions?: any;
+  permissions?: Record<string, unknown>;
 }> {
   try {
     if (!ctx.chat) {
