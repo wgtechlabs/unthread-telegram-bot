@@ -56,6 +56,7 @@ export class DatabaseConnection {
         const sslConfig = this.getSSLConfig(isProduction);
 
         // Start with the base connection string
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         let connectionString = process.env.POSTGRES_URL!;
 
         // Auto-append sslmode=disable only when completely disabling SSL
@@ -63,12 +64,14 @@ export class DatabaseConnection {
             const separator = connectionString.includes('?') ? '&' : '?';
             connectionString += `${separator}sslmode=disable`;
             LogEngine.debug('SSL disabled - added sslmode=disable to connection string', {
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                 originalUrl: process.env.POSTGRES_URL!,
                 modifiedUrl: connectionString.replace(/\/\/[^:]+:[^@]+@/, '//***:***@') // Mask credentials
             });
         }
 
         // Configure connection pool
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const poolConfig: any = {
             connectionString,
             max: 10, // Maximum number of connections in pool
@@ -114,7 +117,7 @@ export class DatabaseConnection {
      * @param params - Query parameters
      * @returns Query result
      */
-    async query(text: string, params: any[] = []): Promise<QueryResult<any>> {
+    async query(text: string, params: unknown[] = []): Promise<QueryResult<unknown>> {
         const client: PoolClient = await this.pool.connect();
         try {
             const start = Date.now();
@@ -183,7 +186,7 @@ export class DatabaseConnection {
             `);
 
             const requiredTables = ['customers', 'tickets', 'user_states'];
-            const foundTables = tableCheck.rows.map((row: any) => row.table_name);
+            const foundTables = tableCheck.rows.map((row: { table_name: string }) => row.table_name);
             const missingTables = requiredTables.filter(table => !foundTables.includes(table));
 
             if (missingTables.length > 0) {
@@ -291,6 +294,7 @@ export class DatabaseConnection {
      * @param isProduction - Whether running in production environment
      * @returns SSL configuration object, or false to disable SSL entirely
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private getSSLConfig(isProduction: boolean): any {
         // Check SSL validation setting first (applies to all environments)
         const sslValidate = process.env.DATABASE_SSL_VALIDATE;
@@ -343,5 +347,22 @@ export class DatabaseConnection {
     }
 }
 
-// Create and export a singleton instance
-export const db = new DatabaseConnection();
+let dbInstance: DatabaseConnection | null = null;
+
+export function getDb(): DatabaseConnection {
+    if (!dbInstance) {
+        dbInstance = new DatabaseConnection();
+    }
+
+    return dbInstance;
+}
+
+// Lazily create the singleton to avoid import-time side effects during tests.
+export const db: DatabaseConnection = new Proxy({} as DatabaseConnection, {
+    get(_target, property) {
+        const instance = getDb();
+        const value = Reflect.get(instance as object, property);
+
+        return typeof value === 'function' ? value.bind(instance) : value;
+    }
+});
