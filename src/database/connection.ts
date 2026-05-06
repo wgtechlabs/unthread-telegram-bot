@@ -28,7 +28,7 @@
  * @since 2025
  */
 
-import pg, { type Pool as PgPool, type PoolClient, type QueryResult } from 'pg';
+import pg, { type Pool as PgPool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
 const { Pool } = pg;
 import { LogEngine } from '../config/logging.js';
 import dotenv from 'dotenv';
@@ -117,7 +117,7 @@ export class DatabaseConnection {
      * @param params - Query parameters
      * @returns Query result
      */
-    async query(text: string, params: unknown[] = []): Promise<QueryResult<unknown>> {
+    async query<TRow extends QueryResultRow = QueryResultRow>(text: string, params: unknown[] = []): Promise<QueryResult<TRow>> {
         const client: PoolClient = await this.pool.connect();
         try {
             const start = Date.now();
@@ -152,7 +152,7 @@ export class DatabaseConnection {
     async connect(): Promise<void> {
         try {
             // Test connection
-            const result = await this.query('SELECT NOW() as current_time');
+            const result = await this.query<{ current_time: Date }>('SELECT NOW() as current_time');
             LogEngine.info('Database connection established', {
                 currentTime: result.rows[0]?.current_time,
                 ssl: 'enabled'
@@ -178,7 +178,7 @@ export class DatabaseConnection {
     async ensureSchema(): Promise<void> {
         try {
             // Check if tables exist
-            const tableCheck = await this.query(`
+            const tableCheck = await this.query<{ table_name: string }>(`
                 SELECT table_name 
                 FROM information_schema.tables 
                 WHERE table_schema = 'public' 
@@ -186,7 +186,7 @@ export class DatabaseConnection {
             `);
 
             const requiredTables = ['customers', 'tickets', 'user_states'];
-            const foundTables = tableCheck.rows.map((row: { table_name: string }) => row.table_name);
+            const foundTables = tableCheck.rows.map((row) => row.table_name);
             const missingTables = requiredTables.filter(table => !foundTables.includes(table));
 
             if (missingTables.length > 0) {
