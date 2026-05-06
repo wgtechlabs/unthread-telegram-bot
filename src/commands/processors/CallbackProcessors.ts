@@ -293,6 +293,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
             step: 1,
             totalSteps: hasEmail ? 1 : 2,
             hasEmail: !!hasEmail,
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
             chatId: ctx.chat!.id,
             startedAt: new Date().toISOString()
         });
@@ -585,6 +586,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
     /**
      * Create ticket directly when processor can't handle
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private async createTicketDirectly(ctx: BotContext, userState: any): Promise<boolean> {
         try {
             const userId = ctx.from?.id;
@@ -661,6 +663,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                         // Fallback to standard ticket creation without attachments
                         ticketResponse = await unthreadService.createTicket({
                             groupChatName: 'Telegram Support', // Default group chat name
+                            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                             customerId: process.env.UNTHREAD_CUSTOMER_ID!,
                             summary: userState.summary,
                             onBehalfOf
@@ -669,6 +672,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                         // Use unified ticket creation with buffer attachments
                         ticketResponse = await unthreadService.createTicketWithBufferAttachments({
                             groupChatName: 'Telegram Support', // Default group chat name
+                            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                             customerId: process.env.UNTHREAD_CUSTOMER_ID!,
                             summary: userState.summary,
                             onBehalfOf,
@@ -692,6 +696,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                     // Fallback to standard ticket creation
                     ticketResponse = await unthreadService.createTicket({
                         groupChatName: 'Telegram Support', // Default group chat name
+                        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                         customerId: process.env.UNTHREAD_CUSTOMER_ID!,
                         summary: userState.summary,
                         onBehalfOf
@@ -701,6 +706,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 // Standard ticket creation without attachments
                 ticketResponse = await unthreadService.createTicket({
                     groupChatName: 'Telegram Support', // Default group chat name
+                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                     customerId: process.env.UNTHREAD_CUSTOMER_ID!,
                     summary: userState.summary,
                     onBehalfOf
@@ -730,6 +736,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 messageId: ctx.callbackQuery?.message?.message_id || 0, // Use callback message ID
                 ticketId: ticket.id,
                 friendlyId: ticket.friendlyId,
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                 customerId: process.env.UNTHREAD_CUSTOMER_ID!,
                 chatId: ctx.chat?.id || 0,
                 telegramUserId: userId,
@@ -3625,6 +3632,7 @@ ${this.renderTemplateExample(template.content, templateType)}
 
         let example = content;
         for (const [key, value] of Object.entries(sampleData)) {
+            // eslint-disable-next-line security/detect-non-literal-regexp
             const pattern = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
             example = example.replace(pattern, value);
         }
