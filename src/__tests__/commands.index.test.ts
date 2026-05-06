@@ -1,7 +1,7 @@
 /**
  * Unit tests for commands/index.ts
  */
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, it , mock} from 'bun:test';
 import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import type { BotContext } from '../types/index.js';
 import { 
@@ -72,49 +72,6 @@ mock.module('../commands/base/CommandRegistry.js', () => {
   };
 });
 
-// Mock all command classes
-mock.module('../commands/basic/InfoCommands.js', () => ({
-  AboutCommand: class { constructor() {} },
-  HelpCommand: class { constructor() {} },
-  StartCommand: class { constructor() {} },
-  VersionCommand: class { constructor() {} }
-}));
-
-mock.module('../commands/basic/StateCommands.js', () => ({
-  CancelCommand: class { constructor() {} },
-  ResetCommand: class { constructor() {} }
-}));
-
-mock.module('../commands/basic/SetEmailCommand.js', () => ({
-  SetEmailCommand: class { constructor() {} }
-}));
-
-mock.module('../commands/basic/ViewEmailCommand.js', () => ({
-  ViewEmailCommand: class { constructor() {} }
-}));
-
-mock.module('../commands/support/SupportCommandClean.js', () => ({
-  SupportCommand: class { constructor() {} }
-}));
-
-mock.module('../commands/admin/AdminCommands.js', () => ({
-  ActivateCommand: class { constructor() {} },
-  SetupCommand: class { constructor() {} },
-  TemplatesCommand: class { constructor() {} }
-}));
-
-mock.module('../commands/processors/ConversationProcessors.js', () => ({
-  DmSetupInputProcessor: class { constructor() {} },
-  SupportConversationProcessor: class { constructor() {} }
-}));
-
-mock.module('../commands/processors/CallbackProcessors.js', () => ({
-  AdminCallbackProcessor: class { constructor() {} },
-  SetupCallbackProcessor: class { constructor() {} },
-  SupportCallbackProcessor: class { constructor() {} },
-  TemplateCallbackProcessor: class { constructor() {} }
-}));
-
 mock.module('../commands/utils/commandExecutor.js', () => ({
   createCommandExecutor: createMock(() => createMock()),
   createProcessorExecutor: createMock(() => createMock())
@@ -122,6 +79,10 @@ mock.module('../commands/utils/commandExecutor.js', () => ({
 
 describe('commands/index.ts', () => {
   let mockCtx: BotContext;
+
+  afterAll(() => {
+    mock.restore();
+  });
 
   beforeEach(() => {
     clearAllMocks();
