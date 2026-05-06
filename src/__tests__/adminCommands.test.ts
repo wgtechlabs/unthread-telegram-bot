@@ -5,7 +5,7 @@
  * activation, setup, and templates management.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import { ActivateCommand, SetupCommand, TemplatesCommand } from '../commands/admin/AdminCommands.js';
 import type { BotContext } from '../types/index.js';
@@ -23,22 +23,61 @@ mock.module('../sdk/bots-brain/index.js', () => ({
     }
 }));
 
-mock.module('../utils/permissions.js', () => ({
-    checkAndPromptBotAdmin: createMock(),
-    isBotAdmin: createMock(),
-    validateAdminAccess: createMock(),
-}));
-
-mock.module('../commands/utils/errorHandler.js', () => ({
-    createUserErrorMessage: createMock((error) => `Error: ${error.message}`),
-    logError: createMock(),
-}));
-
 mock.module('../config/env.js', () => ({
-    getCompanyName: createMock(() => 'Test Company'),
-    isAdminUser: createMock(() => true),
-    getAdminUsers: createMock(() => [12345]),
-    getConfiguredBotUsername: createMock(() => 'testbot'),
+    getCompanyName: createMock(() => {
+        const company = process.env.MY_COMPANY_NAME?.trim();
+        if (!company) {
+            return null;
+        }
+        const placeholders = new Set([
+            'your_company_name_here',
+            'your_company_name',
+            'company_name_here',
+            'placeholder',
+            'change_me',
+            'replace_me'
+        ]);
+        return placeholders.has(company.toLowerCase()) ? null : company;
+    }),
+    isAdminUser: createMock((userId: number) => {
+        const raw = process.env.ADMIN_USERS ?? '';
+        if (!raw.trim()) {
+            return true;
+        }
+        const ids = raw
+            .split(',')
+            .map((id) => Number.parseInt(id.trim(), 10))
+            .filter((id) => Number.isFinite(id) && id > 0);
+        return ids.includes(userId);
+    }),
+    getAdminUsers: createMock(() => {
+        const raw = process.env.ADMIN_USERS ?? '';
+        if (!raw.trim()) {
+            return [12345];
+        }
+        return raw
+            .split(',')
+            .map((id) => Number.parseInt(id.trim(), 10))
+            .filter((id) => Number.isFinite(id) && id > 0);
+    }),
+    getConfiguredBotUsername: createMock(() => {
+        const username = process.env.BOT_USERNAME?.trim();
+        if (!username) {
+            return null;
+        }
+        const placeholders = new Set([
+            'your_bot_username_here',
+            'your_bot_username',
+            'bot_username_here',
+            'placeholder',
+            'change_me',
+            'replace_me'
+        ]);
+        if (placeholders.has(username.toLowerCase())) {
+            return null;
+        }
+        return /^[a-zA-Z0-9_]{5,32}$/.test(username) ? username : null;
+    }),
 }));
 
 mock.module('../utils/adminManager.js', () => ({
@@ -53,33 +92,40 @@ mock.module('../utils/globalTemplateManager.js', () => ({
     }
 }));
 
-mock.module('../services/validationService.js', () => ({
-    ValidationService: {
-        isValidUnthreadWebhook: createMock(() => ({ isValid: true })),
-        performSetupValidation: createMock(),
-    }
-}));
-
 mock.module('../commands/processors/CallbackProcessors.js', () => ({
-    SetupCallbackProcessor: {
-        processSetupCallback: createMock(),
-    }
+    SetupCallbackProcessor: class {
+        static processSetupCallback = createMock();
+        static generateShortCallbackId = createMock(async () => 'mockcb');
+    },
+    SupportCallbackProcessor: class {},
+    AdminCallbackProcessor: class {},
+    TemplateCallbackProcessor: class {}
 }));
 
 import { createDmSetupSession } from '../utils/adminManager.js';
 import { BotsStore } from '../sdk/bots-brain/index.js';
-import { checkAndPromptBotAdmin, isBotAdmin, validateAdminAccess } from '../utils/permissions.js';
-import { createUserErrorMessage, logError } from '../commands/utils/errorHandler.js';
+import * as permissionsModule from '../utils/permissions.js';
+import * as commandErrorHandler from '../commands/utils/errorHandler.js';
 import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 
 describe('AdminCommands', () => {
     let mockContext: Partial<BotContext>;
+    let createUserErrorMessageSpy: ReturnType<typeof spyOn>;
+    let logErrorSpy: ReturnType<typeof spyOn>;
+    let checkAndPromptBotAdminSpy: ReturnType<typeof spyOn>;
+    let isBotAdminSpy: ReturnType<typeof spyOn>;
+    let validateAdminAccessSpy: ReturnType<typeof spyOn>;
     
     beforeEach(() => {
         clearAllMocks();
+        createUserErrorMessageSpy = spyOn(commandErrorHandler, 'createUserErrorMessage');
+        logErrorSpy = spyOn(commandErrorHandler, 'logError');
+        checkAndPromptBotAdminSpy = spyOn(permissionsModule, 'checkAndPromptBotAdmin');
+        isBotAdminSpy = spyOn(permissionsModule, 'isBotAdmin');
+        validateAdminAccessSpy = spyOn(permissionsModule, 'validateAdminAccess');
         
         // Set default mock behavior for admin validation
-        (validateAdminAccess as any).mockResolvedValue(true);
+        (validateAdminAccessSpy as any).mockResolvedValue(true);
         
         mockContext = {
             from: {
@@ -204,11 +250,11 @@ describe('AdminCommands', () => {
             const error = new Error('Database connection failed');
             mockContext.chat = { id: 12345, type: 'private' }; // Private chat for activation
             (BotsStore.getAdminProfile as any).mockRejectedValue(error);
-            (createUserErrorMessage as any).mockReturnValue('Error: Database connection failed');
+            (createUserErrorMessageSpy as any).mockReturnValue('Error: Database connection failed');
 
             await activateCommand.execute(mockContext as BotContext);
 
-            expect(logError).toHaveBeenCalledWith(error, 'ActivateCommand.executeCommand', { userId: 12345 });
+            expect(logErrorSpy).toHaveBeenCalledWith(error, 'ActivateCommand.executeCommand', { userId: 12345 });
             expect(mockContext.reply).toHaveBeenCalledWith('Error: Database connection failed');
         });
 
@@ -285,8 +331,8 @@ describe('AdminCommands', () => {
             };
 
             (BotsStore.getAdminProfile as any).mockResolvedValue(mockAdminProfile);
-            (isBotAdmin as any).mockResolvedValue(true); // Mock bot admin permission
-            (checkAndPromptBotAdmin as any).mockResolvedValue(true);
+            (isBotAdminSpy as any).mockResolvedValue(true); // Mock bot admin permission
+            (checkAndPromptBotAdminSpy as any).mockResolvedValue(true);
             (BotsStore.getGroupConfig as any).mockResolvedValue(mockGroupConfig);
 
             await setupCommand.execute(mockContext as BotContext);
@@ -310,8 +356,8 @@ describe('AdminCommands', () => {
                 lastActiveAt: '2023-01-01T00:00:00.000Z'
             };
             (BotsStore.getAdminProfile as any).mockResolvedValue(mockAdminProfile);
-            (isBotAdmin as any).mockResolvedValue(true); // Mock bot admin permission 
-            (checkAndPromptBotAdmin as any).mockResolvedValue(true);
+            (isBotAdminSpy as any).mockResolvedValue(true); // Mock bot admin permission 
+            (checkAndPromptBotAdminSpy as any).mockResolvedValue(true);
             (BotsStore.getGroupConfig as any).mockResolvedValue(null);
             (createDmSetupSession as any).mockResolvedValue('session123');
             
@@ -338,13 +384,13 @@ describe('AdminCommands', () => {
                 lastActiveAt: '2023-01-01T00:00:00.000Z'
             };
             (BotsStore.getAdminProfile as any).mockResolvedValue(mockAdminProfile);
-            (isBotAdmin as any).mockResolvedValue(false); // Bot doesn't have admin permissions
-            (checkAndPromptBotAdmin as any).mockResolvedValue(false);
+            (isBotAdminSpy as any).mockResolvedValue(false); // Bot doesn't have admin permissions
+            (checkAndPromptBotAdminSpy as any).mockResolvedValue(false);
 
             await setupCommand.execute(mockContext as BotContext);
 
             // Should call checkAndPromptBotAdmin when bot doesn't have admin permissions
-            expect(checkAndPromptBotAdmin).toHaveBeenCalledWith(mockContext);
+            expect(checkAndPromptBotAdminSpy).toHaveBeenCalledWith(mockContext);
             // Should not proceed to configuration when permissions fail
             expect(BotsStore.getGroupConfig).not.toHaveBeenCalled();
         });
@@ -361,13 +407,13 @@ describe('AdminCommands', () => {
             (BotsStore.getAdminProfile as any).mockResolvedValue(mockAdminProfile);
             
             const error = new Error('Setup failed');
-            (checkAndPromptBotAdmin as any).mockRejectedValue(error);
+            (checkAndPromptBotAdminSpy as any).mockRejectedValue(error);
 
             await setupCommand.execute(mockContext as BotContext);
 
-            // The mock createUserErrorMessage returns 'Error: Setup failed'
+            // Real error handler maps unknown setup errors to a generic user message.
             expect(mockContext.reply).toHaveBeenCalledWith(
-                'Error: Setup failed'
+                '❌ An unexpected error occurred. Please try again.'
             );
         });
 
