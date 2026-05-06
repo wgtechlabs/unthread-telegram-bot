@@ -70,7 +70,7 @@ export async function safeReply(
     ctx: BotContext, 
     text: string, 
     options: ExtraReplyMessage = {}
-): Promise<any | null> {
+): Promise<unknown> {
     try {
         return await ctx.reply(text, options);
     } catch (error) {
@@ -142,7 +142,7 @@ export async function safeEditMessageText(
     inlineMessageId: string | undefined, 
     text: string, 
     options: ExtraEditMessageText = {}
-): Promise<any | null> {
+): Promise<unknown> {
     try {
         return await ctx.telegram.editMessageText(chatId, messageId, inlineMessageId, text, options);
     } catch (error) {
@@ -222,7 +222,7 @@ export async function cleanupBlockedUser(chatId: number): Promise<void> {
         if (tickets.length > 0) {
             LogEngine.info(`Found ${tickets.length} tickets to clean up for blocked user`, { 
                 chatId, 
-                ticketIds: tickets.map((t: any) => t.conversationId) 
+                ticketIds: tickets.map((t: { conversationId: string }) => t.conversationId) 
             });
             
             // 2. Delete each ticket and its mappings

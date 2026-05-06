@@ -5,14 +5,14 @@
  * and error handling functionality.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it , mock} from 'bun:test';
 import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import { createBot, safeReply, startPolling } from '../bot.js';
 import type { BotContext, TelegramError } from '../types/index.js';
 
 // Mock dependencies
 mock.module('telegraf', () => ({
-  Telegraf: createMock().mockImplementation((token) => ({
+  Telegraf: createMock((token) => ({
     token,
     launch: createMock(),
     stop: createMock(),

@@ -63,6 +63,7 @@ import type { BotContext } from './types/index.js';
 /**
  * Initialize the bot with the token from environment variables
  */
+// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 const telegramToken = process.env.TELEGRAM_BOT_TOKEN!;
 const bot = createBot(telegramToken);
 
@@ -253,6 +254,7 @@ async function retryWithBackoff<T>(
         }
     }
     
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     throw lastError!;
 }
 
@@ -300,6 +302,7 @@ try {
     // Initialize the BotsStore with retry logic
     await retryWithBackoff(
         async () => {
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
             await BotsStore.initialize(db, process.env.PLATFORM_REDIS_URL!);
             LogEngine.info('BotsStore connection established');
         },
@@ -430,6 +433,7 @@ const sessionCleanupTask = startSessionCleanupTask();
  * - 400: Chat not found
  * - 429: Too Many Requests
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 bot.catch(async (error: any, ctx?: BotContext) => {
     LogEngine.error('Telegram Bot Error', {
         error: error.message,
