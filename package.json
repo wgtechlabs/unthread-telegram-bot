@@ -42,7 +42,7 @@
     "lint:fix": "eslint src/ --ext .ts --fix",
     "validate:deadcode": "bunx ts-prune && bunx depcheck",
     "validate:unused": "eslint src/ --ext .ts --rule 'unused-imports/no-unused-imports: error' --rule 'unused-imports/no-unused-vars: error'",
-    "test": "bun test --isolate",
+    "test": "bun run ./scripts/run-tests.ts",
     "test:watch": "bun test --watch --isolate",
     "test:coverage": "bun test --coverage --isolate"
   },
