@@ -324,7 +324,8 @@ export class TelegramWebhookHandler {
             webhookEvent,
             conversationId,
             ticketData.chatId,
-            replyToMessageId
+            replyToMessageId,
+            ticketData
           );
         }
         return;
@@ -390,7 +391,8 @@ export class TelegramWebhookHandler {
             webhookEvent,
             conversationId,
             ticketData.chatId,
-            sentMessage.message_id
+            sentMessage.message_id,
+            ticketData
           );
         }
 
@@ -410,7 +412,8 @@ export class TelegramWebhookHandler {
           webhookEvent,
           conversationId,
           ticketData.chatId,
-          replyToMessageId
+          replyToMessageId,
+          ticketData
         );
       }
 
@@ -804,13 +807,15 @@ export class TelegramWebhookHandler {
     conversationId: string,
     chatId: number,
     replyToMessageId: number
-  ): Promise<void> {
+  ): Promise<number[]> {
     LogEngine.debug('🔄 Processing Slack files from Unthread webhook', {
       conversationId,
       slackFileCount: slackFiles.length,
       chatId,
       replyToMessageId
     });
+
+    const sentMessageIds: number[] = [];
 
     for (let i = 0; i < slackFiles.length; i++) {
       const rawSlackFile = slackFiles.at(i);
@@ -855,7 +860,7 @@ export class TelegramWebhookHandler {
         });
 
         // Process using Slack file thumbnail endpoint
-        await this.downloadAndForwardSlackFile({
+        const sentMsgId = await this.downloadAndForwardSlackFile({
           conversationId,
           fileId: fileId,
           fileName: fileName,
@@ -864,6 +869,9 @@ export class TelegramWebhookHandler {
           chatId,
           replyToMessageId
         });
+        if (sentMsgId !== null) {
+          sentMessageIds.push(sentMsgId);
+        }
 
       } catch (error) {
         LogEngine.error('❌ Slack file processing failed', {
@@ -879,6 +887,7 @@ export class TelegramWebhookHandler {
       conversationId,
       processedCount: slackFiles.length
     });
+    return sentMessageIds;
   }
 
   /**
@@ -895,7 +904,7 @@ export class TelegramWebhookHandler {
     chatId: number;
     replyToMessageId: number;
     downloadUrl?: string;
-  }): Promise<void> {
+  }): Promise<number | null> {
     const { conversationId, fileId, fileName, fileSize, mimeType, chatId, replyToMessageId, downloadUrl } = params;
     const normalizedFileId = typeof fileId === 'string' ? fileId.trim() : '';
     const safeDownloadUrl = typeof downloadUrl === 'string' && downloadUrl.startsWith('https://api.unthread.io/api/')
@@ -964,22 +973,24 @@ export class TelegramWebhookHandler {
       };
 
       // Use existing attachment handler for Telegram upload
-      const uploadSuccess = await attachmentHandler.uploadBufferToTelegram(
+      const sentMessageId = await attachmentHandler.uploadBufferToTelegram(
         fileBuffer,
         chatId,
         replyToMessageId,
         `📎 ${escapeMarkdown(fileName)} (${this.formatFileSize(fileBuffer.size)})`
       );
 
-      if (uploadSuccess) {
+      if (sentMessageId !== null) {
         LogEngine.info('Unthread file successfully forwarded to Telegram', {
           conversationId,
           fileId: normalizedFileId || 'direct-url',
           fileName,
           finalSize: fileBuffer.size,
           chatId,
+          sentMessageId,
           status: 'Complete'
         });
+        return sentMessageId;
       } else {
         throw new Error('Failed to upload Unthread file to Telegram');
       }
@@ -1301,6 +1312,53 @@ export class TelegramWebhookHandler {
   }
 
   /**
+   * Store a sent attachment message as an agent message for reply tracking.
+   * Mirrors the storage done in sendTextMessageToTelegram so that user replies
+   * to attachment photos are recognized as ticket replies.
+   */
+  private async storeAttachmentAgentMessage(
+    sentMessageId: number,
+    conversationId: string,
+    chatId: number,
+    ticketData: any
+  ): Promise<void> {
+    try {
+      await this.botsStore.storeAgentMessage({
+        messageId: sentMessageId,
+        conversationId: conversationId,
+        chatId: chatId,
+        friendlyId: ticketData.friendlyId,
+        originalTicketMessageId: ticketData.messageId,
+        sentAt: new Date().toISOString()
+      });
+
+      await this.botsStore.storage.set(
+        `agent_message:${conversationId}:latest`,
+        JSON.stringify({
+          messageId: sentMessageId,
+          conversationId: conversationId,
+          chatId: chatId,
+          sentAt: new Date().toISOString()
+        }),
+        60 * 60 * 24 // 24 hour TTL
+      );
+
+      LogEngine.info('✅ Attachment agent message stored for reply tracking', {
+        conversationId,
+        chatId,
+        sentMessageId,
+        friendlyId: ticketData.friendlyId
+      });
+    } catch (storageError) {
+      LogEngine.error('Failed to store attachment agent message for reply tracking', {
+        conversationId,
+        sentMessageId,
+        error: storageError instanceof Error ? storageError.message : String(storageError)
+      });
+    }
+  }
+
+  /**
    * Process image attachments using metadata-driven approach
    * Handles supported image types with proper error handling and metadata efficiency
    */
@@ -1308,7 +1366,8 @@ export class TelegramWebhookHandler {
     event: WebhookEvent,
     conversationId: string,
     chatId: number,
-    replyToMessageId: number
+    replyToMessageId: number,
+    ticketData?: any
   ): Promise<void> {
     LogEngine.info('📎 Processing image attachments with metadata-driven approach', {
       conversationId,
@@ -1366,12 +1425,17 @@ export class TelegramWebhookHandler {
       });
       
       // Fallback to legacy method for safety
-      await this.processSlackFiles(
+      const fallbackSentIds = await this.processSlackFiles(
         files,
         conversationId,
         chatId,
         replyToMessageId
       );
+      if (ticketData) {
+        for (const sentMsgId of fallbackSentIds) {
+          await this.storeAttachmentAgentMessage(sentMsgId, conversationId, chatId, ticketData);
+        }
+      }
       return;
     }
 
@@ -1437,7 +1501,7 @@ export class TelegramWebhookHandler {
           fileIndex: i + 1
         });
 
-        await this.processImageFile({
+        const sentMsgId = await this.processImageFile({
           conversationId,
           file,
           fileName,
@@ -1447,6 +1511,10 @@ export class TelegramWebhookHandler {
           fileIndex: i + 1,
           totalFiles: files.length
         });
+
+        if (sentMsgId !== null && ticketData) {
+          await this.storeAttachmentAgentMessage(sentMsgId, conversationId, chatId, ticketData);
+        }
 
         processedCount++;
 
@@ -1507,7 +1575,7 @@ export class TelegramWebhookHandler {
     replyToMessageId: number;
     fileIndex: number;
     totalFiles: number;
-  }): Promise<void> {
+  }): Promise<number | null> {
     const { conversationId, file, fileName, fileType, chatId, replyToMessageId, fileIndex, totalFiles } = params;
     
     // Validate file structure
@@ -1536,7 +1604,7 @@ export class TelegramWebhookHandler {
       progress: `${fileIndex}/${totalFiles}`
     });
 
-    await this.downloadAndForwardSlackFile({
+    return await this.downloadAndForwardSlackFile({
       conversationId,
       ...(fileId ? { fileId } : {}),
       fileName,
