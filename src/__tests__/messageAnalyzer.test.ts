@@ -5,8 +5,7 @@
  * user messages and attachments for appropriate status notifications.
  */
 
-import { describe, expect, it, mock } from 'bun:test';
-import { createMock } from './_helpers/mockLifecycle';
+import { describe, expect, it } from 'bun:test';
 import { 
     SmartMessageGenerator, 
     analyzeAttachments,
@@ -15,24 +14,14 @@ import {
 } from '../utils/messageAnalyzer.js';
 import type { BotContext } from '../types/index.js';
 
-// Mock the dependencies
-mock.module('../utils/messageContentExtractor.js', () => ({
-    getMessageText: createMock()
-}));
-
-mock.module('../events/message.js', () => ({
-    extractFileAttachments: createMock()
-}));
-
-import { getMessageText } from '../utils/messageContentExtractor.js';
-import { extractFileAttachments } from '../events/message.js';
-
 describe('messageAnalyzer', () => {
     describe('analyzeMessage', () => {
         it('should analyze text-only messages', () => {
-            const mockContext = {} as BotContext;
-            (getMessageText as any).mockReturnValue('Hello world');
-            (extractFileAttachments as any).mockReturnValue([]);
+            const mockContext = {
+                message: {
+                    text: 'Hello world'
+                }
+            } as BotContext;
 
             const result = analyzeMessage(mockContext);
 
@@ -49,8 +38,6 @@ describe('messageAnalyzer', () => {
                     photo: [{ file_id: 'photo1' }]
                 }
             } as BotContext;
-            (getMessageText as any).mockReturnValue('');
-            (extractFileAttachments as any).mockReturnValue(['photo1']);
 
             const result = analyzeMessage(mockContext);
 
@@ -64,11 +51,10 @@ describe('messageAnalyzer', () => {
         it('should analyze text with attachments messages', () => {
             const mockContext = {
                 message: {
-                    document: { file_id: 'doc1' }
+                    document: { file_id: 'doc1' },
+                    caption: 'Check this out!'
                 }
             } as BotContext;
-            (getMessageText as any).mockReturnValue('Check this out!');
-            (extractFileAttachments as any).mockReturnValue(['doc1']);
 
             const result = analyzeMessage(mockContext);
 
@@ -80,9 +66,11 @@ describe('messageAnalyzer', () => {
         });
 
         it('should handle empty text (whitespace only)', () => {
-            const mockContext = {} as BotContext;
-            (getMessageText as any).mockReturnValue('   \n\t  ');
-            (extractFileAttachments as any).mockReturnValue([]);
+            const mockContext = {
+                message: {
+                    text: '   \n\t  '
+                }
+            } as BotContext;
 
             const result = analyzeMessage(mockContext);
 
@@ -307,9 +295,11 @@ describe('messageAnalyzer', () => {
 
     describe('generateStatusMessage', () => {
         it('should generate ticket creation message', () => {
-            const mockContext = {} as BotContext;
-            (getMessageText as any).mockReturnValue('Hello');
-            (extractFileAttachments as any).mockReturnValue([]);
+            const mockContext = {
+                message: {
+                    text: 'Hello'
+                }
+            } as BotContext;
 
             const result = generateStatusMessage(mockContext, 'ticket-creation');
 
@@ -317,9 +307,11 @@ describe('messageAnalyzer', () => {
         });
 
         it('should generate ticket reply message', () => {
-            const mockContext = {} as BotContext;
-            (getMessageText as any).mockReturnValue('Reply');
-            (extractFileAttachments as any).mockReturnValue([]);
+            const mockContext = {
+                message: {
+                    text: 'Reply'
+                }
+            } as BotContext;
 
             const result = generateStatusMessage(mockContext, 'ticket-reply');
 
@@ -327,9 +319,11 @@ describe('messageAnalyzer', () => {
         });
 
         it('should generate agent reply message', () => {
-            const mockContext = {} as BotContext;
-            (getMessageText as any).mockReturnValue('Agent response');
-            (extractFileAttachments as any).mockReturnValue([]);
+            const mockContext = {
+                message: {
+                    text: 'Agent response'
+                }
+            } as BotContext;
 
             const result = generateStatusMessage(mockContext, 'agent-reply');
 
@@ -337,9 +331,11 @@ describe('messageAnalyzer', () => {
         });
 
         it('should override file count when provided', () => {
-            const mockContext = {} as BotContext;
-            (getMessageText as any).mockReturnValue('');
-            (extractFileAttachments as any).mockReturnValue([]);
+            const mockContext = {
+                message: {
+                    text: ''
+                }
+            } as BotContext;
 
             const result = generateStatusMessage(mockContext, 'ticket-creation', 5);
 
@@ -347,9 +343,11 @@ describe('messageAnalyzer', () => {
         });
 
         it('should handle invalid context', () => {
-            const mockContext = {} as BotContext;
-            (getMessageText as any).mockReturnValue('Test');
-            (extractFileAttachments as any).mockReturnValue([]);
+            const mockContext = {
+                message: {
+                    text: 'Test'
+                }
+            } as BotContext;
 
             const result = generateStatusMessage(mockContext, 'invalid' as any);
 

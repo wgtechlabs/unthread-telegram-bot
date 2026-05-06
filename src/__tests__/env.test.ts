@@ -9,7 +9,7 @@ import {
   getEnvVar,
   isDevelopment,
   isProduction
-} from '../config/env';
+} from '../config/env.ts';
 
 describe('env utilities', () => {
   // Store original env vars to restore after tests

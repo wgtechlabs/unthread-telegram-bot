@@ -1,6 +1,7 @@
 [test]
 root = "src/__tests__"
 timeout = 10000
+isolate = true
 coverage = false
 coverageDir = "coverage"
 coverageReporter = ["text", "lcov"]

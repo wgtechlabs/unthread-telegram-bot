@@ -5,14 +5,14 @@
  * SSL configuration, connection pooling, error handling, and schema operations.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it , mock} from 'bun:test';
 import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import { DatabaseConnection } from '../database/connection.js';
 import { LogEngine } from '../config/logging.js';
 
 // Mock dependencies
 mock.module('pg', () => {
-  const PoolMock = createMock().mockImplementation(() => ({
+  const PoolMock = createMock(() => ({
     connect: createMock(),
     query: createMock(),
     end: createMock(),

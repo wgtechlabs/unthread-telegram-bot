@@ -1,7 +1,7 @@
 /**
  * Unit tests for commands/utils/commandExecutor.ts
  */
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import { clearAllMocks, createMock } from './_helpers/mockLifecycle';
 import type { BotContext } from '../types/index.js';
 import { 
@@ -25,12 +25,6 @@ mock.module('../commands/base/CommandRegistry.js', () => ({
   }
 }));
 
-mock.module('../utils/errorContextBuilder.js', () => ({
-  ErrorContextBuilder: {
-    forCommand: createMock()
-  }
-}));
-
 // Import mocked modules 
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { commandRegistry } from '../commands/base/CommandRegistry.js';
@@ -38,11 +32,17 @@ import { ErrorContextBuilder } from '../utils/errorContextBuilder.js';
 
 describe('commandExecutor utilities', () => {
   let mockCtx: BotContext;
+  let forCommandSpy: ReturnType<typeof spyOn>;
+
+  afterAll(() => {
+    mock.restore();
+  });
 
   beforeEach(() => {
     (commandRegistry.execute as any).mockReset();
-    (ErrorContextBuilder.forCommand as any).mockReset();
     (LogEngine.error as any).mockReset();
+    forCommandSpy = spyOn(ErrorContextBuilder, 'forCommand');
+    (forCommandSpy as any).mockReset();
     
     mockCtx = {
       message: { text: 'test command' },
@@ -72,7 +72,7 @@ describe('commandExecutor utilities', () => {
         const error = new Error('Command failed');
         
         (commandRegistry.execute as any).mockRejectedValue(error);
-        (ErrorContextBuilder.forCommand as any).mockReturnValue({ 
+        (forCommandSpy as any).mockReturnValue({ 
           error: 'Command failed',
           errorType: 'command-error'
         });
@@ -81,7 +81,7 @@ describe('commandExecutor utilities', () => {
         const result = await executor(mockCtx);
 
         expect((commandRegistry.execute as any)).toHaveBeenCalledWith(commandName, mockCtx);
-        expect((ErrorContextBuilder.forCommand as any)).toHaveBeenCalledWith(error, mockCtx, commandName);
+        expect((forCommandSpy as any)).toHaveBeenCalledWith(error, mockCtx, commandName);
         expect(LogEngine.error).toHaveBeenCalledWith(
           'Command failingCommand failed', 
           { error: 'Command failed', errorType: 'command-error' }
@@ -98,7 +98,7 @@ describe('commandExecutor utilities', () => {
         };
 
         (commandRegistry.execute as any).mockRejectedValue(error);
-        (ErrorContextBuilder.forCommand as any).mockReturnValue({ 
+        (forCommandSpy as any).mockReturnValue({ 
           error: 'Command failed',
           errorType: 'command-error' 
         });
@@ -136,7 +136,7 @@ describe('commandExecutor utilities', () => {
         const defaultReturn = true;
         
         (commandRegistry.execute as any).mockRejectedValue(error);
-        (ErrorContextBuilder.forCommand as any).mockReturnValue({ 
+        (forCommandSpy as any).mockReturnValue({ 
           error: 'Command failed',
           errorType: 'command-error' 
         });
@@ -155,7 +155,7 @@ describe('commandExecutor utilities', () => {
         const error = new Error('Command failed');
         
         (commandRegistry.execute as any).mockRejectedValue(error);
-        (ErrorContextBuilder.forCommand as any).mockReturnValue({ 
+        (forCommandSpy as any).mockReturnValue({ 
           error: 'Command failed',
           errorType: 'command-error' 
         });
@@ -173,7 +173,7 @@ describe('commandExecutor utilities', () => {
         const error = new Error('Command failed');
         
         (commandRegistry.execute as any).mockRejectedValue(error);
-        (ErrorContextBuilder.forCommand as any).mockReturnValue({ 
+        (forCommandSpy as any).mockReturnValue({ 
           error: 'Command failed',
           errorType: 'command-error' 
         });
@@ -211,7 +211,7 @@ describe('commandExecutor utilities', () => {
       const error = new Error('Processor failed');
       
       (commandRegistry.execute as any).mockRejectedValue(error);
-      (ErrorContextBuilder.forCommand as any).mockReturnValue({ 
+      (forCommandSpy as any).mockReturnValue({ 
         error: 'Processor failed',
         errorType: 'processor-error' 
       });

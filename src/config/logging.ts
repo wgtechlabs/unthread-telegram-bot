@@ -11,11 +11,13 @@
 import { LogEngine } from '@wgtechlabs/log-engine';
 
 // Configure LogEngine to use local timezone only BEFORE any other imports
-LogEngine.configure({
-    format: {
-        includeIsoTimestamp: false,
-        includeLocalTime: true
-    }
-});
+if (typeof (LogEngine as { configure?: unknown }).configure === 'function') {
+    LogEngine.configure({
+        format: {
+            includeIsoTimestamp: false,
+            includeLocalTime: true
+        }
+    });
+}
 
 export { LogEngine };

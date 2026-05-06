@@ -46,6 +46,8 @@ export function restoreAllMocks(): void {
       m.mockClear();
     }
   }
+
+  // Also restore module/spies managed by Bun to avoid cross-file mock leakage.
   bunMock.restore();
   bunMock.clearAllMocks();
 }
@@ -60,5 +62,4 @@ export function clearAllMocks(): void {
       m.mockClear();
     }
   }
-  bunMock.clearAllMocks();
 }

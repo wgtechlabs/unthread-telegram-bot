@@ -1,7 +1,7 @@
 /**
  * Unit tests for commands/basic/StateCommands.ts
  */
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it , mock} from 'bun:test';
 import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import type { BotContext } from '../types/index.js';
 import { CancelCommand, ResetCommand } from '../commands/basic/StateCommands.js';

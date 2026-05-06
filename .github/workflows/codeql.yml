@@ -1,12 +1,8 @@
 name: CodeQL
 
 on:
-  pull_request:
-    branches: [dev, main]
-  push:
-    branches: [dev, main]
   schedule:
-    - cron: '0 6 * * 1'
+    - cron: "0 6 * * 1"
   workflow_call:
   workflow_dispatch:
 
@@ -24,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4

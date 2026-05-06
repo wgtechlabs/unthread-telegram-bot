@@ -4,7 +4,7 @@
  * Comprehensive test coverage for support ticket creation functionality.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it , mock} from 'bun:test';
 import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import { SupportCommand } from '../commands/support/SupportCommandClean.js';
 import type { BotContext } from '../types/index.js';

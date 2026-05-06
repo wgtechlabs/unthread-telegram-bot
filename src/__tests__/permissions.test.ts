@@ -5,9 +5,8 @@
  * admin validation, bot permissions, and access control.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it , mock} from 'bun:test';
 import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
-import { validateAdminAccess } from '../utils/permissions.js';
 import type { BotContext } from '../types/index.js';
 
 // Mock dependencies
@@ -30,9 +29,11 @@ mock.module('../bot.js', () => ({
 
 describe('Permissions Module', () => {
   let mockContext: Partial<BotContext>;
+  let validateAdminAccess: (_ctx: BotContext) => Promise<boolean>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     clearAllMocks();
+    validateAdminAccess = (await import('../utils/permissions.js')).validateAdminAccess;
     
     mockContext = {
       from: {

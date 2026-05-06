@@ -533,7 +533,7 @@ export async function getBotPermissionSummary(ctx: BotContext): Promise<{
   chatType: string;
   botStatus: string;
   isAdmin: boolean;
-  permissions?: any;
+  permissions?: Record<string, unknown>;
 }> {
   try {
     if (!ctx.chat) {
@@ -547,13 +547,16 @@ export async function getBotPermissionSummary(ctx: BotContext): Promise<{
 
     const botUser = await ctx.telegram.getMe();
     const chatMember = await ctx.telegram.getChatMember(ctx.chat.id, botUser.id);
+    const permissions = 'permissions' in chatMember
+      ? chatMember.permissions as Record<string, unknown>
+      : undefined;
     
     return {
       chatId: ctx.chat.id,
       chatType: ctx.chat.type,
       botStatus: chatMember.status,
       isAdmin: chatMember.status === 'administrator' || chatMember.status === 'creator',
-      permissions: 'permissions' in chatMember ? chatMember.permissions : undefined
+      ...(permissions ? { permissions } : {})
     };
   } catch (error) {
     LogEngine.error('[BotPermissions] Error getting permission summary:', error);

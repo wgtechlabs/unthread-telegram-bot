@@ -1,22 +1,17 @@
-name: Container Build
+name: Container
 
 on:
   pull_request:
-    branches: [main, dev]
+    branches: [ dev, main ]
   push:
-    branches: [main, dev]
+    branches: [ dev, main ]
   release:
-    types: [published]
+    types: [ published ]
   workflow_dispatch:
 
 concurrency:
   group: Container-${{ github.ref }}
   cancel-in-progress: true
-
-permissions:
-  contents: read
-  packages: write
-  pull-requests: write
 
 jobs:
   ci:
@@ -37,32 +32,23 @@ jobs:
   build:
     name: Build Container Images
     runs-on: ubuntu-latest
-    needs: [ci, codeql]
+    needs: [ ci, codeql ]
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+      pull-requests: write
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Check Dockerfile
-        id: dockerfile
-        run: |
-          if [ -f Dockerfile ]; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "Dockerfile not found. Skipping container build." >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Build and push container
-        if: steps.dockerfile.outputs.exists == 'true'
-        uses: wgtechlabs/container-build-flow-action@v1.8.0
+      - name: Build and Push Container
+        uses: wgtechlabs/container-build-flow-action@v1.8.1
         with:
           registry: both
           dockerhub-username: ${{ secrets.DOCKER_HUB_USERNAME }}
           dockerhub-token: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
           ghcr-token: ${{ github.token }}
           floating-tags: true
-          pre-build-scan-enabled: false
-          image-scan-enabled: false
-          upload-sarif: false
-          vulnerability-comment-enabled: false
+          release-platforms: linux/amd64

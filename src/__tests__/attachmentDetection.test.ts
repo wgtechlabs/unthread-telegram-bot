@@ -5,7 +5,7 @@
  * event validation, attachment detection, image processing, and metadata handling.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it , mock} from 'bun:test';
 import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import { AttachmentDetectionService } from '../services/attachmentDetection.js';
 import { WebhookEvent } from '../types/webhookEvents.js';
@@ -21,12 +21,12 @@ mock.module('@wgtechlabs/log-engine', () => ({
 }));
 
 mock.module('../config/env.js', () => ({
-  getImageProcessingConfig: createMock().mockReturnValue({
+  getImageProcessingConfig: createMock(() => ({
     enabled: true,
     maxSize: 10485760, // 10MB
     supportedFormats: ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'],
     quality: 85
-  })
+  }))
 }));
 
 describe('AttachmentDetectionService', () => {
@@ -93,6 +93,46 @@ describe('AttachmentDetectionService', () => {
   });
 
   describe('hasAttachments', () => {
+    it('should resolve metadata-only dashboard attachments when data.files is null', () => {
+      const event = {
+        sourcePlatform: 'dashboard',
+        targetPlatform: 'telegram',
+        eventType: 'message',
+        timestamp: new Date().toISOString(),
+        data: {
+          files: null,
+          metadata: {
+            event_payload: {
+              attachments: [
+                {
+                  id: '54bd8bbf-b579-49ef-8d1f-df175b60a3b4',
+                  name: 'image.png',
+                  size: '3774156',
+                  type: 'image/png'
+                }
+              ]
+            }
+          }
+        }
+      } as unknown as WebhookEvent;
+
+      expect(AttachmentDetectionService.hasAttachments(event)).toBe(true);
+      expect(AttachmentDetectionService.getFileCount(event)).toBe(1);
+      expect(AttachmentDetectionService.getFileTypes(event)).toEqual(['image/png']);
+      expect(AttachmentDetectionService.getFileNames(event)).toEqual(['image.png']);
+      expect(AttachmentDetectionService.getProcessableFiles(event)).toEqual([
+        {
+          id: '54bd8bbf-b579-49ef-8d1f-df175b60a3b4',
+          name: 'image.png',
+          title: 'image.png',
+          size: 3774156,
+          mimetype: 'image/png',
+          type: 'image/png',
+          filetype: 'image/png'
+        }
+      ]);
+    });
+
     it('should return true when event has attachments', () => {
       const event: WebhookEvent = {
         sourcePlatform: 'dashboard',

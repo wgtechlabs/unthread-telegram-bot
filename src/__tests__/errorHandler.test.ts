@@ -1,7 +1,7 @@
 /**
  * Unit tests for commands/utils/errorHandler.ts
  */
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it , mock} from 'bun:test';
 import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import {
   ERROR_CODES,
@@ -10,7 +10,7 @@ import {
   createUserErrorMessage,
   getErrorDetails,
   logError
-} from '../commands/utils/errorHandler.js';
+} from '../commands/utils/errorHandler.ts';
 
 // Mock LogEngine
 mock.module('@wgtechlabs/log-engine', () => ({

@@ -1,7 +1,7 @@
 /**
  * Unit tests for commands/base/BaseCommand.ts
  */
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock , spyOn} from 'bun:test';
 import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import type { BotContext } from '../types/index.js';
 import { 
@@ -23,12 +23,25 @@ mock.module('@wgtechlabs/log-engine', () => ({
 }));
 
 mock.module('../config/env.js', () => ({
-  getConfiguredBotUsername: createMock(() => 'test-bot'),
+  getConfiguredBotUsername: createMock(() => {
+    const username = process.env.BOT_USERNAME?.trim();
+    if (!username) {
+      return null;
+    }
+    const placeholders = new Set([
+      'your_bot_username_here',
+      'your_bot_username',
+      'bot_username_here',
+      'placeholder',
+      'change_me',
+      'replace_me'
+    ]);
+    if (placeholders.has(username.toLowerCase())) {
+      return null;
+    }
+    return /^[a-zA-Z0-9_]{5,32}$/.test(username) ? username : null;
+  }),
   isAdminUser: createMock(() => false)
-}));
-
-mock.module('../utils/permissions.js', () => ({
-  validateAdminAccess: createMock(() => Promise.resolve(true))
 }));
 
 // Mock dynamic import of BotsStore
@@ -40,7 +53,7 @@ mock.module('../sdk/bots-brain/index.js', () => ({
 
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { isAdminUser } from '../config/env.js';
-import { validateAdminAccess } from '../utils/permissions.js';
+import * as permissionsModule from '../utils/permissions.js';
 
 // Test implementation of BaseCommand
 class TestCommand extends BaseCommand {
@@ -62,7 +75,7 @@ class TestCommand extends BaseCommand {
   public handleErrorSpy = mock();
 
   protected async executeCommand(ctx: BotContext): Promise<void> {
-    this.executeCommandSpy(ctx);
+    await this.executeCommandSpy(ctx);
   }
 
   // Expose protected methods for testing
@@ -131,9 +144,12 @@ describe('BaseCommand', () => {
   let mockCtx: BotContext;
   let testCommand: TestCommand;
   let setupRequiredCommand: SetupRequiredCommand;
+  let validateAdminAccessSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
     clearAllMocks();
+    validateAdminAccessSpy = spyOn(permissionsModule, 'validateAdminAccess');
+    (validateAdminAccessSpy as any).mockResolvedValue(true);
     
     mockCtx = {
       from: { id: 123, first_name: 'Test', is_bot: false },
@@ -211,7 +227,7 @@ describe('BaseCommand', () => {
 
     it('should handle unauthorized access for admin commands', async () => {
       (isAdminUser as any).mockReturnValue(false);
-      (validateAdminAccess as any).mockResolvedValue(false);
+      (validateAdminAccessSpy as any).mockResolvedValue(false);
 
       const adminCommand = new AdminCommand();
       await adminCommand.execute(mockCtx);
@@ -226,17 +242,14 @@ describe('BaseCommand', () => {
       expect(testCommand.executeCommandSpy).not.toHaveBeenCalled();
     });
 
-    it.skip('should handle errors during execution', async () => {
-      // This test is skipped due to mocking complexity
-      // The error handling path is tested implicitly through other tests
+    it('should handle errors during execution', async () => {
       const error = new Error('Test error');
       testCommand.executeCommandSpy.mockRejectedValue(error);
 
-      const handleErrorSpy = spyOn(testCommand, 'handleError' as any);
-      
       await testCommand.execute(mockCtx);
 
-      expect(handleErrorSpy).toHaveBeenCalledWith(mockCtx, error);
+      expect(testCommand.handleErrorSpy).toHaveBeenCalledWith(mockCtx, error);
+      expect(testCommand.executeCommandSpy).toHaveBeenCalledWith(mockCtx);
     });
 
     it('should log execution time on completion', async () => {
@@ -293,12 +306,12 @@ describe('BaseCommand', () => {
       // Change chat type to group to trigger validateAdminAccess
       mockCtx.chat = { id: 456, type: 'group' } as any;
       (isAdminUser as any).mockReturnValue(true);
-      (validateAdminAccess as any).mockResolvedValue(true);
+      (validateAdminAccessSpy as any).mockResolvedValue(true);
 
       const adminCommand = new AdminCommand();
       await adminCommand.execute(mockCtx);
       
-      expect(validateAdminAccess).toHaveBeenCalledWith(mockCtx);
+      expect(validateAdminAccessSpy).toHaveBeenCalledWith(mockCtx);
     });
   });
 

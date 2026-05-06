@@ -55,7 +55,7 @@ import type { BotContext, WebhookEvent } from '../types/index.js';
 import type { IBotsStore } from '../sdk/types.js';
 import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 import { escapeMarkdown } from '../utils/markdownEscape.js';
-import { downloadUnthreadImage } from '../services/unthread.js';
+import { downloadAttachmentFromUnthread, downloadUnthreadFileFromUrl, downloadUnthreadImage } from '../services/unthread.js';
 import { attachmentHandler } from '../utils/attachmentHandler.js';
 import { type ImageProcessingConfig, getImageProcessingConfig, getSlackTeamId } from '../config/env.js';
 import { AttachmentDetectionService } from '../services/attachmentDetection.js';
@@ -75,6 +75,8 @@ interface SlackFile {
   type?: string;        // Alternative type field
   size?: number;        // File size in bytes
 }
+
+const SLACK_FILE_ID_PATTERN = /^F[A-Z0-9]+$/;
 
 /**
  * Type guard to safely validate and narrow SlackFile objects
@@ -886,47 +888,71 @@ export class TelegramWebhookHandler {
    */
   private async downloadAndForwardSlackFile(params: {
     conversationId: string;
-    fileId: string;
+    fileId?: string;
     fileName: string;
     fileSize: number;
     mimeType: string;
     chatId: number;
     replyToMessageId: number;
+    downloadUrl?: string;
   }): Promise<void> {
-    const { conversationId, fileId, fileName, fileSize, mimeType, chatId, replyToMessageId } = params;
+    const { conversationId, fileId, fileName, fileSize, mimeType, chatId, replyToMessageId, downloadUrl } = params;
+    const normalizedFileId = typeof fileId === 'string' ? fileId.trim() : '';
+    const safeDownloadUrl = typeof downloadUrl === 'string' && downloadUrl.startsWith('https://api.unthread.io/api/')
+      ? downloadUrl
+      : '';
     
-    LogEngine.info('Starting Slack file download and forward', {
+    LogEngine.info('Starting Unthread file download and forward', {
       conversationId,
-      fileId,
+      fileId: normalizedFileId || 'missing',
       fileName,
       fileSize,
       mimeType,
       chatId,
-      method: 'slack-thumbnail-endpoint'
+      method: SLACK_FILE_ID_PATTERN.test(normalizedFileId)
+        ? 'slack-thumbnail-endpoint'
+        : safeDownloadUrl
+          ? 'direct-url'
+          : 'conversation-file-endpoint'
     });
 
     try {
-      // Use Unthread's Slack file thumbnail endpoint for Slack file IDs
-      // Endpoint: https://api.unthread.io/api/slack/files/{fileId}/thumb?thumbSize={config}&teamId={teamId}
       const thumbnailSize = this.imageConfig.thumbnailSize; // Use centralized thumbnail size configuration
-      
-      const downloadBuffer = await downloadUnthreadImage(
-        fileId,
-        this.teamId,
-        fileName,
-        thumbnailSize // Use thumbnail size parameter
-      );
+      let downloadBuffer: Buffer;
 
-      if (!downloadBuffer || downloadBuffer.length === 0) {
-        throw new Error('Slack file download returned empty or invalid data');
+      if (normalizedFileId && SLACK_FILE_ID_PATTERN.test(normalizedFileId)) {
+        downloadBuffer = await downloadUnthreadImage(
+          normalizedFileId,
+          this.teamId,
+          fileName,
+          thumbnailSize
+        );
+      } else if (safeDownloadUrl) {
+        downloadBuffer = await downloadUnthreadFileFromUrl(safeDownloadUrl, fileName);
+      } else if (normalizedFileId) {
+        downloadBuffer = await downloadAttachmentFromUnthread(
+          conversationId,
+          normalizedFileId,
+          fileName
+        );
+      } else {
+        throw new Error('Missing file identifier and direct download URL from webhook payload');
       }
 
-      LogEngine.info('Slack file downloaded successfully', {
+      if (!downloadBuffer || downloadBuffer.length === 0) {
+        throw new Error('Unthread file download returned empty or invalid data');
+      }
+
+      LogEngine.info('Unthread file downloaded successfully', {
         conversationId,
-        fileId,
+        fileId: normalizedFileId || 'direct-url',
         fileName,
         downloadedSize: downloadBuffer.length,
-        method: 'slack-thumbnail-endpoint'
+        method: safeDownloadUrl
+          ? 'direct-url'
+          : SLACK_FILE_ID_PATTERN.test(normalizedFileId)
+            ? 'slack-thumbnail-endpoint'
+            : 'conversation-file-endpoint'
       });
 
       // Forward to Telegram using existing attachment handler infrastructure
@@ -946,23 +972,23 @@ export class TelegramWebhookHandler {
       );
 
       if (uploadSuccess) {
-        LogEngine.info('Slack file successfully forwarded to Telegram', {
+        LogEngine.info('Unthread file successfully forwarded to Telegram', {
           conversationId,
-          fileId,
+          fileId: normalizedFileId || 'direct-url',
           fileName,
           finalSize: fileBuffer.size,
           chatId,
           status: 'Complete'
         });
       } else {
-        throw new Error('Failed to upload Slack file to Telegram');
+        throw new Error('Failed to upload Unthread file to Telegram');
       }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      LogEngine.error('Failed to download and forward Slack file', {
+      LogEngine.error('Failed to download and forward Unthread file', {
         conversationId,
-        fileId,
+        fileId: normalizedFileId || 'missing',
         fileName,
         error: errorMessage,
         chatId
@@ -1310,7 +1336,7 @@ export class TelegramWebhookHandler {
     const fileNames = AttachmentDetectionService.getFileNames(event);
     const fileTypes = AttachmentDetectionService.getFileTypes(event);
     const totalSize = AttachmentDetectionService.getTotalSize(event);
-    const files = event.data.files;
+    const files = AttachmentDetectionService.getProcessableFiles(event);
 
     LogEngine.debug('Metadata extraction completed', {
       conversationId,
@@ -1322,7 +1348,7 @@ export class TelegramWebhookHandler {
     });
 
     if (!files || files.length === 0) {
-      LogEngine.warn('No files array found despite attachment metadata', {
+      LogEngine.warn('No files resolved from attachment metadata', {
         conversationId,
         metadataFileCount: AttachmentDetectionService.getFileCount(event),
         inconsistency: true
@@ -1491,30 +1517,34 @@ export class TelegramWebhookHandler {
 
     const fileId = (typeof file.id === 'string') ? file.id.trim() : '';
     const fileSize = Number(file.size) || 0;
+    const downloadUrl = (typeof file.urlPrivateDownload === 'string' && file.urlPrivateDownload.trim().length > 0)
+      ? file.urlPrivateDownload.trim()
+      : (typeof file.urlPrivate === 'string' && file.urlPrivate.trim().length > 0)
+        ? file.urlPrivate.trim()
+        : '';
     
-    // Validate only for non-empty identifier to stay compatible with evolving upstream formats.
-    if (!fileId) {
-      throw new Error('Missing file identifier from webhook payload');
+    if (!fileId && !downloadUrl) {
+      throw new Error('Missing file identifier and download URL from webhook payload');
     }
 
     LogEngine.info('Processing image file', {
       conversationId,
-      fileId,
+      fileId: fileId || 'direct-url',
       fileName,
       fileSize,
       fileType,
       progress: `${fileIndex}/${totalFiles}`
     });
 
-    // Use Slack thumbnail endpoint for image download
     await this.downloadAndForwardSlackFile({
       conversationId,
-      fileId,
+      ...(fileId ? { fileId } : {}),
       fileName,
       fileSize,
       mimeType: fileType,
       chatId,
-      replyToMessageId
+      replyToMessageId,
+      ...(downloadUrl ? { downloadUrl } : {})
     });
   }
 

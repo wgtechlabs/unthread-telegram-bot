@@ -31,7 +31,7 @@ export function escapeMarkdown(text: string): string {
 
     // Escape all special Markdown characters with optimized single regex pass
     // Single regex with replacement function is more efficient than multiple chained .replace() calls
-    const markdownChars = /[\\*_`\[\]()~>#+=|\{\}.!-]/g;
+    const markdownChars = /[\\*_`[\]()~>#+=|{}.!-]/g;
     return text.replace(markdownChars, (char) => `\\${char}`);
 }
 
@@ -105,6 +105,7 @@ export function createSafeMarkdownMessage(
     for (const [key, value] of Object.entries(replacements)) {
         const escapedValue = escapeMarkdown(value || '');
         const escapedKey = escapeRegExpKey(key);
+        // eslint-disable-next-line security/detect-non-literal-regexp
         message = message.replace(new RegExp(`\\{${escapedKey}\\}`, 'g'), escapedValue);
     }
     

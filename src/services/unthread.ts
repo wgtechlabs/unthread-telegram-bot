@@ -45,7 +45,7 @@
  * @since 2025
  */
 
-import fetch from 'node-fetch';
+import fetch, { type Response as FetchResponse } from 'node-fetch';
 import FormData from 'form-data';
 import fs from 'fs';
 import path from 'path';
@@ -266,7 +266,9 @@ function formatCustomerNameForDisplay(name: string): string {
 
 // API URLs and Auth Keys
 const API_BASE_URL = 'https://api.unthread.io/api';
+// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 const UNTHREAD_API_KEY = process.env.UNTHREAD_API_KEY!;
+// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 const CHANNEL_ID = process.env.UNTHREAD_SLACK_CHANNEL_ID!;
 
 // Customer ID cache to avoid creating duplicates
@@ -312,6 +314,121 @@ class LRUCache<K, V> {
 
 // URLSearchParams cache for image download requests with size limit
 const downloadQueryCache = new LRUCache<string, string>(50);
+const ATTACHMENT_DOWNLOAD_RETRY_ATTEMPTS = 8;
+const ATTACHMENT_DOWNLOAD_RETRY_DELAY_MS = 1000;
+
+function isUnthreadApiUrl(downloadUrl: string): boolean {
+    try {
+        const target = new URL(downloadUrl);
+        const apiOrigin = new URL(API_BASE_URL);
+        return target.origin === apiOrigin.origin;
+    } catch {
+        return false;
+    }
+}
+
+function shouldRetryAttachmentDownload(status: number): boolean {
+    return status === 404 || status === 409 || status === 425;
+}
+
+async function delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchUnthreadFileWithRetry(
+    downloadUrl: string,
+    headers: Record<string, string>,
+    fileLabel: string
+): Promise<FetchResponse> {
+    const timeoutMs = getImageProcessingConfig().downloadTimeout;
+    for (let attempt = 1; attempt <= ATTACHMENT_DOWNLOAD_RETRY_ATTEMPTS; attempt++) {
+        const abortController = new AbortController();
+        const timer = setTimeout(() => abortController.abort(), timeoutMs);
+
+        let response: FetchResponse;
+        try {
+            response = await fetch(downloadUrl, { headers, signal: abortController.signal });
+        } finally {
+            clearTimeout(timer);
+        }
+
+        if (
+            response.ok ||
+            !shouldRetryAttachmentDownload(response.status) ||
+            attempt === ATTACHMENT_DOWNLOAD_RETRY_ATTEMPTS
+        ) {
+            return response;
+        }
+
+        // Drain the response body to release the underlying socket before retrying
+        try {
+                await response.arrayBuffer();
+        } catch {
+            // Ignore drain errors; connection will be cleaned up eventually
+        }
+
+        LogEngine.debug('Unthread file not ready yet, retrying', {
+            status: response.status,
+            fileLabel,
+            attempt,
+            maxAttempts: ATTACHMENT_DOWNLOAD_RETRY_ATTEMPTS
+        });
+        await delay(ATTACHMENT_DOWNLOAD_RETRY_DELAY_MS);
+    }
+
+    throw new Error('Unthread file retry loop exhausted unexpectedly');
+}
+
+async function downloadUnthreadFileBuffer(
+    downloadUrl: string,
+    fileLabel: string,
+    maxSizeBytes: number
+): Promise<Buffer> {
+    if (!UNTHREAD_API_KEY) {
+        throw new Error('UNTHREAD_API_KEY environment variable is not set');
+    }
+
+    const response = await fetchUnthreadFileWithRetry(
+        downloadUrl,
+        {
+            'X-API-KEY': UNTHREAD_API_KEY,
+            'User-Agent': 'unthread-telegram-bot/2.0.0-image-flow'
+        },
+        fileLabel
+    );
+
+    if (!response.ok) {
+        let errorMessage = `Unthread API error: ${response.status} ${response.statusText}`;
+        try {
+            const errorBody = await response.text();
+            if (errorBody) {
+                errorMessage += ` - Response body: ${errorBody}`;
+            }
+        } catch (bodyError) {
+            LogEngine.warn('Failed to read Unthread file error response body', { bodyError });
+        }
+        throw new Error(errorMessage);
+    }
+
+    const contentLengthHeader = response.headers.get('content-length');
+    if (contentLengthHeader) {
+        const contentLength = Number.parseInt(contentLengthHeader, 10);
+        if (Number.isFinite(contentLength) && contentLength > maxSizeBytes) {
+            throw new Error(`File too large: ${contentLength} bytes (max: ${maxSizeBytes})`);
+        }
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length === 0) {
+        throw new Error('Downloaded file is empty');
+    }
+
+    if (buffer.length > maxSizeBytes) {
+        throw new Error(`File too large: ${buffer.length} bytes (max: ${maxSizeBytes})`);
+    }
+
+    return buffer;
+}
 
 /**
  * Creates a new customer in Unthread using the extracted company name from a Telegram group chat title.
@@ -329,7 +446,7 @@ export async function createCustomer(groupChatName: string): Promise<Customer> {
             headers:
  {
                 'Content-Type': 'application/json',
-                'X-API-KEY': UNTHREAD_API_KEY!
+                'X-API-KEY': UNTHREAD_API_KEY
             },
             body: JSON.stringify({
                 name: customerName
@@ -403,7 +520,7 @@ async function createTicketJSON(params: CreateTicketJSONParams): Promise<CreateT
         title: title,
         markdown: summary,
         status: "open",
-        channelId: CHANNEL_ID!,
+        channelId: CHANNEL_ID,
         customerId: customerId,
         onBehalfOf: onBehalfOf
     };
@@ -417,7 +534,7 @@ async function createTicketJSON(params: CreateTicketJSONParams): Promise<CreateT
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-API-KEY': UNTHREAD_API_KEY!
+            'X-API-KEY': UNTHREAD_API_KEY
         },
         body: JSON.stringify(payload)
     });
@@ -446,7 +563,7 @@ async function createTicketJSON(params: CreateTicketJSONParams): Promise<CreateT
  * @param params - Contains the conversation ID, message content, and user information.
  * @returns The API response for the sent message.
  */
-export async function sendMessage(params: SendMessageParams): Promise<any> {
+export async function sendMessage(params: SendMessageParams): Promise<unknown> {
     try {
         return await sendMessageJSON(params);
     } catch (error) {
@@ -465,6 +582,7 @@ export async function sendMessage(params: SendMessageParams): Promise<any> {
  * @returns The response data from the Unthread API after sending the message.
  * @throws If the API request fails or returns a non-OK status.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function sendMessageJSON(params: SendMessageJSONParams): Promise<any> {
     const { conversationId, message, onBehalfOf } = params;
     
@@ -480,7 +598,7 @@ async function sendMessageJSON(params: SendMessageJSONParams): Promise<any> {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-API-KEY': UNTHREAD_API_KEY!
+            'X-API-KEY': UNTHREAD_API_KEY
         },
         body: JSON.stringify(payload)
     });
@@ -966,7 +1084,7 @@ export async function validateCustomerExists(customerId: string): Promise<{
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
-                'X-API-KEY': UNTHREAD_API_KEY!
+                'X-API-KEY': UNTHREAD_API_KEY
             }
         });
 
@@ -1063,7 +1181,7 @@ export async function createCustomerWithName(customerName: string): Promise<Cust
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-API-KEY': UNTHREAD_API_KEY!
+                'X-API-KEY': UNTHREAD_API_KEY
             },
             body: JSON.stringify({
                 name: trimmedName
@@ -1103,6 +1221,7 @@ export async function createCustomerWithName(customerName: string): Promise<Cust
  * @param operation - A description of the operation that failed
  * @returns A formatted, user-friendly error message describing the issue
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function handleUnthreadApiError(error: any, operation: string): string {
     const err = error as Error;
     
@@ -1267,6 +1386,7 @@ export async function downloadUnthreadImage(
 
         // Create AbortController with timeout for robust request handling
         // Using type assertion for Node.js 20+ global AbortController
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const abortController = new (globalThis as any).AbortController();
         const timeout = setTimeout(() => {
             abortController.abort();
@@ -1373,27 +1493,62 @@ export async function downloadUnthreadImage(
     }
 }
 
-/**
- * @deprecated Use downloadUnthreadImage for image files specifically
- * Legacy function maintained for backward compatibility
- */
 export async function downloadAttachmentFromUnthread(
     conversationId: string,
     fileId: string,
-    expectedFileName?: string
+    expectedFileName?: string,
+    maxSizeBytes: number = getImageProcessingConfig().maxImageSize
 ): Promise<Buffer> {
-    
-    LogEngine.warn('downloadAttachmentFromUnthread called - redirecting to image-specific function', {
+    LogEngine.info('Starting conversation-scoped Unthread attachment download', {
         conversationId,
         fileId,
         expectedFileName,
-        recommendation: 'Use downloadUnthreadImage for better image handling'
+        maxSizeBytes,
+        method: 'conversation-file-endpoint'
     });
-    
-    throw new Error(
-        'This function is deprecated. Use downloadUnthreadImage() for image files. ' +
-        'Generic file download is not implemented - images only for this release.'
-    );
+
+    if (!conversationId || !fileId) {
+        throw new Error('conversationId and fileId are required for Unthread attachment download');
+    }
+
+    const endpoint = `${API_BASE_URL}/conversations/${encodeURIComponent(conversationId)}/files/${encodeURIComponent(fileId)}/full`;
+    const buffer = await downloadUnthreadFileBuffer(endpoint, expectedFileName || fileId, maxSizeBytes);
+
+    LogEngine.info('Conversation-scoped Unthread attachment download successful', {
+        conversationId,
+        fileId,
+        expectedFileName,
+        size: buffer.length,
+        method: 'conversation-file-endpoint'
+    });
+
+    return buffer;
+}
+
+export async function downloadUnthreadFileFromUrl(
+    downloadUrl: string,
+    expectedFileName?: string,
+    maxSizeBytes: number = getImageProcessingConfig().maxImageSize
+): Promise<Buffer> {
+    LogEngine.info('Starting direct Unthread file download', {
+        expectedFileName,
+        maxSizeBytes,
+        method: 'direct-url'
+    });
+
+    if (!downloadUrl || !isUnthreadApiUrl(downloadUrl)) {
+        throw new Error('Download URL must target the Unthread API origin');
+    }
+
+    const buffer = await downloadUnthreadFileBuffer(downloadUrl, expectedFileName || downloadUrl, maxSizeBytes);
+
+    LogEngine.info('Direct Unthread file download successful', {
+        expectedFileName,
+        size: buffer.length,
+        method: 'direct-url'
+    });
+
+    return buffer;
 }
 
 /**
@@ -1403,6 +1558,7 @@ export async function downloadAttachmentFromUnthread(
  * @returns The API response for the sent message with attachments.
  * @throws If the API request fails or file paths are invalid.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function sendMessageWithAttachments(params: SendMessageWithAttachmentsParams): Promise<any> {
     try {
         LogEngine.info('Sending message with attachments to Unthread', {
@@ -1460,6 +1616,7 @@ export async function createTicketWithBufferAttachments(params: CreateTicketWith
  * @returns The response data from the Unthread API.
  * @throws If the API request fails or files cannot be read.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function sendMessageMultipart(params: SendMessageWithAttachmentsParams): Promise<any> {
     const { conversationId, message, onBehalfOf, filePaths } = params;
 
@@ -1479,12 +1636,14 @@ async function sendMessageMultipart(params: SendMessageWithAttachmentsParams): P
 
     // Add each file to the form using buffer-based approach
     for (const filePath of filePaths) {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename
         if (!fs.existsSync(filePath)) {
             LogEngine.warn('File not found, skipping attachment', { filePath });
             continue;
         }
 
         const fileName = path.basename(filePath);
+        // eslint-disable-next-line security/detect-non-literal-fs-filename
         const fileBuffer = fs.readFileSync(filePath);
         form.append('attachments', fileBuffer, fileName);
         
@@ -1495,7 +1654,7 @@ async function sendMessageMultipart(params: SendMessageWithAttachmentsParams): P
     const response = await fetch(`${API_BASE_URL}/conversations/${conversationId}/messages`, {
         method: 'POST',
         headers: {
-            'X-API-KEY': UNTHREAD_API_KEY!,
+            'X-API-KEY': UNTHREAD_API_KEY,
             ...form.getHeaders()
         },
         body: form
@@ -1506,6 +1665,7 @@ async function sendMessageMultipart(params: SendMessageWithAttachmentsParams): P
         throw new Error(`Failed to send message with attachments: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await response.json() as any;
     
     LogEngine.info('Message with attachments sent successfully', {
@@ -1611,7 +1771,7 @@ async function createTicketMultipartBuffer(params: CreateTicketWithBufferAttachm
             const messageResponse = await fetch(`${API_BASE_URL}/conversations/${ticket.id}/messages`, {
                 method: 'POST',
                 headers: {
-                    'X-API-KEY': UNTHREAD_API_KEY!,
+                    'X-API-KEY': UNTHREAD_API_KEY,
                     ...form.getHeaders()
                 },
                 body: form
@@ -1632,6 +1792,7 @@ async function createTicketMultipartBuffer(params: CreateTicketWithBufferAttachm
                     friendlyId: ticket.friendlyId
                 });
             } else {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const messageResult = await messageResponse.json() as any;
                 LogEngine.info('Step 2 completed: Attachments sent successfully as message', {
                     conversationId: ticket.id,

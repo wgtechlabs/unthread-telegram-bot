@@ -5,7 +5,7 @@
  * validation, direct setting, and usage instructions.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it , mock} from 'bun:test';
 import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import { SetEmailCommand } from '../commands/basic/SetEmailCommand.js';
 import type { BotContext } from '../types/index.js';

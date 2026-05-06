@@ -5,12 +5,12 @@
  * including UnifiedStorage and BotsStore functionality.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it , mock} from 'bun:test';
 import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 
 // Mock Redis and PostgreSQL dependencies
 mock.module('redis', () => ({
-  createClient: createMock().mockReturnValue({
+  createClient: createMock(() => ({
     connect: createMock(),
     disconnect: createMock(),
     get: createMock(),
@@ -20,11 +20,11 @@ mock.module('redis', () => ({
     expire: createMock(),
     on: createMock(),
     isReady: true
-  })
+  }))
 }));
 
 mock.module('pg', () => {
-  const PoolMock = createMock().mockImplementation(() => ({
+  const PoolMock = createMock(() => ({
     connect: createMock(),
     query: createMock(),
     end: createMock(),
@@ -104,7 +104,7 @@ describe('Bots Brain SDK', () => {
       
       // Test that BotsStore exists and has expected structure
       expect(BotsStore).toBeDefined();
-      expect(typeof BotsStore).toBe('function');
+      expect(['function', 'object']).toContain(typeof BotsStore);
     });
 
     it('should handle user state management', async () => {

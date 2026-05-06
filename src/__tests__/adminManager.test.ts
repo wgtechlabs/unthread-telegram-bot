@@ -4,19 +4,12 @@
  * Tests for basic admin utility functions that don't require complex mocking.
  */
 
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { clearAllMocks, createMock } from './_helpers/mockLifecycle';
 import { isValidAdmin } from '../utils/adminManager.js';
 
-// Mock dependencies
 mock.module('../config/env.js', () => ({
     isAdminUser: createMock()
-}));
-
-mock.module('@wgtechlabs/log-engine', () => ({
-    LogEngine: {
-        error: createMock()
-    }
 }));
 
 import { isAdminUser } from '../config/env.js';
@@ -24,6 +17,10 @@ import { isAdminUser } from '../config/env.js';
 describe('adminManager utilities', () => {
     beforeEach(() => {
         clearAllMocks();
+    });
+
+    afterAll(() => {
+        mock.restore();
     });
 
     describe('isValidAdmin', () => {
