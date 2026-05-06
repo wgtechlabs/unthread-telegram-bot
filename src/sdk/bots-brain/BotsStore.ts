@@ -29,6 +29,7 @@
 
  * @since 2025
  */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { UnifiedStorage } from './UnifiedStorage.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { z } from 'zod';
