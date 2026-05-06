@@ -70,7 +70,7 @@ export async function safeReply(
     ctx: BotContext, 
     text: string, 
     options: ExtraReplyMessage = {}
-): Promise<unknown> {
+): Promise<Awaited<ReturnType<BotContext['reply']>> | null> {
     try {
         return await ctx.reply(text, options);
     } catch (error) {
@@ -142,7 +142,7 @@ export async function safeEditMessageText(
     inlineMessageId: string | undefined, 
     text: string, 
     options: ExtraEditMessageText = {}
-): Promise<unknown> {
+): Promise<Awaited<ReturnType<BotContext['telegram']['editMessageText']>> | null> {
     try {
         return await ctx.telegram.editMessageText(chatId, messageId, inlineMessageId, text, options);
     } catch (error) {
