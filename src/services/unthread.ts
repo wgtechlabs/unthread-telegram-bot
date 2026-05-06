@@ -338,8 +338,17 @@ async function fetchUnthreadFileWithRetry(
     headers: Record<string, string>,
     fileLabel: string
 ): Promise<FetchResponse> {
+    const timeoutMs = getImageProcessingConfig().downloadTimeout;
     for (let attempt = 1; attempt <= ATTACHMENT_DOWNLOAD_RETRY_ATTEMPTS; attempt++) {
-        const response = await fetch(downloadUrl, { headers });
+        const abortController = new AbortController();
+        const timer = setTimeout(() => abortController.abort(), timeoutMs);
+
+        let response: FetchResponse;
+        try {
+            response = await fetch(downloadUrl, { headers, signal: abortController.signal });
+        } finally {
+            clearTimeout(timer);
+        }
 
         if (
             response.ok ||
@@ -347,6 +356,13 @@ async function fetchUnthreadFileWithRetry(
             attempt === ATTACHMENT_DOWNLOAD_RETRY_ATTEMPTS
         ) {
             return response;
+        }
+
+        // Drain the response body to release the underlying socket before retrying
+        try {
+            await response.body?.cancel();
+        } catch {
+            // Ignore drain errors; connection will be cleaned up eventually
         }
 
         LogEngine.debug('Unthread file not ready yet, retrying', {
@@ -1510,7 +1526,6 @@ export async function downloadUnthreadFileFromUrl(
     maxSizeBytes: number = getImageProcessingConfig().maxImageSize
 ): Promise<Buffer> {
     LogEngine.info('Starting direct Unthread file download', {
-        downloadUrl,
         expectedFileName,
         maxSizeBytes,
         method: 'direct-url'

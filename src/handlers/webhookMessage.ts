@@ -909,10 +909,10 @@ export class TelegramWebhookHandler {
       fileSize,
       mimeType,
       chatId,
-      method: safeDownloadUrl
-        ? 'direct-url'
-        : SLACK_FILE_ID_PATTERN.test(normalizedFileId)
-          ? 'slack-thumbnail-endpoint'
+      method: SLACK_FILE_ID_PATTERN.test(normalizedFileId)
+        ? 'slack-thumbnail-endpoint'
+        : safeDownloadUrl
+          ? 'direct-url'
           : 'conversation-file-endpoint'
     });
 
@@ -920,15 +920,15 @@ export class TelegramWebhookHandler {
       const thumbnailSize = this.imageConfig.thumbnailSize; // Use centralized thumbnail size configuration
       let downloadBuffer: Buffer;
 
-      if (safeDownloadUrl) {
-        downloadBuffer = await downloadUnthreadFileFromUrl(safeDownloadUrl, fileName);
-      } else if (normalizedFileId && SLACK_FILE_ID_PATTERN.test(normalizedFileId)) {
+      if (normalizedFileId && SLACK_FILE_ID_PATTERN.test(normalizedFileId)) {
         downloadBuffer = await downloadUnthreadImage(
           normalizedFileId,
           this.teamId,
           fileName,
           thumbnailSize
         );
+      } else if (safeDownloadUrl) {
+        downloadBuffer = await downloadUnthreadFileFromUrl(safeDownloadUrl, fileName);
       } else if (normalizedFileId) {
         downloadBuffer = await downloadAttachmentFromUnthread(
           conversationId,
