@@ -5,7 +5,7 @@
  * improve coverage from current 22.7% to near 100%.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock , spyOn} from 'bun:test';
 import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import type { UserData } from '../sdk/types.js';
 

@@ -1,7 +1,7 @@
 /**
  * Unit tests for commands/basic/ViewEmailCommand.ts
  */
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it , mock} from 'bun:test';
 import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import type { BotContext } from '../types/index.js';
 import { ViewEmailCommand } from '../commands/basic/ViewEmailCommand.js';
@@ -242,7 +242,7 @@ describe('ViewEmailCommand', () => {
 
       await viewEmailCommand.execute(mockCtx);
 
-      replyCall = (mockCtx.reply as any).mock.calls[0];
+      replyCall = (mockCtx.reply as any).mock.calls.at(-1);
       expect(replyCall[0]).toContain('**Available actions:**');
       expect(replyCall[0]).toContain('Email is automatically used in new tickets');
     });
