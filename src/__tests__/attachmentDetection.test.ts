@@ -5,7 +5,7 @@
  * event validation, attachment detection, image processing, and metadata handling.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it , mock} from 'bun:test';
 import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import { AttachmentDetectionService } from '../services/attachmentDetection.js';
 import { WebhookEvent } from '../types/webhookEvents.js';
@@ -21,12 +21,12 @@ mock.module('@wgtechlabs/log-engine', () => ({
 }));
 
 mock.module('../config/env.js', () => ({
-  getImageProcessingConfig: createMock().mockReturnValue({
+  getImageProcessingConfig: createMock(() => ({
     enabled: true,
     maxSize: 10485760, // 10MB
     supportedFormats: ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'],
     quality: 85
-  })
+  }))
 }));
 
 describe('AttachmentDetectionService', () => {

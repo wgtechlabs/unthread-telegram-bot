@@ -41,13 +41,23 @@ type ProcessableFile = {
 };
 
 export class AttachmentDetectionService {
+  private static readValue(record: Record<string, unknown>, key: string): unknown {
+    for (const [entryKey, value] of Object.entries(record)) {
+      if (entryKey === key) {
+        return value;
+      }
+    }
+
+    return undefined;
+  }
+
   private static readString(record: Record<string, unknown>, key: string): string {
-    const value = record[key];
+    const value = this.readValue(record, key);
     return typeof value === 'string' ? value.trim() : '';
   }
 
   private static readNumber(record: Record<string, unknown>, key: string): number | undefined {
-    const value = record[key];
+    const value = this.readValue(record, key);
 
     if (typeof value === 'number') {
       return Number.isFinite(value) && value >= 0 ? value : undefined;
@@ -62,7 +72,7 @@ export class AttachmentDetectionService {
   }
 
   private static readStringArray(record: Record<string, unknown>, key: string): string[] {
-    const value = record[key];
+    const value = this.readValue(record, key);
     if (!Array.isArray(value)) {
       return [];
     }
@@ -74,7 +84,7 @@ export class AttachmentDetectionService {
   }
 
   private static readObject(record: Record<string, unknown>, key: string): Record<string, unknown> | null {
-    const value = record[key];
+    const value = this.readValue(record, key);
     return value && typeof value === 'object' && !Array.isArray(value)
       ? value as Record<string, unknown>
       : null;
@@ -159,7 +169,7 @@ export class AttachmentDetectionService {
     return metadataFiles
       .map((file, index): ProcessableFile | null => {
         const id = this.readString(file, 'id') || this.readString(file, 'fileId') || this.readString(file, 'file_id');
-        const name = this.readString(file, 'name') || this.readString(file, 'title') || attachments?.names[index] || `attachment-${index + 1}`;
+        const name = this.readString(file, 'name') || this.readString(file, 'title') || attachments?.names.at(index) || `attachment-${index + 1}`;
         const rawType = this.readString(file, 'mimetype') || this.readString(file, 'mimeType') || this.readString(file, 'type');
         const normalizedType = this.normalizeType(rawType) || rawType;
         const urlPrivate = this.readString(file, 'urlPrivate') || this.readString(file, 'url_private');

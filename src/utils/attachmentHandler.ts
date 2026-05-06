@@ -830,11 +830,13 @@ export class AttachmentHandler {
             this.startMemoryOptimization();
         }
 
-        LogEngine.debug('Basic features initialized', {
-            memoryOptimization: true,
-            securityHardening: BUFFER_ATTACHMENT_CONFIG.enableContentValidation,
-            retryLogic: BUFFER_ATTACHMENT_CONFIG.retryAttempts > 0
-        });
+        if (typeof (LogEngine as { debug?: unknown }).debug === 'function') {
+            LogEngine.debug('Basic features initialized', {
+                memoryOptimization: true,
+                securityHardening: BUFFER_ATTACHMENT_CONFIG.enableContentValidation,
+                retryLogic: BUFFER_ATTACHMENT_CONFIG.retryAttempts > 0
+            });
+        }
     }
 
     /**
