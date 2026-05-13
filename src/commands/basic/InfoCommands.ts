@@ -11,6 +11,7 @@ import { BaseCommand, type CommandMetadata } from '../base/BaseCommand.js';
 import type { BotContext } from '../../types/index.js';
 import { getCompanyName, isAdminUser } from '../../config/env.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
+import { getCommandArgs } from '../../utils/messageContentExtractor.js';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -57,13 +58,49 @@ export class StartCommand extends BaseCommand {
     };
 
     protected async executeCommand(ctx: BotContext): Promise<void> {
+        const startPayload = getCommandArgs(ctx).trim();
+        if (startPayload === 'admin_activate') {
+            const activationPromptMessage =
+                '🔐 **Admin Activation**\n\n' +
+                'You opened the admin activation flow from a group setup request.\n\n' +
+                '**Next step:** Tap the button below to run `/activate` in this private chat.\n\n' +
+                '*If the button does not work, send `/activate` manually.*';
+
+            await ctx.reply(activationPromptMessage, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    keyboard: [[{ text: '/activate' }]],
+                    resize_keyboard: true,
+                    one_time_keyboard: true
+                }
+            });
+            return;
+        }
+
+        const userId = ctx.from?.id;
+        const isAdmin = userId ? isAdminUser(userId) : false;
+
+        if (isAdmin) {
+            const companyName = getCompanyName() || 'Support';
+            const adminWelcomeMessage = `🛠️ **Welcome, Admin!**\n\n` +
+                `You're managing the ${companyName} support bot.\n\n` +
+                `**Admin Getting Started:**\n` +
+                `1. Use /activate in this private chat\n` +
+                `2. Run /setup in your group chat\n` +
+                `3. Configure templates with /templates\n\n` +
+                `Use /help to view all admin tools and troubleshooting steps.`;
+
+            await ctx.reply(adminWelcomeMessage, { parse_mode: 'Markdown' });
+            return;
+        }
+
         const companyName = getCompanyName() || 'Support';
         const welcomeMessage = `🤖 **Welcome to ${companyName} Support Bot!**\n\n` +
             `I'm here to help you create support tickets and get assistance.\n\n` +
             `**Quick Start:**\n` +
             `• Use /support to create a new ticket\n` +
             `• Use /help to see all available commands\n` +
-            `• Use /about for more information\n\n` +
+            `• Use /version to check bot version\n\n` +
             `Let's get started! 🚀`;
 
         await ctx.reply(welcomeMessage, { parse_mode: 'Markdown' });
@@ -96,7 +133,6 @@ export class HelpCommand extends BaseCommand {
             `❓ /help - Show this help message\n` +
             `🎫 /support - Create a new support ticket\n` +
             `📊 /version - Show bot version information\n` +
-            `ℹ️ /about - Learn more about this bot\n` +
             `❌ /cancel - Cancel current operation\n` +
             `🔄 /reset - Reset conversation state\n\n` +
             `**Need Help?**\n` +
@@ -104,13 +140,13 @@ export class HelpCommand extends BaseCommand {
     }
 
     private generateAdminHelp(): string {
-        return `📋 **Available Commands (Admin):**\n\n` +
+        return `📋 **Admin Help & Commands:**\n\n` +
             `**Regular Commands:**\n` +
             `🏠 /start - Welcome message and introduction\n` +
             `❓ /help - Show this help message\n` +
             `🎫 /support - Create a new support ticket\n` +
             `📊 /version - Show bot version information\n` +
-            `ℹ️ /about - Learn more about this bot\n` +
+            `ℹ️ /about - View admin bot details and troubleshooting info\n` +
             `❌ /cancel - Cancel current operation\n` +
             `🔄 /reset - Reset conversation state\n\n` +
             `**Admin Commands:**\n` +
@@ -121,7 +157,9 @@ export class HelpCommand extends BaseCommand {
             `• Group chat configuration\n` +
             `• Message template management\n` +
             `• Advanced bot settings\n\n` +
-            `Need help? Contact the development team! 🛠️`;
+            `**Troubleshooting:**\n` +
+            `If setup fails or you find a bug, report it here:\n` +
+            `🌐 [github.com/wgtechlabs](https://github.com/wgtechlabs/unthread-telegram-bot/issues)`;
     }
 }
 
@@ -144,34 +182,25 @@ export class VersionCommand extends BaseCommand {
 export class AboutCommand extends BaseCommand {
     readonly metadata: CommandMetadata = {
         name: 'about',
-        description: 'Display detailed bot information and capabilities',
-        usage: '/about'
+        description: 'Display admin bot information and troubleshooting details',
+        usage: '/about',
+        adminOnly: true
     };
 
     protected async executeCommand(ctx: BotContext): Promise<void> {
         const companyName = getCompanyName() || 'Support';
-        const aboutMessage = `ℹ️ **About ${companyName} Support Bot**\n\n` +
-            `This bot helps you create and manage support tickets efficiently. ` +
-            `It integrates with our Unthread platform to provide seamless customer support.\n\n` +
-            `**Key Features:**\n` +
-            `• 🎫 Easy ticket creation with guided forms\n` +
-            `• 📧 Email integration for updates\n` +
-            `• 👥 Group chat support configuration\n` +
-            `• 🔄 Real-time status updates\n` +
-            `• 🛡️ Secure data handling\n` +
-            `• 📱 Mobile-friendly interface\n\n` +
-            `**How It Works:**\n` +
-            `1. Start a conversation with /support\n` +
-            `2. Fill out the guided form\n` +
-            `3. Get instant ticket confirmation\n` +
-            `4. Receive updates via Telegram and email\n\n` +
-            `**Technology:**\n` +
-            `• Built with TypeScript and Telegraf\n` +
-            `• Powered by Unthread API\n` +
-            `• Secure cloud infrastructure\n\n` +
-            `**Need Help?**\n` +
-            `Use /support to create a ticket or contact our team directly.\n\n` +
-            `Version ${packageJSON.version} | Made with ❤️ by ${packageJSON.author}`;
+        const aboutMessage = `ℹ️ **${companyName} Bot Admin Overview**\n\n` +
+            `This command is for bot operators and administrators.\n\n` +
+            `**Admin Responsibilities:**\n` +
+            `• Configure groups with /setup\n` +
+            `• Manage templates with /templates\n` +
+            `• Monitor activation and support workflows\n\n` +
+            `**System Details:**\n` +
+            `• Version: ${packageJSON.version}\n` +
+            `• Stack: TypeScript + Telegraf\n` +
+            `• Integration: Unthread API\n\n` +
+            `**Troubleshooting & Bug Reports:**\n` +
+            `🌐 [github.com/wgtechlabs](https://github.com/wgtechlabs/unthread-telegram-bot/issues)`;
 
         await ctx.reply(aboutMessage, { parse_mode: 'Markdown' });
     }
