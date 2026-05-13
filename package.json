@@ -23,7 +23,8 @@
   "type": "module",
   "private": true,
   "engines": {
-    "node": ">=20.0.0"
+    "node": "^22.0.0 || ^24.0.0",
+    "bun": ">=1.0.0"
   },
   "scripts": {
     "preinstall": "npx only-allow bun",
