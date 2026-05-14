@@ -1435,6 +1435,17 @@ export class TelegramWebhookHandler {
         for (const sentMsgId of fallbackSentIds) {
           await this.storeAttachmentAgentMessage(sentMsgId, conversationId, chatId, ticketData);
         }
+
+        const latestFallbackMessageId = fallbackSentIds.at(-1);
+        if (latestFallbackMessageId !== undefined) {
+          await this.sendAttachmentReplyGuidance(
+            conversationId,
+            chatId,
+            latestFallbackMessageId,
+            ticketData,
+            fallbackSentIds.length
+          );
+        }
       }
       return;
     }
@@ -1443,6 +1454,7 @@ export class TelegramWebhookHandler {
     const supportedImageTypes = this.imageConfig.supportedFormats;
 
     let processedCount = 0;
+    let lastSentMessageId: number | null = null;
     for (let i = 0; i < files.length; i++) {
       const file = files.at(i);
       
@@ -1514,6 +1526,7 @@ export class TelegramWebhookHandler {
 
         if (sentMsgId !== null && ticketData) {
           await this.storeAttachmentAgentMessage(sentMsgId, conversationId, chatId, ticketData);
+          lastSentMessageId = sentMsgId;
         }
 
         processedCount++;
@@ -1536,6 +1549,79 @@ export class TelegramWebhookHandler {
       skippedFiles: files.length - processedCount,
       processingTimeMs: Date.now() - startTime,
       efficiency: 'metadata-first'
+    });
+
+    if (ticketData && lastSentMessageId !== null) {
+      await this.sendAttachmentReplyGuidance(
+        conversationId,
+        chatId,
+        lastSentMessageId,
+        ticketData,
+        processedCount
+      );
+    }
+  }
+
+  /**
+   * Send a short note after dashboard attachments so the newest reply target is obvious.
+   */
+  private async sendAttachmentReplyGuidance(
+    conversationId: string,
+    chatId: number,
+    replyToMessageId: number,
+    ticketData: any,
+    attachmentCount: number
+  ): Promise<void> {
+    const guidanceMessage =
+      `📝 Attachment delivery complete for Ticket #${escapeMarkdown(String(ticketData.friendlyId))}.\n\n` +
+      `Reply to this message to continue the conversation for Ticket #${escapeMarkdown(String(ticketData.friendlyId))}.`;
+
+    const guidanceNote = await this.safeSendMessage(
+      chatId,
+      guidanceMessage,
+      {
+        reply_to_message_id: replyToMessageId,
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true
+      }
+    );
+
+    if (!guidanceNote) {
+      LogEngine.warn('Attachment reply guidance note was not delivered', {
+        conversationId,
+        chatId,
+        replyToMessageId,
+        attachmentCount
+      });
+      return;
+    }
+
+    await this.botsStore.storeAgentMessage({
+      messageId: guidanceNote.message_id,
+      conversationId,
+      chatId,
+      friendlyId: ticketData.friendlyId,
+      originalTicketMessageId: ticketData.messageId,
+      sentAt: new Date().toISOString()
+    });
+
+    await this.botsStore.storage.set(
+      `agent_message:${conversationId}:latest`,
+      JSON.stringify({
+        messageId: guidanceNote.message_id,
+        conversationId,
+        chatId,
+        sentAt: new Date().toISOString()
+      }),
+      60 * 60 * 24
+    );
+
+    LogEngine.info('Attachment reply guidance note delivered', {
+      conversationId,
+      chatId,
+      attachmentCount,
+      guidanceMessageId: guidanceNote.message_id,
+      replyToMessageId
     });
   }
 
