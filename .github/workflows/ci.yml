@@ -9,13 +9,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate:
-    name: Lint Test Validate (Node ${{ matrix.node-version }})
+  secrets:
+    name: Detect Secrets
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [22, 24, 26]
-      fail-fast: false
     permissions:
       contents: read
 
@@ -30,9 +26,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  validate:
+    name: Lint Test Validate (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    needs: secrets
+    strategy:
+      matrix:
+        node-version: [22, 24, 26]
+      fail-fast: false
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
         with:
-          report-path: results-${{ github.run_number }}.sarif
-          artifact-name: gitleaks-report-${{ github.run_number }}
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
