@@ -284,6 +284,36 @@ export function getDefaultTicketPriority(): 3 | 5 | 7 | 9 | undefined {
 }
 
 /**
+ * Returns the webhook polling interval when explicitly configured.
+ *
+ * If WEBHOOK_POLL_INTERVAL is unset or invalid, returns undefined so the
+ * webhook consumer can use its built-in default interval.
+ *
+ * @returns The configured polling interval in milliseconds, or undefined
+ */
+export function getWebhookPollInterval(): number | undefined {
+    const rawPollInterval = process.env.WEBHOOK_POLL_INTERVAL?.trim();
+
+    if (!rawPollInterval) {
+        return undefined;
+    }
+
+    if (!/^\d+$/.test(rawPollInterval)) {
+        LogEngine.warn(`⚠️  Invalid WEBHOOK_POLL_INTERVAL value: ${rawPollInterval}. Must be a positive integer in milliseconds. Using default interval.`);
+        return undefined;
+    }
+
+    const pollInterval = Number(rawPollInterval);
+
+    if (!Number.isSafeInteger(pollInterval) || pollInterval <= 0) {
+        LogEngine.warn(`⚠️  Invalid WEBHOOK_POLL_INTERVAL value: ${rawPollInterval}. Must be a positive integer in milliseconds. Using default interval.`);
+        return undefined;
+    }
+
+    return pollInterval;
+}
+
+/**
  * Returns an array of authorized Telegram user IDs parsed from the ADMIN_USERS environment variable.
  *
  * Throws an error if ADMIN_USERS is missing, contains only placeholder values, or no valid numeric IDs are found. Invalid IDs are skipped with a warning.

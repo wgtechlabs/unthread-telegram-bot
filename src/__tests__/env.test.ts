@@ -7,6 +7,7 @@ import {
   getConfiguredBotUsername,
   getDefaultTicketPriority,
   getEnvVar,
+  getWebhookPollInterval,
   isDevelopment,
   isProduction
 } from '../config/env.ts';
@@ -138,6 +139,35 @@ describe('env utilities', () => {
       process.env.UNTHREAD_DEFAULT_PRIORITY = '5';
       
       expect(getDefaultTicketPriority()).toBe(5);
+    });
+  });
+
+  describe('getWebhookPollInterval', () => {
+    it('should return undefined when not set', () => {
+      delete process.env.WEBHOOK_POLL_INTERVAL;
+
+      expect(getWebhookPollInterval()).toBeUndefined();
+    });
+
+    it('should return configured poll interval when set to a positive integer', () => {
+      process.env.WEBHOOK_POLL_INTERVAL = '5000';
+
+      expect(getWebhookPollInterval()).toBe(5000);
+    });
+
+    it('should trim whitespace around configured poll interval', () => {
+      process.env.WEBHOOK_POLL_INTERVAL = '  2500  ';
+
+      expect(getWebhookPollInterval()).toBe(2500);
+    });
+
+    it('should return undefined for invalid poll intervals', () => {
+      const invalidIntervals = ['0', '-1', 'abc', '1000ms', '1.5', ''];
+
+      for (const invalidInterval of invalidIntervals) {
+        process.env.WEBHOOK_POLL_INTERVAL = invalidInterval;
+        expect(getWebhookPollInterval()).toBeUndefined();
+      }
     });
   });
 

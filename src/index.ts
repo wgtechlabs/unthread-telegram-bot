@@ -42,7 +42,7 @@ import './config/logging.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 
 // Validate environment configuration before proceeding
-import { validateEnvironment } from './config/env.js';
+import { getWebhookPollInterval, validateEnvironment } from './config/env.js';
 validateEnvironment();
 
 import { cleanupBlockedUser, createBot, startPolling } from './bot.js';
@@ -337,10 +337,13 @@ let webhookHandler: TelegramWebhookHandler | undefined;
 try {
     // Check if webhook Redis URL is available before initializing webhook consumer
     if (process.env.WEBHOOK_REDIS_URL) {
+        const webhookPollInterval = getWebhookPollInterval();
+
         // Initialize webhook consumer with dedicated webhook Redis URL
         webhookConsumer = new WebhookConsumer({
             redisUrl: process.env.WEBHOOK_REDIS_URL,
-            queueName: 'unthread-events'
+            queueName: 'unthread-events',
+            ...(webhookPollInterval !== undefined ? { pollInterval: webhookPollInterval } : {})
         });
 
         // Initialize webhook handler
