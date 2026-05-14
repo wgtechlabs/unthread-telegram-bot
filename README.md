@@ -86,8 +86,13 @@ For security vulnerabilities, follow our [security policy](./SECURITY.md).
 
 Contributions are welcome! Your code must pass `bun run build` and `bun run type-check` before merging.
 
-For detailed setup instructions, development guidelines, and security practices, see our comprehensive [Contributing Guide](./CONTRIBUTING.md).
+### Runtime And Toolchain
 
+- Node.js is the runtime engine and currently supports LTS majors 22 and 24.
+- Bun is the supported installation and development toolchain (`bun install`, `bun run`).
+- Node.js 26 runtime support will be added after Node 26 reaches LTS (target: Oct 2026).
+
+For detailed setup instructions, development guidelines, and security practices, see our comprehensive [Contributing Guide](./CONTRIBUTING.md).
 
 ## 💖 Sponsors
 
