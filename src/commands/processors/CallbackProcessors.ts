@@ -621,6 +621,13 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 email: userState.email // Must exist at this point
             };
 
+            // Resolve customer dynamically from current chat context.
+            const chatId = ctx.chat?.id ?? userId;
+            const chatTitle = ctx.chat && 'title' in ctx.chat && ctx.chat.title
+                ? ctx.chat.title
+                : 'Telegram Support';
+            const customer = await unthreadService.getOrCreateCustomer(chatTitle, chatId);
+
             // Use unified approach: create ticket with attachments in single API call when attachments exist
             let ticketResponse;
             
@@ -662,18 +669,16 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                         
                         // Fallback to standard ticket creation without attachments
                         ticketResponse = await unthreadService.createTicket({
-                            groupChatName: 'Telegram Support', // Default group chat name
-                            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                            customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                            groupChatName: chatTitle,
+                            customerId: customer.id,
                             summary: userState.summary,
                             onBehalfOf
                         });
                     } else {
                         // Use unified ticket creation with buffer attachments
                         ticketResponse = await unthreadService.createTicketWithBufferAttachments({
-                            groupChatName: 'Telegram Support', // Default group chat name
-                            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                            customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                            groupChatName: chatTitle,
+                            customerId: customer.id,
                             summary: userState.summary,
                             onBehalfOf,
                             attachments: attachmentBuffers
@@ -695,9 +700,8 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                     
                     // Fallback to standard ticket creation
                     ticketResponse = await unthreadService.createTicket({
-                        groupChatName: 'Telegram Support', // Default group chat name
-                        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                        customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                        groupChatName: chatTitle,
+                        customerId: customer.id,
                         summary: userState.summary,
                         onBehalfOf
                     });
@@ -705,9 +709,8 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
             } else {
                 // Standard ticket creation without attachments
                 ticketResponse = await unthreadService.createTicket({
-                    groupChatName: 'Telegram Support', // Default group chat name
-                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                    customerId: process.env.UNTHREAD_CUSTOMER_ID!,
+                    groupChatName: chatTitle,
+                    customerId: customer.id,
                     summary: userState.summary,
                     onBehalfOf
                 });
@@ -736,9 +739,8 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
                 messageId: ctx.callbackQuery?.message?.message_id || 0, // Use callback message ID
                 ticketId: ticket.id,
                 friendlyId: ticket.friendlyId,
-                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                customerId: process.env.UNTHREAD_CUSTOMER_ID!,
-                chatId: ctx.chat?.id || 0,
+                customerId: customer.id,
+                chatId,
                 telegramUserId: userId,
                 summary: userState.summary
             });
