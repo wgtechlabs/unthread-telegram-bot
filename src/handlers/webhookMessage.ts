@@ -442,7 +442,7 @@ export class TelegramWebhookHandler {
     if (cleanText.length > maxLength) {
       truncatedText = cleanText.substring(0, maxLength - 50) + '...\n\n_Message truncated_';
     }
-    return `🎫 Ticket #${friendlyId}\n\n💬 Response:\n${truncatedText}\n\n──────────\n📝 Reply to this message to respond or add more info to your ticket.`;
+    return `💬 Update on Ticket #${friendlyId}\n\n${truncatedText}\n\nReply to this message to continue the conversation.`;
   }
 
   /**

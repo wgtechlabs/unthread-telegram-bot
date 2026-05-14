@@ -41,8 +41,8 @@ export const DEFAULT_GLOBAL_TEMPLATES: GlobalTemplateConfig = {
     },
     agent_response: {
       event: 'agent_response',
-      content: '💬 **New Response for Ticket #{{ticketNumber}}**\n\n' +
-               'Message: {{response}}\n\n' +
+      content: '💬 **Update on Ticket #{{ticketNumber}}**\n\n' +
+               '{{response}}\n\n' +
                '*Reply to this message to continue the conversation.*',
       enabled: true
     },
