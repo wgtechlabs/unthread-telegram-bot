@@ -83,7 +83,7 @@ jobs:
       - name: Test Docker build (no push)
         run: |
           echo "Testing Docker build..."
-          docker build -t test-build .
+          docker build --build-arg NODE_VERSION=${{ matrix.node-version }}-alpine -t test-build .
           echo "Build successful, cleaning up..."
           docker image rm test-build
           echo "Docker build test completed"
