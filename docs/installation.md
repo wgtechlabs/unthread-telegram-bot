@@ -69,8 +69,8 @@
    **Option C: Manual Installation**
 
    ```bash
-   # Prerequisites: Node.js >=20.0.0 and Bun >=1.3.0
-   node --version  # Should be v20.0.0 or higher
+   # Prerequisites: Node.js 22/24/26 (default runtime is 26) and Bun >=1.3.0
+   node --version  # Should be v22.x, v24.x, or v26.x
    bun --version   # Should be 1.3.0 or higher
 
    # Clone and setup

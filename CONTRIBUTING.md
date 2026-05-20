@@ -143,7 +143,7 @@ src/
 - **Error Handling**: Implement comprehensive error handling with detailed logging
 - **Package Manager**: Use Bun exclusively for installs and scripts
 - **Code Style**: Follow existing patterns and maintain consistency
-- **Environment**: Use Node.js 20+ for development
+- **Environment**: Use Node.js 22, 24, or 26 for development (default runtime is Node.js 26)
 - **Database**: PostgreSQL 12+ required, Redis 6+ optional but recommended
 - **Multi-layer Storage**: Utilize Memory → Redis → PostgreSQL architecture
 - **Webhook Integration**: Ensure compatibility with [`wgtechlabs/unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server)
@@ -417,7 +417,7 @@ When modifying username-related code, verify:
 
 #### **Prerequisites**
 
-- **Node.js 20+** (ES6 modules support required - production runtime)
+- **Node.js 22, 24, or 26** (production runtime support; default runtime is Node.js 26)
 - **Bun 1.3+** (package manager and test runner)
 - **PostgreSQL 12+** (primary database)
 - **Redis 6+** (optional, for enhanced performance)

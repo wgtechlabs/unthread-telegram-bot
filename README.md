@@ -88,9 +88,10 @@ Contributions are welcome! Your code must pass `bun run build` and `bun run type
 
 ### Runtime And Toolchain
 
-- Node.js is the runtime engine and currently supports LTS majors 22 and 24.
+- Node.js is the runtime engine and supports majors 22, 24, and 26.
+- Node.js 26 is the default production runtime.
 - Bun is the supported installation and development toolchain (`bun install`, `bun run`).
-- Node.js 26 runtime support will be added after Node 26 reaches LTS (target: Oct 2026).
+- CI validates compatibility across Node.js 22, 24, and 26.
 
 For detailed setup instructions, development guidelines, and security practices, see our comprehensive [Contributing Guide](./CONTRIBUTING.md).
 
