@@ -17,15 +17,15 @@
 
 # syntax=docker/dockerfile:1
 
-# Use Node.js 22 LTS Alpine with security patches
-ARG NODE_VERSION=22-alpine3.21
+# Use Node.js 26 latest Alpine line for primary runtime support
+ARG NODE_VERSION=26-alpine
 # Pinned Bun version for reproducible builds
 ARG BUN_VERSION=1.3.13
 
 # =============================================================================
 # STAGE 1: Base Image
 # =============================================================================
-# Alpine Linux 3.21 base for minimal image size with latest security updates.
+# Alpine-based Node image for minimal size and regular security updates.
 # Intentionally kept minimal (no Bun) so the final runtime image stays small —
 # Bun is only added on top in the `builder-base` stage used for install/build.
 FROM node:${NODE_VERSION} AS base
