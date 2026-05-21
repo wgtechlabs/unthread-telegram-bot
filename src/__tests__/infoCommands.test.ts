@@ -1,7 +1,8 @@
 /**
  * Unit tests for commands/basic/InfoCommands.ts
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it , mock} from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import type { BotContext } from '../types/index.js';
 import { 
   AboutCommand,
@@ -11,51 +12,59 @@ import {
 } from '../commands/basic/InfoCommands.js';
 
 // Mock dependencies
-vi.mock('@wgtechlabs/log-engine', () => ({
+mock.module('@wgtechlabs/log-engine', () => ({
   LogEngine: {
-    debug: vi.fn(),
-    error: vi.fn(),
-    info: vi.fn()
+    debug: createMock(),
+    error: createMock(),
+    info: createMock()
   }
 }));
 
-vi.mock('../config/env.js', () => ({
-  getCompanyName: vi.fn(() => 'Test Company'),
-  isAdminUser: vi.fn(() => false)
+mock.module('../config/env.js', () => ({
+  getCompanyName: createMock(() => 'Test Company'),
+  isAdminUser: createMock(() => false)
 }));
 
-vi.mock('fs', () => ({
-  readFileSync: vi.fn()
+mock.module('../sdk/bots-brain/index.js', () => ({
+  BotsStore: {
+    getAdminProfile: createMock(async () => ({ isActivated: true }))
+  }
 }));
 
-vi.mock('url', () => ({
-  fileURLToPath: vi.fn(() => '/mock/path/to/file.js')
+mock.module('fs', () => ({
+  readFileSync: createMock()
 }));
 
-vi.mock('path', () => ({
-  dirname: vi.fn(() => '/mock/path/to'),
-  join: vi.fn(() => '/mock/path/to/package.json')
+mock.module('url', () => ({
+  fileURLToPath: createMock(() => '/mock/path/to/file.js')
+}));
+
+mock.module('path', () => ({
+  dirname: createMock(() => '/mock/path/to'),
+  join: createMock(() => '/mock/path/to/package.json')
 }));
 
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { getCompanyName, isAdminUser } from '../config/env.js';
+import { BotsStore } from '../sdk/bots-brain/index.js';
 import { readFileSync } from 'fs';
 
 describe('InfoCommands', () => {
   let mockCtx: BotContext;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    clearAllMocks();
+    (isAdminUser as any).mockReturnValue(false);
     
     mockCtx = {
       from: { id: 123, first_name: 'Test', is_bot: false },
       chat: { id: 456, type: 'private' },
       message: { text: '/start', message_id: 789 },
-      reply: vi.fn()
+      reply: mock()
     } as BotContext;
 
     // Mock successful package.json reading by default
-    vi.mocked(readFileSync).mockReturnValue(JSON.stringify({
+    (readFileSync as any).mockReturnValue(JSON.stringify({
       name: 'test-bot',
       version: '1.0.0',
       description: 'Test bot',
@@ -65,7 +74,7 @@ describe('InfoCommands', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    restoreAllMocks();
   });
 
   describe('Package.json loading', () => {
@@ -78,7 +87,7 @@ describe('InfoCommands', () => {
 
     it('should handle package.json loading errors', () => {
       // Re-import module with failing readFileSync to test error handling
-      vi.mocked(readFileSync).mockImplementation(() => {
+      (readFileSync as any).mockImplementation(() => {
         throw new Error('File not found');
       });
 
@@ -111,15 +120,15 @@ describe('InfoCommands', () => {
         { parse_mode: 'Markdown' }
       );
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       expect(message).toContain('Use /support to create a new ticket');
       expect(message).toContain('Use /help to see all available commands');
-      expect(message).toContain('Use /about for more information');
+      expect(message).toContain('Use /version to check bot version');
     });
 
     it('should use fallback when company name is not available', async () => {
-      vi.mocked(getCompanyName).mockReturnValue(null);
+      (getCompanyName as any).mockReturnValue(null);
 
       await startCommand.execute(mockCtx);
 
@@ -132,10 +141,46 @@ describe('InfoCommands', () => {
     it('should include quick start instructions', async () => {
       await startCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       expect(message).toContain('**Quick Start:**');
       expect(message).toContain("Let's get started! 🚀");
+    });
+
+    it('should show admin-specific getting started message for admins', async () => {
+      (isAdminUser as any).mockReturnValue(true);
+
+      await startCommand.execute(mockCtx);
+
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
+      const message = replyCall[0];
+      expect(message).toContain('🛠️ **Welcome, Admin!**');
+      expect(message).toContain('**Admin Getting Started:**');
+      expect(message).toContain('Use /activate in this private chat');
+      expect(message).toContain('Run /setup in your group chat');
+      expect(message).toContain('Configure templates with /templates');
+      expect(message).toContain('Use /help to view all admin tools');
+    });
+
+    it('should show activation prompt for admin start deep-link payload', async () => {
+      const dmActivationCtx = {
+        ...mockCtx,
+        message: { text: '/start admin_activate', message_id: 790 }
+      } as BotContext;
+
+      await startCommand.execute(dmActivationCtx);
+
+      expect(dmActivationCtx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('🔐 **Admin Activation**'),
+        expect.objectContaining({
+          parse_mode: 'Markdown',
+          reply_markup: expect.objectContaining({
+            keyboard: [[{ text: '/activate' }]],
+            resize_keyboard: true,
+            one_time_keyboard: true
+          })
+        })
+      );
     });
   });
 
@@ -166,7 +211,7 @@ describe('InfoCommands', () => {
     });
 
     it('should show regular help for non-admin users', async () => {
-      vi.mocked(isAdminUser).mockReturnValue(false);
+      (isAdminUser as any).mockReturnValue(false);
 
       await helpCommand.execute(mockCtx);
 
@@ -176,23 +221,26 @@ describe('InfoCommands', () => {
         { parse_mode: 'Markdown' }
       );
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       expect(message).toContain('/start - Welcome message');
       expect(message).toContain('/help - Show this help message');
       expect(message).toContain('/support - Create a new support ticket');
       expect(message).toContain('/version - Show bot version information');
-      expect(message).toContain('/about - Learn more about this bot');
       expect(message).toContain('/cancel - Cancel current operation');
+      expect(message).not.toContain('/activate');
+      expect(message).not.toContain('/setup');
+      expect(message).not.toContain('/templates');
+      expect(message).not.toContain('github.com/wgtechlabs');
     });
 
     it('should show admin help for admin users', async () => {
-      vi.mocked(isAdminUser).mockReturnValue(true);
+      (isAdminUser as any).mockReturnValue(true);
 
       await helpCommand.execute(mockCtx);
 
       expect(isAdminUser).toHaveBeenCalledWith(123);
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       
       // Admin help should include admin-specific commands
@@ -200,6 +248,7 @@ describe('InfoCommands', () => {
       expect(message).toContain('/setup');
       expect(message).toContain('/activate');
       expect(message).toContain('/templates');
+      expect(message).toContain('github.com/wgtechlabs');
     });
   });
 
@@ -214,66 +263,28 @@ describe('InfoCommands', () => {
 
     it('should have correct metadata', () => {
       expect(versionCommand.metadata.name).toBe('version');
-      expect(versionCommand.metadata.description).toBe('Show bot version and build information');
+      expect(versionCommand.metadata.description).toBe('Show bot version information');
       expect(versionCommand.metadata.usage).toBe('/version');
     });
 
-    it('should show version information in development', async () => {
-      process.env.NODE_ENV = 'development';
-
+    it('should show version information with changelog link', async () => {
       await versionCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
-      
+
       expect(message).toContain('📊 **Bot Version Information**');
       expect(message).toContain('**Version:**');
-      expect(message).toContain('**Name:**');
-      expect(message).toContain('**Description:**');
-      expect(message).toContain('**Author:**');
-      expect(message).toContain('**License:**');
-      expect(message).toContain('**Build Info:**');
-      expect(message).toContain(`Node.js: ${process.version}`);
-      expect(message).toContain(`Platform: ${process.platform}`);
-      expect(message).toContain(`Architecture: ${process.arch}`);
-      expect(message).toContain('Environment: development');
-      expect(message).toContain('**Repository:**');
+      // Verify the displayed version looks like a semver string
+      expect(message).toMatch(/\*\*Version:\*\*\s+\d+\.\d+\.\d+/);
+      expect(message).toContain('[Changelog](https://github.com/wgtechlabs/unthread-telegram-bot/releases)');
     });
 
-    it('should show limited information in production', async () => {
-      process.env.NODE_ENV = 'production';
-
+    it('should reply using Markdown parse mode', async () => {
       await versionCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
-      const message = replyCall[0];
-      
-      expect(message).toContain('📊 **Bot Version Information**');
-      expect(message).toContain('Environment: Production');
-      expect(message).not.toContain(`Node.js: ${process.version}`);
-      expect(message).not.toContain(`Platform: ${process.platform}`);
-    });
-
-    it('should use default environment when NODE_ENV is not set', async () => {
-      delete process.env.NODE_ENV;
-
-      await versionCommand.execute(mockCtx);
-
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
-      const message = replyCall[0];
-      
-      expect(message).toContain('Environment: development');
-    });
-
-    it('should include repository information', async () => {
-      await versionCommand.execute(mockCtx);
-
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
-      const message = replyCall[0];
-      
-      expect(message).toContain('**Repository:**');
-      expect(message).toContain('Check our GitHub for updates and documentation');
-      expect(message).toContain('Built with ❤️ by');
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
+      expect(replyCall[1]).toEqual({ parse_mode: 'Markdown' });
     });
   });
 
@@ -286,45 +297,65 @@ describe('InfoCommands', () => {
 
     it('should have correct metadata', () => {
       expect(aboutCommand.metadata.name).toBe('about');
-      expect(aboutCommand.metadata.description).toBe('Display detailed bot information and capabilities');
+      expect(aboutCommand.metadata.description).toBe('Display admin bot information and troubleshooting details');
       expect(aboutCommand.metadata.usage).toBe('/about');
+      expect(aboutCommand.metadata.adminOnly).toBe(true);
     });
 
-    it('should show about information with company name', async () => {
+    it('should show about information for activated admins', async () => {
+      (isAdminUser as any).mockReturnValue(true);
+      (BotsStore.getAdminProfile as any).mockResolvedValue({ isActivated: true });
+
       await aboutCommand.execute(mockCtx);
 
       expect(getCompanyName).toHaveBeenCalled();
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       
-      expect(message).toContain('ℹ️ **About Test Company Support Bot**');
-      expect(message).toContain('**Key Features:**');
-      expect(message).toContain('🎫 Easy ticket creation with guided forms');
-      expect(message).toContain('📧 Email integration for updates');
-      expect(message).toContain('👥 Group chat support configuration');
+      expect(message).toContain('ℹ️ **Test Company Bot Admin Overview**');
+      expect(message).toContain('**Admin Responsibilities:**');
+      expect(message).toContain('/setup');
+      expect(message).toContain('/templates');
+      expect(message).toContain('github.com/wgtechlabs');
       expect(replyCall[1]).toEqual({ parse_mode: 'Markdown' });
     });
 
-    it('should use fallback when company name is not available', async () => {
-      vi.mocked(getCompanyName).mockReturnValue(null);
+    it('should block about command for non-admin users', async () => {
+      (isAdminUser as any).mockReturnValue(false);
 
       await aboutCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
-      const message = replyCall[0];
-      
-      expect(message).toContain('ℹ️ **About Support Support Bot**');
+      expect(mockCtx.reply).toHaveBeenCalledWith(
+        expect.stringContaining('🔒 **Admin Only Command**'),
+        { parse_mode: 'Markdown' }
+      );
     });
 
-    it('should include all key features and capabilities', async () => {
+    it('should use fallback when company name is not available', async () => {
+      (getCompanyName as any).mockReturnValue(null);
+      (isAdminUser as any).mockReturnValue(true);
+      (BotsStore.getAdminProfile as any).mockResolvedValue({ isActivated: true });
+
       await aboutCommand.execute(mockCtx);
 
-      const replyCall = vi.mocked(mockCtx.reply).mock.calls[0];
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
       const message = replyCall[0];
       
-      expect(message).toContain('This bot helps you create and manage support tickets efficiently');
-      expect(message).toContain('integrates with our Unthread platform');
-      expect(message).toContain('**Key Features:**');
+      expect(message).toContain('ℹ️ **Support Bot Admin Overview**');
+    });
+
+    it('should include troubleshooting information', async () => {
+      (isAdminUser as any).mockReturnValue(true);
+      (BotsStore.getAdminProfile as any).mockResolvedValue({ isActivated: true });
+
+      await aboutCommand.execute(mockCtx);
+
+      const replyCall = (mockCtx.reply as any).mock.calls[0];
+      const message = replyCall[0];
+      
+      expect(message).toContain('**System Details:**');
+      expect(message).toContain('TypeScript + Telegraf');
+      expect(message).toContain('**Troubleshooting & Bug Reports:**');
     });
   });
 

@@ -5,33 +5,35 @@
  * admin validation, bot permissions, and access control.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { validateAdminAccess } from '../utils/permissions.js';
+import { afterEach, beforeEach, describe, expect, it , mock} from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import type { BotContext } from '../types/index.js';
 
 // Mock dependencies
-vi.mock('@wgtechlabs/log-engine', () => ({
+mock.module('@wgtechlabs/log-engine', () => ({
   LogEngine: {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn()
+    info: createMock(),
+    error: createMock(),
+    warn: createMock(),
+    debug: createMock()
   }
 }));
 
-vi.mock('../config/env.js', () => ({
-  isAdminUser: vi.fn()
+mock.module('../config/env.js', () => ({
+  isAdminUser: createMock()
 }));
 
-vi.mock('../bot.js', () => ({
-  safeReply: vi.fn()
+mock.module('../bot.js', () => ({
+  safeReply: createMock()
 }));
 
 describe('Permissions Module', () => {
   let mockContext: Partial<BotContext>;
+  let validateAdminAccess: (_ctx: BotContext) => Promise<boolean>;
 
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    clearAllMocks();
+    validateAdminAccess = (await import('../utils/permissions.js')).validateAdminAccess;
     
     mockContext = {
       from: {
@@ -44,20 +46,20 @@ describe('Permissions Module', () => {
         id: -67890,
         type: 'group'
       },
-      reply: vi.fn(),
-      replyWithMarkdown: vi.fn(),
-      replyWithHTML: vi.fn()
+      reply: mock(),
+      replyWithMarkdown: mock(),
+      replyWithHTML: mock()
     };
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    restoreAllMocks();
   });
 
   describe('validateAdminAccess', () => {
     it('should return true for authorized admin users', async () => {
       const { isAdminUser } = await import('../config/env.js');
-      vi.mocked(isAdminUser).mockReturnValue(true);
+      (isAdminUser as any).mockReturnValue(true);
 
       const result = await validateAdminAccess(mockContext as BotContext);
       
@@ -69,7 +71,7 @@ describe('Permissions Module', () => {
       const { isAdminUser } = await import('../config/env.js');
       const { safeReply } = await import('../bot.js');
       
-      vi.mocked(isAdminUser).mockReturnValue(false);
+      (isAdminUser as any).mockReturnValue(false);
 
       const result = await validateAdminAccess(mockContext as BotContext);
       
@@ -120,7 +122,7 @@ describe('Permissions Module', () => {
         }
       };
 
-      vi.mocked(isAdminUser).mockReturnValue(true);
+      (isAdminUser as any).mockReturnValue(true);
 
       const result = await validateAdminAccess(botContext as BotContext);
       
@@ -139,7 +141,7 @@ describe('Permissions Module', () => {
         }
       };
 
-      vi.mocked(isAdminUser).mockReturnValue(true);
+      (isAdminUser as any).mockReturnValue(true);
 
       const result = await validateAdminAccess(privateChatContext as BotContext);
       
@@ -158,7 +160,7 @@ describe('Permissions Module', () => {
         }
       };
 
-      vi.mocked(isAdminUser).mockReturnValue(true);
+      (isAdminUser as any).mockReturnValue(true);
 
       const result = await validateAdminAccess(supergroupContext as BotContext);
       
@@ -177,7 +179,7 @@ describe('Permissions Module', () => {
         }
       };
 
-      vi.mocked(isAdminUser).mockReturnValue(false);
+      (isAdminUser as any).mockReturnValue(false);
 
       const result = await validateAdminAccess(channelContext as BotContext);
       
@@ -189,7 +191,7 @@ describe('Permissions Module', () => {
     it('should handle isAdminUser throwing an error', async () => {
       const { isAdminUser } = await import('../config/env.js');
       
-      vi.mocked(isAdminUser).mockImplementation(() => {
+      (isAdminUser as any).mockImplementation(() => {
         throw new Error('Configuration error');
       });
 
@@ -200,8 +202,8 @@ describe('Permissions Module', () => {
       const { isAdminUser } = await import('../config/env.js');
       const { safeReply } = await import('../bot.js');
       
-      vi.mocked(isAdminUser).mockReturnValue(false);
-      vi.mocked(safeReply).mockImplementation(async () => {
+      (isAdminUser as any).mockReturnValue(false);
+      (safeReply as any).mockImplementation(async () => {
         throw new Error('Reply failed');
       });
 
@@ -227,7 +229,7 @@ describe('Permissions Module', () => {
         }
       };
 
-      vi.mocked(isAdminUser).mockReturnValue(true);
+      (isAdminUser as any).mockReturnValue(true);
 
       const result = await validateAdminAccess(extendedContext as BotContext);
       
@@ -245,7 +247,7 @@ describe('Permissions Module', () => {
         }
       };
 
-      vi.mocked(isAdminUser).mockImplementation((id) => {
+      (isAdminUser as any).mockImplementation((id) => {
         return id === '12345' || id === 12345;
       });
 
@@ -265,7 +267,7 @@ describe('Permissions Module', () => {
         }
       };
 
-      vi.mocked(isAdminUser).mockReturnValue(true);
+      (isAdminUser as any).mockReturnValue(true);
 
       const result = await validateAdminAccess(noUsernameContext as BotContext);
       
@@ -283,7 +285,7 @@ describe('Permissions Module', () => {
         }
       };
 
-      vi.mocked(isAdminUser).mockReturnValue(true);
+      (isAdminUser as any).mockReturnValue(true);
 
       const result = await validateAdminAccess(noFirstNameContext as BotContext);
       
@@ -303,7 +305,7 @@ describe('Permissions Module', () => {
         }
       };
 
-      vi.mocked(isAdminUser).mockReturnValue(false);
+      (isAdminUser as any).mockReturnValue(false);
 
       const result = await validateAdminAccess(zeroIdContext as BotContext);
       
@@ -321,7 +323,7 @@ describe('Permissions Module', () => {
         }
       };
 
-      vi.mocked(isAdminUser).mockReturnValue(false);
+      (isAdminUser as any).mockReturnValue(false);
 
       const result = await validateAdminAccess(negativeIdContext as BotContext);
       
@@ -339,7 +341,7 @@ describe('Permissions Module', () => {
         }
       };
 
-      vi.mocked(isAdminUser).mockReturnValue(true);
+      (isAdminUser as any).mockReturnValue(true);
 
       const result = await validateAdminAccess(largeIdContext as BotContext);
       

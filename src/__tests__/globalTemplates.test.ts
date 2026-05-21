@@ -1,7 +1,7 @@
 /**
  * Unit tests for globalTemplates configuration
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import {
   DEFAULT_GLOBAL_TEMPLATES,
   type GlobalTemplate,
@@ -93,7 +93,7 @@ describe('globalTemplates', () => {
       });
 
       it('should have appropriate messaging for agent responses', () => {
-        expect(template.content).toContain('New Response');
+        expect(template.content).toContain('Update on Ticket');
         expect(template.content).toContain('continue the conversation');
       });
     });

@@ -30,10 +30,10 @@ Generate Software Bill of Materials for security analysis:
 
 ```bash
 # Generate SBOM locally
-pnpm sbom:generate
+bun run sbom:generate
 
 # Docker build with SBOM and provenance
-pnpm docker:build:sbom
+bun run docker:build:sbom
 ```
 
 ## 🔗 System Architecture & Integration

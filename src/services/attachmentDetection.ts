@@ -20,7 +20,211 @@ import { WebhookEvent } from '../types/webhookEvents.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { getImageProcessingConfig } from '../config/env.js';
 
+type AttachmentMetadata = {
+  hasFiles: boolean;
+  fileCount: number;
+  totalSize: number;
+  types: string[];
+  names: string[];
+};
+
+type ProcessableFile = {
+  id?: string;
+  name?: string;
+  title?: string;
+  size?: number;
+  mimetype?: string;
+  filetype?: string;
+  type?: string;
+  urlPrivate?: string;
+  urlPrivateDownload?: string;
+};
+
 export class AttachmentDetectionService {
+  private static readValue(record: Record<string, unknown>, key: string): unknown {
+    for (const [entryKey, value] of Object.entries(record)) {
+      if (entryKey === key) {
+        return value;
+      }
+    }
+
+    return undefined;
+  }
+
+  private static readString(record: Record<string, unknown>, key: string): string {
+    const value = this.readValue(record, key);
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  private static readNumber(record: Record<string, unknown>, key: string): number | undefined {
+    const value = this.readValue(record, key);
+
+    if (typeof value === 'number') {
+      return Number.isFinite(value) && value >= 0 ? value : undefined;
+    }
+
+    if (typeof value === 'string') {
+      const parsed = Number.parseInt(value.trim(), 10);
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+    }
+
+    return undefined;
+  }
+
+  private static readStringArray(record: Record<string, unknown>, key: string): string[] {
+    const value = this.readValue(record, key);
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value
+      .filter((item): item is string => typeof item === 'string')
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+
+  private static readObject(record: Record<string, unknown>, key: string): Record<string, unknown> | null {
+    const value = this.readValue(record, key);
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null;
+  }
+
+  private static readTopLevelAttachmentMetadata(event: WebhookEvent): AttachmentMetadata | null {
+    if (!event.attachments || typeof event.attachments !== 'object') {
+      return null;
+    }
+
+    const attachments = event.attachments as unknown as Record<string, unknown>;
+    const fileCount = this.readNumber(attachments, 'fileCount') ?? this.readNumber(attachments, 'count') ?? 0;
+    const totalSize = this.readNumber(attachments, 'totalSize') ?? 0;
+    const hasFiles = typeof attachments.hasFiles === 'boolean'
+      ? attachments.hasFiles
+      : fileCount > 0;
+
+    return {
+      hasFiles,
+      fileCount,
+      totalSize,
+      types: this.readStringArray(attachments, 'types'),
+      names: this.readStringArray(attachments, 'names')
+    };
+  }
+
+  private static getMetadataAttachmentRecords(event: WebhookEvent): Record<string, unknown>[] {
+    const dataRecord = event.data as unknown as Record<string, unknown>;
+    const metadata = this.readObject(dataRecord, 'metadata');
+    const payload = metadata ? this.readObject(metadata, 'event_payload') : null;
+    const payloadAttachments = payload?.attachments;
+
+    if (Array.isArray(payloadAttachments)) {
+      return payloadAttachments
+        .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item));
+    }
+
+    const directAttachments = dataRecord.attachments;
+    if (Array.isArray(directAttachments)) {
+      return directAttachments
+        .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item));
+    }
+
+    return [];
+  }
+
+  static getResolvedAttachments(event: WebhookEvent): AttachmentMetadata | null {
+    const topLevelMetadata = this.readTopLevelAttachmentMetadata(event);
+    if (topLevelMetadata) {
+      return topLevelMetadata;
+    }
+
+    const files = this.getProcessableFiles(event);
+    if (files.length === 0) {
+      return null;
+    }
+
+    return {
+      hasFiles: true,
+      fileCount: files.length,
+      totalSize: files.reduce((sum, file) => sum + (typeof file.size === 'number' ? file.size : 0), 0),
+      types: [...new Set(files
+        .map(file => this.normalizeType(file.mimetype || file.filetype || file.type))
+        .filter(Boolean))],
+      names: files
+        .map((file, index) => file.name || file.title || `attachment-${index + 1}`)
+    };
+  }
+
+  static getProcessableFiles(event: WebhookEvent): ProcessableFile[] {
+    if (Array.isArray(event.data.files) && event.data.files.length > 0) {
+      return event.data.files as ProcessableFile[];
+    }
+
+    const metadataFiles = this.getMetadataAttachmentRecords(event);
+    if (metadataFiles.length === 0) {
+      return [];
+    }
+
+    const attachments = this.readTopLevelAttachmentMetadata(event);
+
+    return metadataFiles
+      .map((file, index): ProcessableFile | null => {
+        const id = this.readString(file, 'id') || this.readString(file, 'fileId') || this.readString(file, 'file_id');
+        const name = this.readString(file, 'name') || this.readString(file, 'title') || attachments?.names.at(index) || `attachment-${index + 1}`;
+        const rawType = this.readString(file, 'mimetype') || this.readString(file, 'mimeType') || this.readString(file, 'type');
+        const normalizedType = this.normalizeType(rawType) || rawType;
+        const urlPrivate = this.readString(file, 'urlPrivate') || this.readString(file, 'url_private');
+        const urlPrivateDownload = this.readString(file, 'urlPrivateDownload') || this.readString(file, 'url_private_download');
+        const size = this.readNumber(file, 'size');
+
+        if (!id && !urlPrivate && !urlPrivateDownload) {
+          return null;
+        }
+
+        return {
+          ...(id ? { id } : {}),
+          ...(name ? { name, title: name } : {}),
+          ...(size !== undefined ? { size } : {}),
+          ...(normalizedType ? { mimetype: normalizedType, type: normalizedType } : {}),
+          ...(rawType ? { filetype: rawType } : {}),
+          ...(urlPrivate ? { urlPrivate } : {}),
+          ...(urlPrivateDownload ? { urlPrivateDownload } : {})
+        };
+      })
+      .filter((file): file is ProcessableFile => file !== null);
+  }
+
+  /**
+   * Normalize incoming attachment type into canonical MIME format.
+   * Supports both MIME values (image/png) and extension values (png).
+   */
+  static normalizeType(rawType: string | undefined): string {
+    if (!rawType || typeof rawType !== 'string') {
+      return '';
+    }
+
+    const normalized = rawType.trim().toLowerCase();
+    if (!normalized) {
+      return '';
+    }
+
+    if (normalized.startsWith('image/')) {
+      return normalized;
+    }
+
+    switch (normalized) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      default:
+        return '';
+    }
+  }
   
   /**
    * Primary event validation - only process dashboard → telegram events
@@ -36,8 +240,8 @@ export class AttachmentDetectionService {
    * Replaces complex array checking and location detection
    */
   static hasAttachments(event: WebhookEvent): boolean {
-    return this.shouldProcessEvent(event) && 
-           event.attachments?.hasFiles === true;
+      return this.shouldProcessEvent(event) &&
+        this.getResolvedAttachments(event)?.hasFiles === true;
   }
   
   /**
@@ -49,8 +253,8 @@ export class AttachmentDetectionService {
       return false;
     }
     
-    return event.attachments?.types?.some(type => 
-      type.startsWith('image/')
+    return this.getResolvedAttachments(event)?.types?.some(type =>
+      this.normalizeType(type).startsWith('image/')
     ) ?? false;
   }
   
@@ -65,8 +269,8 @@ export class AttachmentDetectionService {
     
     const supportedTypes = getImageProcessingConfig().supportedFormats;
     
-    return event.attachments?.types?.some(type => 
-      supportedTypes.includes(type.toLowerCase())
+    return this.getResolvedAttachments(event)?.types?.some(type =>
+      supportedTypes.includes(this.normalizeType(type))
     ) ?? false;
   }
   
@@ -91,7 +295,7 @@ export class AttachmentDetectionService {
     if (!this.hasAttachments(event)) {
       return true;
     }
-    return (event.attachments?.totalSize ?? 0) <= maxSizeBytes;
+    return (this.getResolvedAttachments(event)?.totalSize ?? 0) <= maxSizeBytes;
   }
   
   /**
@@ -102,7 +306,7 @@ export class AttachmentDetectionService {
     if (!this.hasAttachments(event)) {
       return false;
     }
-    return (event.attachments?.totalSize ?? 0) > maxSizeBytes;
+    return (this.getResolvedAttachments(event)?.totalSize ?? 0) > maxSizeBytes;
   }
   
   /**
@@ -114,7 +318,7 @@ export class AttachmentDetectionService {
       return 'No attachments';
     }
     
-    const attachments = event.attachments;
+    const attachments = this.getResolvedAttachments(event);
     if (!attachments) {
       return 'No attachments';
     }
@@ -131,7 +335,7 @@ export class AttachmentDetectionService {
    * Instant count from metadata
    */
   static getFileCount(event: WebhookEvent): number {
-    return event.attachments?.fileCount || 0;
+    return this.getResolvedAttachments(event)?.fileCount || 0;
   }
   
   /**
@@ -139,7 +343,7 @@ export class AttachmentDetectionService {
    * Pre-calculated size from metadata
    */
   static getTotalSize(event: WebhookEvent): number {
-    return event.attachments?.totalSize || 0;
+    return this.getResolvedAttachments(event)?.totalSize || 0;
   }
   
   /**
@@ -147,7 +351,7 @@ export class AttachmentDetectionService {
    * Deduplicated types from metadata
    */
   static getFileTypes(event: WebhookEvent): string[] {
-    return event.attachments?.types || [];
+    return this.getResolvedAttachments(event)?.types || [];
   }
   
   /**
@@ -155,7 +359,7 @@ export class AttachmentDetectionService {
    * names[i] corresponds to data.files[i]
    */
   static getFileNames(event: WebhookEvent): string[] {
-    return event.attachments?.names || [];
+    return this.getResolvedAttachments(event)?.names || [];
   }
   
   /**
@@ -167,16 +371,16 @@ export class AttachmentDetectionService {
       return false;
     }
     
-    const metadata = event.attachments;
-    const files = event.data.files;
+    const metadata = this.getResolvedAttachments(event);
+    const files = this.getProcessableFiles(event);
     
     // No files scenario - both should be empty/false
-    if (!metadata?.hasFiles && (!files || files.length === 0)) {
+    if (!metadata?.hasFiles && files.length === 0) {
       return true;
     }
     
     // Has files scenario - counts should match
-    if (metadata?.hasFiles && files && files.length === metadata.fileCount) {
+    if (metadata?.hasFiles && files.length === metadata.fileCount) {
       return true;
     }
     
@@ -184,7 +388,7 @@ export class AttachmentDetectionService {
     LogEngine.warn('Attachment metadata inconsistency detected', {
       metadataHasFiles: metadata?.hasFiles,
       metadataCount: metadata?.fileCount,
-      actualFilesCount: files?.length || 0,
+      actualFilesCount: files.length,
       eventId: event.eventId,
       sourcePlatform: event.sourcePlatform,
       conversationId: event.data.conversationId

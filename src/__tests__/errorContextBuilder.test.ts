@@ -5,7 +5,7 @@
  * standardized error handling across the application.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { ErrorContextBuilder } from '../utils/errorContextBuilder.js';
 import type { BotContext } from '../types/index.js';
 

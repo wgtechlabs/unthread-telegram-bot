@@ -42,7 +42,7 @@ import './config/logging.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 
 // Validate environment configuration before proceeding
-import { validateEnvironment } from './config/env.js';
+import { getWebhookPollInterval, validateEnvironment } from './config/env.js';
 validateEnvironment();
 
 import { cleanupBlockedUser, createBot, startPolling } from './bot.js';
@@ -63,6 +63,7 @@ import type { BotContext } from './types/index.js';
 /**
  * Initialize the bot with the token from environment variables
  */
+// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 const telegramToken = process.env.TELEGRAM_BOT_TOKEN!;
 const bot = createBot(telegramToken);
 
@@ -253,6 +254,7 @@ async function retryWithBackoff<T>(
         }
     }
     
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     throw lastError!;
 }
 
@@ -300,6 +302,7 @@ try {
     // Initialize the BotsStore with retry logic
     await retryWithBackoff(
         async () => {
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
             await BotsStore.initialize(db, process.env.PLATFORM_REDIS_URL!);
             LogEngine.info('BotsStore connection established');
         },
@@ -334,10 +337,13 @@ let webhookHandler: TelegramWebhookHandler | undefined;
 try {
     // Check if webhook Redis URL is available before initializing webhook consumer
     if (process.env.WEBHOOK_REDIS_URL) {
+        const webhookPollInterval = getWebhookPollInterval();
+
         // Initialize webhook consumer with dedicated webhook Redis URL
         webhookConsumer = new WebhookConsumer({
             redisUrl: process.env.WEBHOOK_REDIS_URL,
-            queueName: 'unthread-events'
+            queueName: 'unthread-events',
+            ...(webhookPollInterval !== undefined ? { pollInterval: webhookPollInterval } : {})
         });
 
         // Initialize webhook handler
@@ -430,6 +436,7 @@ const sessionCleanupTask = startSessionCleanupTask();
  * - 400: Chat not found
  * - 429: Too Many Requests
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 bot.catch(async (error: any, ctx?: BotContext) => {
     LogEngine.error('Telegram Bot Error', {
         error: error.message,

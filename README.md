@@ -84,10 +84,16 @@ For security vulnerabilities, follow our [security policy](./SECURITY.md).
 
 **Important**: All pull requests must be submitted to the `dev` branch. PRs to `main` will be automatically rejected.
 
-Contributions are welcome! Your code must pass `pnpm build` and `pnpm type-check` before merging.
+Contributions are welcome! Your code must pass `bun run build` and `bun run type-check` before merging.
+
+### Runtime And Toolchain
+
+- Node.js is the runtime engine and supports majors 22, 24, and 26.
+- Node.js 26 is the default production runtime.
+- Bun is the supported installation and development toolchain (`bun install`, `bun run`).
+- CI validates compatibility across Node.js 22, 24, and 26.
 
 For detailed setup instructions, development guidelines, and security practices, see our comprehensive [Contributing Guide](./CONTRIBUTING.md).
-
 
 ## 💖 Sponsors
 

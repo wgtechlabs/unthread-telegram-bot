@@ -1,7 +1,8 @@
 /**
  * Unit tests for commands/utils/errorHandler.ts
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it , mock} from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import {
   ERROR_CODES,
   ErrorCategory,
@@ -9,15 +10,15 @@ import {
   createUserErrorMessage,
   getErrorDetails,
   logError
-} from '../commands/utils/errorHandler.js';
+} from '../commands/utils/errorHandler.ts';
 
 // Mock LogEngine
-vi.mock('@wgtechlabs/log-engine', () => ({
+mock.module('@wgtechlabs/log-engine', () => ({
   LogEngine: {
-    error: vi.fn(),
-    warn: vi.fn(),
-    info: vi.fn(),
-    debug: vi.fn()
+    error: createMock(),
+    warn: createMock(),
+    info: createMock(),
+    debug: createMock()
   }
 }));
 
@@ -25,11 +26,11 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 
 describe('errorHandler utilities', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    clearAllMocks();
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    restoreAllMocks();
   });
 
   describe('ErrorCategory enum', () => {
@@ -162,7 +163,7 @@ describe('errorHandler utilities', () => {
 
       expect(details.message).toBe('System error');
       expect(LogEngine.error).toHaveBeenCalled();
-      const logCall = vi.mocked(LogEngine.error).mock.calls[0];
+      const logCall = (LogEngine.error as any).mock.calls[0];
       expect(logCall[0]).toContain(context);
     });
 
@@ -174,7 +175,7 @@ describe('errorHandler utilities', () => {
       logError(error, context, additionalData);
 
       expect(LogEngine.error).toHaveBeenCalled();
-      const logCall = vi.mocked(LogEngine.error).mock.calls[0];
+      const logCall = (LogEngine.error as any).mock.calls[0];
       const logData = logCall[1];
       expect(logData.userId).toBe(123);
       expect(logData.action).toBe('test');
@@ -198,8 +199,8 @@ describe('errorHandler utilities', () => {
       logError(error, context);
 
       // Rate limit errors might be logged at different levels depending on classification
-      const errorCalled = vi.mocked(LogEngine.error).mock.calls.length > 0;
-      const warnCalled = vi.mocked(LogEngine.warn).mock.calls.length > 0;
+      const errorCalled = (LogEngine.error as any).mock.calls.length > 0;
+      const warnCalled = (LogEngine.warn as any).mock.calls.length > 0;
       expect(errorCalled || warnCalled).toBe(true);
     });
 

@@ -4,9 +4,11 @@
 # Multi-stage Docker build for the Unthread Telegram Bot
 # 
 # Build stages:
-# 1. deps    - Install production dependencies only
-# 2. build   - Install dev dependencies and build the application
-# 3. final   - Create minimal runtime image with built app
+# 1. base         - Minimal Node.js + dumb-init runtime base (no Bun)
+# 2. builder-base - base + Bun (used only for dependency install & build)
+# 3. deps         - Install production dependencies only
+# 4. build        - Install dev dependencies and build the application
+# 5. final        - Create minimal runtime image with built app (no Bun)
 #
 # Usage:
 #   docker build -t unthread-telegram-bot .
@@ -15,37 +17,48 @@
 
 # syntax=docker/dockerfile:1
 
-# Use Node.js 22.16 LTS Alpine with security patches
-ARG NODE_VERSION=22.16-alpine3.21
+# Use Node.js 26 latest Alpine line for primary runtime support
+ARG NODE_VERSION=26-alpine
+# Pinned Bun version for reproducible builds
+ARG BUN_VERSION=1.3.13
 
 # =============================================================================
 # STAGE 1: Base Image
 # =============================================================================
-# Alpine Linux 3.21 base for minimal image size with latest security updates
+# Alpine-based Node image for minimal size and regular security updates.
+# Intentionally kept minimal (no Bun) so the final runtime image stays small —
+# Bun is only added on top in the `builder-base` stage used for install/build.
 FROM node:${NODE_VERSION} AS base
 
-# Install security updates for Alpine packages and pnpm
+# Install security updates for Alpine packages
 RUN apk update && apk upgrade && \
     apk add --no-cache dumb-init && \
-    rm -rf /var/cache/apk/* && \
-    corepack enable && \
-    corepack prepare pnpm@9.12.3 --activate
+    rm -rf /var/cache/apk/*
 
 # Set working directory for all subsequent stages
 WORKDIR /usr/src/app
 
 # =============================================================================
+# STAGE 1b: Builder Base (base + Bun)
+# =============================================================================
+# Bun is installed here for dependency management and building only — the
+# final runtime launches the bot with Node.js and does NOT include Bun.
+FROM base AS builder-base
+ARG BUN_VERSION
+RUN npm install -g bun@${BUN_VERSION}
+
+# =============================================================================
 # STAGE 2: Production Dependencies
 # =============================================================================
 # Install only production dependencies for runtime
-FROM base AS deps
+FROM builder-base AS deps
 
 # Use bind mounts and cache for faster builds
 # Downloads dependencies without copying package files into the layer
 RUN --mount=type=bind,source=package.json,target=package.json \
-    --mount=type=bind,source=pnpm-lock.yaml,target=pnpm-lock.yaml \
-    --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --prod --frozen-lockfile
+    --mount=type=bind,source=bun.lock,target=bun.lock \
+    --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --production --frozen-lockfile
 
 # =============================================================================
 # STAGE 3: Build Application  
@@ -55,13 +68,13 @@ FROM deps AS build
 
 # Install all dependencies (including devDependencies for building)
 RUN --mount=type=bind,source=package.json,target=package.json \
-    --mount=type=bind,source=pnpm-lock.yaml,target=pnpm-lock.yaml \
-    --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile
+    --mount=type=bind,source=bun.lock,target=bun.lock \
+    --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile
 
 # Copy source code and build the application
 COPY . .
-RUN pnpm run build
+RUN bun run build
 
 # =============================================================================
 # STAGE 4: Final Runtime Image

@@ -5,15 +5,15 @@
  * used throughout the application.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
 describe('Log Configuration Examples', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    mock.restore();
   });
 
   describe('Environment Variable Control', () => {

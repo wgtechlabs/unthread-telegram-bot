@@ -5,38 +5,39 @@
  * validation, direct setting, and usage instructions.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it , mock} from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import { SetEmailCommand } from '../commands/basic/SetEmailCommand.js';
 import type { BotContext } from '../types/index.js';
 
 // Mock external dependencies
-vi.mock('../utils/emailManager.js', () => ({
-    deliverPendingAgentMessages: vi.fn(),
-    getUserEmailPreferences: vi.fn(),
-    updateUserEmail: vi.fn(),
-    validateEmail: vi.fn(),
+mock.module('../utils/emailManager.js', () => ({
+    deliverPendingAgentMessages: createMock(),
+    getUserEmailPreferences: createMock(),
+    updateUserEmail: createMock(),
+    validateEmail: createMock(),
 }));
 
-vi.mock('../utils/markdownEscape.js', () => ({
-    escapeMarkdown: vi.fn((text) => text),
-    formatEmailForDisplay: vi.fn((email) => email),
+mock.module('../utils/markdownEscape.js', () => ({
+    escapeMarkdown: createMock((text) => text),
+    formatEmailForDisplay: createMock((email) => email),
 }));
 
-vi.mock('../utils/messageContentExtractor.js', () => ({
-    getMessageText: vi.fn(),
+mock.module('../utils/messageContentExtractor.js', () => ({
+    getMessageText: createMock(),
 }));
 
-vi.mock('@wgtechlabs/log-engine', () => ({
+mock.module('@wgtechlabs/log-engine', () => ({
     LogEngine: {
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
+        info: createMock(),
+        warn: createMock(),
+        error: createMock(),
     }
 }));
 
-vi.mock('../config/env.js', () => ({
-    isAdminUser: vi.fn(() => true),
-    getAdminUsers: vi.fn(() => [12345]),
+mock.module('../config/env.js', () => ({
+    isAdminUser: createMock(() => true),
+    getAdminUsers: createMock(() => [12345]),
 }));
 
 import { 
@@ -54,7 +55,7 @@ describe('SetEmailCommand', () => {
     let mockContext: Partial<BotContext>;
     
     beforeEach(() => {
-        vi.clearAllMocks();
+        clearAllMocks();
         setEmailCommand = new SetEmailCommand();
         
         mockContext = {
@@ -68,7 +69,7 @@ describe('SetEmailCommand', () => {
                 id: 12345,
                 type: 'private'
             },
-            reply: vi.fn().mockResolvedValue({}),
+            reply: mock().mockResolvedValue({}),
             message: {
                 message_id: 1,
                 date: Date.now() / 1000,
@@ -88,7 +89,7 @@ describe('SetEmailCommand', () => {
     });
 
     afterEach(() => {
-        vi.restoreAllMocks();
+        restoreAllMocks();
     });
 
     describe('Metadata', () => {
@@ -118,12 +119,12 @@ describe('SetEmailCommand', () => {
         });
 
         it('should show usage instructions when no email provided', async () => {
-            vi.mocked(getMessageText).mockReturnValue('/setemail');
-            vi.mocked(getUserEmailPreferences).mockResolvedValue({
+            (getMessageText as any).mockReturnValue('/setemail');
+            (getUserEmailPreferences as any).mockResolvedValue({
                 email: 'current@example.com',
                 isDummy: false
             });
-            vi.mocked(formatEmailForDisplay).mockReturnValue('current@example.com');
+            (formatEmailForDisplay as any).mockReturnValue('current@example.com');
 
             await setEmailCommand.execute(mockContext as BotContext);
 
@@ -136,15 +137,15 @@ describe('SetEmailCommand', () => {
         });
 
         it('should set email directly when provided', async () => {
-            vi.mocked(getMessageText).mockReturnValue('/setemail test@example.com');
-            vi.mocked(validateEmail).mockReturnValue({
+            (getMessageText as any).mockReturnValue('/setemail test@example.com');
+            (validateEmail as any).mockReturnValue({
                 isValid: true,
                 sanitizedValue: 'test@example.com'
             });
-            vi.mocked(updateUserEmail).mockResolvedValue({
+            (updateUserEmail as any).mockResolvedValue({
                 success: true
             });
-            vi.mocked(deliverPendingAgentMessages).mockResolvedValue({
+            (deliverPendingAgentMessages as any).mockResolvedValue({
                 delivered: 2,
                 failed: 0,
                 errors: []
@@ -161,15 +162,15 @@ describe('SetEmailCommand', () => {
         });
 
         it('should handle email with multiple words', async () => {
-            vi.mocked(getMessageText).mockReturnValue('/setemail my email@example.com extra text');
-            vi.mocked(validateEmail).mockReturnValue({
+            (getMessageText as any).mockReturnValue('/setemail my email@example.com extra text');
+            (validateEmail as any).mockReturnValue({
                 isValid: true,
                 sanitizedValue: 'my email@example.com extra text'
             });
-            vi.mocked(updateUserEmail).mockResolvedValue({
+            (updateUserEmail as any).mockResolvedValue({
                 success: true
             });
-            vi.mocked(deliverPendingAgentMessages).mockResolvedValue({
+            (deliverPendingAgentMessages as any).mockResolvedValue({
                 delivered: 0,
                 failed: 0,
                 errors: []
@@ -183,8 +184,8 @@ describe('SetEmailCommand', () => {
 
     describe('Direct Email Setting', () => {
         it('should handle invalid email format', async () => {
-            vi.mocked(getMessageText).mockReturnValue('/setemail invalid-email');
-            vi.mocked(validateEmail).mockReturnValue({
+            (getMessageText as any).mockReturnValue('/setemail invalid-email');
+            (validateEmail as any).mockReturnValue({
                 isValid: false,
                 error: 'Invalid email format'
             });
@@ -198,8 +199,8 @@ describe('SetEmailCommand', () => {
         });
 
         it('should handle validation without sanitized value', async () => {
-            vi.mocked(getMessageText).mockReturnValue('/setemail test@example.com');
-            vi.mocked(validateEmail).mockReturnValue({
+            (getMessageText as any).mockReturnValue('/setemail test@example.com');
+            (validateEmail as any).mockReturnValue({
                 isValid: true,
                 sanitizedValue: undefined
             });
@@ -210,12 +211,12 @@ describe('SetEmailCommand', () => {
         });
 
         it('should handle email update failure', async () => {
-            vi.mocked(getMessageText).mockReturnValue('/setemail test@example.com');
-            vi.mocked(validateEmail).mockReturnValue({
+            (getMessageText as any).mockReturnValue('/setemail test@example.com');
+            (validateEmail as any).mockReturnValue({
                 isValid: true,
                 sanitizedValue: 'test@example.com'
             });
-            vi.mocked(updateUserEmail).mockResolvedValue({
+            (updateUserEmail as any).mockResolvedValue({
                 success: false,
                 error: 'Database connection failed'
             });
@@ -229,15 +230,15 @@ describe('SetEmailCommand', () => {
         });
 
         it('should deliver pending messages after successful email update', async () => {
-            vi.mocked(getMessageText).mockReturnValue('/setemail test@example.com');
-            vi.mocked(validateEmail).mockReturnValue({
+            (getMessageText as any).mockReturnValue('/setemail test@example.com');
+            (validateEmail as any).mockReturnValue({
                 isValid: true,
                 sanitizedValue: 'test@example.com'
             });
-            vi.mocked(updateUserEmail).mockResolvedValue({
+            (updateUserEmail as any).mockResolvedValue({
                 success: true
             });
-            vi.mocked(deliverPendingAgentMessages).mockResolvedValue({
+            (deliverPendingAgentMessages as any).mockResolvedValue({
                 delivered: 3,
                 failed: 1,
                 errors: ['Failed to deliver message 1']
@@ -258,15 +259,15 @@ describe('SetEmailCommand', () => {
         });
 
         it('should handle pending message delivery errors silently', async () => {
-            vi.mocked(getMessageText).mockReturnValue('/setemail test@example.com');
-            vi.mocked(validateEmail).mockReturnValue({
+            (getMessageText as any).mockReturnValue('/setemail test@example.com');
+            (validateEmail as any).mockReturnValue({
                 isValid: true,
                 sanitizedValue: 'test@example.com'
             });
-            vi.mocked(updateUserEmail).mockResolvedValue({
+            (updateUserEmail as any).mockResolvedValue({
                 success: true
             });
-            vi.mocked(deliverPendingAgentMessages).mockRejectedValue(new Error('Delivery service down'));
+            (deliverPendingAgentMessages as any).mockRejectedValue(new Error('Delivery service down'));
 
             await setEmailCommand.execute(mockContext as BotContext);
 
@@ -282,8 +283,15 @@ describe('SetEmailCommand', () => {
         });
 
         it('should handle general errors in direct email setting', async () => {
-            vi.mocked(getMessageText).mockReturnValue('/setemail test@example.com');
-            vi.mocked(validateEmail).mockRejectedValue(new Error('Validation service down'));
+            (getMessageText as any).mockReturnValue('/setemail test@example.com');
+            // validateEmail is sync in production. Simulate a rejected promise
+            // result that mimics the legacy Vitest test (validation lacks
+            // `isValid` so the invalid-format branch is taken). We attach a
+            // no-op `.catch()` so Bun's strict isolation does not surface it
+            // as an unhandled rejection.
+            const failed = Promise.reject(new Error('Validation service down'));
+            failed.catch(() => {});
+            (validateEmail as any).mockReturnValue(failed);
 
             await setEmailCommand.execute(mockContext as BotContext);
 
@@ -295,8 +303,10 @@ describe('SetEmailCommand', () => {
         });
 
         it('should handle non-Error exceptions', async () => {
-            vi.mocked(getMessageText).mockReturnValue('/setemail test@example.com');
-            vi.mocked(validateEmail).mockRejectedValue('String error');
+            (getMessageText as any).mockReturnValue('/setemail test@example.com');
+            const failed = Promise.reject('String error');
+            failed.catch(() => {});
+            (validateEmail as any).mockReturnValue(failed);
 
             await setEmailCommand.execute(mockContext as BotContext);
 
@@ -310,15 +320,15 @@ describe('SetEmailCommand', () => {
 
     describe('Usage Instructions', () => {
         beforeEach(() => {
-            vi.mocked(getMessageText).mockReturnValue('/setemail');
+            (getMessageText as any).mockReturnValue('/setemail');
         });
 
         it('should show instructions with current email', async () => {
-            vi.mocked(getUserEmailPreferences).mockResolvedValue({
+            (getUserEmailPreferences as any).mockResolvedValue({
                 email: 'current@example.com',
                 isDummy: false
             });
-            vi.mocked(formatEmailForDisplay).mockReturnValue('current@example.com');
+            (formatEmailForDisplay as any).mockReturnValue('current@example.com');
 
             await setEmailCommand.execute(mockContext as BotContext);
 
@@ -330,11 +340,11 @@ describe('SetEmailCommand', () => {
         });
 
         it('should show special message for dummy email', async () => {
-            vi.mocked(getUserEmailPreferences).mockResolvedValue({
+            (getUserEmailPreferences as any).mockResolvedValue({
                 email: 'dummy@example.com',
                 isDummy: true
             });
-            vi.mocked(formatEmailForDisplay).mockReturnValue('[Temporary Email]');
+            (formatEmailForDisplay as any).mockReturnValue('[Temporary Email]');
 
             await setEmailCommand.execute(mockContext as BotContext);
 
@@ -345,17 +355,17 @@ describe('SetEmailCommand', () => {
         });
 
         it('should show instructions without current email when none exists', async () => {
-            vi.mocked(getUserEmailPreferences).mockResolvedValue(null);
+            (getUserEmailPreferences as any).mockResolvedValue(null);
 
             await setEmailCommand.execute(mockContext as BotContext);
 
-            const replyCall = vi.mocked(mockContext.reply).mock.calls[0];
+            const replyCall = (mockContext.reply as any).mock.calls[0];
             expect(replyCall[0]).toContain('Set Email Address');
             expect(replyCall[0]).not.toContain('Current email:');
         });
 
         it('should handle errors in showing usage instructions', async () => {
-            vi.mocked(getUserEmailPreferences).mockRejectedValue(new Error('Database error'));
+            (getUserEmailPreferences as any).mockRejectedValue(new Error('Database error'));
 
             await setEmailCommand.execute(mockContext as BotContext);
 
@@ -370,7 +380,7 @@ describe('SetEmailCommand', () => {
         });
 
         it('should handle non-Error exceptions in usage instructions', async () => {
-            vi.mocked(getUserEmailPreferences).mockRejectedValue('String error');
+            (getUserEmailPreferences as any).mockRejectedValue('String error');
 
             await setEmailCommand.execute(mockContext as BotContext);
 
@@ -383,15 +393,15 @@ describe('SetEmailCommand', () => {
 
     describe('Logging', () => {
         it('should log email update attempts', async () => {
-            vi.mocked(getMessageText).mockReturnValue('/setemail test@example.com');
-            vi.mocked(validateEmail).mockReturnValue({
+            (getMessageText as any).mockReturnValue('/setemail test@example.com');
+            (validateEmail as any).mockReturnValue({
                 isValid: true,
                 sanitizedValue: 'test@example.com'
             });
-            vi.mocked(updateUserEmail).mockResolvedValue({
+            (updateUserEmail as any).mockResolvedValue({
                 success: true
             });
-            vi.mocked(deliverPendingAgentMessages).mockResolvedValue({
+            (deliverPendingAgentMessages as any).mockResolvedValue({
                 delivered: 0,
                 failed: 0,
                 errors: []
@@ -415,8 +425,8 @@ describe('SetEmailCommand', () => {
         });
 
         it('should log with unknown domain when sanitized value is missing', async () => {
-            vi.mocked(getMessageText).mockReturnValue('/setemail test@example.com');
-            vi.mocked(validateEmail).mockReturnValue({
+            (getMessageText as any).mockReturnValue('/setemail test@example.com');
+            (validateEmail as any).mockReturnValue({
                 isValid: true,
                 sanitizedValue: undefined
             });
@@ -433,8 +443,8 @@ describe('SetEmailCommand', () => {
 
     describe('Edge Cases', () => {
         it('should handle empty command text', async () => {
-            vi.mocked(getMessageText).mockReturnValue('');
-            vi.mocked(getUserEmailPreferences).mockResolvedValue(null);
+            (getMessageText as any).mockReturnValue('');
+            (getUserEmailPreferences as any).mockResolvedValue(null);
 
             await setEmailCommand.execute(mockContext as BotContext);
 
@@ -445,8 +455,8 @@ describe('SetEmailCommand', () => {
         });
 
         it('should handle whitespace-only email', async () => {
-            vi.mocked(getMessageText).mockReturnValue('/setemail    ');
-            vi.mocked(getUserEmailPreferences).mockResolvedValue(null);
+            (getMessageText as any).mockReturnValue('/setemail    ');
+            (getUserEmailPreferences as any).mockResolvedValue(null);
 
             await setEmailCommand.execute(mockContext as BotContext);
 
@@ -458,8 +468,8 @@ describe('SetEmailCommand', () => {
         });
 
         it('should handle command with only command name', async () => {
-            vi.mocked(getMessageText).mockReturnValue('/setemail');
-            vi.mocked(getUserEmailPreferences).mockResolvedValue(null);
+            (getMessageText as any).mockReturnValue('/setemail');
+            (getUserEmailPreferences as any).mockResolvedValue(null);
 
             await setEmailCommand.execute(mockContext as BotContext);
 

@@ -22,19 +22,18 @@
   "main": "dist/index.js",
   "type": "module",
   "private": true,
-  "packageManager": "pnpm@9.12.3",
   "engines": {
-    "node": ">=20.0.0",
-    "pnpm": ">=9.0.0"
+    "node": "^22.0.0 || ^24.0.0 || ^26.0.0",
+    "bun": ">=1.0.0"
   },
   "scripts": {
-    "preinstall": "pnpm dlx only-allow pnpm",
+    "preinstall": "npx only-allow bun",
     "clean": "rm -rf dist",
     "build": "tsc && cp src/database/schema.sql dist/database/",
     "type-check": "tsc --noEmit",
     "start": "node dist/index.js",
     "dev": "nodemon",
-    "dev:watch": "concurrently \"tsc --watch\" \"nodemon dist/index.js\"",
+    "dev:watch": "concurrently \"bunx tsc --watch\" \"nodemon dist/index.js\"",
     "docker:build": "docker build -t unthread-telegram-bot .",
     "docker:build:secure": "docker build --no-cache --pull -t unthread-telegram-bot .",
     "docker:build:sbom": "docker build --sbom=true --provenance=mode=max -t unthread-telegram-bot .",
@@ -42,49 +41,48 @@
     "sbom:generate": "bash scripts/generate-sbom.sh unthread-telegram-bot:latest",
     "lint": "eslint src/ --ext .ts",
     "lint:fix": "eslint src/ --ext .ts --fix",
-    "validate:deadcode": "npx ts-prune && npx depcheck",
+    "validate:deadcode": "bunx ts-prune && bunx depcheck",
     "validate:unused": "eslint src/ --ext .ts --rule 'unused-imports/no-unused-imports: error' --rule 'unused-imports/no-unused-vars: error'",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test": "bun run ./scripts/run-tests.ts",
+    "test:watch": "bun test --watch --isolate",
+    "test:coverage": "bun test --coverage --isolate"
   },
   "dependencies": {
     "@wgtechlabs/log-engine": "2.2.0",
-    "dotenv": "^17.2.3",
-    "form-data": "^4.0.5",
+    "dotenv": "^16.5.0",
+    "form-data": "^4.0.4",
     "node-fetch": "3.3.2",
-    "pg": "^8.17.2",
-    "redis": "^5.10.0",
+    "pg": "^8.16.2",
+    "redis": "^5.5.6",
     "telegraf": "^4.16.3",
-    "uuid": "13.0.0",
-    "zod": "4.3.6"
+    "uuid": "14.0.0",
+    "zod": "3.25.76"
   },
   "devDependencies": {
-    "@eslint/js": "9.39.2",
-    "@types/node": "25.1.0",
-    "@types/pg": "8.16.0",
-    "@typescript-eslint/eslint-plugin": "^8.54.0",
-    "@typescript-eslint/parser": "^8.54.0",
-    "@vitest/coverage-v8": "^4.0.18",
-    "concurrently": "9.2.1",
+    "@eslint/js": "9.37.0",
+    "@types/node": "24.0.3",
+    "@types/pg": "8.15.4",
+    "@typescript-eslint/eslint-plugin": "^8.18.1",
+    "@typescript-eslint/parser": "^8.18.1",
+    "concurrently": "9.2.0",
     "depcheck": "^1.4.7",
-    "eslint": "9.39.2",
+    "eslint": "9.30.1",
     "eslint-plugin-security": "3.0.1",
-    "eslint-plugin-unused-imports": "4.3.0",
-    "nodemon": "^3.1.11",
+    "eslint-plugin-unused-imports": "4.1.4",
+    "nodemon": "^3.1.10",
     "ts-prune": "^0.10.3",
-    "typescript": "5.9.3",
-    "vitest": "^4.0.18"
+    "typescript": "5.8.3"
   },
-  "resolutions": {
+  "overrides": {
     "cross-spawn": "7.0.6",
-    "brace-expansion": "2.0.2",
-    "form-data": "^4.0.5",
-    "eslint": "9.39.2",
+    "brace-expansion": "^2.0.3",
+    "form-data": "^4.0.4",
+    "eslint": "9.30.1",
     "@eslint/plugin-kit": "0.3.4",
-    "vite": "7.1.11",
     "glob": "10.5.0",
     "js-yaml": "4.1.1",
-    "lodash": "4.17.21"
+    "lodash": "^4.18.0",
+    "flatted": "^3.4.2",
+    "yaml": "^1.10.3"
   }
 }

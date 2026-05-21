@@ -28,10 +28,10 @@ To get started with development:
 2. **Install dependencies**
 
    ```bash
-   pnpm install
+   bun install
    ```
 
-   > ⚠️ **Important**: This project enforces the use of pnpm. npm and yarn will be blocked automatically.
+   > ⚠️ **Important**: This project uses Bun for dependency management and tests, while continuing to use Node.js as the runtime.
 
 3. **Set up environment variables**
    - Copy `.env.example` to `.env`
@@ -74,33 +74,33 @@ To get started with development:
 7. **Start the project in development mode**
 
    ```bash
-   pnpm dev
+   bun run dev
    ```
 
 #### 🏗️ Development Commands
 
 ```bash
 # Development with auto-reload
-pnpm dev
+bun run dev
 
 # Build for production
-pnpm build
+bun run build
 
 # Type checking only
-pnpm type-check
+bun run type-check
 
 # Clean build artifacts
-pnpm clean
+bun run clean
 
 # Start production build
-pnpm start
+bun run start
 
 # Docker commands
-pnpm docker:build                    # Build Docker image
-pnpm docker:build:secure            # Build with security updates
-pnpm docker:build:sbom              # Build with SBOM generation
-pnpm docker:run                     # Run Docker container
-pnpm sbom:generate                  # Generate SBOM locally
+bun run docker:build                    # Build Docker image
+bun run docker:build:secure            # Build with security updates
+bun run docker:build:sbom              # Build with SBOM generation
+bun run docker:run                     # Run Docker container
+bun run sbom:generate                  # Generate SBOM locally
 ```
 
 #### 🏛️ Project Structure
@@ -141,9 +141,9 @@ src/
 - **TypeScript First**: All code must be written in TypeScript with strict type checking
 - **Structured Logging**: Use `@wgtechlabs/log-engine` for all logging with built-in PII protection and security features
 - **Error Handling**: Implement comprehensive error handling with detailed logging
-- **Package Manager**: Use pnpm exclusively (enforced via preinstall script)
+- **Package Manager**: Use Bun exclusively for installs and scripts
 - **Code Style**: Follow existing patterns and maintain consistency
-- **Environment**: Use Node.js 20+ for development
+- **Environment**: Use Node.js 22, 24, or 26 for development (default runtime is Node.js 26)
 - **Database**: PostgreSQL 12+ required, Redis 6+ optional but recommended
 - **Multi-layer Storage**: Utilize Memory → Redis → PostgreSQL architecture
 - **Webhook Integration**: Ensure compatibility with [`wgtechlabs/unthread-webhook-server`](https://github.com/wgtechlabs/unthread-webhook-server)
@@ -163,9 +163,9 @@ While this project doesn't currently have a comprehensive test suite, when contr
 #### 🔍 Code Review Process
 
 1. **Pre-submission checks**:
-   - [ ] Code builds without errors (`pnpm build`)
-   - [ ] TypeScript type checking passes (`pnpm type-check`)
-   - [ ] Development server starts successfully (`pnpm dev`)
+   - [ ] Code builds without errors (`bun run build`)
+   - [ ] TypeScript type checking passes (`bun run type-check`)
+   - [ ] Development server starts successfully (`bun run dev`)
    - [ ] Database connection works properly
    - [ ] Bot responds to basic commands (`/start`, `/help`)
    - [ ] Ticket creation flow works end-to-end
@@ -417,12 +417,12 @@ When modifying username-related code, verify:
 
 #### **Prerequisites**
 
-- **Node.js 20+** (ES6 modules support required)
-- **pnpm 9+** (package manager - npm and yarn not supported)
+- **Node.js 22, 24, or 26** (production runtime support; default runtime is Node.js 26)
+- **Bun 1.3+** (package manager and test runner)
 - **PostgreSQL 12+** (primary database)
 - **Redis 6+** (optional, for enhanced performance)
 
-> **⚠️ Package Manager Notice:** This project enforces the use of pnpm and will prevent npm/yarn installation attempts. If you try to use `npm install` or `yarn install`, you'll receive an error message with instructions to use pnpm instead.
+> **ℹ️ Tooling Notice:** This project uses Bun for dependency management, scripts, and tests, while keeping Node.js as the production runtime (`node dist/index.js`).
 
 #### **Step-by-Step Installation**
 

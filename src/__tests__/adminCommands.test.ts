@@ -5,80 +5,127 @@
  * activation, setup, and templates management.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import { clearAllMocks, createMock, restoreAllMocks } from './_helpers/mockLifecycle';
 import { ActivateCommand, SetupCommand, TemplatesCommand } from '../commands/admin/AdminCommands.js';
 import type { BotContext } from '../types/index.js';
 import type { AdminProfile, GroupConfig } from '../sdk/types.js';
 
 // Mock external dependencies
-vi.mock('../sdk/bots-brain/index.js', () => ({
+mock.module('../sdk/bots-brain/index.js', () => ({
     BotsStore: {
-        getAdminProfile: vi.fn(),
-        storeAdminProfile: vi.fn(),
-        getGroupConfig: vi.fn(),
-        storeGroupConfig: vi.fn(),
-        getUserTemplates: vi.fn(),
-        updateDmSetupSession: vi.fn(),
+        getAdminProfile: createMock(),
+        storeAdminProfile: createMock(),
+        getGroupConfig: createMock(),
+        storeGroupConfig: createMock(),
+        getUserTemplates: createMock(),
+        updateDmSetupSession: createMock(),
     }
 }));
 
-vi.mock('../utils/permissions.js', () => ({
-    checkAndPromptBotAdmin: vi.fn(),
-    isBotAdmin: vi.fn(),
-    validateAdminAccess: vi.fn(),
+mock.module('../config/env.js', () => ({
+    getCompanyName: createMock(() => {
+        const company = process.env.MY_COMPANY_NAME?.trim();
+        if (!company) {
+            return null;
+        }
+        const placeholders = new Set([
+            'your_company_name_here',
+            'your_company_name',
+            'company_name_here',
+            'placeholder',
+            'change_me',
+            'replace_me'
+        ]);
+        return placeholders.has(company.toLowerCase()) ? null : company;
+    }),
+    isAdminUser: createMock((userId: number) => {
+        const raw = process.env.ADMIN_USERS ?? '';
+        if (!raw.trim()) {
+            return true;
+        }
+        const ids = raw
+            .split(',')
+            .map((id) => Number.parseInt(id.trim(), 10))
+            .filter((id) => Number.isFinite(id) && id > 0);
+        return ids.includes(userId);
+    }),
+    getAdminUsers: createMock(() => {
+        const raw = process.env.ADMIN_USERS ?? '';
+        if (!raw.trim()) {
+            return [12345];
+        }
+        return raw
+            .split(',')
+            .map((id) => Number.parseInt(id.trim(), 10))
+            .filter((id) => Number.isFinite(id) && id > 0);
+    }),
+    getConfiguredBotUsername: createMock(() => {
+        const username = process.env.BOT_USERNAME?.trim();
+        if (!username) {
+            return null;
+        }
+        const placeholders = new Set([
+            'your_bot_username_here',
+            'your_bot_username',
+            'bot_username_here',
+            'placeholder',
+            'change_me',
+            'replace_me'
+        ]);
+        if (placeholders.has(username.toLowerCase())) {
+            return null;
+        }
+        return /^[a-zA-Z0-9_]{5,32}$/.test(username) ? username : null;
+    }),
 }));
 
-vi.mock('../commands/utils/errorHandler.js', () => ({
-    createUserErrorMessage: vi.fn((error) => `Error: ${error.message}`),
-    logError: vi.fn(),
+mock.module('../utils/adminManager.js', () => ({
+    createDmSetupSession: createMock(),
 }));
 
-vi.mock('../config/env.js', () => ({
-    getCompanyName: vi.fn(() => 'Test Company'),
-    isAdminUser: vi.fn(() => true),
-    getAdminUsers: vi.fn(() => [12345]),
-    getConfiguredBotUsername: vi.fn(() => 'testbot'),
-}));
-
-vi.mock('../utils/adminManager.js', () => ({
-    createDmSetupSession: vi.fn(),
-}));
-
-vi.mock('../utils/globalTemplateManager.js', () => ({
+mock.module('../utils/globalTemplateManager.js', () => ({
     GlobalTemplateManager: {
-        getInstance: vi.fn(() => ({
-            getGlobalTemplates: vi.fn()
+        getInstance: createMock(() => ({
+            getGlobalTemplates: createMock()
         }))
     }
 }));
 
-vi.mock('../services/validationService.js', () => ({
-    ValidationService: {
-        isValidUnthreadWebhook: vi.fn(() => ({ isValid: true })),
-        performSetupValidation: vi.fn(),
-    }
-}));
-
-vi.mock('../commands/processors/CallbackProcessors.js', () => ({
-    SetupCallbackProcessor: {
-        processSetupCallback: vi.fn(),
-    }
+mock.module('../commands/processors/CallbackProcessors.js', () => ({
+    SetupCallbackProcessor: class {
+        static processSetupCallback = createMock();
+        static generateShortCallbackId = createMock(async () => 'mockcb');
+    },
+    SupportCallbackProcessor: class {},
+    AdminCallbackProcessor: class {},
+    TemplateCallbackProcessor: class {}
 }));
 
 import { createDmSetupSession } from '../utils/adminManager.js';
 import { BotsStore } from '../sdk/bots-brain/index.js';
-import { checkAndPromptBotAdmin, isBotAdmin, validateAdminAccess } from '../utils/permissions.js';
-import { createUserErrorMessage, logError } from '../commands/utils/errorHandler.js';
+import * as permissionsModule from '../utils/permissions.js';
+import * as commandErrorHandler from '../commands/utils/errorHandler.js';
 import { GlobalTemplateManager } from '../utils/globalTemplateManager.js';
 
 describe('AdminCommands', () => {
     let mockContext: Partial<BotContext>;
+    let createUserErrorMessageSpy: ReturnType<typeof spyOn>;
+    let logErrorSpy: ReturnType<typeof spyOn>;
+    let checkAndPromptBotAdminSpy: ReturnType<typeof spyOn>;
+    let isBotAdminSpy: ReturnType<typeof spyOn>;
+    let validateAdminAccessSpy: ReturnType<typeof spyOn>;
     
     beforeEach(() => {
-        vi.clearAllMocks();
+        clearAllMocks();
+        createUserErrorMessageSpy = spyOn(commandErrorHandler, 'createUserErrorMessage');
+        logErrorSpy = spyOn(commandErrorHandler, 'logError');
+        checkAndPromptBotAdminSpy = spyOn(permissionsModule, 'checkAndPromptBotAdmin');
+        isBotAdminSpy = spyOn(permissionsModule, 'isBotAdmin');
+        validateAdminAccessSpy = spyOn(permissionsModule, 'validateAdminAccess');
         
         // Set default mock behavior for admin validation
-        vi.mocked(validateAdminAccess).mockResolvedValue(true);
+        (validateAdminAccessSpy as any).mockResolvedValue(true);
         
         mockContext = {
             from: {
@@ -101,8 +148,8 @@ describe('AdminCommands', () => {
                 can_read_all_group_messages: true,
                 supports_inline_queries: false
             },
-            reply: vi.fn().mockResolvedValue({}),
-            replyWithMarkdown: vi.fn().mockResolvedValue({}),
+            reply: mock().mockResolvedValue({}),
+            replyWithMarkdown: mock().mockResolvedValue({}),
             message: {
                 message_id: 1,
                 date: Date.now() / 1000,
@@ -122,7 +169,7 @@ describe('AdminCommands', () => {
     });
 
     afterEach(() => {
-        vi.restoreAllMocks();
+        restoreAllMocks();
     });
 
     describe('ActivateCommand', () => {
@@ -166,7 +213,7 @@ describe('AdminCommands', () => {
 
             // Mock private chat context for activation command
             mockContext.chat = { id: 12345, type: 'private' };
-            vi.mocked(BotsStore.getAdminProfile).mockResolvedValue(mockAdminProfile);
+            (BotsStore.getAdminProfile as any).mockResolvedValue(mockAdminProfile);
 
             await activateCommand.execute(mockContext as BotContext);
 
@@ -180,8 +227,8 @@ describe('AdminCommands', () => {
         it('should activate new admin successfully', async () => {
             mockContext.chat = { id: 12345, type: 'private' }; // Private chat for activation
             
-            vi.mocked(BotsStore.getAdminProfile).mockResolvedValue(null);
-            vi.mocked(BotsStore.storeAdminProfile).mockResolvedValue();
+            (BotsStore.getAdminProfile as any).mockResolvedValue(null);
+            (BotsStore.storeAdminProfile as any).mockResolvedValue();
 
             await activateCommand.execute(mockContext as BotContext);
 
@@ -202,12 +249,12 @@ describe('AdminCommands', () => {
         it('should handle activation errors', async () => {
             const error = new Error('Database connection failed');
             mockContext.chat = { id: 12345, type: 'private' }; // Private chat for activation
-            vi.mocked(BotsStore.getAdminProfile).mockRejectedValue(error);
-            vi.mocked(createUserErrorMessage).mockReturnValue('Error: Database connection failed');
+            (BotsStore.getAdminProfile as any).mockRejectedValue(error);
+            (createUserErrorMessageSpy as any).mockReturnValue('Error: Database connection failed');
 
             await activateCommand.execute(mockContext as BotContext);
 
-            expect(logError).toHaveBeenCalledWith(error, 'ActivateCommand.executeCommand', { userId: 12345 });
+            expect(logErrorSpy).toHaveBeenCalledWith(error, 'ActivateCommand.executeCommand', { userId: 12345 });
             expect(mockContext.reply).toHaveBeenCalledWith('Error: Database connection failed');
         });
 
@@ -252,7 +299,7 @@ describe('AdminCommands', () => {
                 activatedAt: '2023-01-01T00:00:00.000Z',
                 lastActiveAt: '2023-01-01T00:00:00.000Z'
             };
-            vi.mocked(BotsStore.getAdminProfile).mockResolvedValue(mockAdminProfile);
+            (BotsStore.getAdminProfile as any).mockResolvedValue(mockAdminProfile);
             
             mockContext.chat = { id: 12345, type: 'private' };
             
@@ -283,10 +330,10 @@ describe('AdminCommands', () => {
                 setupAt: '2023-01-01T00:00:00.000Z'
             };
 
-            vi.mocked(BotsStore.getAdminProfile).mockResolvedValue(mockAdminProfile);
-            vi.mocked(isBotAdmin).mockResolvedValue(true); // Mock bot admin permission
-            vi.mocked(checkAndPromptBotAdmin).mockResolvedValue(true);
-            vi.mocked(BotsStore.getGroupConfig).mockResolvedValue(mockGroupConfig);
+            (BotsStore.getAdminProfile as any).mockResolvedValue(mockAdminProfile);
+            (isBotAdminSpy as any).mockResolvedValue(true); // Mock bot admin permission
+            (checkAndPromptBotAdminSpy as any).mockResolvedValue(true);
+            (BotsStore.getGroupConfig as any).mockResolvedValue(mockGroupConfig);
 
             await setupCommand.execute(mockContext as BotContext);
 
@@ -308,15 +355,15 @@ describe('AdminCommands', () => {
                 activatedAt: '2023-01-01T00:00:00.000Z',
                 lastActiveAt: '2023-01-01T00:00:00.000Z'
             };
-            vi.mocked(BotsStore.getAdminProfile).mockResolvedValue(mockAdminProfile);
-            vi.mocked(isBotAdmin).mockResolvedValue(true); // Mock bot admin permission 
-            vi.mocked(checkAndPromptBotAdmin).mockResolvedValue(true);
-            vi.mocked(BotsStore.getGroupConfig).mockResolvedValue(null);
-            vi.mocked(createDmSetupSession).mockResolvedValue('session123');
+            (BotsStore.getAdminProfile as any).mockResolvedValue(mockAdminProfile);
+            (isBotAdminSpy as any).mockResolvedValue(true); // Mock bot admin permission 
+            (checkAndPromptBotAdminSpy as any).mockResolvedValue(true);
+            (BotsStore.getGroupConfig as any).mockResolvedValue(null);
+            (createDmSetupSession as any).mockResolvedValue('session123');
             
             // Mock telegram.sendMessage for DM setup
             mockContext.telegram = {
-                sendMessage: vi.fn().mockResolvedValue({ message_id: 123 })
+                sendMessage: mock().mockResolvedValue({ message_id: 123 })
             } as { sendMessage: (_chatId: number | string, _text: string, _options?: unknown) => Promise<{ message_id: number }> };
 
             await setupCommand.execute(mockContext as BotContext);
@@ -336,14 +383,14 @@ describe('AdminCommands', () => {
                 activatedAt: '2023-01-01T00:00:00.000Z',
                 lastActiveAt: '2023-01-01T00:00:00.000Z'
             };
-            vi.mocked(BotsStore.getAdminProfile).mockResolvedValue(mockAdminProfile);
-            vi.mocked(isBotAdmin).mockResolvedValue(false); // Bot doesn't have admin permissions
-            vi.mocked(checkAndPromptBotAdmin).mockResolvedValue(false);
+            (BotsStore.getAdminProfile as any).mockResolvedValue(mockAdminProfile);
+            (isBotAdminSpy as any).mockResolvedValue(false); // Bot doesn't have admin permissions
+            (checkAndPromptBotAdminSpy as any).mockResolvedValue(false);
 
             await setupCommand.execute(mockContext as BotContext);
 
             // Should call checkAndPromptBotAdmin when bot doesn't have admin permissions
-            expect(checkAndPromptBotAdmin).toHaveBeenCalledWith(mockContext);
+            expect(checkAndPromptBotAdminSpy).toHaveBeenCalledWith(mockContext);
             // Should not proceed to configuration when permissions fail
             expect(BotsStore.getGroupConfig).not.toHaveBeenCalled();
         });
@@ -357,22 +404,22 @@ describe('AdminCommands', () => {
                 activatedAt: '2023-01-01T00:00:00.000Z',
                 lastActiveAt: '2023-01-01T00:00:00.000Z'
             };
-            vi.mocked(BotsStore.getAdminProfile).mockResolvedValue(mockAdminProfile);
+            (BotsStore.getAdminProfile as any).mockResolvedValue(mockAdminProfile);
             
             const error = new Error('Setup failed');
-            vi.mocked(checkAndPromptBotAdmin).mockRejectedValue(error);
+            (checkAndPromptBotAdminSpy as any).mockRejectedValue(error);
 
             await setupCommand.execute(mockContext as BotContext);
 
-            // The mock createUserErrorMessage returns 'Error: Setup failed'
+            // Real error handler maps unknown setup errors to a generic user message.
             expect(mockContext.reply).toHaveBeenCalledWith(
-                'Error: Setup failed'
+                '❌ An unexpected error occurred. Please try again.'
             );
         });
 
         it('should handle validation failure in webhook URL processing', async () => {
             // Mock non-activated admin to trigger admin activation required message
-            vi.mocked(BotsStore.getAdminProfile).mockResolvedValue(null);
+            (BotsStore.getAdminProfile as any).mockResolvedValue(null);
 
             await setupCommand.execute(mockContext as BotContext);
 
@@ -444,11 +491,11 @@ describe('AdminCommands', () => {
             };
 
             const mockTemplateManager = {
-                getGlobalTemplates: vi.fn().mockResolvedValue(mockGlobalTemplates)
+                getGlobalTemplates: mock().mockResolvedValue(mockGlobalTemplates)
             };
 
-            vi.mocked(BotsStore.getAdminProfile).mockResolvedValue(mockAdminProfile);
-            vi.mocked(GlobalTemplateManager.getInstance).mockReturnValue(mockTemplateManager);
+            (BotsStore.getAdminProfile as any).mockResolvedValue(mockAdminProfile);
+            (GlobalTemplateManager.getInstance as any).mockReturnValue(mockTemplateManager);
 
             await templatesCommand.execute(mockContext as BotContext);
 
@@ -471,7 +518,7 @@ describe('AdminCommands', () => {
                 lastActiveAt: '2023-01-01T00:00:00.000Z'
             };
 
-            vi.mocked(BotsStore.getAdminProfile).mockResolvedValue(mockAdminProfile);
+            (BotsStore.getAdminProfile as any).mockResolvedValue(mockAdminProfile);
 
             await templatesCommand.execute(mockContext as BotContext);
 
@@ -493,7 +540,7 @@ describe('AdminCommands', () => {
         });
 
         it('should show activation prompt for non-existent admin profile', async () => {
-            vi.mocked(BotsStore.getAdminProfile).mockResolvedValue(null);
+            (BotsStore.getAdminProfile as any).mockResolvedValue(null);
 
             await templatesCommand.execute(mockContext as BotContext);
 
@@ -518,11 +565,11 @@ describe('AdminCommands', () => {
             };
 
             const mockTemplateManager = {
-                getGlobalTemplates: vi.fn().mockRejectedValue(new Error('Template load failed'))
+                getGlobalTemplates: mock().mockRejectedValue(new Error('Template load failed'))
             };
 
-            vi.mocked(BotsStore.getAdminProfile).mockResolvedValue(mockAdminProfile);
-            vi.mocked(GlobalTemplateManager.getInstance).mockReturnValue(mockTemplateManager);
+            (BotsStore.getAdminProfile as any).mockResolvedValue(mockAdminProfile);
+            (GlobalTemplateManager.getInstance as any).mockReturnValue(mockTemplateManager);
 
             await templatesCommand.execute(mockContext as BotContext);
 
@@ -547,7 +594,7 @@ describe('AdminCommands', () => {
             // Set private chat context first so private-only check passes
             mockContext.chat = { id: 12345, type: 'private' };
             // Then mock non-activated admin to get admin activation error
-            vi.mocked(BotsStore.getAdminProfile).mockResolvedValue(null);
+            (BotsStore.getAdminProfile as any).mockResolvedValue(null);
             
             await templatesCommand.execute(mockContext as BotContext);
 
@@ -565,7 +612,7 @@ describe('AdminCommands', () => {
 
         it('should handle customized templates display', async () => {
             // Use non-activated admin profile to test admin activation required
-            vi.mocked(BotsStore.getAdminProfile).mockResolvedValue(null);
+            (BotsStore.getAdminProfile as any).mockResolvedValue(null);
             
             await templatesCommand.execute(mockContext as BotContext);
 
@@ -590,9 +637,9 @@ describe('AdminCommands', () => {
             const templatesCommand = new TemplatesCommand();
 
             // Should not throw errors due to missing bot info
-            await expect(activateCommand.execute(mockContext as BotContext)).resolves.not.toThrow();
-            await expect(setupCommand.execute(mockContext as BotContext)).resolves.not.toThrow();
-            await expect(templatesCommand.execute(mockContext as BotContext)).resolves.not.toThrow();
+            await expect(activateCommand.execute(mockContext as BotContext)).resolves.toBeUndefined();
+            await expect(setupCommand.execute(mockContext as BotContext)).resolves.toBeUndefined();
+            await expect(templatesCommand.execute(mockContext as BotContext)).resolves.toBeUndefined();
         });
 
         it('should handle all commands with network errors', async () => {

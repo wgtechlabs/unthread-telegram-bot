@@ -1,9 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "dom"],
+    "lib": ["ES2022"],
     "module": "ESNext",
     "moduleResolution": "node",
+    "ignoreDeprecations": "5.0",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "allowImportingTsExtensions": false,
@@ -35,6 +36,7 @@
   ],  "exclude": [
     "node_modules",
     "dist",
+    "src/__tests__/**",
     "**/*.test.ts",
     "**/*.spec.ts"
   ]

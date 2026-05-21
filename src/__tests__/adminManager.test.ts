@@ -4,30 +4,28 @@
  * Tests for basic admin utility functions that don't require complex mocking.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { clearAllMocks, createMock } from './_helpers/mockLifecycle';
 import { isValidAdmin } from '../utils/adminManager.js';
 
-// Mock dependencies
-vi.mock('../config/env.js', () => ({
-    isAdminUser: vi.fn()
-}));
-
-vi.mock('@wgtechlabs/log-engine', () => ({
-    LogEngine: {
-        error: vi.fn()
-    }
+mock.module('../config/env.js', () => ({
+    isAdminUser: createMock()
 }));
 
 import { isAdminUser } from '../config/env.js';
 
 describe('adminManager utilities', () => {
     beforeEach(() => {
-        vi.clearAllMocks();
+        clearAllMocks();
+    });
+
+    afterAll(() => {
+        mock.restore();
     });
 
     describe('isValidAdmin', () => {
         it('should return true for valid admin users', () => {
-            vi.mocked(isAdminUser).mockReturnValue(true);
+            (isAdminUser as any).mockReturnValue(true);
 
             const result = isValidAdmin(12345);
 
@@ -36,7 +34,7 @@ describe('adminManager utilities', () => {
         });
 
         it('should return false for non-admin users', () => {
-            vi.mocked(isAdminUser).mockReturnValue(false);
+            (isAdminUser as any).mockReturnValue(false);
 
             const result = isValidAdmin(67890);
 
@@ -45,7 +43,7 @@ describe('adminManager utilities', () => {
         });
 
         it('should handle zero user ID', () => {
-            vi.mocked(isAdminUser).mockReturnValue(false);
+            (isAdminUser as any).mockReturnValue(false);
 
             const result = isValidAdmin(0);
 
@@ -54,7 +52,7 @@ describe('adminManager utilities', () => {
         });
 
         it('should handle negative user ID', () => {
-            vi.mocked(isAdminUser).mockReturnValue(false);
+            (isAdminUser as any).mockReturnValue(false);
 
             const result = isValidAdmin(-1);
 
@@ -64,7 +62,7 @@ describe('adminManager utilities', () => {
 
         it('should handle very large user ID', () => {
             const largeId = 999999999999;
-            vi.mocked(isAdminUser).mockReturnValue(true);
+            (isAdminUser as any).mockReturnValue(true);
 
             const result = isValidAdmin(largeId);
 

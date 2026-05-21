@@ -830,11 +830,13 @@ export class AttachmentHandler {
             this.startMemoryOptimization();
         }
 
-        LogEngine.debug('Basic features initialized', {
-            memoryOptimization: true,
-            securityHardening: BUFFER_ATTACHMENT_CONFIG.enableContentValidation,
-            retryLogic: BUFFER_ATTACHMENT_CONFIG.retryAttempts > 0
-        });
+        if (typeof (LogEngine as { debug?: unknown }).debug === 'function') {
+            LogEngine.debug('Basic features initialized', {
+                memoryOptimization: true,
+                securityHardening: BUFFER_ATTACHMENT_CONFIG.enableContentValidation,
+                retryLogic: BUFFER_ATTACHMENT_CONFIG.retryAttempts > 0
+            });
+        }
     }
 
     /**
@@ -1751,7 +1753,7 @@ export class AttachmentHandler {
         chatId: number, 
         replyToMessageId?: number,
         caption?: string
-    ): Promise<boolean> {
+    ): Promise<number | null> {
         
         const operationContext: PerformanceContext = {
             fileName: fileBuffer.fileName,
@@ -1861,7 +1863,7 @@ export class AttachmentHandler {
                             fileId: responseData.result?.photo?.[0]?.file_id || 'unknown'
                         });
 
-                        return true;
+                        return responseData.result?.message_id ?? null;
                     } catch (error) {
                         if (abortController.signal.aborted) {
                             throw new Error(`Upload timeout after ${BUFFER_ATTACHMENT_CONFIG.uploadTimeout}ms`);
@@ -1974,7 +1976,7 @@ export class AttachmentHandler {
             if (!firstBuffer) {
                 throw new Error('Invalid image buffer detected');
             }
-            return await this.uploadBufferToTelegram(firstBuffer, chatId, replyToMessageId, caption);
+            return (await this.uploadBufferToTelegram(firstBuffer, chatId, replyToMessageId, caption)) !== null;
 
         } catch (error) {
             LogEngine.error('[AttachmentHandler] Batch image upload to Telegram failed', {
