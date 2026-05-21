@@ -174,6 +174,110 @@ interface CreateTicketPayload {
   priority?: 3 | 5 | 7 | 9;
 }
 
+const TELEGRAM_TITLE_PREFIX = '[Telegram]';
+const MAX_TICKET_TITLE_LENGTH = 100;
+
+const GENERIC_SUMMARY_PHRASES = new Set([
+    'help',
+    'support',
+    'issue',
+    'problem',
+    'urgent',
+    'ticket',
+    'need help',
+    'need support',
+    'please help',
+    'can you help',
+    'assistance'
+]);
+
+function normalizeTitleText(input: string): string {
+    return input
+        .replace(/[`*_~>#\[\]{}()]/g, ' ')
+        .replace(/\r?\n+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function stripLeadingFiller(input: string): string {
+    let text = input.trim();
+    const fillerPatterns = [
+        /^(hi|hello|hey)(\s+(team|support|there))?[\s,.:!\-]*/i,
+        /^(please|pls)\s+/i,
+        /^(i have an issue with|i have an issue|i have problem with|i have a problem with)\s+/i,
+        /^(i need help with|i need help|need help with|need help)\s+/i,
+        /^(issue[:\-]\s*)/i,
+        /^(problem[:\-]\s*)/i
+    ];
+
+    for (const pattern of fillerPatterns) {
+        const next = text.replace(pattern, '').trim();
+        if (next !== text && next.length > 0) {
+            text = next;
+        }
+    }
+
+    return text;
+}
+
+function truncateAtWordBoundary(input: string, maxLength: number): string {
+    if (input.length <= maxLength) {
+        return input;
+    }
+
+    const clip = input.slice(0, maxLength - 3);
+    const lastSpace = clip.lastIndexOf(' ');
+    const safe = lastSpace >= 24 ? clip.slice(0, lastSpace) : clip;
+    return `${safe.trim()}...`;
+}
+
+function findDeterministicIssueSummary(summary: string): string | null {
+    const normalized = normalizeTitleText(summary);
+    if (!normalized) {
+        return null;
+    }
+
+    const segments = normalized
+        .split(/[.!?;:]+/)
+        .map(segment => stripLeadingFiller(segment))
+        .map(segment => segment.replace(/^[-\s]+/, '').trim())
+        .filter(Boolean);
+
+    for (const segment of segments) {
+        const lowered = segment.toLowerCase();
+        if (segment.length < 10) {
+            continue;
+        }
+        if (GENERIC_SUMMARY_PHRASES.has(lowered)) {
+            continue;
+        }
+
+        return segment.charAt(0).toUpperCase() + segment.slice(1);
+    }
+
+    return null;
+}
+
+function buildTelegramTicketTitle(summary: string, customerName: string): string {
+    const summaryCandidate = findDeterministicIssueSummary(summary);
+    if (summaryCandidate) {
+        return truncateAtWordBoundary(
+            `${TELEGRAM_TITLE_PREFIX} ${summaryCandidate}`,
+            MAX_TICKET_TITLE_LENGTH
+        );
+    }
+
+    const normalizedCustomer = normalizeTitleText(customerName);
+    if (normalizedCustomer && normalizedCustomer.toLowerCase() !== 'unknown company') {
+        return truncateAtWordBoundary(
+            `${TELEGRAM_TITLE_PREFIX} ${normalizedCustomer} - Support Request`,
+            MAX_TICKET_TITLE_LENGTH
+        );
+    }
+
+    return `${TELEGRAM_TITLE_PREFIX} New Support Ticket`;
+}
+
 /**
  * Extracts the customer company name from a Telegram group chat title by removing the bot's company name and handling common separators.
  *
@@ -485,10 +589,10 @@ export async function createCustomer(groupChatName: string): Promise<Customer> {
 export async function createTicket(params: CreateTicketParams): Promise<CreateTicketResponse> {
     try {
         const { groupChatName, customerId, summary, onBehalfOf } = params;
-        
-        // Extract the customer company name for the ticket title
+
+        // Title policy: [Telegram] <issue summary> -> [Telegram] <customer> - Support Request -> fallback
         const customerCompanyName = extractCustomerCompanyName(groupChatName);
-        const title = `[Telegram Ticket] ${customerCompanyName}`;
+        const title = buildTelegramTicketTitle(summary, customerCompanyName);
 
         return await createTicketJSON({ title, summary, customerId, onBehalfOf });
     } catch (error) {
@@ -1701,7 +1805,7 @@ async function createTicketMultipartBuffer(params: CreateTicketWithBufferAttachm
     try {
         // STEP 1: Create the ticket using proven JSON approach
         const customerCompanyName = extractCustomerCompanyName(groupChatName);
-        const title = `[Telegram Ticket] ${customerCompanyName}`;
+        const title = buildTelegramTicketTitle(summary, customerCompanyName);
         
         // Ensure summary is not empty
         const ticketSummary = summary && summary.trim() ? summary.trim() : 'File attachment submitted via Telegram';
