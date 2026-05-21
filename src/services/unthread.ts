@@ -191,6 +191,62 @@ const GENERIC_SUMMARY_PHRASES = new Set([
     'assistance'
 ]);
 
+const ISSUE_KEYWORDS = [
+    'login',
+    'log in',
+    'sign in',
+    'signin',
+    'password',
+    'otp',
+    '2fa',
+    'authentication',
+    'auth',
+    'payment',
+    'billing',
+    'invoice',
+    'checkout',
+    'error',
+    'failed',
+    'failure',
+    'cannot',
+    "can't",
+    'unable',
+    'timeout',
+    'locked',
+    'access',
+    'account'
+];
+
+const ROOT_CAUSE_PATTERNS = [
+    /\bnot\s+arriv(ing|ed)?\b/i,
+    /\bnot\s+receiv(ing|ed)?\b/i,
+    /\bdoes\s+not\b/i,
+    /\bdon't\b/i,
+    /\bcan't\b/i,
+    /\bcannot\b/i,
+    /\bunable\b/i,
+    /\bfailed\b/i,
+    /\berror\b/i,
+    /\btimeout\b/i,
+    /\binvalid\b/i
+];
+
+const IMPACT_ONLY_PATTERNS = [
+    /\blocked\s+out\b/i,
+    /\bblocked\b/i,
+    /\bcannot\s+access\b/i,
+    /\bunable\s+to\s+access\b/i,
+    /\bfor\s+urgent\s+tasks\b/i,
+    /\bbusiness\s+impact\b/i
+];
+
+const CONTEXT_ONLY_PATTERNS = [
+    /^we\s+enabled\b/i,
+    /^we\s+updated\b/i,
+    /^for\s+security\b/i,
+    /^after\s+/i
+];
+
 function normalizeTitleText(input: string): string {
     return input
         .replace(/[`*_~>#\[\]{}()]/g, ' ')
@@ -220,6 +276,71 @@ function stripLeadingFiller(input: string): string {
     return text;
 }
 
+function stripTrailingFiller(input: string): string {
+    let text = input.trim();
+    const trailingPatterns = [
+        /[\s,.-]*(please|pls)\s+help(\s+me)?[\s,.-]*$/i,
+        /[\s,.-]*(can\s+you\s+help(\s+me)?)[\s,.-]*$/i,
+        /[\s,.-]*(need\s+help|support\s+please)[\s,.-]*$/i
+    ];
+
+    for (const pattern of trailingPatterns) {
+        text = text.replace(pattern, '').trim();
+    }
+
+    return text;
+}
+
+function cleanIssueClause(input: string): string {
+    return input
+        .replace(/^\s*(but|and|also)\s+/i, '')
+        .replace(/\bfor some reason\b/gi, '')
+        .replace(/\b(please|pls)\s+help(\s+me)?\b/gi, '')
+        .replace(/\bcan\s+you\s+help(\s+me)?\b/gi, '')
+        .replace(/^\s*(i\s+am|i'm)\s+/i, '')
+        .replace(/^\s*i\s+(cannot|can't|unable to)\s+/i, '$1 ')
+        .replace(/\s+/g, ' ')
+        .replace(/^[,\-:\s]+|[,\-:\s]+$/g, '')
+        .trim();
+}
+
+function scoreIssueClause(input: string): number {
+    const lowered = input.toLowerCase();
+    let score = 0;
+
+    for (const keyword of ISSUE_KEYWORDS) {
+        if (lowered.includes(keyword)) {
+            score += 3;
+        }
+    }
+
+    if (/\b(cannot|can't|unable|failed|error|timeout|locked)\b/.test(lowered)) {
+        score += 3;
+    }
+
+    if (input.length >= 12 && input.length <= 90) {
+        score += 2;
+    }
+
+    if (GENERIC_SUMMARY_PHRASES.has(lowered)) {
+        score -= 5;
+    }
+
+    if (ROOT_CAUSE_PATTERNS.some(pattern => pattern.test(input))) {
+        score += 5;
+    }
+
+    if (IMPACT_ONLY_PATTERNS.some(pattern => pattern.test(input))) {
+        score -= 4;
+    }
+
+    if (CONTEXT_ONLY_PATTERNS.some(pattern => pattern.test(input)) && !ROOT_CAUSE_PATTERNS.some(pattern => pattern.test(input))) {
+        score -= 3;
+    }
+
+    return score;
+}
+
 function truncateAtWordBoundary(input: string, maxLength: number): string {
     if (input.length <= maxLength) {
         return input;
@@ -231,6 +352,25 @@ function truncateAtWordBoundary(input: string, maxLength: number): string {
     return `${safe.trim()}...`;
 }
 
+function compactIssueSummary(input: string): string {
+    let text = input.trim();
+
+    text = text
+        .replace(/^\s*(a|an)\s+subset\s+of\s+users\s+/i, '')
+        .replace(/^\s*(some|many|several)\s+users\s+/i, '')
+        .replace(/^\s*users\s+/i, '');
+
+    const causalSplit = text.split(/\b(because|since|as|while|even though|although|so that)\b/i);
+    if (causalSplit[0]) {
+        text = causalSplit[0].trim();
+    }
+
+    return text
+        .replace(/\s+/g, ' ')
+        .replace(/[\s,:;-]+$/g, '')
+        .trim();
+}
+
 function findDeterministicIssueSummary(summary: string): string | null {
     const normalized = normalizeTitleText(summary);
     if (!normalized) {
@@ -240,22 +380,48 @@ function findDeterministicIssueSummary(summary: string): string | null {
     const segments = normalized
         .split(/[.!?;:]+/)
         .map(segment => stripLeadingFiller(segment))
+        .map(segment => stripTrailingFiller(segment))
         .map(segment => segment.replace(/^[-\s]+/, '').trim())
         .filter(Boolean);
 
+    const candidates: string[] = [];
     for (const segment of segments) {
-        const lowered = segment.toLowerCase();
-        if (segment.length < 10) {
-            continue;
-        }
-        if (GENERIC_SUMMARY_PHRASES.has(lowered)) {
-            continue;
-        }
+        const clauses = segment
+            .split(/[,|]+|\s+-\s+|\s+and\s+/i)
+            .map(clause => cleanIssueClause(clause))
+            .filter(Boolean);
 
-        return segment.charAt(0).toUpperCase() + segment.slice(1);
+        if (clauses.length > 0) {
+            candidates.push(...clauses);
+        } else {
+            candidates.push(cleanIssueClause(segment));
+        }
     }
 
-    return null;
+    const filtered = candidates.filter(candidate => {
+        const lowered = candidate.toLowerCase();
+        return candidate.length >= 10 && !GENERIC_SUMMARY_PHRASES.has(lowered);
+    });
+
+    if (filtered.length === 0) {
+        return null;
+    }
+
+    const best = filtered
+        .map(candidate => ({
+            candidate,
+            score: scoreIssueClause(candidate)
+        }))
+        .sort((a, b) => b.score - a.score)[0]?.candidate;
+
+    if (!best) {
+        return null;
+    }
+
+    const compacted = compactIssueSummary(best);
+    const selected = compacted.length >= 10 ? compacted : best;
+
+    return selected.charAt(0).toUpperCase() + selected.slice(1);
 }
 
 function buildTelegramTicketTitle(summary: string, customerName: string): string {
