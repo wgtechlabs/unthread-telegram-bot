@@ -71,7 +71,7 @@
     "eslint-plugin-unused-imports": "4.4.1",
     "nodemon": "^3.1.10",
     "ts-prune": "^0.10.3",
-    "typescript": "5.8.3"
+    "typescript": "6.0.3"
   },
   "overrides": {
     "cross-spawn": "7.0.6",
