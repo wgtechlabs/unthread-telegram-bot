@@ -30,10 +30,11 @@ ARG BUN_VERSION=1.3.13
 # Bun is only added on top in the `builder-base` stage used for install/build.
 FROM node:${NODE_VERSION} AS base
 
-# Install security updates for Alpine packages
+# Install security updates for Alpine packages and patch vulnerable undici
 RUN apk update && apk upgrade && \
     apk add --no-cache dumb-init && \
-    rm -rf /var/cache/apk/*
+    rm -rf /var/cache/apk/* && \
+    npm install -g undici@6.27.0
 
 # Set working directory for all subsequent stages
 WORKDIR /usr/src/app
@@ -96,6 +97,10 @@ COPY --chown=nextjs:nodejs package.json .
 # Copy production dependencies and built application
 COPY --from=deps --chown=nextjs:nodejs /usr/src/app/node_modules ./node_modules
 COPY --from=build --chown=nextjs:nodejs /usr/src/app/dist ./dist
+
+# Remove npm and its bundled dependencies to minimize attack surface
+# The runtime only needs node; npm is not used in production
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # Switch to non-root user
 USER nextjs
