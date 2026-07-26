@@ -8,6 +8,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [1.1.1] - 2026-07-26
+
+### Changed
+
+- sync bun.lock after dependency updates
+- set ignoreDeprecations to 6.0
+- bump the minor-and-patch group across 1 directory with 2 updates
+- bump @types/node from 25.9.3 to 26.0.0
+- bump actions/checkout from 6 to 7
+- bump actions/cache from 5 to 6
+- bump actions/setup-node from 6 to 7
+- bump gitleaks/gitleaks-action from 2.3.9 to 3.0.0 (#110)
+- bump redis from 5.12.1 to 6.0.0 (#112)
+- bump concurrently from 9.2.1 to 10.0.3 (#113)
+- bump the minor-and-patch group across 1 directory with 3 updates (#115)
+- bump @types/node from 24.0.3 to 25.9.1 (#105)
+- bump dotenv from 16.6.1 to 17.4.2 (#109)
+- bump eslint-plugin-security from 3.0.1 to 4.0.0 (#104)
+- bump zod from 3.25.76 to 4.4.3 (#108)
+- bump typescript from 5.8.3 to 6.0.3 (#107)
+- bump @eslint/js from 9.37.0 to 10.0.1 (#106)
+- bump eslint from 9.30.1 to 10.4.0 (#103)
+- bump the minor-and-patch group with 4 updates (#102)
+- bump actions/cache from 4 to 5 (#101)
+
+### Security
+
+- patch container image vulnerabilities
+
 ## [1.1.0] - 2026-05-21
 
 ### Added
