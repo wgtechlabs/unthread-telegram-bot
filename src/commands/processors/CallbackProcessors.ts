@@ -629,7 +629,7 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
             const customer = await unthreadService.getOrCreateCustomer(chatTitle, chatId);
 
             // Use unified approach: create ticket with attachments in single API call when attachments exist
-            let ticketResponse;
+            let ticketResponse: Awaited<ReturnType<typeof unthreadService.createTicket>>;
             
             if (hasAttachments) {
                 LogEngine.info('Creating ticket with unified attachment approach via callback', {
