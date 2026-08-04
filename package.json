@@ -39,10 +39,10 @@
     "docker:build:sbom": "docker build --sbom=true --provenance=mode=max -t unthread-telegram-bot .",
     "docker:run": "docker run --env-file .env unthread-telegram-bot",
     "sbom:generate": "bash scripts/generate-sbom.sh unthread-telegram-bot:latest",
-    "lint": "eslint src/ --ext .ts",
-    "lint:fix": "eslint src/ --ext .ts --fix",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "validate:deadcode": "bunx ts-prune && bunx depcheck",
-    "validate:unused": "eslint src/ --ext .ts --rule 'unused-imports/no-unused-imports: error' --rule 'unused-imports/no-unused-vars: error'",
+    "validate:unused": "biome check .",
     "test": "bun run ./scripts/run-tests.ts",
     "test:watch": "bun test --watch --isolate",
     "test:coverage": "bun test --coverage --isolate"
@@ -59,26 +59,19 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@eslint/js": "10.0.1",
     "@types/node": "26.0.0",
     "@types/pg": "8.20.0",
-    "@typescript-eslint/eslint-plugin": "^8.18.1",
-    "@typescript-eslint/parser": "^8.18.1",
     "concurrently": "10.0.3",
     "depcheck": "^1.4.7",
-    "eslint": "10.6.0",
-    "eslint-plugin-security": "4.0.1",
-    "eslint-plugin-unused-imports": "4.4.1",
     "nodemon": "^3.1.10",
     "ts-prune": "^0.10.3",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "@biomejs/biome": "^2.5.1"
   },
   "overrides": {
     "cross-spawn": "7.0.6",
     "brace-expansion": "^2.1.2",
     "form-data": "^4.0.6",
-    "eslint": "10.6.0",
-    "@eslint/plugin-kit": "0.3.4",
     "glob": "10.5.0",
     "js-yaml": "4.1.1",
     "lodash": "^4.18.0",
