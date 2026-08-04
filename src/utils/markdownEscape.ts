@@ -105,7 +105,6 @@ export function createSafeMarkdownMessage(
     for (const [key, value] of Object.entries(replacements)) {
         const escapedValue = escapeMarkdown(value || '');
         const escapedKey = escapeRegExpKey(key);
-        // eslint-disable-next-line security/detect-non-literal-regexp
         message = message.replace(new RegExp(`\\{${escapedKey}\\}`, 'g'), escapedValue);
     }
     

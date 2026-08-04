@@ -469,7 +469,7 @@ Your customization is now active across all support interactions.`;
             }
 
             // Use unified approach: create ticket with attachments in single API call when attachments exist
-            let ticketResponse;
+            let ticketResponse: Awaited<ReturnType<typeof unthreadService.createTicket>>;
             
             if (hasAttachments) {
                 LogEngine.info('Creating ticket with unified attachment approach', {
