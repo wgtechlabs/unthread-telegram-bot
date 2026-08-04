@@ -435,7 +435,6 @@ export function getErrorDetails(error: unknown, _context?: string): ErrorDetails
  *       once we configure the redaction patterns in LogEngine v2.2.0. This would centralize
  *       all sensitive data handling and provide consistent redaction across the application.
  */
-/* eslint-disable security/detect-object-injection */
 function sanitizeLogData(logData: any): any {  
     const sanitized = { ...logData };
     
@@ -475,7 +474,6 @@ function sanitizeLogData(logData: any): any {
     
     return sanitized;
 }
-/* eslint-enable security/detect-object-injection */
 
 /**
  * Logs an error with detailed classification, sanitization, and contextual information.

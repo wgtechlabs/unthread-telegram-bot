@@ -293,7 +293,6 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
             step: 1,
             totalSteps: hasEmail ? 1 : 2,
             hasEmail: !!hasEmail,
-            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
             chatId: ctx.chat!.id,
             startedAt: new Date().toISOString()
         });
@@ -586,7 +585,6 @@ export class SupportCallbackProcessor implements ICallbackProcessor {
     /**
      * Create ticket directly when processor can't handle
      */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private async createTicketDirectly(ctx: BotContext, userState: any): Promise<boolean> {
         try {
             const userId = ctx.from?.id;
@@ -3634,7 +3632,6 @@ ${this.renderTemplateExample(template.content, templateType)}
 
         let example = content;
         for (const [key, value] of Object.entries(sampleData)) {
-            // eslint-disable-next-line security/detect-non-literal-regexp
             const pattern = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
             example = example.replace(pattern, value);
         }

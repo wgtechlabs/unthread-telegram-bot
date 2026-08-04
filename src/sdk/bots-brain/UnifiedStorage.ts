@@ -32,7 +32,6 @@
 
  * @since 2025
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 import { RedisClientType, createClient } from 'redis';
 import pkg, { Pool as PoolType } from 'pg';
 const { Pool } = pkg;
