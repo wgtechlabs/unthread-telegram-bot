@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [1.1.2] - 2026-08-04
+
+### Security
+
+- remove keyv dependency path (#126)
+
 ## [1.1.1] - 2026-07-26
 
 ### Changed
