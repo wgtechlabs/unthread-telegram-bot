@@ -29,7 +29,6 @@
 
  * @since 2025
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { UnifiedStorage } from './UnifiedStorage.js';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { z } from 'zod';
@@ -1784,7 +1783,6 @@ export class BotsStore implements IBotsStore {
   /**
    * Validate that critical immutable fields match expected values
    */
-  /* eslint-disable security/detect-object-injection */
   private static validateImmutableFields<T extends Record<string, any>>(
     existingData: T,
     updates: Partial<T>,
@@ -1806,7 +1804,6 @@ export class BotsStore implements IBotsStore {
     }
     return true;
   }
-  /* eslint-enable security/detect-object-injection */
 
   /**
    * Safely retrieve an array from storage, ensuring it's always an array

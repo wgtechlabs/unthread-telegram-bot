@@ -202,7 +202,6 @@ export class ErrorContextBuilder {
         }
         
         // Safe to assign after validation
-        // eslint-disable-next-line security/detect-object-injection
         this.context[key] = value;
         return this;
     }
@@ -217,7 +216,6 @@ export class ErrorContextBuilder {
         // Validate each key to prevent prototype pollution
         for (const [key, value] of Object.entries(properties)) {
             if (this.isSafeKey(key)) {
-                // eslint-disable-next-line security/detect-object-injection
                 this.context[key] = value;
             } else {
                 LogEngine.warn('Skipped unsafe key in error context properties', {

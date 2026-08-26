@@ -369,7 +369,9 @@ class BufferPool {
 
     cleanup(): void {
         const poolSize = this.pool.length;
-        this.pool.forEach(buffer => buffer.fill(0));
+        this.pool.forEach(buffer => {
+            buffer.fill(0);
+        });
         this.pool.length = 0;
         LogEngine.debug('BufferPool cleaned up', { clearedBuffers: poolSize });
     }

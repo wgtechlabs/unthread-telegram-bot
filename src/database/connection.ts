@@ -56,7 +56,6 @@ export class DatabaseConnection {
         const sslConfig = this.getSSLConfig(isProduction);
 
         // Start with the base connection string
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         let connectionString = process.env.POSTGRES_URL!;
 
         // Auto-append sslmode=disable only when completely disabling SSL
@@ -64,14 +63,12 @@ export class DatabaseConnection {
             const separator = connectionString.includes('?') ? '&' : '?';
             connectionString += `${separator}sslmode=disable`;
             LogEngine.debug('SSL disabled - added sslmode=disable to connection string', {
-                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                 originalUrl: process.env.POSTGRES_URL!,
                 modifiedUrl: connectionString.replace(/\/\/[^:]+:[^@]+@/, '//***:***@') // Mask credentials
             });
         }
 
         // Configure connection pool
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const poolConfig: any = {
             connectionString,
             max: 10, // Maximum number of connections in pool
@@ -294,7 +291,6 @@ export class DatabaseConnection {
      * @param isProduction - Whether running in production environment
      * @returns SSL configuration object, or false to disable SSL entirely
      */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private getSSLConfig(isProduction: boolean): any {
         // Check SSL validation setting first (applies to all environments)
         const sslValidate = process.env.DATABASE_SSL_VALIDATE;

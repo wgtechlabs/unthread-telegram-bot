@@ -536,9 +536,7 @@ function formatCustomerNameForDisplay(name: string): string {
 
 // API URLs and Auth Keys
 const API_BASE_URL = 'https://api.unthread.io/api';
-// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 const UNTHREAD_API_KEY = process.env.UNTHREAD_API_KEY!;
-// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 const CHANNEL_ID = process.env.UNTHREAD_SLACK_CHANNEL_ID!;
 
 // Customer ID cache to avoid creating duplicates
@@ -852,7 +850,6 @@ export async function sendMessage(params: SendMessageParams): Promise<unknown> {
  * @returns The response data from the Unthread API after sending the message.
  * @throws If the API request fails or returns a non-OK status.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function sendMessageJSON(params: SendMessageJSONParams): Promise<any> {
     const { conversationId, message, onBehalfOf } = params;
     
@@ -1491,7 +1488,6 @@ export async function createCustomerWithName(customerName: string): Promise<Cust
  * @param operation - A description of the operation that failed
  * @returns A formatted, user-friendly error message describing the issue
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function handleUnthreadApiError(error: any, operation: string): string {
     const err = error as Error;
     
@@ -1656,7 +1652,6 @@ export async function downloadUnthreadImage(
 
         // Create AbortController with timeout for robust request handling
         // Using type assertion for Node.js 20+ global AbortController
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const abortController = new (globalThis as any).AbortController();
         const timeout = setTimeout(() => {
             abortController.abort();
@@ -1828,7 +1823,6 @@ export async function downloadUnthreadFileFromUrl(
  * @returns The API response for the sent message with attachments.
  * @throws If the API request fails or file paths are invalid.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function sendMessageWithAttachments(params: SendMessageWithAttachmentsParams): Promise<any> {
     try {
         LogEngine.info('Sending message with attachments to Unthread', {
@@ -1886,7 +1880,6 @@ export async function createTicketWithBufferAttachments(params: CreateTicketWith
  * @returns The response data from the Unthread API.
  * @throws If the API request fails or files cannot be read.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function sendMessageMultipart(params: SendMessageWithAttachmentsParams): Promise<any> {
     const { conversationId, message, onBehalfOf, filePaths } = params;
 
@@ -1906,14 +1899,12 @@ async function sendMessageMultipart(params: SendMessageWithAttachmentsParams): P
 
     // Add each file to the form using buffer-based approach
     for (const filePath of filePaths) {
-        // eslint-disable-next-line security/detect-non-literal-fs-filename
         if (!fs.existsSync(filePath)) {
             LogEngine.warn('File not found, skipping attachment', { filePath });
             continue;
         }
 
         const fileName = path.basename(filePath);
-        // eslint-disable-next-line security/detect-non-literal-fs-filename
         const fileBuffer = fs.readFileSync(filePath);
         form.append('attachments', fileBuffer, fileName);
         
@@ -1935,7 +1926,6 @@ async function sendMessageMultipart(params: SendMessageWithAttachmentsParams): P
         throw new Error(`Failed to send message with attachments: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await response.json() as any;
     
     LogEngine.info('Message with attachments sent successfully', {
@@ -2062,7 +2052,6 @@ async function createTicketMultipartBuffer(params: CreateTicketWithBufferAttachm
                     friendlyId: ticket.friendlyId
                 });
             } else {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const messageResult = await messageResponse.json() as any;
                 LogEngine.info('Step 2 completed: Attachments sent successfully as message', {
                     conversationId: ticket.id,

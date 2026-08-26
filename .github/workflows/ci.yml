@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
     steps:
       - name: Checkout code
@@ -22,14 +24,14 @@ jobs:
           fetch-depth: 0
 
       - name: Detect secrets
-        if: ${{ secrets.GITLEAKS_LICENSE != '' }}
+        if: ${{ env.GITLEAKS_LICENSE != '' }}
         uses: gitleaks/gitleaks-action@v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
       - name: Skip licensed secret scan when unavailable
-        if: ${{ secrets.GITLEAKS_LICENSE == '' }}
+        if: ${{ env.GITLEAKS_LICENSE == '' }}
         run: echo "Skipping gitleaks because GITLEAKS_LICENSE is unavailable in this workflow context."
 
   validate:
