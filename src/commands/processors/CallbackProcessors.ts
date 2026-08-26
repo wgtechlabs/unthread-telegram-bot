@@ -2312,7 +2312,7 @@ Each template has access to relevant data like ticket details, customer info, ag
             const currentTemplate = await templateManager.getTemplate(templateType as GlobalTemplateEvent);
             
             // Map template type to readable name
-            let templateDisplayName = 'Template';
+            let templateDisplayName = templateType.charAt(0).toUpperCase() + templateType.slice(1).replace('_', ' ');
             let templateDescription = '';
             
             switch (templateType) {
@@ -2329,7 +2329,7 @@ Each template has access to relevant data like ticket details, customer info, ag
                     templateDescription = 'Sent when a support ticket status changes';
                     break;
                 default:
-                    templateDisplayName = templateType.charAt(0).toUpperCase() + templateType.slice(1).replace('_', ' ');
+                    break;
             }
 
             // Build available variables list
@@ -3165,7 +3165,7 @@ export class TemplateCallbackProcessor implements ICallbackProcessor {
             const availableVariables = templateManager.getAvailableVariables();
             
             // Map template type to readable name
-            let templateDisplayName = 'Template';
+            let templateDisplayName = templateType.charAt(0).toUpperCase() + templateType.slice(1).replace('_', ' ');
             let templateDescription = '';
             
             switch (templateType) {
@@ -3182,7 +3182,7 @@ export class TemplateCallbackProcessor implements ICallbackProcessor {
                     templateDescription = 'Sent when a support ticket status changes';
                     break;
                 default:
-                    templateDisplayName = templateType.charAt(0).toUpperCase() + templateType.slice(1).replace('_', ' ');
+                    break;
             }
 
             // Build available variables list
