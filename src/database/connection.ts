@@ -216,15 +216,17 @@ export class DatabaseConnection {
 
             const schemaPath = path.join(__dirname, 'schema.sql');
             
-            // Check if schema file exists asynchronously
+            // Read schema file asynchronously without a separate existence check
+            let schema: string;
             try {
-                await fs.promises.access(schemaPath, fs.constants.F_OK);
-            } catch {
-                throw new Error(`Schema file not found: ${schemaPath}`);
+                schema = await fs.promises.readFile(schemaPath, 'utf8');
+            } catch (error) {
+                const err = error as NodeJS.ErrnoException;
+                if (err.code === 'ENOENT') {
+                    throw new Error(`Schema file not found: ${schemaPath}`);
+                }
+                throw error;
             }
-
-            // Read schema file asynchronously
-            const schema = await fs.promises.readFile(schemaPath, 'utf8');
             LogEngine.debug('Schema file loaded', { 
                 path: schemaPath, 
                 size: schema.length 
