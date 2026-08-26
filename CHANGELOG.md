@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+## [1.1.3] - 2026-08-26
+
+### Changed
+
+- use strict null checks in webhook and error type guards
+- clarify merge method for dev to main promotions (#136)
+- only exclude dependency-bump bots from project sync (#138)
+- ship dev updates to main (#131)
+
+### Security
+
+- remove TOCTOU race in schema initialization (#139)
+- harden telegram markdown escaping against backslash bypasses (#134)
+- resolve codeql dead-store and null-comparison findings (#135)
+- patch vulnerable global undici in container base image (#137)
+
 ## [1.1.2] - 2026-08-04
 
 ### Security
