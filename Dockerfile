@@ -34,7 +34,7 @@ FROM node:${NODE_VERSION} AS base
 RUN apk update && apk upgrade && \
     apk add --no-cache dumb-init && \
     rm -rf /var/cache/apk/* && \
-    npm install -g undici@6.27.0
+    npm install -g undici@6.28.0
 
 # Set working directory for all subsequent stages
 WORKDIR /usr/src/app
