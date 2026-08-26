@@ -5,14 +5,12 @@ name: Project Sync
 # (https://github.com/orgs/wgtechlabs/projects/7), and fills in Status,
 # Priority, and Effort so nothing has to be triaged onto the board by hand.
 #
-# Setup required (one-time, by a repo/org admin):
-#   1. Create a classic PAT with the `project` scope (or a fine-grained PAT
-#      with Organization permissions -> Projects: Read and write) for a user
-#      who has access to the wgtechlabs org project board.
-#   2. Save it as the repository (or org) secret `PROJECTS_PAT`.
-#   `GITHUB_TOKEN` cannot be used here — org-level Projects v2 requires a PAT.
-# Until that secret exists the workflow logs a warning and skips, so pull
-# request checks stay green instead of failing on unconfigured automation.
+# Uses the org-level `GH_PAT` secret (inherited via `secrets: inherit` in
+# other workflows in this repo), which has been granted Organization
+# Projects: Read and write. `GITHUB_TOKEN` cannot be used here — org-level
+# Projects v2 requires a PAT. Until `GH_PAT` has that permission, the
+# workflow logs a warning and skips, so pull request checks stay green
+# instead of failing on unconfigured automation.
 
 on:
   pull_request:
@@ -39,7 +37,7 @@ jobs:
       && !github.event.pull_request.draft
       && !endsWith(github.event.pull_request.user.login, '[bot]') }}
     env:
-      GH_TOKEN: ${{ secrets.PROJECTS_PAT }}
+      GH_TOKEN: ${{ secrets.GH_PAT }}
       PR_URL: ${{ github.event.pull_request.html_url }}
       PR_TITLE: ${{ github.event.pull_request.title }}
       PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
@@ -51,7 +49,8 @@ jobs:
       # skips the remaining steps rather than failing the pull request's checks.
       - name: Warn on missing PAT
         if: ${{ env.GH_TOKEN == '' }}
-        run: echo "::warning::PROJECTS_PAT secret is not set — skipping project sync. See the setup notes in this workflow file."
+        run: |
+          echo "::warning::GH_PAT secret is not set or lacks org Projects read/write permission — skipping project sync. See the setup notes in this workflow file."
 
       - name: Add pull request to project
         id: add
