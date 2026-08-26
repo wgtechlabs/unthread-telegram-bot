@@ -33,7 +33,7 @@ import { LogEngine } from '@wgtechlabs/log-engine';
 import { isAdminUser } from '../config/env.js';
 import { safeReply } from '../bot.js';
 import type { BotContext } from '../types/index.js';
-import { InlineKeyboardMarkup } from 'telegraf/typings/core/types/typegram';
+import type { InlineKeyboardMarkup } from 'telegraf/types';
 
 // ================================
 // User Admin Access Management

@@ -28,7 +28,7 @@
  * @since 2025
  */
 import { Telegraf } from 'telegraf';
-import type { ExtraEditMessageText, ExtraReplyMessage } from 'telegraf/typings/telegram-types';
+import type { Types } from 'telegraf';
 import { LogEngine } from '@wgtechlabs/log-engine';
 import { BotsStore } from './sdk/bots-brain/index.js';
 import { BotContext, TelegramError } from './types/index.js';
@@ -69,7 +69,7 @@ export function startPolling(bot: Telegraf<BotContext>): void {
 export async function safeReply(
     ctx: BotContext, 
     text: string, 
-    options: ExtraReplyMessage = {}
+    options: Types.ExtraReplyMessage = {}
 ): Promise<Awaited<ReturnType<BotContext['reply']>> | null> {
     try {
         return await ctx.reply(text, options);
@@ -141,7 +141,7 @@ export async function safeEditMessageText(
     messageId: number, 
     inlineMessageId: string | undefined, 
     text: string, 
-    options: ExtraEditMessageText = {}
+    options: Types.ExtraEditMessageText = {}
 ): Promise<Awaited<ReturnType<BotContext['telegram']['editMessageText']>> | null> {
     try {
         return await ctx.telegram.editMessageText(chatId, messageId, inlineMessageId, text, options);

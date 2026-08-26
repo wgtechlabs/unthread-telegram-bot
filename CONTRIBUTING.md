@@ -748,15 +748,15 @@ This project implements comprehensive supply chain security measures to ensure t
 
 #### **1. SBOM Generation in CI/CD**
 
-Our GitHub Actions workflows automatically generate Software Bills of Materials (SBOMs):
+Our GitHub Actions workflow (`.github/workflows/build-flow.yml`) automatically generates Software Bills of Materials (SBOMs) via the shared [build-flow-action](https://github.com/wgtechlabs/build-flow-action):
 
-**Development builds** (`.github/workflows/build.yml`):
+**Development builds** (push/PR to `dev`):
 
 - Generates SBOM in SPDX format
 - Creates build provenance attestations
 - Attaches metadata to container images
 
-**Production releases** (`.github/workflows/release.yml`):
+**Production releases** (push/PR to `main`, and published releases):
 
 - Full SBOM generation for multi-architecture builds
 - Enhanced provenance with build environment details
