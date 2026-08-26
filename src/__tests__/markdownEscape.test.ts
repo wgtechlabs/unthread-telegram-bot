@@ -64,9 +64,19 @@ describe('markdownEscape utilities', () => {
       expect(escapeMarkdownCode({} as any)).toBe('');
     });
 
-    it('should escape backticks only', () => {
+    it('should escape backticks', () => {
       const text = 'const code = `value`;';
       expect(escapeMarkdownCode(text)).toBe('const code = \\`value\\`;');
+    });
+
+    it('should escape backslashes (closes escape-sequence bypass)', () => {
+      const text = 'back\\slash';
+      expect(escapeMarkdownCode(text)).toBe('back\\\\slash');
+    });
+
+    it('should escape a leading backslash so it cannot neutralize the following backtick escape', () => {
+      const text = '\\`injected`';
+      expect(escapeMarkdownCode(text)).toBe('\\\\\\`injected\\`');
     });
 
     it('should not escape other markdown characters', () => {
@@ -261,6 +271,16 @@ describe('markdownEscape utilities', () => {
       const escaped = lightEscapeMarkdown(text);
       
       expect(escaped).toBe('\\[link1\\] and \\[link2\\] with \\`code1\\` and \\`code2\\`');
+    });
+
+    it('should escape backslashes alongside brackets and backticks', () => {
+      const text = 'back\\slash and [x] and `y`';
+      expect(lightEscapeMarkdown(text)).toBe('back\\\\slash and \\[x\\] and \\`y\\`');
+    });
+
+    it('should escape a leading backslash so it cannot neutralize the following backtick escape', () => {
+      const text = '\\`injected`';
+      expect(lightEscapeMarkdown(text)).toBe('\\\\\\`injected\\`');
     });
 
     it('should handle text without critical characters', () => {
