@@ -7,6 +7,11 @@ on:
     branches: [dev, main]
   release:
     types: [published]
+  # Weekly CI + CodeQL sweep so security analysis keeps running when the repo is
+  # quiet. Scheduled runs never publish artifacts or cut releases (see the
+  # enable-container/enable-release gates below).
+  schedule:
+    - cron: "0 6 * * 1"
   workflow_dispatch:
 
 concurrency:
@@ -36,11 +41,16 @@ jobs:
       ci-test-command: bun run test
       ci-coverage-command: bun run test:coverage
       ci-build-command: bun run build
-      ci-docker-smoke-command: docker build -t test-build .
+      # CI_MATRIX_VERSION is exported by the called CI workflow for each matrix
+      # entry, so the smoke build validates the Node version actually under test.
+      ci-docker-smoke-command: |
+        docker build --build-arg NODE_VERSION="${CI_MATRIX_VERSION}-alpine" -t test-build .
+        docker image rm test-build
       ci-matrix-versions: '["22","24","26"]'
       codeql-build-mode: none
       enable-package: false
-      enable-container: true
+      enable-container: ${{ github.event_name != 'schedule' }}
+      enable-release: ${{ github.event_name != 'schedule' }}
       container-registry: both
       # Container tag lifecycle (owned by build flow v0.2, see docs in README):
       # - push to main    -> staging-<sha> plus the floating staging tag
