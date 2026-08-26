@@ -28,14 +28,16 @@ jobs:
   sync-project:
     name: Add PR to Unthread Partnership project
     runs-on: ubuntu-latest
-    # Skip drafts and bot-authored dependency bumps (Dependabot, Renovate) —
+    # Skip drafts and routine dependency-bump bots (Dependabot, Renovate) —
     # this board tracks partnership deliverables, not routine dependency PRs.
+    # Coding-agent bots (e.g. copilot-swe-agent[bot]) open real deliverables
+    # (security/code-scanning fixes, features) and should still be tracked.
     # Fork PRs are skipped too: secrets are not exposed to them, so the sync
     # could never run and would only add noise for external contributors.
     if: >-
       ${{ github.event.pull_request.head.repo.full_name == github.repository
       && !github.event.pull_request.draft
-      && !endsWith(github.event.pull_request.user.login, '[bot]') }}
+      && !contains(fromJSON('["dependabot[bot]", "renovate[bot]"]'), github.event.pull_request.user.login) }}
     env:
       GH_TOKEN: ${{ secrets.GH_PAT }}
       PR_URL: ${{ github.event.pull_request.html_url }}
