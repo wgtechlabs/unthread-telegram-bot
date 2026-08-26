@@ -185,13 +185,7 @@ export class GlobalTemplateManager {
     
     // Use proper Telegram Markdown escaping instead of HTML entities
     // Only escape characters that break Telegram message parsing
-    sanitized = sanitized
-      .replace(/\*/g, '\\*')
-      .replace(/_/g, '\\_')
-      .replace(/\[/g, '\\[')
-      .replace(/\]/g, '\\]')
-      .replace(/`/g, '\\`')
-      .replace(/~/g, '\\~');
+    sanitized = sanitized.replace(/[\\*_\[\]`~]/g, '\\$&');
     
     // Limit length to prevent buffer overflow or excessive content
     const maxLength = 1000;

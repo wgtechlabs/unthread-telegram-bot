@@ -84,7 +84,7 @@ export interface WebhookEvent {
  * Ensures event meets our processing requirements
  */
 export function isValidWebhookEvent(event: unknown): event is WebhookEvent {
-  if (!event || typeof event !== 'object' || event === null) {
+  if (event === null || event === undefined || typeof event !== 'object') {
     return false;
   }
   

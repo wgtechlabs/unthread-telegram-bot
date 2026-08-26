@@ -176,7 +176,7 @@ function hasIsOperational(error: unknown): error is { isOperational: boolean } {
  * @returns True if the object contains a 'message' property; otherwise, false.
  */
 function hasMessage(obj: unknown): obj is { message: unknown } {
-    return typeof obj === 'object' && obj !== null && 'message' in obj;
+    return obj !== null && obj !== undefined && typeof obj === 'object' && 'message' in obj;
 }
 
 /**
@@ -185,7 +185,7 @@ function hasMessage(obj: unknown): obj is { message: unknown } {
  * @returns True if the object is non-null and contains a 'name' property.
  */
 function hasName(obj: unknown): obj is { name: unknown } {
-    return typeof obj === 'object' && obj !== null && 'name' in obj;
+    return obj !== null && obj !== undefined && typeof obj === 'object' && 'name' in obj;
 }
 
 /**
