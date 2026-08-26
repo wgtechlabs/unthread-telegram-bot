@@ -11,6 +11,8 @@ name: Project Sync
 #      who has access to the wgtechlabs org project board.
 #   2. Save it as the repository (or org) secret `PROJECTS_PAT`.
 #   `GITHUB_TOKEN` cannot be used here — org-level Projects v2 requires a PAT.
+# Until that secret exists the workflow logs a warning and skips, so pull
+# request checks stay green instead of failing on unconfigured automation.
 
 on:
   pull_request:
@@ -40,21 +42,22 @@ jobs:
       DELETIONS: ${{ github.event.pull_request.deletions }}
       CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
     steps:
-      - name: Guard missing PAT
-        run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::error::PROJECTS_PAT secret is not set. See the setup notes in this workflow file."
-            exit 1
-          fi
+      # Board sync is optional automation, so an unconfigured secret warns and
+      # skips the remaining steps rather than failing the pull request's checks.
+      - name: Warn on missing PAT
+        if: ${{ env.GH_TOKEN == '' }}
+        run: echo "::warning::PROJECTS_PAT secret is not set — skipping project sync. See the setup notes in this workflow file."
 
       - name: Add pull request to project
         id: add
+        if: ${{ env.GH_TOKEN != '' }}
         run: |
           item_json=$(gh project item-add "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --url "$PR_URL" --format json)
           echo "item_id=$(echo "$item_json" | jq -r '.id')" >> "$GITHUB_OUTPUT"
 
       - name: Resolve project and field ids
         id: ids
+        if: ${{ env.GH_TOKEN != '' }}
         run: |
           project_id=$(gh project view "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --format json --jq '.id')
           fields_json=$(gh project field-list "$PROJECT_NUMBER" --owner "$PROJECT_OWNER" --format json)
@@ -69,6 +72,7 @@ jobs:
 
       - name: Determine priority
         id: priority
+        if: ${{ env.GH_TOKEN != '' }}
         run: |
           # Default priority, refined by Clean Commit type prefix and labels.
           priority="P2 - Medium"
@@ -88,6 +92,7 @@ jobs:
 
       - name: Estimate effort
         id: effort
+        if: ${{ env.GH_TOKEN != '' }}
         run: |
           # Rough Fibonacci estimate from diff size, per the project's effort
           # guide (1-2 quick fix, 3 standard, 5 significant, 8 major, 13 large).
@@ -110,7 +115,7 @@ jobs:
           echo "effort=$effort" >> "$GITHUB_OUTPUT"
 
       - name: Set Status to In Review
-        if: ${{ steps.ids.outputs.status_option_id != '' }}
+        if: ${{ env.GH_TOKEN != '' && steps.ids.outputs.status_option_id != '' }}
         run: |
           gh project item-edit --id "${{ steps.add.outputs.item_id }}" \
             --project-id "${{ steps.ids.outputs.project_id }}" \
@@ -118,6 +123,7 @@ jobs:
             --single-select-option-id "${{ steps.ids.outputs.status_option_id }}"
 
       - name: Set Priority
+        if: ${{ env.GH_TOKEN != '' }}
         env:
           PRIORITY_VALUE: ${{ steps.priority.outputs.priority }}
         run: |
@@ -131,6 +137,7 @@ jobs:
           fi
 
       - name: Set Effort
+        if: ${{ env.GH_TOKEN != '' }}
         run: |
           gh project item-edit --id "${{ steps.add.outputs.item_id }}" \
             --project-id "${{ steps.ids.outputs.project_id }}" \
