@@ -47,7 +47,7 @@ export function escapeMarkdownCode(text: string): string {
         return '';
     }
 
-    return text.replace(/`/g, '\\`');
+    return text.replace(/[\\`]/g, '\\$&');
 }
 
 /**
@@ -148,8 +148,5 @@ export function lightEscapeMarkdown(text: string): string {
     }
 
     // Only escape characters that commonly break Telegram message parsing
-    return text
-        .replace(/\[/g, '\\[')    // Left square bracket (links)
-        .replace(/\]/g, '\\]')    // Right square bracket (links)
-        .replace(/`/g, '\\`');    // Backtick (inline code)
+    return text.replace(/[\\\[\]`]/g, '\\$&');
 }
