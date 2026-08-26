@@ -179,6 +179,9 @@ While this project doesn't currently have a comprehensive test suite, when contr
    - [ ] Test bot functionality manually
    - [ ] Ensure Docker build succeeds
 
+> [!IMPORTANT]
+> **Maintainers:** When promoting `dev` → `main`, use **"Create a merge commit"**, not "Squash and merge". The release automation (`build-flow.yml`) walks individual commit messages since the last tag to detect a version bump. Squashing collapses them into a single non-bump-worthy commit, silently skipping the tag/changelog/release/container publish steps (as happened with #131).
+
 ## 🏗️ Architecture & Technical Details
 
 ### 🔄 How the System Works
