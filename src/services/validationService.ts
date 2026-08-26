@@ -37,14 +37,13 @@ export class ValidationService {
         groupTitle: string
     ): Promise<ValidationResult> {
         const checks: ValidationCheck[] = [];
-        let allPassed = true;
 
         // Run essential validation checks
         await this.checkBotAdminStatus(ctx, groupChatId, checks);
         await this.checkMessageSendingCapability(ctx, groupChatId, checks);
 
         // Determine if all checks passed
-        allPassed = checks.every(check => check.passed);
+        const allPassed = checks.every(check => check.passed);
 
         // Build validation message
         const message = this.buildValidationMessage(groupTitle, groupChatId, checks, allPassed);
