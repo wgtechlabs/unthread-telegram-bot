@@ -37,7 +37,8 @@ export function escapeMarkdown(text: string): string {
 
 /**
  * Escapes text specifically for use in Markdown code blocks
- * Only escapes backticks to prevent code block breaking
+ * Escapes backticks (to prevent code block breaking) and backslashes
+ * (to prevent attacker-controlled escape sequences from surviving escaping)
  * 
  * @param text - The text to escape for code blocks
  * @returns Text safe for use in code blocks
