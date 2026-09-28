@@ -34,6 +34,9 @@ jobs:
     uses: wgtechlabs/build-flow-action/.github/workflows/app.yml@v0.2.0
     secrets: inherit
     with:
+      # Dependabot pull requests cannot access organization secrets, including
+      # the licensed Gitleaks token. Keep the scan enabled for all other runs.
+      enable-gitleaks: ${{ github.actor != 'dependabot[bot]' }}
       ci-profile: node-bun
       ci-install-command: bun install --frozen-lockfile
       ci-lint-command: bunx biome check . --reporter=github
