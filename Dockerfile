@@ -18,7 +18,7 @@
 # syntax=docker/dockerfile:1
 
 # Use Node.js 26 latest Alpine line for primary runtime support
-ARG NODE_VERSION=26-alpine
+ARG NODE_VERSION=26.12.1-alpine3.24
 # Pinned Bun version for reproducible builds
 ARG BUN_VERSION=1.3.13
 
@@ -34,7 +34,7 @@ FROM node:${NODE_VERSION} AS base
 RUN apk update && apk upgrade && \
     apk add --no-cache dumb-init && \
     rm -rf /var/cache/apk/* && \
-    npm install -g undici@6.28.0
+    npm install -g undici@6.29.1
 
 # Set working directory for all subsequent stages
 WORKDIR /usr/src/app
