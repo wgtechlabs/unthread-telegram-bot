@@ -20,7 +20,7 @@
 # Use Node.js 26 latest Alpine line for primary runtime support
 ARG NODE_VERSION=26.12.1-alpine3.24
 # Pinned Bun version for reproducible builds
-ARG BUN_VERSION=1.3.13
+ARG BUN_VERSION=1.4.4
 
 # =============================================================================
 # STAGE 1: Base Image
