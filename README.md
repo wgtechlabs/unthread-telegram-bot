@@ -31,11 +31,7 @@
   </tr>
 </table>
 
-This bot is designed for businesses managing customer support through private Telegram groups or dedicated partner channels - optimized for professional support workflows rather than public community groups.
-
 > **🔄 Upgrading from Beta to v1.0.0?** Check our comprehensive [Migration Guide](./docs/migration.md) for step-by-step instructions on breaking changes and new features.
-
-
 
 ## ✨ Features
 
