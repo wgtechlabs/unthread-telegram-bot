@@ -4,6 +4,14 @@
 > **Maintenance mode:** Sponsorship for this project has ended, and maintainer time is limited. No new features or improvements are planned. Security and bug fixes will continue until this integration is archived. It may be archived later, but it is not archived now.
 
 <p align="center">
+  <a href="https://github.com/wgtechlabs/unthread-telegram-bot"><img src="https://raw.githubusercontent.com/wgtechlabs/unthread-telegram-bot/main/.github/assets/repo_banner.jpg" alt="Unthread Telegram Bot 🎫🤖 repository banner"></a>
+</p>
+
+<p align="center">
+  <strong>Official Unthread Extension</strong> — The Unthread Telegram Bot is the official integration that connects your customer and partner Telegram chats with Unthread's comprehensive ticket management system. Create and manage support tickets directly within dedicated Telegram groups, with real-time bidirectional communication between your team and clients.
+</p>
+
+<p align="center">
   <a href="https://github.com/wgtechlabs"><img src="https://img.shields.io/badge/made%20by-WG%20Tech%20Labs-0060a0.svg?logo=github&amp;longCache=true&amp;labelColor=181717&amp;style=flat-square" alt="Made by WG Tech Labs"></a>
   <a href="https://unthread.com"><img src="https://img.shields.io/badge/official-Unthread%20Extension-FF5241.svg?logo=telegram&amp;logoColor=white&amp;labelColor=181717&amp;style=flat-square" alt="Official Unthread Telegram extension"></a><br>
   <a href="https://github.com/wgtechlabs/unthread-telegram-bot/actions/workflows/build-flow.yml"><img src="https://img.shields.io/github/actions/workflow/status/wgtechlabs/unthread-telegram-bot/build-flow.yml?branch=main&amp;style=flat-square&amp;logo=github&amp;label=release&amp;labelColor=181717" alt="Telegram release workflow status"></a>
