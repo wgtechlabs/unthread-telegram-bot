@@ -4,16 +4,14 @@
 > **Maintenance mode:** Sponsorship for this project has ended, and maintainer time is limited. No new features or improvements are planned. Security and bug fixes will continue until this integration is archived. It may be archived later, but it is not archived now.
 
 <p align="center">
-  <a href="https://github.com/wgtechlabs/unthread-telegram-bot"><img src="https://raw.githubusercontent.com/wgtechlabs/unthread-telegram-bot/main/.github/assets/repo_banner.jpg" alt="Unthread Telegram Bot 🎫🤖 repository banner"></a>
-</p>
-
-<p align="center">
-  <strong>Official Unthread Extension</strong> — The Unthread Telegram Bot is the official integration that connects your customer and partner Telegram chats with Unthread's comprehensive ticket management system. Create and manage support tickets directly within dedicated Telegram groups, with real-time bidirectional communication between your team and clients.
-</p>
-
-<p align="center">
-  [![made by](https://img.shields.io/badge/made%20by-WG%20Tech%20Labs-0060a0.svg?logo=github&longCache=true&labelColor=181717&style=flat-square)](https://github.com/wgtechlabs) [![official](https://img.shields.io/badge/official-Unthread%20Extension-FF5241.svg?logo=telegram&logoColor=white&labelColor=181717&style=flat-square)](https://unthread.com)<br>
-  [![release workflow](https://img.shields.io/github/actions/workflow/status/wgtechlabs/unthread-telegram-bot/build-flow.yml?branch=main&style=flat-square&logo=github&label=release&labelColor=181717)](https://github.com/wgtechlabs/unthread-telegram-bot/actions/workflows/build-flow.yml) [![build workflow](https://img.shields.io/github/actions/workflow/status/wgtechlabs/unthread-telegram-bot/build-flow.yml?branch=dev&style=flat-square&logo=github&labelColor=181717&label=build)](https://github.com/wgtechlabs/unthread-telegram-bot/actions/workflows/build-flow.yml) [![sponsors](https://img.shields.io/badge/sponsor-%E2%9D%A4-%23db61a2.svg?&logo=github&logoColor=white&labelColor=181717&style=flat-square)](https://github.com/sponsors/wgtechlabs) [![version](https://img.shields.io/github/release/wgtechlabs/unthread-telegram-bot.svg?logo=github&labelColor=181717&color=default&style=flat-square&label=version)](https://github.com/wgtechlabs/unthread-telegram-bot/releases) [![star](https://img.shields.io/github/stars/wgtechlabs/unthread-telegram-bot.svg?&logo=github&labelColor=181717&color=yellow&style=flat-square)](https://github.com/wgtechlabs/unthread-telegram-bot/stargazers) [![license](https://img.shields.io/github/license/wgtechlabs/unthread-telegram-bot.svg?&logo=github&labelColor=181717&style=flat-square)](https://github.com/wgtechlabs/unthread-telegram-bot/blob/main/LICENSE)
+  <a href="https://github.com/wgtechlabs"><img src="https://img.shields.io/badge/made%20by-WG%20Tech%20Labs-0060a0.svg?logo=github&amp;longCache=true&amp;labelColor=181717&amp;style=flat-square" alt="made by"></a>
+  <a href="https://unthread.com"><img src="https://img.shields.io/badge/official-Unthread%20Extension-FF5241.svg?logo=telegram&amp;logoColor=white&amp;labelColor=181717&amp;style=flat-square" alt="official"></a><br>
+  <a href="https://github.com/wgtechlabs/unthread-telegram-bot/actions/workflows/build-flow.yml"><img src="https://img.shields.io/github/actions/workflow/status/wgtechlabs/unthread-telegram-bot/build-flow.yml?branch=main&amp;style=flat-square&amp;logo=github&amp;label=release&amp;labelColor=181717" alt="release workflow"></a>
+  <a href="https://github.com/wgtechlabs/unthread-telegram-bot/actions/workflows/build-flow.yml"><img src="https://img.shields.io/github/actions/workflow/status/wgtechlabs/unthread-telegram-bot/build-flow.yml?branch=dev&amp;style=flat-square&amp;logo=github&amp;labelColor=181717&amp;label=build" alt="build workflow"></a><br>
+  <a href="https://github.com/sponsors/wgtechlabs"><img src="https://img.shields.io/badge/sponsor-%E2%9D%A4-%23db61a2.svg?&amp;logo=github&amp;logoColor=white&amp;labelColor=181717&amp;style=flat-square" alt="sponsors"></a>
+  <a href="https://github.com/wgtechlabs/unthread-telegram-bot/releases"><img src="https://img.shields.io/github/release/wgtechlabs/unthread-telegram-bot.svg?logo=github&amp;labelColor=181717&amp;color=default&amp;style=flat-square&amp;label=version" alt="version"></a>
+  <a href="https://github.com/wgtechlabs/unthread-telegram-bot/stargazers"><img src="https://img.shields.io/github/stars/wgtechlabs/unthread-telegram-bot.svg?&amp;logo=github&amp;labelColor=181717&amp;color=yellow&amp;style=flat-square" alt="star"></a>
+  <a href="https://github.com/wgtechlabs/unthread-telegram-bot/blob/main/LICENSE"><img src="https://img.shields.io/github/license/wgtechlabs/unthread-telegram-bot.svg?&amp;logo=github&amp;labelColor=181717&amp;style=flat-square" alt="license"></a>
 </p>
 
 ## 💎 Sponsors & Partners
