@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <strong>Official Unthread Extension</strong> — The Unthread Telegram Bot is the official integration that connects your customer and partner Telegram chats with Unthread's comprehensive ticket management system. Create and manage support tickets directly within dedicated Telegram groups, with real-time bidirectional communication between your team and clients.
+  <strong>Official Unthread Extension</strong> — Connect private Telegram support groups to Unthread to create tickets and sync conversations in real time.
 </p>
 
 <p align="center">
